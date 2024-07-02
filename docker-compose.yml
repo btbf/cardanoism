@@ -17,6 +17,7 @@ services:
       - "traefik.http.routers.frontend.entrypoints=websecure"
       - "traefik.http.routers.frontend.tls.certResolver=letsencrypt"
       - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+      - "traefik.http.middlewares.frontend.headers.customrequestheaders.X-Forwarded-Proto=https,wss"
 networks:
   dokploy-network:
     external: true
