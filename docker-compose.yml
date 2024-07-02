@@ -13,16 +13,15 @@ services:
       - dokploy-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.cardano.rule=Host(`cardanoism.com`)"
-      - "traefik.http.routers.cardano.entrypoints=websecure"
-      - "traefik.http.routers.cardano.tls.certResolver=letsencrypt"
-      - "traefik.http.services.cardano.loadbalancer.server.port=3000"
-      - "traefik.http.routers.event-service.rule=PathPrefix(`/_event`)"
-      - "traefik.http.routers.event-service.entrypoints=websecure"
-      - "traefik.http.routers.event-service.middlewares=cardano-headers"
-      - "traefik.http.services.event-service.loadbalancer.server.port=8000"
-      - "traefik.http.middlewares.cardano-headers.headers.customrequestheaders.Upgrade=websocket"
-      - "traefik.http.middlewares.cardano-headers.headers.customrequestheaders.Connection=Upgrade"
+      - "traefik.http.routers.frontend.rule=Host(`cardanoism.com`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certResolver=letsencrypt"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+      - "traefik.http.routers.backend.rule=Host(`cardanoism.com`) && PathPrefix(`/_event`)""
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.tls.certResolver=letsencrypt"
+      - "traefik.http.services.backend.loadbalancer.server.port=8000"
+      
 networks:
   dokploy-network:
     external: true
