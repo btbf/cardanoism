@@ -5,6 +5,8 @@ COPY . .
 
 RUN pip install -r requirements.txt
 
-STOPSIGNAL SIGKILL
+RUN API_URL=https://cardanoism:8000 reflex export --no-zip
 
-CMD reflex run --env prod
+#STOPSIGNAL SIGKILL
+
+#CMD reflex run --env prod
