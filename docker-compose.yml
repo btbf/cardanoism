@@ -17,10 +17,12 @@ services:
       - "traefik.http.routers.cardano.entrypoints=websecure"
       - "traefik.http.routers.cardano.tls.certResolver=letsencrypt"
       - "traefik.http.services.cardano.loadbalancer.server.port=3000"
-      - "traefik.http.middlewares.cardano.headers.customRequestHeaders.Upgrade=websocket"
-      - "traefik.http.middlewares.cardano.headers.customResponseHeaders.Upgrade=websocket"
-      - "traefik.http.middlewares.cardano.headers.customRequestHeaders.Connection=Upgrade"
-      - "traefik.http.middlewares.cardano.headers.customResponseHeaders.Connection=Upgrade"
+      - "traefik.http.routers.event-service.rule=PathPrefix(`/event`)"
+      - "traefik.http.routers.event-service.entrypoints=websecure"
+      - "traefik.http.routers.event-service.middlewares=cardano-headers"
+      - "traefik.http.services.event-service.loadbalancer.server.port=8000"
+      - "traefik.http.middlewares.cardano-headers.headers.customrequestheaders.Upgrade=websocket"
+      - "traefik.http.middlewares.cardano-headers.headers.customrequestheaders.Connection=Upgrade"
 networks:
   dokploy-network:
     external: true
