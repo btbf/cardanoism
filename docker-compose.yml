@@ -5,9 +5,6 @@ services:
     build:
       context: ./cardano-ism
       dockerfile: Dockerfile
-      args:
-        ENV_VARIABLE: ${ENV_VARIABLE}
-        NEXT_PUBLIC_ENV_VARIABLE: ${NEXT_PUBLIC_ENV_VARIABLE}
     restart: always
     ports:
       - 3000
@@ -18,7 +15,7 @@ services:
       - "traefik.http.routers.cardano.rule=Host(`cardanoism.com`)"
       - "traefik.http.routers.cardano.entrypoints=websecure"
       - "traefik.http.routers.cardano.tls.certResolver=letsencrypt"
-      - "traefik.http.services.cardano-.loadbalancer.server.port=3000"
+      - "traefik.http.services.cardano.loadbalancer.server.port=3000"
       - "traefik.http.middlewares.cardano.headers.customRequestHeaders.Upgrade=websocket"
       - "traefik.http.middlewares.cardano.headers.customResponseHeaders.Upgrade=websocket"
       - "traefik.http.middlewares.cardano.headers.customRequestHeaders.Connection=Upgrade"
