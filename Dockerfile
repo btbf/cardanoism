@@ -5,7 +5,7 @@ COPY . .
 
 RUN pip install -r requirements.txt
 
-RUN API_URL=https://cardanoism:8000 reflex export --no-zip
+#RUN API_URL=https://cardanoism:8000 reflex export --no-zip
 
 STOPSIGNAL SIGKILL
 
