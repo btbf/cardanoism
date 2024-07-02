@@ -69,7 +69,7 @@ def hero_section_buttons(mobile=False):
         width="100%",
     )
 
-@template(route="/", title="ホーム")
+@template(route="/", title="カルダノイズム | カルダノガバナンス日本語ポータルサイト")
 def index() -> rx.Component:
     return rx.center(
         rx.vstack(

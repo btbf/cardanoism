@@ -18,6 +18,17 @@ default_meta = [
     },
 ]
 
+google_tags =[rx.script("""
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-EEG3K7D578"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-EEG3K7D578');
+</script>
+""")]
+
 
 def menu_item_link(text, href):
     return rx.menu.item(
@@ -90,13 +101,15 @@ def template(
         title: The title of the page.
         description: The description of the page.
         meta: Additionnal meta to add to the page.
+        head_components: googleAnalytics.
         on_load: The event handler(s) called when the page load.
         script_tags: Scripts to attach to the page.
+
 
     Returns:
         The template with the page content.
     """
-
+    
     def decorator(page_content: Callable[[], rx.Component]) -> rx.Component:
         """The template for each page of the app.
 
@@ -108,7 +121,7 @@ def template(
         """
         # Get the meta tags for the page.
         all_meta = [*default_meta, *(meta or [])]
-
+        
         def templated_page():
             return rx.vstack(
                 # sidebar(),
@@ -135,6 +148,7 @@ def template(
             meta=all_meta,
             script_tags=script_tags,
             on_load=on_load,
+            
         )
         def theme_wrap():
             return rx.theme(
