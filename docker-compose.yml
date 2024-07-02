@@ -8,18 +8,23 @@ services:
     restart: always
     ports:
       - 3000
+      - 8000
     networks:
       - dokploy-network
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.cardano.rule=Host(`cardanoism.com`)"
       - "traefik.http.routers.cardano.entrypoints=websecure"
-      - "traefik.http.routers.cardano.tls.certResolver=letsencrypt"
+      - "traefik.http.routers.cardano.tls.certresolver=letsencrypt"
       - "traefik.http.services.cardano.loadbalancer.server.port=3000"
-      - "traefik.http.middlewares.cardano.headers.customRequestHeaders.Upgrade=websocket"
-      - "traefik.http.middlewares.cardano.headers.customResponseHeaders.Upgrade=websocket"
-      - "traefik.http.middlewares.cardano.headers.customRequestHeaders.Connection=Upgrade"
-      - "traefik.http.middlewares.cardano.headers.customResponseHeaders.Connection=Upgrade"
+      - "traefik.http.middlewares.websocket-headers.headers.customrequestheaders.Upgrade=websocket"
+      - "traefik.http.middlewares.websocket-headers.headers.customrequestheaders.Connection=Upgrade"
+      - "traefik.http.middlewares.websocket-headers.headers.customresponseheaders.Upgrade=websocket"
+      - "traefik.http.middlewares.websocket-headers.headers.customresponseheaders.Connection=Upgrade"
+      - "traefik.http.routers.websocket.rule=Host(`cardanoism.com`) && PathPrefix(`/`) && Headers(`Upgrade`,`websocket`)"
+      - "traefik.http.routers.websocket.entrypoints=websocket"
+      - "traefik.http.routers.websocket.middlewares=websocket-headers"
+      - "traefik.http.services.websocket.loadbalancer.server.port=8000"
 networks:
   dokploy-network:
     external: true
