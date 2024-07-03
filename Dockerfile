@@ -8,7 +8,7 @@ RUN pip install -r requirements.txt
 #RUN API_URL=https://cardanoism.com:8000 reflex export --no-zip
 
 # Download all npm dependencies and compile frontend
-RUN API_URL=https://cardanoism.com:8000 reflex export --frontend-only --no-zip && mv .web/_static/* /srv/ && rm -rf .web
+RUN API_URL=https://cardanoism.com:8000 reflex export --frontend-only --no-zip && mv .web/_static/* . && rm -rf .web
 
 STOPSIGNAL SIGKILL
 
