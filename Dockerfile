@@ -18,10 +18,10 @@
 FROM python:3.11
 
 # # If the service expects a different port, provide it here (f.e Render expects port 10000)
-# ARG PORT=8080
+ARG PORT=8000
 # # Only set for local/direct access. When TLS is used, the API_URL is assumed to be the same as the frontend.
-# ARG API_URL
-# ENV PORT=$PORT API_URL=${API_URL:-http://localhost:$PORT}
+ARG API_URL
+ENV PORT=$PORT API_URL=${API_URL:-http://localhost:$PORT}
 
 # Install Caddy server inside image
 RUN apt-get update -y && apt-get install -y caddy && rm -rf /var/lib/apt/lists/*
@@ -56,7 +56,7 @@ RUN pip install -r requirements.txt
 # RUN reflex init
 
 # Download all npm dependencies and compile frontend
-RUN API_URL=http://cardanoism.com:8000 reflex export --frontend-only --no-zip && mv .web/_static/* /srv/ && rm -rf .web
+RUN reflex export --frontend-only --no-zip && mv .web/_static/* /srv/ && rm -rf .web
 
 # Needed until Reflex properly passes SIGTERM on backend.
 STOPSIGNAL SIGKILL
