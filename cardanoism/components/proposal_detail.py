@@ -292,7 +292,7 @@ def proposal_detail(proposal: Dict[str, str]):
         ),
         rx.inset(
             rx.link(
-                rx.button("閉じる", width="100%", size="3", variant="soft", color_scheme="indigo", ),
+                rx.button("閉じる", width="100%", size="3", variant="soft", color_scheme="indigo", on_click=rx.call_script("""window.close()""")),
             ),
             side="bottom",
             #background_color="var(--accent-3)",
