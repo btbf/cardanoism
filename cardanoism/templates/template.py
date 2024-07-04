@@ -21,11 +21,11 @@ default_meta = [
 google_tags =[rx.script("""
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-EEG3K7D578"></script>
 <script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
 
-  gtag('config', 'G-EEG3K7D578');
+gtag('config', 'G-EEG3K7D578');
 </script>
 """)]
 
@@ -154,6 +154,7 @@ def template(
             return rx.theme(
                 templated_page(),
                 color_mode="light",
+                appearance="light",
                 has_background=True,
                 accent_color=ThemeState.accent_color,
                 gray_color=ThemeState.gray_color,
