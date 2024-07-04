@@ -6,14 +6,14 @@ import reflex as rx
 #Connect to MariaDB Platform
 def dbConnect():
     print(os.getenv("DB_USER"))
-    print(os.getenv("DB_PAS"))
+    print(os.getenv("DB_PASS"))
     print(os.getenv("DB_HOST"))
     print(os.getenv("DB_PORT"))
     print(os.getenv("DB_NAME"))
     try:
         conn = mariadb.connect(
             user=os.getenv("DB_USER"),
-            password=os.getenv('DB_PAS'),
+            password=os.getenv('DB_PASS'),
             host=os.getenv('DB_HOST'),
             port=int(os.getenv('DB_PORT')),
             database=os.getenv('DB_NAME')
