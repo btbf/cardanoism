@@ -5,7 +5,7 @@ from cardanoism.templates import template
 def hero_section_text(mobile=False):
     return rx.vstack(
         rx.chakra.text(
-            "Project Catalyst Japanese Potal",
+            "Cardano Governance Japanese Potal",
             text_align="left" if not mobile else "center",
             color="#6C6C81",
             font_size=["24px", "30px", "40px", "54px", "54px", "54px"],
@@ -14,7 +14,7 @@ def hero_section_text(mobile=False):
             #max_width=["200px", "300px", "400px", "650px", "650px", "650px"],
         ),
          rx.chakra.text(
-            "カタリスト日本語ポータルサイト",
+            "カルダノガバナンス日本語ポータルサイト",
             text_align="left" if not mobile else "center",
             color="#6C6C81",
             font_size=["24px", "30px", "40px", "54px", "54px", "54px"],
@@ -24,7 +24,7 @@ def hero_section_text(mobile=False):
         ),
 
         align_items="center" if mobile else "start",
-        
+        margin="20px"
     )
 
 def hero_section_buttons(mobile=False):
@@ -42,7 +42,7 @@ def hero_section_buttons(mobile=False):
         rx.link(
             rx.flex(
                 rx.button(
-                    "Fund12提案書一覧",
+                    "カタリストFund12提案書をチェック！",
                     rx.icon(
                     tag="chevron-right",
                         size=18,
@@ -76,30 +76,22 @@ def index() -> rx.Component:
             hero_section_text(),
             hero_section_buttons(),
             rx.box(
-                rx.section(
-                    rx.heading("当サイトについて"),
-                    rx.box(
-                        rx.text("カルダノブロックチェーン資金調達プラットフォームの提案書を日本語で確認できるように開発されました。"),
+                rx.chakra.alert(
+                        rx.chakra.alert_icon(),
+                        rx.chakra.alert_title(
+                            rx.link(
+                            rx.text("当プロジェクトのFund12提案書にも投票をお願いします"),
+                            href="/catalyst/121284/",
+                            is_external=True
+                        ),),
+
+                        status="info",
+                        variant="top-accent",
                     ),
-                    padding_left="12px",
-                    padding_right="12px",
-                    background_color="var(--gray-2)",
-                ),
-                rx.section(
-                    rx.heading("投票のお願い"),
-                    rx.box(
-                        rx.text("当サイトは今後カルダノブロックチェーンの総合ガバナンス日本語ポータルに発展させるため、カタリストFund12に提案書を提出しております！"),
-                        rx.link("当プロジェクトの提案書はこちらです", href="/catalyst/121284/"),
-                        rx.text("ぜひ投票をお願いいたします。")
-                        ),
-                    padding_left="12px",
-                    padding_right="12px",
-                    background_color="var(--gray-2)",
-                ),
 
                 rx.section(
                     rx.heading("お知らせ"),
-                    rx.text("2024/07/02 プレオープン"),
+                    rx.text("2024/07/02 カタリスト日本語ポータル　プレオープン"),
                     padding_left="12px",
                     padding_right="12px",
                     background_color="var(--gray-2)",

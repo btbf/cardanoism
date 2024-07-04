@@ -67,7 +67,7 @@ class AppState(rx.State):
         INNER JOIN proposal_detail
         ON proposals.ideascale_id = proposal_detail.ideascale_id
         """
-        count_query = f"SELECT COUNT(*) as total FROM proposals"
+        count_query = f"SELECT COUNT(*) as total FROM proposals INNER JOIN proposal_detail ON proposals.ideascale_id = proposal_detail.ideascale_id"
         
         if self.challenge_id:
             where_query = f" WHERE proposals.challenge_id LIKE '{self.challenge_id}'"
@@ -80,6 +80,7 @@ class AppState(rx.State):
             search_value = f"%{str(self.inputed_value).lower()}%"
             # WHERE句を動的に生成
             where_clause = " OR ".join([f"proposals.{column} LIKE '{search_value}'" for column in columns])
+            where_clause += f""" OR proposal_detail.applicant_name LIKE '{search_value}'"""
             
             if self.challenge_id:
                 data_query += f" AND ({where_clause})"
@@ -195,6 +196,7 @@ class ProposalAppState(rx.State):
         proposal_detail.impact,
         proposal_detail.capability_feasibility,
         proposal_detail.project_milestones,
+        proposal_detail.resources,
         proposal_detail.budget_costs,
         proposal_detail.value_for_money
         FROM proposals
