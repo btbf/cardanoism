@@ -153,7 +153,6 @@ def template(
         def theme_wrap():
             return rx.theme(
                 templated_page(),
-                appearance="light",
                 has_background=True,
                 accent_color=ThemeState.accent_color,
                 gray_color=ThemeState.gray_color,
