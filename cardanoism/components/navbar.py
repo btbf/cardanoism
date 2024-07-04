@@ -46,7 +46,7 @@ def navbar_icons() -> rx.Component:
 
                 ),
                 rx.hstack(
-                    navbar_icons_item("ホーム", "home", "/#", False),
+                    navbar_icons_item("ホーム", "home", "/", False),
                     navbar_icons_item("カタリスト", "landmark", "/catalyst", False),
                     navbar_icons_item("ガバナンス", "vote", "/#", True),
                     #navbar_icons_item("連絡先", "mail", "/#", False),
@@ -76,7 +76,7 @@ def navbar_icons() -> rx.Component:
                     ),
                     rx.menu.content(
                         navbar_icons_menu_item(
-                            "ホーム", "home", "/#"
+                            "ホーム", "home", "/"
                         ),
                         navbar_icons_menu_item(
                             "カタリスト", "coins", "/catalyst"
@@ -93,7 +93,7 @@ def navbar_icons() -> rx.Component:
                 align_items="center",
             ),
         ),
-        background_color="white",
+        background=f"radial-gradient(circle at top right, {rx.color('accent', 2)}, {rx.color('mauve', 1)});",
         padding_x="5em",
         padding_y="1em",
         justify="center",

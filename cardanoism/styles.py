@@ -18,7 +18,7 @@ template_content_style = {
     "border_radius": border_radius,
     "padding_top": "1.2em",
     "margin_bottom": "2em",
-    "min_height": "50vh",
+    "min_height": "85vh",
     "font_family": "Noto Sans JP",
 }
 

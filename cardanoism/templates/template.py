@@ -136,8 +136,8 @@ def template(
                 footer_three_columns(),
                 #menu_button(),
                 align="start",
-                #background=f"radial-gradient(circle at top right, {rx.color('accent', 2)}, {rx.color('mauve', 1)});",
-                background=f"radial-gradient(circle at top right, {rx.color('white', 2)}, {rx.color('mauve', 1)});",
+                background=f"radial-gradient(circle at top right, {rx.color('accent', 2)}, {rx.color('mauve', 1)});",
+                #background=f"radial-gradient(circle at top right, {rx.color('white', 2)}, {rx.color('mauve', 1)});",
                 position="relative",
             )
 
@@ -154,7 +154,6 @@ def template(
             return rx.theme(
                 templated_page(),
                 color_mode="light",
-                appearance="light",
                 has_background=True,
                 accent_color=ThemeState.accent_color,
                 gray_color=ThemeState.gray_color,

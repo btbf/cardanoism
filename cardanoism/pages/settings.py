@@ -4,7 +4,6 @@ from cardanoism.templates import ThemeState, template
 
 import reflex as rx
 
-
 @template(route="/settings", title="設定")
 def settings() -> rx.Component:
     """The settings page.
