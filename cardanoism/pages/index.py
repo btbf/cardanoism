@@ -91,7 +91,7 @@ def index() -> rx.Component:
 
                 rx.section(
                     rx.heading("お知らせ"),
-                    rx.text("2024/07/02 カタリスト日本語ポータル　プレオープン"),
+                    rx.text("2024/07/04 カタリスト日本語ポータル　プレオープン"),
                     padding_left="12px",
                     padding_right="12px",
                     background_color="var(--gray-2)",

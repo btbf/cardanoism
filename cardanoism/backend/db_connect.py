@@ -40,6 +40,8 @@ class AppState(rx.State):
     
     def on_load(self):
         # super().__init__()
+        self.challenge_id: str = ""
+        self.inputed_value: str = ""
         self.data_fetch()
         
     
@@ -193,12 +195,19 @@ class ProposalAppState(rx.State):
         proposal_detail.open_source,
         proposal_detail.tag,
         proposal_detail.solution,
+        proposal_detail.solution_ja as detail_solution_ja,
         proposal_detail.impact,
+        proposal_detail.impact_ja,
         proposal_detail.capability_feasibility,
+        proposal_detail.capability_feasibility_ja,
         proposal_detail.project_milestones,
+        proposal_detail.project_milestones_ja,
         proposal_detail.resources,
+        proposal_detail.resources_ja,
         proposal_detail.budget_costs,
-        proposal_detail.value_for_money
+        proposal_detail.budget_costs_ja,
+        proposal_detail.value_for_money,
+        proposal_detail.value_for_money_ja
         FROM proposals
         INNER JOIN challenges
         ON proposals.challenge_id = challenges.id

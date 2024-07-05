@@ -62,11 +62,14 @@ def navbar_icons() -> rx.Component:
         rx.mobile_and_tablet(
             rx.hstack(
                 rx.hstack(
-                    rx.image(
+                    rx.link(
+                        rx.image(
                         src="/cardanoism-logo.png",
                         width="15em",
                         height="auto",
                         alt="カルダノイズム",
+                        ),
+                        href="./"
                     ),
                     align_items="center",
                 ),
