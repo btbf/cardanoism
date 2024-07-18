@@ -1,6 +1,7 @@
 import os
 import sys
 import mariadb
+from typing import List, Dict, Any
 import reflex as rx
 
 #Connect to MariaDB Platform
@@ -25,7 +26,7 @@ def dbConnect():
 
 class AppState(rx.State):
     challenge_id: str = ""
-    proposals: list[dict[str, str]] = []
+    proposals: list[Dict[str, int]] = []
     current_page: int = 1
     items_per_page: int = 30
     page_number: list[int]
@@ -44,8 +45,6 @@ class AppState(rx.State):
         self.inputed_value: str = ""
         self.data_fetch()
         
-    
-    
     def data_fetch(self):
         dbCon = dbConnect()
         cursor = dbCon[0]
@@ -62,7 +61,11 @@ class AppState(rx.State):
         proposal_detail.project_duration,
         proposal_detail.headline_solution_ja,
         proposal_detail.open_source,
-        proposal_detail.tag
+        proposal_detail.tag,
+        FORMAT(amount_requested, 0) as amount_requested_comma,
+        FORMAT(yes_votes_count, 0) as yes_votes_count_comma,
+        FORMAT(abstain_votes_count, 0) as abstain_votes_count_comma,
+        FORMAT(unique_wallets, 0) as unique_wallets_comma
         FROM proposals
         INNER JOIN challenges
         ON proposals.challenge_id = challenges.id
@@ -90,11 +93,12 @@ class AppState(rx.State):
             else:
                 data_query += f" WHERE {where_clause}"
                 count_query += f" WHERE {where_clause}"
-            
+                
+        asc_query = " ORDER BY CASE WHEN funding_status LIKE '%funded%' THEN 0 ELSE 1 END, yes_votes_count DESC"
         limit_query = f" LIMIT {self.items_per_page} OFFSET {(self.current_page - 1) * self.items_per_page}"
         
         #データ取得クエリ
-        query = data_query + limit_query
+        query = data_query + asc_query + limit_query
         print(query)
         cursor.execute(query)
         self.proposals = cursor.fetchall()

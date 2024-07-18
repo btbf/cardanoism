@@ -1,6 +1,8 @@
 from db_connect import dbConnect
 from chatgpt_api import chatgpt_api
 from bs4 import BeautifulSoup
+from typing import List, Dict, Any
+import time
 
 #chatGPT翻訳
 gpt_assistant_detail="You are half American, half Japanese.You were born and raised in New York, USA for 20 years, and are bilingual in English and Japanese.You have been living in Japan for 10 years now, working as a programmer and Japanese-English translator. You are also familiar with the Cardano blockchain.You will now be translated into Japanese from the English you typed in.No supplementary or explanations are required for the translation results, just translate the characters you typed in and respond.Please use カルダノ consistently for the word cardano.If HTML tags are included, please output them as they are."
@@ -18,7 +20,7 @@ def extract_and_translate_tags(html_text):
                 translated_text = translate(gpt_assistant_detail, original_text)
                 translated_html += translated_text
 
-    return translated_html
+    return translated_html 
 
 
 def translate(gpt_assistant, pre_word):
@@ -39,8 +41,8 @@ print(cursor)
 print(conn)
 
 
-proposals: list[dict[str, str]] = []
-id = 13363
+proposals: List[Dict] = []
+id = 13445
 
 data_query =f"""
 SELECT id,
@@ -51,15 +53,17 @@ project_milestones,
 resources,
 budget_costs,
 value_for_money
-FROM proposal_detail WHERE id >= {id} ORDER BY id ASC LIMIT 10;"""
+FROM proposal_detail WHERE id >= {id} ORDER BY id ASC;"""
 
 print(data_query)
 cursor.execute(data_query)
 proposals = cursor.fetchall()
 
+
 # 取得したデータを一つずつ取り出す
-for row in proposals:
+for index, row in enumerate(proposals):
     # 各列の値を変数に代入
+    print(index,id,"翻訳スタート")
     id = row["id"]
     solution = create_dl_tag(row["solution"])
     impact = create_dl_tag(row["impact"])
@@ -77,7 +81,7 @@ for row in proposals:
     resources_ja = extract_and_translate_tags(resources)
     budget_costs_ja = extract_and_translate_tags(budget_costs)
     value_for_money_ja = extract_and_translate_tags(value_for_money)
-    print(id,"翻訳完了")
+    print(index,id,"翻訳完了")
     
 
 
@@ -108,7 +112,11 @@ for row in proposals:
     
     # 変更をコミット
     conn.commit()
-    print(id,"DB挿入完了")
+    print(index,id,"DB挿入完了")
+    
+    if(index + 1) % 10 == 0:
+        print("70秒インターバル")
+        time.sleep(70)
 
 
 #DBクローズ
