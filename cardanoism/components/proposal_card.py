@@ -1,15 +1,44 @@
 import reflex as rx
-from typing import List, Dict
+from typing import List, Dict, Any, Union
 from cardanoism.backend.db_connect import AppState
 
+class ReactStarLib(rx.Component):
+    library = "rsuite"
+    tag = "Rate"
+    
+    def _get_custom_code(self) -> str:
+        return """import 'rsuite/dist/rsuite.min.css';
+        """
 
-def proposal_list(proposal: List[Dict[str, str]]):
+class CatalystRating(ReactStarLib):
+    defaultValue: float = 0.0
+    allowHalf=True
+    readOnly=True
+
+proposal_rating = CatalystRating.create
+
+# def ProjectProgress(cul: int):
+#     return rx.box(
+#         rx.text(cul),
+#         rx.progress(value=AppState.items_per_page),
+        
+#         padding_x=["8px", "8px", "15px", "15px", "15px" ],
+#         padding_y="8px",
+#     ),
+
+def proposal_list(proposal: list[Dict[str, int]]):
+    #cul = proposal["amount_requested"]
     return rx.card(
         rx.inset(
             rx.box(
                 rx.flex(
                     rx.flex(
-                        rx.badge(f"""Ideascale-ID : {proposal["ideascale_id"]}""", variant="solid", size="2", color_scheme="indigo",),
+                        rx.badge(f"""Ideascale-ID : {proposal["ideascale_id"]}""", variant="solid", size="3", color_scheme="indigo",),
+                        rx.cond(
+                            proposal["funding_status"] == "funded",
+                            rx.badge("採択", variant="solid", size="3", color_scheme="green",),
+                            rx.badge("不採択", variant="solid", size="3", color_scheme="red",),
+                        ),
                         rx.tooltip(
                             rx.text(f"""{proposal["challenge_title_ja"]}""", color_scheme="gray", size="3"),
                             content=f"""{proposal["challenge_title"]}"""
@@ -32,7 +61,7 @@ def proposal_list(proposal: List[Dict[str, str]]):
                             #padding="8px",
                             #color="gray",
                         ),
-                        href=proposal["ideascale_link"],
+                        href=str(proposal["ideascale_link"]),
                         target="blank",
                         color_scheme="cyan",
                         underline="none",
@@ -95,7 +124,7 @@ def proposal_list(proposal: List[Dict[str, str]]):
                             rx.badge("提案者", variant="surface", size="2", color_scheme="gray", radius="full"),
                             rx.tooltip(
                                 rx.text(proposal["applicant_name"]),
-                                content=proposal["ideascale_user"],
+                                content=str(proposal["ideascale_user"]),
                             ),
                             spacing="3",
                             padding="8px",
@@ -105,7 +134,7 @@ def proposal_list(proposal: List[Dict[str, str]]):
                         rx.flex(
                             rx.badge("要求額", variant="surface", size="2", color_scheme="gray", radius="full"),
                             rx.text(
-                                f"""{proposal["currency_symbol"]} {proposal["amount_requested"]}""",
+                                proposal['amount_requested_comma'],
                                 color_scheme="crimson",
                                 weight="medium",
                                 size="3",
@@ -114,10 +143,37 @@ def proposal_list(proposal: List[Dict[str, str]]):
                             padding="8px",
                         ),
                     ),
-                display=["block","block","block","flex","flex"]
+                    display=["block","block","block","flex","flex"],
                 ),
 
                 rx.divider(size="4"),
+                
+                rx.box(
+                    rx.grid(
+                        rx.callout(
+                            f"投票ウォレット数：{proposal['unique_wallets_comma']}",
+                            icon="wallet",
+                            variant="surface",
+                        ),
+                        rx.callout(
+                            f"賛成：{proposal['currency_symbol']} {proposal['yes_votes_count_comma']}",
+                            icon="thumbs-up",
+                            color_scheme="green",
+                            variant="surface",
+                        ),
+                        rx.callout(
+                            f"棄権：{proposal['currency_symbol']} {proposal['abstain_votes_count_comma']}",
+                            icon="message-circle-more",
+                            color_scheme="gray",
+                            variant="surface",
+                        ),
+                        columns="3",
+                        width="100%",
+                        spacing="4",
+                        margin_top="15px",
+                    ),
+                    padding_x=["8px", "8px", "15px", "15px", "15px"],
+                ),
                 rx.box(
                     rx.flex(
                         rx.callout("課題", icon="triangle_alert", color_scheme="red", size="1"),
@@ -159,18 +215,17 @@ def proposal_list(proposal: List[Dict[str, str]]):
                         rx.callout("レビュアー評価", icon="award", color_scheme="blue", size="1"),
                         width="100%",
                     ),
-                    #rx.badge("レビュアー評価", variant="surface", size="3", color_scheme="gold", radius="none",),
                     rx.text(
                         "エコシステム影響度",
                         weight="bold",
                         size="3",
                     ),
                     rx.flex(
+                        # rx.text(alignment_score),
                         rx.text(f"""{proposal["alignment_score"]} / 5""")
-                        # rx.icon("star", color="gold", stroke_width=2.5,),
-                        # rx.icon("star", color="gold", stroke_width=2.5,),
-                        # rx.icon("star", color="gold", stroke_width=2.5,),
-                        # rx.icon("star-half", color="gold", stroke_width=2.5,),
+                        # proposal_rating(
+                        #     defaultValue = 4
+                        # ),
                     ),
                     rx.text(
                         "実現可能性",
@@ -179,10 +234,6 @@ def proposal_list(proposal: List[Dict[str, str]]):
                     ),
                     rx.flex(
                         rx.text(f"""{proposal["feasibility_score"]} / 5""")
-                        # rx.icon("star", color="gold", stroke_width=2.5,),
-                        # rx.icon("star", color="gold", stroke_width=2.5,),
-                        # rx.icon("star", color="gold", stroke_width=2.5,),
-                        # rx.icon("star", color="gold", stroke_width=2.5,),
                     ),
                     rx.text(
                         "コストパフォーマンス",
@@ -191,8 +242,6 @@ def proposal_list(proposal: List[Dict[str, str]]):
                     ),     
                     rx.flex(
                         rx.text(f"""{proposal["feasibility_score"]} / 5""")
-                        # rx.icon("star", color="gold", stroke_width=2.5,),
-                        # rx.icon("star", color="gold", stroke_width=2.5,),
                     ),          
                     columns="3",
                     spacing="3",
@@ -208,7 +257,7 @@ def proposal_list(proposal: List[Dict[str, str]]):
         ),
         rx.inset(
             rx.link(
-                rx.button("詳細を見る", width="100%", size="3", variant="soft", color_scheme="indigo", ),
+                rx.button("詳細を見る", width="100%", size="3", variant="soft", color_scheme="indigo", _hover={"cursor": "pointer"}),
                 href=f"""/catalyst/{proposal["ideascale_id"]}""",
                 is_external=True,
             ),

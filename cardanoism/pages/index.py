@@ -54,10 +54,8 @@ def hero_section_buttons(mobile=False):
                     display= "inline-flex;",   
                     border= "1px solid transparent;", 
                     style=button_size,
+                    _hover={"cursor": "pointer"},
                 ),
-                _hover={
-                    "border": "1px solid rgba(94, 78, 242, .15)",
-                },
                 border= "1px solid transparent;",
                 padding="3px",
                 border_radius="8px",
@@ -80,8 +78,8 @@ def index() -> rx.Component:
                         rx.chakra.alert_icon(),
                         rx.chakra.alert_title(
                             rx.link(
-                            rx.text("当プロジェクトのFund12提案書にも投票をお願いします"),
-                            href="/catalyst/121284/",
+                            rx.text("当プロジェクトの提案書が採択されました🎉"),
+                            href="https://projectcatalyst.io/funds/12/f12-cardano-open-ecosystem",
                             is_external=True
                         ),),
 
@@ -92,6 +90,7 @@ def index() -> rx.Component:
                 rx.section(
                     rx.heading("お知らせ"),
                     rx.text("2024/07/04 カタリスト日本語ポータル　プレオープン"),
+                    rx.text("2024/07/17 カタリストFund12 提案採択"),
                     padding_left="12px",
                     padding_right="12px",
                     background_color="var(--gray-2)",

@@ -44,39 +44,55 @@ def catalyst() -> rx.Component:
                     margin_bottom="20px"
                     ),
                     rx.flex(
-                        rx.flex(
-                            rx.input(
-                                placeholder="全文検索...(IdeascaleNo、タイトル、提案者、課題、解決策、本文、etc...)",
-                                size="3",
-                                max_length=100,
-                                on_change=lambda value: AppState.set_inputed_value(value,ChallengeState.value),
-                                width=["90%","90%","90%","300px","300px"],
-                                margin_x="10px",
-                                margin_bottom="10px"
+                        rx.chakra.accordion(
+                            rx.chakra.accordion_item(
+                                rx.flex(
+                                    rx.flex(
+                                            rx.input(
+                                                placeholder="全文検索...(IdeascaleNo、タイトル、提案者、課題、解決策、本文、etc...)",
+                                                size="3",
+                                                max_length=100,
+                                                on_change=lambda value: AppState.set_inputed_value(value,ChallengeState.value),
+                                                width=["90%","90%","90%","300px","300px"],
+                                                margin_x="10px",
+                                                margin_bottom="10px"
+                                            ),
+                                            challegeFilter(
+                                                options = [
+                                                    {'value': '142', 'label': 'F12：カルダノのパートナーと実世界の統合'},
+                                                    {'value': '143', 'label': 'F12：カルダノの使用事例：コンセプト'},
+                                                    {'value': '144', 'label': 'F12：カルダノの使用事例：MVP'},
+                                                    {'value': '145', 'label': 'F12：カルダノの使用事例：製品'},
+                                                    {'value': '140', 'label': 'F12：カルダノオープン：開発者'},
+                                                    {'value': '141', 'label': 'F12：カルダノオープン：エコシステム'},
+                                                ],
+                                                #defaultValue = ChallengeState.defaultValue,
+                                                #value = ChallengeState.value,
+                                                placeholder="ファンドカテゴリ選択",
+                                                onChange = lambda value: AppState.set_selected_value(value),
+                                                width=["90%","90%","90%","500px","500px"],
+                                                margin_x="10px"
+                                            ),
+                                            width="100%",
+                                            spacing="2",
+                                            padding_y="10px",
+                                            background_color=f"radial-gradient(circle at top right, {rx.color('accent', 2)}, {rx.color('mauve', 1)});",
+                                            display=["block","block","block","flex","flex"],
+                                        ),
+                                    # rx.chakra.accordion_button(
+                                    #     "フィルタ",
+                                    #     rx.chakra.accordion_icon(),
+                                    # ),
+                                ),
+                                # rx.chakra.accordion_panel(
+                                #     rx.chakra.text(
+                                #         "This is an example of an accordion component."
+                                #     ),
+                                # ),
                             ),
-                            challegeFilter(
-                                options = [
-                                    {'value': '142', 'label': 'F12：カルダノのパートナーと実世界の統合'},
-                                    {'value': '143', 'label': 'F12：カルダノの使用事例：コンセプト'},
-                                    {'value': '144', 'label': 'F12：カルダノの使用事例：MVP'},
-                                    {'value': '145', 'label': 'F12：カルダノの使用事例：製品'},
-                                    {'value': '140', 'label': 'F12：カルダノオープン：開発者'},
-                                    {'value': '141', 'label': 'F12：カルダノオープン：エコシステム'},
-                                ],
-                                #defaultValue = ChallengeState.defaultValue,
-                                #value = ChallengeState.value,
-                                placeholder="ファンドカテゴリ選択",
-                                onChange = lambda value: AppState.set_selected_value(value),
-                                width=["90%","90%","90%","500px","500px"],
-                                margin_x="10px"
-                            ),
-                            #width="100%",
-                            spacing="2",
-                            #position="fixed",
-                            #z_index="500",
-                            padding_y="10px",
-                            background_color="white",
-                            display=["block","block","block","flex","flex"],
+                            allow_multiple=True,
+                            position='relative',
+                            background=f"radial-gradient(circle at top right, {rx.color('accent', 2)}, {rx.color('mauve', 1)});",
                         ),
                         rx.box(
                             rx.flex(
@@ -107,10 +123,16 @@ def catalyst() -> rx.Component:
                     """
                     window.addEventListener('scroll', function() {
                         var topButton = document.getElementById('top-button');
+                        var filter = document.getElementsByClassName('css-w7qt2e');
                         if (document.body.scrollTop > 20 || document.documentElement.scrollTop > 20) {
                             topButton.style.display = 'block';
+                            filter[0].style.position = 'fixed';
+                            filter[0].style.zIndex = '500';
+                            filter[0].style.top = '70px';
                         } else {
                             topButton.style.display = 'none';
+                            filter[0].style.position = 'relative';
+                            filter[0].style.top = '';
                         }
                     });
                     """
