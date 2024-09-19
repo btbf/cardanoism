@@ -23,10 +23,41 @@ def dbConnect():
     cursor = conn.cursor(dictionary=True)
     return cursor, conn
 
+class ProposalsVar(rx.Base):
+    id: int
+    user_id: int
+    fund_id: int
+    challenge_id: int 
+    title: str
+    title_ja: str
+    ideascale_link: str
+    ideascale_user: str
+    ideascale_id: int
+    amount_requested: int
+    amount_received: int
+    project_status: str
+    funding_status: str
+    yes_votes_count: int
+    no_votes_count: int
+    abstain_votes_count: int
+    unique_wallets: int
+    problem: str
+    problem_ja: str
+    solution: str
+    solution_ja: str
+    currency_symbol: str
+    currency: str
+    alignment_score: float
+    feasibility_score: float
+    auditability_score: float
+    tags: str
+    
+    
 
 class AppState(rx.State):
     challenge_id: str = ""
-    proposals: list[Dict[str, int]] = []
+    proposals: List[Dict[str, int]] = []
+    #proposals: List[Dict[str, ProposalsVar]] = []
     current_page: int = 1
     items_per_page: int = 30
     page_number: list[int]
