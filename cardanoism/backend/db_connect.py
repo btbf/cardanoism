@@ -51,7 +51,19 @@ class ProposalsVar(rx.Base):
     feasibility_score: float
     auditability_score: float
     tags: str
-    
+    challenge_title: str
+    challenge_title_ja: str
+    headline_problem_ja: str
+    applicant_name: str
+    project_duration: str
+    headline_solution_ja: str
+    open_source: str
+    tag: str
+    proposul_fund_percent: float
+    amount_requested_comma: str
+    yes_votes_count_comma: str
+    abstain_votes_count_comma: str
+    unique_wallets_comma: str
     
 
 class AppState(rx.State):
@@ -93,6 +105,7 @@ class AppState(rx.State):
         proposal_detail.headline_solution_ja,
         proposal_detail.open_source,
         proposal_detail.tag,
+        CAST(ROUND(proposals.amount_received / proposals.amount_requested, 2) as FLOAT) as proposal_fund_percent,
         FORMAT(amount_requested, 0) as amount_requested_comma,
         FORMAT(yes_votes_count, 0) as yes_votes_count_comma,
         FORMAT(abstain_votes_count, 0) as abstain_votes_count_comma,

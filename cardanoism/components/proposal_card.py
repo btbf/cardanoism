@@ -17,8 +17,9 @@ class CatalystRating(ReactStarLib):
 
 proposal_rating = CatalystRating.create
 
-def ProjectProgress(currency_symbol, amount_received, amount_requested, project_status):
-    cul = (amount_received / amount_requested) * 100
+def ProjectProgress(currency_symbol, amount_received, amount_requested, proposal_fund_percent, project_status):
+    cul =  proposal_fund_percent * 100
+    
     return rx.box(
         rx.match(
             project_status,
@@ -211,7 +212,7 @@ def proposal_list(proposal: list[Dict[str, int]]):
                 rx.cond(
                     proposal["funding_status"] == "funded",
                     rx.box(
-                        ProjectProgress(proposal['currency_symbol'], proposal['amount_received'], proposal['amount_requested'], proposal["project_status"]),
+                        ProjectProgress(proposal['currency_symbol'], proposal['amount_received'], proposal['amount_requested'], proposal['proposal_fund_percent'], proposal["project_status"]),
                     ),
                     rx.text(""),
                 ),
