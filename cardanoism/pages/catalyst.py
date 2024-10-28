@@ -48,15 +48,6 @@ def catalyst() -> rx.Component:
                             rx.chakra.accordion_item(
                                 rx.flex(
                                     rx.flex(
-                                            rx.input(
-                                                placeholder="全文検索...(IdeascaleNo、タイトル、提案者、課題、解決策、本文、etc...)",
-                                                size="3",
-                                                max_length=100,
-                                                on_change=lambda value: AppState.set_inputed_value(value,ChallengeState.value),
-                                                width=["90%","90%","90%","300px","300px"],
-                                                margin_x="10px",
-                                                margin_bottom="10px"
-                                            ),
                                             challegeFilter(
                                                 options = [
                                                     {'value': '142', 'label': 'F12：カルダノのパートナーと実世界の統合'},
@@ -70,8 +61,17 @@ def catalyst() -> rx.Component:
                                                 #value = ChallengeState.value,
                                                 placeholder="ファンドカテゴリ選択",
                                                 onChange = lambda value: AppState.set_selected_value(value),
-                                                width=["90%","90%","90%","500px","500px"],
+                                                width=["90%","90%","90%","400px","400px"],
                                                 margin_x="10px"
+                                            ),
+                                            rx.input(
+                                                placeholder="全文検索...(IdeascaleNo、タイトル、提案者、課題、解決策、本文、etc...)",
+                                                size="3",
+                                                max_length=100,
+                                                on_change=lambda value: AppState.set_inputed_value(value,ChallengeState.value),
+                                                width=["90%","90%","90%","500px","500px"],
+                                                margin_x="10px",
+                                                margin_bottom="10px"
                                             ),
                                             width="100%",
                                             spacing="2",

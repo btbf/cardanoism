@@ -23,10 +23,53 @@ def dbConnect():
     cursor = conn.cursor(dictionary=True)
     return cursor, conn
 
+class ProposalsVar(rx.Base):
+    id: int
+    user_id: int
+    fund_id: int
+    challenge_id: int 
+    title: str
+    title_ja: str
+    ideascale_link: str
+    ideascale_user: str
+    ideascale_id: int
+    amount_requested: int
+    amount_received: int
+    project_status: str
+    funding_status: str
+    yes_votes_count: int
+    no_votes_count: int
+    abstain_votes_count: int
+    unique_wallets: int
+    problem: str
+    problem_ja: str
+    solution: str
+    solution_ja: str
+    currency_symbol: str
+    currency: str
+    alignment_score: float
+    feasibility_score: float
+    auditability_score: float
+    tags: str
+    challenge_title: str
+    challenge_title_ja: str
+    headline_problem_ja: str
+    applicant_name: str
+    project_duration: str
+    headline_solution_ja: str
+    open_source: str
+    tag: str
+    proposul_fund_percent: float
+    amount_requested_comma: str
+    yes_votes_count_comma: str
+    abstain_votes_count_comma: str
+    unique_wallets_comma: str
+    
 
 class AppState(rx.State):
     challenge_id: str = ""
-    proposals: list[Dict[str, int]] = []
+    proposals: List[Dict[str, int]] = []
+    #proposals: List[Dict[str, ProposalsVar]] = []
     current_page: int = 1
     items_per_page: int = 30
     page_number: list[int]
@@ -62,6 +105,7 @@ class AppState(rx.State):
         proposal_detail.headline_solution_ja,
         proposal_detail.open_source,
         proposal_detail.tag,
+        CAST(ROUND(proposals.amount_received / proposals.amount_requested, 2) as FLOAT) as proposal_fund_percent,
         FORMAT(amount_requested, 0) as amount_requested_comma,
         FORMAT(yes_votes_count, 0) as yes_votes_count_comma,
         FORMAT(abstain_votes_count, 0) as abstain_votes_count_comma,

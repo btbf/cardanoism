@@ -17,17 +17,32 @@ class CatalystRating(ReactStarLib):
 
 proposal_rating = CatalystRating.create
 
-# def ProjectProgress(cul: int):
-#     return rx.box(
-#         rx.text(cul),
-#         rx.progress(value=AppState.items_per_page),
-        
-#         padding_x=["8px", "8px", "15px", "15px", "15px" ],
-#         padding_y="8px",
-#     ),
+def ProjectProgress(currency_symbol, amount_received, amount_requested, proposal_fund_percent, project_status):
+    cul =  proposal_fund_percent * 100
+    
+    return rx.box(
+        rx.match(
+            project_status,
+            ("in_progress",
+             rx.box(
+                 rx.text.strong(f"進行中 {cul}%")),
+             ),
+            ("complete",rx.text(f"完了 {cul}%")),
+        ),
+        rx.box(
+            rx._x.progress(value=cul, height="15px"),
+            padding_y="8px",
+        ),
+        rx.flex(
+            rx.text(f"支給済: {currency_symbol} {amount_received}"),
+            rx.text(f"合計: {currency_symbol} {amount_requested}"),
+            justify_content="space-between",
+        ),
+        padding_x=["8px", "8px", "15px", "15px", "15px" ],
+        padding_y="15px",
+    ),
 
 def proposal_list(proposal: list[Dict[str, int]]):
-    #cul = proposal["amount_requested"]
     return rx.card(
         rx.inset(
             rx.box(
@@ -155,17 +170,36 @@ def proposal_list(proposal: list[Dict[str, int]]):
                             icon="wallet",
                             variant="surface",
                         ),
-                        rx.callout(
-                            f"賛成：{proposal['currency_symbol']} {proposal['yes_votes_count_comma']}",
-                            icon="thumbs-up",
-                            color_scheme="green",
-                            variant="surface",
-                        ),
-                        rx.callout(
-                            f"棄権：{proposal['currency_symbol']} {proposal['abstain_votes_count_comma']}",
-                            icon="message-circle-more",
-                            color_scheme="gray",
-                            variant="surface",
+                        rx.cond(
+                            proposal["funding_status"] == "funded",
+                            rx.fragment(
+                                rx.callout(
+                                    f"賛成：{proposal['currency_symbol']} {proposal['yes_votes_count_comma']}",
+                                    icon="thumbs-up",
+                                    color_scheme="green",
+                                    variant="surface",
+                                ),
+                                rx.callout(
+                                    f"棄権：{proposal['currency_symbol']} {proposal['abstain_votes_count_comma']}",
+                                    icon="message-circle-more",
+                                    color_scheme="gray",
+                                    variant="outline",
+                                ),
+                            ),
+                            rx.fragment(
+                                rx.callout(
+                                    f"賛成：{proposal['currency_symbol']} {proposal['yes_votes_count_comma']}",
+                                    icon="thumbs-up",
+                                    color_scheme="green",
+                                    variant="outline",
+                                ),
+                                rx.callout(
+                                    f"棄権：{proposal['currency_symbol']} {proposal['abstain_votes_count_comma']}",
+                                    icon="message-circle-more",
+                                    color_scheme="gray",
+                                    variant="surface",
+                                ),
+                            ),
                         ),
                         columns="3",
                         width="100%",
@@ -173,6 +207,14 @@ def proposal_list(proposal: list[Dict[str, int]]):
                         margin_top="15px",
                     ),
                     padding_x=["8px", "8px", "15px", "15px", "15px"],
+                ),
+                
+                rx.cond(
+                    proposal["funding_status"] == "funded",
+                    rx.box(
+                        ProjectProgress(proposal['currency_symbol'], proposal['amount_received'], proposal['amount_requested'], proposal['proposal_fund_percent'], proposal["project_status"]),
+                    ),
+                    rx.text(""),
                 ),
                 rx.box(
                     rx.flex(

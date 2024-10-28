@@ -10,7 +10,7 @@ conn = dbCon[1]
 print(cursor)
 print(conn)
 
-url = "https://www.lidonation.com/api/catalyst-explorer/funds"
+url = "https://www.lidonation.com/api/catalyst-explorer/funds/146"
 headers = {'X-CSRF-TOKEN': 'AjGbJ4A63nZnRgtY3uh1zOzgRdwcCkkx8USlWH6R'}
 
 meta_response = requests.get(url, headers=headers)
@@ -20,21 +20,31 @@ meta_response = requests.get(url, headers=headers)
 if meta_response.status_code == 200:
     perPageData = json.loads(meta_response.text)
     len_proposal = len(perPageData['data'])
+    print(len_proposal)
     api_data = []
-    for x in range(len_proposal):
-        id = perPageData['data'][x]['id']
-        title = perPageData['data'][x]['title']
-        proposals_count = perPageData['data'][x]['proposals_count']
-        amount = perPageData['data'][x]['amount']
-        currency = perPageData['data'][x]['currency']
-        launch_date = perPageData['data'][x]['launch_date']
-        currency_symbol = perPageData['data'][x]['currency_symbol']
-        slug = perPageData['data'][x]['slug']
-        #content = perPageData['data'][x]['content']
+    # for x in range(len_proposal):
+    #     id = perPageData['data'][x]['id']
+    #     title = perPageData['data'][x]['title']
+    #     proposals_count = perPageData['data'][x]['proposals_count']
+    #     amount = perPageData['data'][x]['amount']
+    #     currency = perPageData['data'][x]['currency']
+    #     launch_date = perPageData['data'][x]['launch_date']
+    #     currency_symbol = perPageData['data'][x]['currency_symbol']
+    #     slug = perPageData['data'][x]['slug']
+    #     #content = perPageData['data'][x]['content']
+    id = perPageData['data']['id']
+    title = perPageData['data']['title']
+    proposals_count = perPageData['data']['proposals_count']
+    amount = perPageData['data']['amount']
+    currency = perPageData['data']['currency']
+    launch_date = perPageData['data']['launch_date']
+    currency_symbol = perPageData['data']['currency_symbol']
+    slug = perPageData['data']['slug']
+    #content = perPageData['data'][x]['content']
 
-        print(launch_date)
-        
-        api_data.append([id, title, proposals_count, amount, currency, launch_date, currency_symbol, slug])
+    print(launch_date)
+    
+    api_data.append([id, title, proposals_count, amount, currency, launch_date, currency_symbol, slug])
         
     #データベースに一括挿入
     insert_query = "INSERT INTO funds (id, title, proposals_count, amount, currency, launch_date, currency_symbol, slug) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"

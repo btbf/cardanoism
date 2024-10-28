@@ -49,6 +49,7 @@ for i in range(1,total_page+1):
         len_proposal = len(perPageData['data'])
         for x in range(len_proposal):
             #変数初期化
+            amount_received = ""
             project_status = ""
             funding_status = ""
             yes_votes_count = ""
@@ -60,7 +61,8 @@ for i in range(1,total_page+1):
 
             id = perPageData['data'][x]['id']
             title = perPageData['data'][x]['title']
-
+            
+            amount_received = perPageData['data'][x]['amount_received']
             project_status = perPageData['data'][x]['project_status']
             funding_status = perPageData['data'][x]['funding_status']
             yes_votes_count = perPageData['data'][x]['yes_votes_count']
@@ -71,10 +73,10 @@ for i in range(1,total_page+1):
             print(f"{x} {id} {title}")
             print(project_status,funding_status)
             print("")
-            api_data = [project_status, funding_status, yes_votes_count, no_votes_count, abstain_votes_count, unique_wallets, id]
+            api_data = [amount_received, project_status, funding_status, yes_votes_count, no_votes_count, abstain_votes_count, unique_wallets, id]
         
         #データベースに一括挿入
-            update_query = "UPDATE proposals SET project_status = %s, funding_status = %s, yes_votes_count = %s, no_votes_count = %s, abstain_votes_count = %s, unique_wallets = %s WHERE id = %s"
+            update_query = "UPDATE proposals SET amount_received = %s, project_status = %s, funding_status = %s, yes_votes_count = %s, no_votes_count = %s, abstain_votes_count = %s, unique_wallets = %s WHERE id = %s"
             cursor.execute(update_query, api_data)
             conn.commit()
         
