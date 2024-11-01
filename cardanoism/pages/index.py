@@ -8,7 +8,7 @@ def hero_section_text(mobile=False):
             "Cardano Governance Japanese Potal",
             text_align="left" if not mobile else "center",
             color="#6C6C81",
-            font_size=["24px", "30px", "40px", "54px", "54px", "54px"],
+            font_size=["24px", "30px", "40px", "24px", "54px", "54px"],
             font_weight="bold",
             line_height="1",
             #max_width=["200px", "300px", "400px", "650px", "650px", "650px"],
@@ -42,7 +42,7 @@ def hero_section_buttons(mobile=False):
         rx.link(
             rx.flex(
                 rx.button(
-                    "カタリストFund12提案書をチェック！",
+                    "カタリスト提案書をチェック！",
                     rx.icon(
                     tag="chevron-right",
                         size=18,
@@ -77,25 +77,17 @@ def index() -> rx.Component:
                 rx.chakra.alert(
                         rx.chakra.alert_icon(),
                         rx.chakra.alert_title(
-                            rx.link(
-                            rx.text("当プロジェクトの提案書が採択されました🎉"),
-                            href="https://projectcatalyst.io/funds/12/f12-cardano-open-ecosystem",
-                            is_external=True
-                        ),),
-
+                            rx.heading("お知らせ"),
+                        ),
                         status="info",
                         variant="top-accent",
                     ),
-
-                rx.section(
-                    rx.heading("お知らせ"),
-                    rx.text("2024/10/28 採択プロジェクト進捗状況追加"),
-                    rx.text("2024/07/18 Fund12投票結果反映"),
-                    rx.text("2024/07/04 カタリスト日本語ポータル　プレオープン"),
-                    rx.text("2024/07/17 カタリストFund12 提案採択"),
-                    padding_left="12px",
-                    padding_right="12px",
-                    background_color="var(--gray-2)",
+                rx.list.unordered(
+                    rx.list.item("2024/11/01　Fund13提案データ反映"),
+                    rx.list.item("2024/10/28　採択プロジェクト進捗状況追加"),
+                    rx.list.item("2024/07/18　Fund12投票結果反映"),
+                    rx.list.item("2024/07/04　カタリスト日本語ポータル　プレオープン"),
+                    rx.list.item("2024/07/17　カタリストFund12 提案採択"),
                 ),
                 width="100%",
                 margin_top="50px"

@@ -37,7 +37,7 @@ print(conn)
 
 chrome_driver = login_ideascale()
 
-fundId=139
+fundId=146
 per_page=25
 
 url = "https://www.lidonation.com/api/catalyst-explorer/proposals"
@@ -56,7 +56,7 @@ if meta_response.status_code == 200:
 else:
     print("Error: ", meta_response.status_code)
 
-#i = 1
+i = 11
 api_data = []
 total_page = data['meta']['last_page']
 #total_page = 1
@@ -66,7 +66,7 @@ pattern = r'!\[.*?\]\(.*?\)'
 gpt_assistant_headline="You are half American, half Japanese.You were born and raised in New York, USA for 20 years, and are bilingual in English and Japanese.You have been living in Japan for 10 years now, working as a programmer and Japanese-English translator. You are also familiar with the Cardano blockchain.You will now be translated into Japanese from the English you typed in.No supplementary or explanations are required for the translation results, just translate the characters you typed in and respond.Please translate in a headline tone.Please use カルダノ consistently for the word cardano."
 gpt_assistant_detail="You are half American, half Japanese.You were born and raised in New York, USA for 20 years, and are bilingual in English and Japanese.You have been living in Japan for 10 years now, working as a programmer and Japanese-English translator. You are also familiar with the Cardano blockchain.You will now be translated into Japanese from the English you typed in.No supplementary or explanations are required for the translation results, just translate the characters you typed in and respond.Please use カルダノ consistently for the word cardano.If HTML tags are included, please output them as they are."
 #APIページ処理
-for i in range(1,total_page+1):
+for i in range(i,total_page+1):
     print(i)
     data_params = {'fund_id':fundId,'per_page':per_page,'page':i}
     data_response = requests.get(url, params=data_params, headers=headers)
@@ -112,7 +112,32 @@ for i in range(1,total_page+1):
             #提案個別ページ
             chrome_driver.get(f"https://cardano.ideascale.com/c/idea/{ideascale_id}")
             sleep(5)
-            wait = WebDriverWait(chrome_driver, 30)
+            
+            #プロフィールモーダルウィンドウ有無
+            profile_modal_window = chrome_driver.find_elements(By.CSS_SELECTOR, "#edit-profile-questions-form > div:nth-child(1) > div.ideascale-custom-checkbox.checkbox-field > label > span.check-mark")
+            if len(profile_modal_window) > 0:
+                #ファンド規則クリック
+                fundRules_checkbox_selector = "#edit-profile-questions-form > div:nth-child(1) > div.ideascale-custom-checkbox.checkbox-field > label > span.check-mark"
+                fundRules_checkbox_element = chrome_driver.find_element(By.CSS_SELECTOR, value=fundRules_checkbox_selector)
+                fundRules_checkbox_element.click()
+                
+                #利用規約クリック
+                term_checkbox_selector = "#edit-profile-questions-form > div:nth-child(2) > div.ideascale-custom-checkbox.checkbox-field > label > span.check-mark"
+                term_checkbox_element = chrome_driver.find_element(By.CSS_SELECTOR, value=term_checkbox_selector)
+                term_checkbox_element.click()
+
+                #プライバシーポリシークリック
+                privacy_checkbox_selector = "#edit-profile-questions-form > div:nth-child(2) > div.ideascale-custom-checkbox.checkbox-field > label > span.check-mark"
+                privacy_checkbox_element = chrome_driver.find_element(By.CSS_SELECTOR, value=privacy_checkbox_selector)
+                privacy_checkbox_element.click()
+                
+                #プライバシーポリシークリック
+                modal_button_selector = "#edit-profile-questions-form > div.d-flex.flex-row.justify-content-end > button"
+                modal_button_element = chrome_driver.find_element(By.CSS_SELECTOR, value=modal_button_selector)
+                modal_button_element.click()
+                
+            sleep(5)
+            wait = WebDriverWait(chrome_driver, 60)
             result = wait.until(EC.presence_of_all_elements_located((By.CLASS_NAME, 'custom-field-section-content')))
             title = chrome_driver.find_element(By.CSS_SELECTOR, "#main-content > div > article > header > h2")
             headline_problem = chrome_driver.find_element(By.CSS_SELECTOR, f"#idea-{ideascale_id}-attachments-container > div")
@@ -125,7 +150,7 @@ for i in range(1,total_page+1):
                         "[GENERAL] PLEASE SPECIFY",
                         "[GENERAL] SUMMARI",
                         "[GENERAL] WILL YOUR",
-                        "[METADATA] THEMES",
+                        "[METADATA]",
                         "[SOLUTION]",
                         "[IMPACT]",
                         "[CAPABILITY & FEASIBILITY]",
@@ -141,8 +166,9 @@ for i in range(1,total_page+1):
                 for index, i in enumerate(indices):
                     if field_title.startswith(i):
                         if index < 5:
-                            print(i)
+                            #print(i)
                             print(context.find_element(By.TAG_NAME, 'h2').text)
+                            print(context.find_element(By.CSS_SELECTOR, 'dd.custom-fields').text)
                             custom_fields.append(context.find_element(By.CSS_SELECTOR, 'dd.custom-fields').text)
                         else:
                             print(context.find_element(By.TAG_NAME, 'h2').text)
@@ -183,9 +209,9 @@ for i in range(1,total_page+1):
             id = id
             ideascale_id = ideascale_id
             title = title.text
-            title_ja = translate(gpt_assistant_headline, title)
+            #title_ja = translate(gpt_assistant_headline, title)
             headline_problem = headline_problem.text
-            headline_problem_ja = translate(gpt_assistant_detail, headline_problem)
+            #headline_problem_ja = translate(gpt_assistant_detail, headline_problem)
             applicant_name = custom_fields[0]
             project_duration = custom_fields[1]
             headline_solution = custom_fields[2]
@@ -216,9 +242,9 @@ for i in range(1,total_page+1):
             #SQLインサート
 
             #api_data.append([id, ideascale_id, title, title_ja, headline_problem, headline_problem_ja, applicant_name, project_duration, headline_solution, headline_solution_ja, open_source, tag, solution, solution_ja, impact, impact_ja, capability_feasibility, capability_feasibility_ja, project_milestones, project_milestones_ja, resources, resources_ja, budget_costs, budget_costs_ja, value_for_money, value_for_money_ja])
-            api_data.append([id, ideascale_id, title, title_ja, headline_problem, headline_problem_ja, applicant_name, project_duration, headline_solution, open_source, tag, solution, impact, capability_feasibility, project_milestones, resources, budget_costs, value_for_money])
+            api_data.append([id, ideascale_id, title, headline_problem, applicant_name, project_duration, headline_solution, open_source, tag, solution, impact, capability_feasibility, project_milestones, resources, budget_costs, value_for_money])
   
-            insert_query = "INSERT INTO proposal_detail(id, ideascale_id, title, title_ja, headline_problem, headline_problem_ja, applicant_name, project_duration, headline_solution, open_source, tag, solution, impact, capability_feasibility, project_milestones, resources, budget_costs, value_for_money) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            insert_query = "INSERT INTO proposal_detail(id, ideascale_id, title, headline_problem, applicant_name, project_duration, headline_solution, open_source, tag, solution, impact, capability_feasibility, project_milestones, resources, budget_costs, value_for_money) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             cursor.executemany(insert_query, api_data)
             conn.commit()
 

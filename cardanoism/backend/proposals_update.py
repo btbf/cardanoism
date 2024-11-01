@@ -15,7 +15,7 @@ conn = dbCon[1]
 print(cursor)
 print(conn)
 
-fundId=139
+fundId=146
 per_page=25
 
 url = "https://www.lidonation.com/api/catalyst-explorer/proposals"
@@ -120,7 +120,7 @@ for i in range(1,total_page+1):
             id = perPageData['data'][x]['id']
             user_id = perPageData['data'][x]['user_id']
             fund_id = perPageData['data'][x]['fund_id']
-            challenge_id = perPageData['data'][x]['challenge_id']
+            challenge_id = perPageData['data'][x]['campaign_id']
             title = perPageData['data'][x]['title']
             ideascale_link = perPageData['data'][x]['ideascale_link']
             ideascale_user = perPageData['data'][x]['ideascale_user']
