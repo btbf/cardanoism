@@ -74,20 +74,25 @@ def index() -> rx.Component:
             hero_section_text(),
             hero_section_buttons(),
             rx.box(
-                rx.chakra.alert(
-                        rx.chakra.alert_icon(),
-                        rx.chakra.alert_title(
-                            rx.heading("お知らせ"),
-                        ),
-                        status="info",
-                        variant="top-accent",
+                rx.link(
+                    rx.callout(
+                        "利用者アンケートの回答にご協力お願いします🙇‍♂️",
+                        icon="info",
+                        color_scheme="green",
+                        size="3"
                     ),
-                rx.list.unordered(
-                    rx.list.item("2024/11/01　Fund13提案データ反映"),
-                    rx.list.item("2024/10/28　採択プロジェクト進捗状況追加"),
-                    rx.list.item("2024/07/18　Fund12投票結果反映"),
-                    rx.list.item("2024/07/04　カタリスト日本語ポータル　プレオープン"),
-                    rx.list.item("2024/07/17　カタリストFund12 提案採択"),
+                    href="https://forms.gle/NLnvYodwQky4L4BZ6",
+                    is_external=True
+                ),
+                rx.section(
+                    rx.heading("更新情報"),
+                    rx.text("2024/11/01　Fund13提案データ反映"),
+                    rx.text("2024/10/28　採択プロジェクト進捗状況追加"),
+                    rx.text("2024/07/18　Fund12投票結果反映"),
+                    rx.text("2024/07/04　カタリスト日本語ポータル　プレオープン"),
+                    rx.text("2024/07/17　カタリストFund12 提案採択"),
+                    padding_left="12px",
+                    padding_right="12px",
                 ),
                 width="100%",
                 margin_top="50px"
