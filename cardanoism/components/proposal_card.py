@@ -145,7 +145,7 @@ def proposal_list(proposal: list[Dict[str, int]]):
                             rx.badge("提案者", variant="surface", size="2", color_scheme="gray", radius="full"),
                             rx.tooltip(
                                 rx.text(proposal["applicant_name"]),
-                                content=str(proposal["ideascale_user"]),
+                                content=str(f"""{proposal["ideascale_user"]}"""),
                             ),
                             spacing="3",
                             padding="8px",
@@ -155,7 +155,7 @@ def proposal_list(proposal: list[Dict[str, int]]):
                         rx.flex(
                             rx.badge("要求額", variant="surface", size="2", color_scheme="gray", radius="full"),
                             rx.text(
-                                proposal['amount_requested_comma'],
+                                proposal['currency_symbol'] + proposal['amount_requested_comma'],
                                 color_scheme="crimson",
                                 weight="medium",
                                 size="3",
