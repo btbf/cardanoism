@@ -138,7 +138,7 @@ class AppState(rx.State):
                 data_query += f" WHERE {where_clause}"
                 count_query += f" WHERE {where_clause}"
                 
-        asc_query = " ORDER BY CASE WHEN funding_status LIKE '%funded%' THEN 0 ELSE 1 END, yes_votes_count DESC"
+        asc_query = " ORDER BY fund_id DESC,CASE WHEN funding_status LIKE '%funded%' THEN 0 ELSE 1 END, yes_votes_count DESC, challenge_id DESC"
         limit_query = f" LIMIT {self.items_per_page} OFFSET {(self.current_page - 1) * self.items_per_page}"
         
         #データ取得クエリ

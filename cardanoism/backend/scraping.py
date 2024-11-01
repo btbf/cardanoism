@@ -14,7 +14,7 @@ def login_ideascale():
     sleep(5)
 
     #Cookie承諾
-    agree_css_selector = "body > div:nth-child(8) > div > div.modal.fade.show > div > div > div.modal-body > div > div.col-md-auto.py-2.d-flex.align-items-center > button.btn.btn-primary.flex-fill"
+    agree_css_selector = "body > div:nth-child(5) > div > div.modal.fade.show > div > div > div.modal-body > div > div.col-md-auto.py-2.d-flex.align-items-center > button.btn.btn-primary.flex-fill"
     agree_button_element = driver.find_element(By.CSS_SELECTOR, value=agree_css_selector)
 
     # ログインボタンをクリック
@@ -25,7 +25,7 @@ def login_ideascale():
 
     #ログインボタンクリック
 
-    login_css_selector = "#root > div.fixed-top > nav > div > ul > li:nth-child(3) > button"
+    login_css_selector = "#root > div.workspace-topbar.fixed-top > nav > div > ul > li:nth-child(2) > button"
     login_button_element = driver.find_element(By.CSS_SELECTOR, value=login_css_selector)
 
     login_button_element.click()

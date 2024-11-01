@@ -1,12 +1,20 @@
 from db_connect import dbConnect
 from chatgpt_api import chatgpt_api
+
 from bs4 import BeautifulSoup
 from typing import List, Dict, Any
 import time
+import tiktoken
 
 #chatGPT翻訳
-gpt_assistant_detail="You are half American, half Japanese.You were born and raised in New York, USA for 20 years, and are bilingual in English and Japanese.You have been living in Japan for 10 years now, working as a programmer and Japanese-English translator. You are also familiar with the Cardano blockchain.You will now be translated into Japanese from the English you typed in.No supplementary or explanations are required for the translation results, just translate the characters you typed in and respond.Please use カルダノ consistently for the word cardano.If HTML tags are included, please output them as they are."
+gpt_assistant_detail="You are half American, half Japanese.You were born and raised in New York, USA for 20 years, and are bilingual in English and Japanese.You have been living in Japan for 10 years now, working as a programmer and Japanese-English translator. You are also familiar with the Cardano blockchain.You will now be translated into Japanese from the English you typed in.No supplementary or explanations are required for the translation results, just translate the characters my input in and respond.Please use カルダノ consistently for the word cardano.If HTML tags are included, please output them as they are."
+encoding_4o = tiktoken.encoding_for_model("gpt-4o")
+encoding_4o_mini = tiktoken.encoding_for_model("gpt-4o-mini")
 
+def calc_token(chat, encoding_name):
+    encoding = tiktoken.get_encoding(encoding_name)
+    num_tokens = len(encoding.encode(chat))
+    return num_tokens
 
 def extract_and_translate_tags(html_text):
     soup = BeautifulSoup(html_text, 'html.parser')
@@ -42,18 +50,21 @@ print(conn)
 
 
 proposals: List[Dict] = []
-id = 13445
+id = 18863
 
 data_query =f"""
 SELECT id,
 solution,
+solution_ja,
 impact,
 capability_feasibility,
 project_milestones,
 resources,
 budget_costs,
 value_for_money
-FROM proposal_detail WHERE id >= {id} ORDER BY id ASC;"""
+FROM proposal_detail
+WHERE id >= {id} AND (title_ja IS NULL OR title_ja = '')
+ORDER BY id ASC;"""
 
 print(data_query)
 cursor.execute(data_query)
@@ -115,8 +126,8 @@ for index, row in enumerate(proposals):
     print(index,id,"DB挿入完了")
     
     if(index + 1) % 10 == 0:
-        print("70秒インターバル")
-        time.sleep(70)
+        print("15秒インターバル")
+        time.sleep(5)
 
 
 #DBクローズ

@@ -7,12 +7,6 @@ from cardanoism import styles
 
 def proposal_detail(proposal: Dict[str, str]):
     return rx.vstack(
-        rx.callout(
-                "本文の翻訳に膨大な時間が必要なため、次期バージョンまでは英語表記になります。",
-                icon="info",
-                color_scheme="red",
-                padding_bottom="20px"
-            ),
         rx.card(
         rx.inset(
             rx.box(
@@ -52,7 +46,7 @@ def proposal_detail(proposal: Dict[str, str]):
                 padding="8px",
             ),
             rx.blockquote(
-                proposal["proposal_title"],
+                proposal["title"],
                 size="3",
                 margin_top="8px",
                 margin_bottom="12px",
@@ -61,7 +55,7 @@ def proposal_detail(proposal: Dict[str, str]):
             ),
             rx.tablet_and_desktop(
                     rx.heading(
-                        proposal["proposal_title_ja"],
+                        proposal["title_ja"],
                         as_="h2",
                         #size="5",
                         margin_top="8px",
@@ -73,7 +67,7 @@ def proposal_detail(proposal: Dict[str, str]):
             ),
             rx.mobile_only(
                     rx.heading(
-                        proposal["proposal_title_ja"],
+                        proposal["title_ja"],
                         #as_="h2",
                         size="4",
                         margin_top="8px",
@@ -125,7 +119,7 @@ def proposal_detail(proposal: Dict[str, str]):
                         rx.callout("課題", icon="triangle_alert", color_scheme="red", size="1"),
                         #rx.badge("課題", variant="soft", size="3", color_scheme="tomato", radius="medium"),
                         rx.text(
-                            proposal["headline_problem_ja"],
+                            proposal["problem_ja"],
                             size="3", 
                             padding="8px",
                             text_wrap="wrap",
@@ -162,40 +156,50 @@ def proposal_detail(proposal: Dict[str, str]):
                         width="100%",
                     ),
                     #rx.badge("レビュアー評価", variant="surface", size="3", color_scheme="gold", radius="none",),
-                    rx.text(
-                        "エコシステム影響度",
-                        weight="bold",
-                        size="3",
+                    rx.cond(
+                        ~proposal["alignment_score"],
+                        rx.text(
+                            "コミュニティレビュー中",
+                            color_scheme="crimson",
+                        ),
+                        rx.box(
+                            rx.text(
+                            "エコシステム影響度",
+                            weight="bold",
+                            size="3",
+                            ),
+                            rx.flex(
+                                rx.text(f"""{proposal["alignment_score"]} / 5""")
+                                # rx.icon("star", color="gold", stroke_width=2.5,),
+                                # rx.icon("star", color="gold", stroke_width=2.5,),
+                                # rx.icon("star", color="gold", stroke_width=2.5,),
+                                # rx.icon("star-half", color="gold", stroke_width=2.5,),
+                            ),
+                            rx.text(
+                                "実現可能性",
+                                weight="bold",
+                                size="3",
+                            ),
+                            rx.flex(
+                                rx.text(f"""{proposal["feasibility_score"]} / 5""")
+                                # rx.icon("star", color="gold", stroke_width=2.5,),
+                                # rx.icon("star", color="gold", stroke_width=2.5,),
+                                # rx.icon("star", color="gold", stroke_width=2.5,),
+                                # rx.icon("star", color="gold", stroke_width=2.5,),
+                            ),
+                            rx.text(
+                                "コストパフォーマンス",
+                                weight="bold",
+                                size="3",
+                            ),     
+                            rx.flex(
+                                rx.text(f"""{proposal["feasibility_score"]} / 5""")
+                                # rx.icon("star", color="gold", stroke_width=2.5,),
+                                # rx.icon("star", color="gold", stroke_width=2.5,),
+                            ),
+                        ),
                     ),
-                    rx.flex(
-                        rx.text(f"""{proposal["alignment_score"]} / 5""")
-                        # rx.icon("star", color="gold", stroke_width=2.5,),
-                        # rx.icon("star", color="gold", stroke_width=2.5,),
-                        # rx.icon("star", color="gold", stroke_width=2.5,),
-                        # rx.icon("star-half", color="gold", stroke_width=2.5,),
-                    ),
-                    rx.text(
-                        "実現可能性",
-                        weight="bold",
-                        size="3",
-                    ),
-                    rx.flex(
-                        rx.text(f"""{proposal["feasibility_score"]} / 5""")
-                        # rx.icon("star", color="gold", stroke_width=2.5,),
-                        # rx.icon("star", color="gold", stroke_width=2.5,),
-                        # rx.icon("star", color="gold", stroke_width=2.5,),
-                        # rx.icon("star", color="gold", stroke_width=2.5,),
-                    ),
-                    rx.text(
-                        "コストパフォーマンス",
-                        weight="bold",
-                        size="3",
-                    ),     
-                    rx.flex(
-                        rx.text(f"""{proposal["feasibility_score"]} / 5""")
-                        # rx.icon("star", color="gold", stroke_width=2.5,),
-                        # rx.icon("star", color="gold", stroke_width=2.5,),
-                    ),           
+                          
                     columns="3",
                     spacing="3",
                     padding="8px",
