@@ -1,5 +1,6 @@
 import reflex as rx
 from typing import Any, Dict, List, Union
+import reflex_chakra as rc
 
 from cardanoism import styles
 from cardanoism.templates import template
@@ -44,8 +45,8 @@ def catalyst() -> rx.Component:
                     margin_bottom="20px"
                     ),
                     rx.flex(
-                        rx.chakra.accordion(
-                            rx.chakra.accordion_item(
+                        rc.accordion(
+                            rc.accordion_item(
                                 rx.flex(
                                     rx.flex(
                                             challegeFilter(
@@ -85,13 +86,13 @@ def catalyst() -> rx.Component:
                                             background_color=f"radial-gradient(circle at top right, {rx.color('accent', 2)}, {rx.color('mauve', 1)});",
                                             display=["block","block","block","flex","flex"],
                                         ),
-                                    # rx.chakra.accordion_button(
+                                    # rc.accordion_button(
                                     #     "フィルタ",
-                                    #     rx.chakra.accordion_icon(),
+                                    #     rc.accordion_icon(),
                                     # ),
                                 ),
-                                # rx.chakra.accordion_panel(
-                                #     rx.chakra.text(
+                                # rc.accordion_panel(
+                                #     rc.text(
                                 #         "This is an example of an accordion component."
                                 #     ),
                                 # ),
@@ -146,12 +147,12 @@ def catalyst() -> rx.Component:
     )
     
 
-class proposal_detail_State(rx.State):
-    @rx.var
-    def ideascale_id(self) -> str:
-        return self.router.page.params.get("ideascale_id", False)
+# class proposal_detail_State(rx.State):
+#     @rx.var(cache=True)
+#     def ideascale_id(self) -> str:
+#         return self.router.page.params.get("proposal_id", [])
 
-@template(route="/catalyst/[ideascale_id]", title="カタリストファンド", on_load=ProposalAppState.on_load(proposal_detail_State.ideascale_id))
+@template(route="/catalyst/[proposal_id]", title="カタリストファンド", on_load=ProposalAppState.on_load)
 def proposal_detail_page() -> rx.Component:
     return rx.vstack(
         detail_foreach_dict(),

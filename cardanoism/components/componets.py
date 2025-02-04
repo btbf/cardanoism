@@ -12,12 +12,4 @@ def top_button_component():
         **styles.top_button,
     )
 
-
-    
-
-        #     rx.chakra.button(
-        # "TOPへ移動",
-        # id="top-button",
-        # on_click=rx.call_script("window.scrollTo(0, 0)"),
-        # ),
     

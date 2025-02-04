@@ -216,12 +216,13 @@ class ProposalAppState(rx.State):
     ideascale_id: str
     load: bool = False
     
-    def on_load(self, id:str):
-        self.ideascale_id = id
+    def on_load(self):
+        self.ideascale_id = self.router.page.params.get("proposal_id", "")
         if self.ideascale_id.isdecimal():
             self.data_fetch()
         else:
-            self.proposal = ""
+            self.data_fetch()
+            # self.proposal = ""
         
     def data_fetch(self):
         dbCon = dbConnect()

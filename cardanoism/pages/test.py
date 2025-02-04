@@ -15,7 +15,7 @@ def progress_box(user: Dict[str,int]):
     cul = (user['value'] / user['max']) * 100
     return rx.box(
         rx.text(f"{cul}%"),
-        rx._x.progress(value=user['value'], max=user['max'], width='200px')
+        rx.progress(value=user['value'], max=user['max'], width='200px')
     )
 
 @template(route="/test",)

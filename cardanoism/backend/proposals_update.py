@@ -16,11 +16,11 @@ print(cursor)
 print(conn)
 
 fundId=146
-per_page=25
+per_page=24
 
 url = "https://www.lidonation.com/api/catalyst-explorer/proposals"
 meta_params = {'fund_id':fundId,'per_page':per_page,'page':'1'}
-headers = {'X-CSRF-TOKEN': 'e3kqXYQ53ALXrumrDWouoN2ouWRWoLEIeIkau9jH'}
+headers = {'X-CSRF-TOKEN': 'XOuCojAthgANAu7vzmliIcod7Nsl3XMbJRp1iMug'}
 
 meta_response = requests.get(url, params=meta_params, headers=headers)
 
@@ -41,7 +41,7 @@ def translate(text):
     result = translator.translate_text(text, target_lang="JA")
     return result.text
 
-#i = 1
+i = 1
 api_data = []
 total_page = data['meta']['last_page']
 #total_page = 1
@@ -52,14 +52,15 @@ gpt_assistant_headline="You are half American, half Japanese.You were born and r
 gpt_assistant_detail="You are half American, half Japanese.You were born and raised in New York, USA for 20 years, and are bilingual in English and Japanese.You have been living in Japan for 10 years now, working as a programmer and Japanese-English translator. No greetings necessary. You are also familiar with the Cardano blockchain.You will now be translated into Japanese from the English you typed in.No supplementary or explanations are required for the translation results, just translate the characters you typed in and respond.Please use カルダノ consistently for the word cardano."
 
 #APIページ処理
-for i in range(1,total_page+1):
+for i in range(i,total_page+1):
     print(i)
     data_params = {'fund_id':fundId,'per_page':per_page,'page':i}
     data_response = requests.get(url, params=data_params, headers=headers)
-    #api_data = []
+    api_data = []
     
     #1ページごとのデータ取得
     if data_response.status_code == 200:
+        perPageData = ''
         perPageData = json.loads(data_response.text)
         len_proposal = len(perPageData['data'])
         for x in range(len_proposal):

@@ -30,7 +30,7 @@ def ProjectProgress(currency_symbol, amount_received, amount_requested, proposal
             ("complete",rx.text(f"完了 {cul}%")),
         ),
         rx.box(
-            rx._x.progress(value=cul, height="15px"),
+            rx.progress(value=cul, height="15px"),
             padding_y="8px",
         ),
         rx.flex(

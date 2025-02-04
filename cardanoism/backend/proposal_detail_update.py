@@ -56,10 +56,10 @@ if meta_response.status_code == 200:
 else:
     print("Error: ", meta_response.status_code)
 
-i = 11
+i = 1
 api_data = []
 total_page = data['meta']['last_page']
-#total_page = 1
+total_page = 1
 # 正規表現パターン画像リンク削除
 pattern = r'!\[.*?\]\(.*?\)'
 #chatGPT翻訳
@@ -76,6 +76,7 @@ for i in range(i,total_page+1):
     if data_response.status_code == 200:
         perPageData = json.loads(data_response.text)
         len_proposal = len(perPageData['data'])
+        len_proposal = 1
         for x in range(len_proposal):
             #変数初期化
             id = ""

@@ -1,10 +1,11 @@
 import reflex as rx
+import reflex_chakra as rc
 
 def navbar_icons_item(
     text: str, icon: str, url: str, disabled: bool
 ) -> rx.Component:
     return rx.link(
-        rx.chakra.button(
+        rc.button(
             rx.hstack(
                 rx.icon(icon),
                 rx.text(text, size="4", weight="medium"),

@@ -50,7 +50,7 @@ print(conn)
 
 
 proposals: List[Dict] = []
-id = 18863
+id = 20558
 
 data_query =f"""
 SELECT id,
@@ -63,7 +63,7 @@ resources,
 budget_costs,
 value_for_money
 FROM proposal_detail
-WHERE id >= {id} AND (title_ja IS NULL OR title_ja = '')
+WHERE id >= {id} AND (solution_ja IS NULL OR solution_ja = '')
 ORDER BY id ASC;"""
 
 print(data_query)
