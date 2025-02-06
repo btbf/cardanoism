@@ -1,6 +1,7 @@
 """The settings page."""
 
 from cardanoism.templates import ThemeState, template
+from reflex.style import toggle_color_mode
 
 import reflex as rx
 
@@ -16,6 +17,10 @@ def settings() -> rx.Component:
         rx.hstack(
             rx.text("Dark mode: "),
             rx.color_mode.switch(),
+        ),
+        rx.button(
+        rx.color_mode_cond(light=rx.icon("moon"), dark=rx.icon("sun")),
+        on_click=toggle_color_mode,
         ),
         rx.hstack(
             rx.text("Primary color: "),

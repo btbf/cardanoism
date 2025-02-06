@@ -12,7 +12,20 @@ hover_accent_bg = {"_hover": {"background_color": accent_color}}
 content_width_vw = "90vw"
 sidebar_width = "20em"
 
-template_page_style = {"padding_top": ["4em","4em","4em","5.5em","5.5em"], "margin_x":"auto", "padding_x": ["auto","auto","auto","5em", "5em"], "flex": "1", "max-width": "1380px", "font_family": "Noto Sans JP"}
+template_page_style = {
+    "padding_top": ["4em","4em","4em","5.5em","5.5em"], 
+    # "margin_x":"auto", 
+    # "padding_x": ["auto","auto","auto","5em", "5em"], 
+    # "flex": "1", 
+    # "max-width": "1380px", 
+    "font_family": "Noto Sans JP",
+    
+    "width":"100%",
+    "display":"flex",
+    "flex_wrap":"wrap",
+    "spacing":"6",
+    "padding":"2em 1em",
+}
 
 template_content_style = {
     "border_radius": border_radius,
