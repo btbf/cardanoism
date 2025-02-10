@@ -46,13 +46,13 @@ def ProjectProgress(currency_symbol, amount_received, amount_requested, proposal
             rx.cond(
                 amount_received,
                 rx.text(f"ファンド済: {currency_symbol} {amount_received}"),
-                rx.text("初回ファンド待ち"),
+                rx.text(f"初回ファンド待ち"),
             ),
             rx.text(f"合計: {currency_symbol} {amount_requested}"),
             justify_content="space-between",
         ),
         padding_x=["8px", "8px", "15px", "15px", "15px" ],
-        padding_y="15px",
+        padding_y="10px",
     ),
 
 def proposal_list(proposal: list[Dict[str, int]]):
@@ -313,6 +313,7 @@ def proposal_list(proposal: list[Dict[str, int]]):
                                 ),
                             ),
                             margin_left=["10px","10px","10px",0,0],
+                            margin_top="10px",
                         ),
                         padding="8px",
                         flex_direction=["row","row","row","column","column"],
