@@ -76,18 +76,19 @@ def index() -> rx.Component:
             hero_section_text(),
             hero_section_buttons(),
             rx.box(
-                rx.link(
-                    rx.callout(
-                        "利用者アンケートの回答にご協力お願いします🙇‍♂️",
-                        icon="info",
-                        color_scheme="green",
-                        size="3"
-                    ),
-                    href="https://forms.gle/NLnvYodwQky4L4BZ6",
-                    is_external=True
-                ),
+                # rx.link(
+                #     rx.callout(
+                #         "利用者アンケートの回答にご協力お願いします🙇‍♂️",
+                #         icon="info",
+                #         color_scheme="green",
+                #         size="3"
+                #     ),
+                #     href="https://forms.gle/NLnvYodwQky4L4BZ6",
+                #     is_external=True
+                # ),
                 rx.section(
                     rx.heading("更新情報"),
+                    rx.text("2025/02/10　フィルター追加&レイアウト微調整"),
                     rx.text("2024/11/01　Fund13提案データ反映"),
                     rx.text("2024/10/28　採択プロジェクト進捗状況追加"),
                     rx.text("2024/07/18　Fund12投票結果反映"),
