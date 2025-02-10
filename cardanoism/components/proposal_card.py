@@ -43,7 +43,11 @@ def ProjectProgress(currency_symbol, amount_received, amount_requested, proposal
             padding_y="8px",
         ),
         rx.flex(
-            rx.text(f"支給済: {currency_symbol} {amount_received}"),
+            rx.cond(
+                amount_received,
+                rx.text(f"ファンド済: {currency_symbol} {amount_received}"),
+                rx.text("初回ファンド待ち"),
+            ),
             rx.text(f"合計: {currency_symbol} {amount_requested}"),
             justify_content="space-between",
         ),
@@ -62,14 +66,9 @@ def proposal_list(proposal: list[Dict[str, int]]):
                             proposal["funding_status"],
                             ("funded", rx.badge("採択", variant="solid", size="2", color_scheme="green",)),
                             ("not_approved", rx.badge("不採択", variant="solid", size="2", color_scheme="red",)),
-                            ("over_budget", rx.badge("不採択", variant="solid", size="2", color_scheme="red",)),
+                            ("over_budget", rx.badge("申請不備", variant="solid", size="2", color_scheme="red",)),
                             ("pending", rx.badge("投票期間中", variant="solid", size="2", color_scheme="iris",)),
                         ),
-                        # rx.cond(
-                        #     proposal["funding_status"] == "funded",
-                        #     rx.badge("採択", variant="solid", size="3", color_scheme="green",),
-                        #     rx.badge("不採択", variant="solid", size="3", color_scheme="red",),
-                        # ),
                         rx.tooltip(
                             rx.text(f"""{proposal["challenge_title_ja"]}""", color_scheme="gray", size="2"),
                             content=f"""{proposal["challenge_title"]}"""
@@ -188,7 +187,6 @@ def proposal_list(proposal: list[Dict[str, int]]):
                 rx.box(
                     rx.flex(
                         rx.callout("課題", icon="triangle_alert", color_scheme="red", size="1"),
-                        #rx.badge("課題", variant="soft", size="3", color_scheme="tomato", radius="medium"),
                         rx.text(
                             proposal["problem_ja"],
                             size="3", 

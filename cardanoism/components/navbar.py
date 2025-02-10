@@ -52,10 +52,10 @@ def navbar_icons() -> rx.Component:
                     navbar_icons_item("カタリスト", "landmark", "/catalyst", False),
                     navbar_icons_item("ガバナンス", "vote", "/#", True),
                     #navbar_icons_item("連絡先", "mail", "/#", False),
-                    rx.button(
-                        rx.color_mode_cond(light=rx.icon("moon"), dark=rx.icon("sun")),
-                        on_click=toggle_color_mode,
-                    ),
+                    # rx.button(
+                    #     rx.color_mode_cond(light=rx.icon("moon"), dark=rx.icon("sun")),
+                    #     on_click=toggle_color_mode,
+                    # ),
                     spacing="6",
                     padding_right="5px",
                 ),

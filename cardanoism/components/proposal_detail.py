@@ -2,10 +2,11 @@ import reflex as rx
 from typing import List, Dict
 
 from cardanoism.backend.db_connect import ProposalAppState
+from cardanoism.components.proposal_card import ProjectRating
 from cardanoism import styles
 
 
-def proposal_detail(proposal: Dict[str, str]):
+def proposal_detail(proposal: Dict[str, int]):
     return rx.vstack(
         rx.card(
         rx.inset(
@@ -13,6 +14,13 @@ def proposal_detail(proposal: Dict[str, str]):
                 rx.flex(
                     rx.flex(
                         rx.badge(f"""Ideascale-ID : {proposal["ideascale_id"]}""", variant="solid", size="2", color_scheme="indigo",),
+                        rx.match(
+                            proposal["funding_status"],
+                            ("funded", rx.badge("採択", variant="solid", size="2", color_scheme="green",)),
+                            ("not_approved", rx.badge("不採択", variant="solid", size="2", color_scheme="red",)),
+                            ("over_budget", rx.badge("申請不備", variant="solid", size="2", color_scheme="red",)),
+                            ("pending", rx.badge("投票期間中", variant="solid", size="2", color_scheme="iris",)),
+                        ),
                         rx.tooltip(
                             rx.text(f"""{proposal["challenge_title_ja"]}""", color_scheme="gray", size="3"),
                             content=f"""{proposal["challenge_title"]}"""
@@ -35,7 +43,7 @@ def proposal_detail(proposal: Dict[str, str]):
                             #padding="8px",
                             #color="gray",
                         ),
-                        href=proposal["ideascale_link"],
+                        href=str(proposal["ideascale_link"]),
                         target="blank",
                         color_scheme="cyan",
                         underline="none",
@@ -45,21 +53,13 @@ def proposal_detail(proposal: Dict[str, str]):
                 ),
                 padding="8px",
             ),
-            rx.blockquote(
-                proposal["title"],
-                size="3",
-                margin_top="8px",
-                margin_bottom="12px",
-                weight="light",
-                text_wrap="wrap",
-            ),
             rx.tablet_and_desktop(
                     rx.heading(
                         proposal["title_ja"],
                         as_="h2",
-                        #size="5",
+                        size="4",
                         margin_top="8px",
-                        margin_bottom="12px",
+                        # margin_bottom="12px",
                         weight="medium",
                         text_wrap="wrap",
                         font_family = "Noto Sans JP",
@@ -71,10 +71,18 @@ def proposal_detail(proposal: Dict[str, str]):
                         #as_="h2",
                         size="4",
                         margin_top="8px",
-                        margin_bottom="12px",
+                        # margin_bottom="12px",
                         weight="medium",
                         font_family = "Noto Sans JP",
                     ),
+            ),
+            rx.blockquote(
+                proposal["title"],
+                size="3",
+                margin_top="8px",
+                # margin_bottom="12px",
+                weight="light",
+                text_wrap="wrap",
             ),
             side="top",
             pb="current",
@@ -90,7 +98,7 @@ def proposal_detail(proposal: Dict[str, str]):
                             rx.badge("提案者", variant="surface", size="2", color_scheme="gray", radius="full"),
                             rx.tooltip(
                                 rx.text(proposal["applicant_name"]),
-                                content=proposal["ideascale_user"],
+                                content=str({proposal["ideascale_user"]}),
                             ),
                             spacing="3",
                             padding="8px",
@@ -117,15 +125,14 @@ def proposal_detail(proposal: Dict[str, str]):
                 rx.box(
                     rx.flex(
                         rx.callout("課題", icon="triangle_alert", color_scheme="red", size="1"),
-                        #rx.badge("課題", variant="soft", size="3", color_scheme="tomato", radius="medium"),
                         rx.text(
                             proposal["problem_ja"],
                             size="3", 
-                            padding="8px",
+                            padding="10px",
                             text_wrap="wrap",
                         ),
                         #spacing="3",
-                        margin_top="8px",
+                        #margin_top="8px",
                         direction="column",
                         display=["block","block","block","flex","flex"]
                     ),
@@ -136,15 +143,15 @@ def proposal_detail(proposal: Dict[str, str]):
                         rx.text(
                             proposal["solution_ja"],
                             size="3",
-                            padding="8px",
+                            padding="10px",
                             text_wrap="wrap",
                         ),
                         #spacing="3",
-                        margin_top="25px",
+                        margin_top="10px",
                         direction="column",
                         display=["block","block","block","flex","flex"]
                     ),
-                    padding=["8px", "8px", "15px", "15px", "15px" ],
+                    padding=["8px", "8px", "12px", "12px", "12px" ],
                     width="100%"      
                 ),
                 width="100%"
@@ -169,11 +176,7 @@ def proposal_detail(proposal: Dict[str, str]):
                             size="3",
                             ),
                             rx.flex(
-                                rx.text(f"""{proposal["alignment_score"]} / 5""")
-                                # rx.icon("star", color="gold", stroke_width=2.5,),
-                                # rx.icon("star", color="gold", stroke_width=2.5,),
-                                # rx.icon("star", color="gold", stroke_width=2.5,),
-                                # rx.icon("star-half", color="gold", stroke_width=2.5,),
+                                ProjectRating(proposal["alignment_score"]),
                             ),
                             rx.text(
                                 "実現可能性",
@@ -181,11 +184,7 @@ def proposal_detail(proposal: Dict[str, str]):
                                 size="3",
                             ),
                             rx.flex(
-                                rx.text(f"""{proposal["feasibility_score"]} / 5""")
-                                # rx.icon("star", color="gold", stroke_width=2.5,),
-                                # rx.icon("star", color="gold", stroke_width=2.5,),
-                                # rx.icon("star", color="gold", stroke_width=2.5,),
-                                # rx.icon("star", color="gold", stroke_width=2.5,),
+                                ProjectRating(proposal["feasibility_score"]),
                             ),
                             rx.text(
                                 "コストパフォーマンス",
@@ -193,9 +192,7 @@ def proposal_detail(proposal: Dict[str, str]):
                                 size="3",
                             ),     
                             rx.flex(
-                                rx.text(f"""{proposal["feasibility_score"]} / 5""")
-                                # rx.icon("star", color="gold", stroke_width=2.5,),
-                                # rx.icon("star", color="gold", stroke_width=2.5,),
+                                ProjectRating(proposal["auditability_score"]),
                             ),
                         ),
                     ),
