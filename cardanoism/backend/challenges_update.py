@@ -14,7 +14,7 @@ print(conn)
 
 url = "https://www.lidonation.com/api/catalyst-explorer/challenges"
 meta_params = {'fund_id': '146'}
-headers = {'X-CSRF-TOKEN': 'yCI49F04Ok1vtXXOV1DLUbttlpLLpJvEBN303A3E'}
+headers = {'X-CSRF-TOKEN': 'XOuCojAthgANAu7vzmliIcod7Nsl3XMbJRp1iMug'}
 
 meta_response = requests.get(url, params=meta_params, headers=headers)
 
