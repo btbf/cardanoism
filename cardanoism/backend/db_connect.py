@@ -67,7 +67,7 @@ class ProposalsVar(rx.Base):
     
 
 class AppState(rx.State):
-    challenge_id: str = ""
+    challenge_id: str = "%"
     proposals: List[Dict[str, int]] = []
     #proposals: List[Dict[str, ProposalsVar]] = []
     current_page: int = 1
@@ -76,6 +76,8 @@ class AppState(rx.State):
     pagenation_number: list[int]
     total_pages: int = 0
     total_items: int = 0
+    funding_status: str = "%"
+    project_status: str = "%"
     inputed_value: str = ""
     start_page: int = ""
     end_page: int = ""
@@ -84,8 +86,10 @@ class AppState(rx.State):
     
     def on_load(self):
         # super().__init__()
-        self.challenge_id: str = ""
+        self.challenge_id: str = "%"
         self.inputed_value: str = ""
+        self.funding_status: str = "%"
+        self.project_status: str = "%"
         self.data_fetch()
         
     def data_fetch(self):
@@ -118,10 +122,10 @@ class AppState(rx.State):
         """
         count_query = f"SELECT COUNT(*) as total FROM proposals INNER JOIN proposal_detail ON proposals.ideascale_id = proposal_detail.ideascale_id"
         
-        if self.challenge_id:
-            where_query = f" WHERE proposals.challenge_id LIKE '{self.challenge_id}'"
-            data_query += where_query
-            count_query += where_query
+        #if self.challenge_id:
+        where_query = f" WHERE proposals.challenge_id LIKE '{self.challenge_id}' AND proposals.funding_status LIKE '{self.funding_status}' AND proposals.project_status LIKE '{self.project_status}'"
+        data_query += where_query
+        count_query += where_query
             
         if self.inputed_value:
             cursor.execute("SHOW COLUMNS FROM proposals")
@@ -167,13 +171,26 @@ class AppState(rx.State):
     
     #--------フィルター関数群----------------
     
-    def set_selected_value(self, value: dict[str, str]):
+    def set_selected_chllenge_value(self, value: dict[str, str]):
         print(value)
         if value:
             self.challenge_id = value["value"]
         else:
             self.challenge_id = "%"
-            
+        self.data_fetch()
+        
+    def set_selected_fundingStatus_value(self, value: dict[str, str]):
+        if value:
+            self.funding_status = value["value"]
+        else:
+            self.funding_status = "%"
+        self.data_fetch()
+    
+    def set_selected_projectStatus_value(self, value: dict[str, str]):
+        if value:
+            self.project_status = value["value"]
+        else:
+            self.project_status = "%"
         self.data_fetch()
         
     def set_inputed_value(self, value: str):
@@ -212,7 +229,7 @@ class AppState(rx.State):
     #--------------------------------------------------
             
 class ProposalAppState(rx.State):
-    proposal: list[dict[str, str]] = []
+    proposal: list[dict[str, int]] = []
     ideascale_id: str
     load: bool = False
     
