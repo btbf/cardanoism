@@ -61,14 +61,15 @@ def catalyst() -> rx.Component:
                                     #value = ChallengeState.value,
                                     placeholder="ファンドカテゴリ選択",
                                     onChange = lambda value: AppState.set_selected_chllenge_value(value),
-                                    width=["90%","90%","90%","400px","400px"],
+                                    width=["100%","100%","100%","400px","400px"],
+                                    margin_bottom=["10px","10px","10px",0,0],
                                 ),
                                 rx.input(
                                     placeholder="全文検索...(IdeascaleNo、タイトル、提案者、課題、解決策、本文、etc...)",
                                     size="3",
                                     max_length=100,
                                     on_change=lambda value: AppState.set_inputed_value(value,ChallengeState.value),
-                                    width=["90%","90%","90%","500px","500px"],
+                                    width=["100%","100%","100%","500px","500px"],
                                 ),
                                 width="100%",
                                 spacing="2",
@@ -88,7 +89,7 @@ def catalyst() -> rx.Component:
                                     #value = ChallengeState.value,
                                     placeholder="投票ステータス",
                                     onChange = lambda value: AppState.set_selected_fundingStatus_value(value),
-                                    #margin_x="10px"
+                                    margin_bottom=["10px","10px","10px",0,0],
                                 ),
                                 challegeFilter(
                                     options = [
@@ -107,6 +108,7 @@ def catalyst() -> rx.Component:
                                 display=["block","block","block","flex","flex"],
                             ),
                             spacing='0'
+                            
                         ),
                         rx.box(
                             rx.flex(

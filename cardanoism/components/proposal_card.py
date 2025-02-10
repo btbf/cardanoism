@@ -224,97 +224,102 @@ def proposal_list(proposal: list[Dict[str, int]]):
                         rx.callout("レビュアー評価", icon="award", color_scheme="blue", size="1"),
                         width="100%",
                     ),
-                    rx.cond(
-                        ~proposal["alignment_score"],
-                        rx.text(
-                            "コミュニティレビュー中",
-                            color_scheme="crimson",
+                    rx.flex(
+                        rx.cond(
+                            ~proposal["alignment_score"],
+                            rx.text(
+                                "コミュニティレビュー中",
+                                color_scheme="crimson",
+                            ),
+                            rx.box(
+                                rx.text(
+                                "エコシステム影響度",
+                                weight="bold",
+                                size="3",
+                                ),
+                                rx.flex(
+                                    ProjectRating(proposal["alignment_score"]),
+                                ),
+                                rx.text(
+                                    "実現可能性",
+                                    weight="bold",
+                                    size="3",
+                                ),
+                                rx.flex(
+                                    ProjectRating(proposal["feasibility_score"]),
+                                ),
+                                rx.text(
+                                    "コストパフォーマンス",
+                                    weight="bold",
+                                    size="3",
+                                ),     
+                                rx.flex(
+                                    ProjectRating(proposal["auditability_score"]),
+                                ),
+                            ),
                         ),
                         rx.box(
-                            rx.text(
-                            "エコシステム影響度",
-                            weight="bold",
-                            size="3",
-                            ),
-                            rx.flex(
-                                ProjectRating(proposal["alignment_score"]),
-                            ),
-                            rx.text(
-                                "実現可能性",
-                                weight="bold",
-                                size="3",
-                            ),
-                            rx.flex(
-                                ProjectRating(proposal["feasibility_score"]),
-                            ),
-                            rx.text(
-                                "コストパフォーマンス",
-                                weight="bold",
-                                size="3",
-                            ),     
-                            rx.flex(
-                                ProjectRating(proposal["auditability_score"]),
-                            ),
-                        ),
-                    ),
-                    rx.box(
-                        rx.match(
-                            proposal["funding_status"],
-                            (
-                                "funded",
-                                rx.vstack(
-                                    rx.callout(
-                                        f"賛成：{proposal['currency_symbol']} {proposal['yes_votes_count_comma']}",
-                                        icon="thumbs-up",
-                                        color_scheme="green",
-                                        variant="surface",
-                                        size="1",
+                            rx.match(
+                                proposal["funding_status"],
+                                (
+                                    "funded",
+                                    rx.vstack(
+                                        rx.callout(
+                                            f"賛成：{proposal['currency_symbol']} {proposal['yes_votes_count_comma']}",
+                                            icon="thumbs-up",
+                                            color_scheme="green",
+                                            variant="surface",
+                                            size="1",
+                                        ),
+                                        rx.callout(
+                                            f"棄権：{proposal['currency_symbol']} {proposal['abstain_votes_count_comma']}",
+                                            icon="message-circle-more",
+                                            color_scheme="gray",
+                                            variant="outline",
+                                            size="1",
+                                        ),
+                                        rx.callout(
+                                            f"投票WL数：{proposal['unique_wallets_comma']}",
+                                            icon="wallet",
+                                            variant="surface",
+                                            size="1",
+                                        ),
                                     ),
-                                    rx.callout(
-                                        f"棄権：{proposal['currency_symbol']} {proposal['abstain_votes_count_comma']}",
-                                        icon="message-circle-more",
-                                        color_scheme="gray",
-                                        variant="outline",
-                                        size="1",
-                                    ),
-                                    rx.callout(
-                                        f"投票WL数：{proposal['unique_wallets_comma']}",
-                                        icon="wallet",
-                                        variant="surface",
-                                        size="1",
+                                ),
+                                (
+                                    "not_approved",
+                                    rx.vstack(
+                                        rx.callout(
+                                            f"賛成：{proposal['currency_symbol']} {proposal['yes_votes_count_comma']}",
+                                            icon="thumbs-up",
+                                            color_scheme="green",
+                                            variant="outline",
+                                            size="1",
+                                        ),
+                                        rx.callout(
+                                            f"棄権：{proposal['currency_symbol']} {proposal['abstain_votes_count_comma']}",
+                                            icon="message-circle-more",
+                                            color_scheme="gray",
+                                            variant="surface",
+                                            size="1",
+                                        ),
+                                        rx.callout(
+                                            f"投票WL数：{proposal['unique_wallets_comma']}",
+                                            icon="wallet",
+                                            variant="surface",
+                                            size="1",
+                                        ),
                                     ),
                                 ),
                             ),
-                            (
-                                "not_approved",
-                                rx.vstack(
-                                    rx.callout(
-                                        f"賛成：{proposal['currency_symbol']} {proposal['yes_votes_count_comma']}",
-                                        icon="thumbs-up",
-                                        color_scheme="green",
-                                        variant="outline",
-                                        size="1",
-                                    ),
-                                    rx.callout(
-                                        f"棄権：{proposal['currency_symbol']} {proposal['abstain_votes_count_comma']}",
-                                        icon="message-circle-more",
-                                        color_scheme="gray",
-                                        variant="surface",
-                                        size="1",
-                                    ),
-                                    rx.callout(
-                                        f"投票WL数：{proposal['unique_wallets_comma']}",
-                                        icon="wallet",
-                                        variant="surface",
-                                        size="1",
-                                    ),
-                                ),
-                            ),
+                            margin_left=["10px","10px","10px",0,0],
                         ),
+                        padding="8px",
+                        flex_direction=["row","row","row","column","column"],
                     ),
                     columns="3",
                     spacing="3",
-                    padding="8px",
+                    padding=[0,0,0,"8px","8px"],
                     margin_top="10px",
                     flex_direction="column",
                     #display=["none", "none", "flex", "flex", "flex"],

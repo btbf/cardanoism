@@ -13,7 +13,7 @@ content_width_vw = "90vw"
 sidebar_width = "20em"
 
 template_page_style = {
-    "padding_top": ["4em","4em","4em","5.5em","5.5em"], 
+    "padding_top": ["6em","6em","6em","5.5em","5.5em"], 
     "margin_x":"auto", 
     "padding_x": ["auto","auto","auto","5em", "5em"], 
     "flex": "1", 
