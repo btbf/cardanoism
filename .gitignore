@@ -2,5 +2,7 @@
 *.py[cod]
 .env
 .web
+.venv/
 __pycache__/
-assets/external/
+assets/
+requirements.txt
