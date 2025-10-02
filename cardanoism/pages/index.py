@@ -88,6 +88,7 @@ def index() -> rx.Component:
                 # ),
                 rx.section(
                     rx.heading("更新情報"),
+                    rx.text("2025/10/03　Fund14提案データ反映"),
                     rx.text("2025/02/10　フィルター追加&レイアウト微調整"),
                     rx.text("2024/11/01　Fund13提案データ反映"),
                     rx.text("2024/10/28　採択プロジェクト進捗状況追加"),

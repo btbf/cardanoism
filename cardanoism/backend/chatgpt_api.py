@@ -11,7 +11,7 @@ client = OpenAI(
 def chatgpt_api(assistant, word):
 # リクエストの設定
     response = client.chat.completions.create(
-    model="gpt-4o-mini",  # 使用するモデル
+    model="gpt-4.1-nano",  # 使用するモデル
     messages=[
             {"role": "system", "content": assistant},
             {"role": "user", "content": word},
