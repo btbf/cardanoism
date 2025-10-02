@@ -61,7 +61,7 @@ def proposal_list(proposal: list[Dict[str, int]]):
             rx.box(
                 rx.flex(
                     rx.flex(
-                        rx.badge(f"""ID : {proposal["ideascale_id"]}""", variant="solid", size="2", color_scheme="indigo",),
+                        #rx.badge(f"""ID : {proposal["ideascale_id"]}""", variant="solid", size="2", color_scheme="indigo",),
                         rx.match(
                             proposal["funding_status"],
                             ("funded", rx.badge("採択", variant="solid", size="2", color_scheme="green",)),
@@ -77,26 +77,26 @@ def proposal_list(proposal: list[Dict[str, int]]):
                         justify="center",
                         display=["block","block","block","flex","flex"]
                     ),
-                    rx.link(
-                        rx.flex(
-                            rx.text(
-                                "Ideascaleを開く",
-                                size="3",
-                            ),
-                            rx.icon("square-arrow-out-up-right", size=15),
-                            direction="row",
-                            gap="1",
-                            align="center",
-                            spacing="1",
-                            #padding="8px",
-                            #color="gray",
-                        ),
-                        href=str(proposal["ideascale_link"]),
-                        target="blank",
-                        color_scheme="cyan",
-                        underline="none",
-                        high_contrast=True,
-                    ),
+                    # rx.link(
+                    #     rx.flex(
+                    #         rx.text(
+                    #             "Ideascaleを開く",
+                    #             size="3",
+                    #         ),
+                    #         rx.icon("square-arrow-out-up-right", size=15),
+                    #         direction="row",
+                    #         gap="1",
+                    #         align="center",
+                    #         spacing="1",
+                    #         #padding="8px",
+                    #         #color="gray",
+                    #     ),
+                    #     href=str(proposal["ideascale_link"]),
+                    #     target="blank",
+                    #     color_scheme="cyan",
+                    #     underline="none",
+                    #     high_contrast=True,
+                    # ),
                     justify_content="space-between",
                 ),
                 padding_bottom="3px",

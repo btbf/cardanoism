@@ -44,6 +44,10 @@ def catalyst() -> rx.Component:
                             rx.flex(
                                 challegeFilter(
                                     options = [
+                                        {'value': '153', 'label': 'F14：カルダノユースケース：パートナー&製品'},
+                                        {'value': '154', 'label': 'F14：カルダノユースケース：コンセプト'},
+                                        {'value': '155', 'label': 'F14：カルダノオープン：エコシステム'},
+                                        {'value': '156', 'label': 'F14：カルダノオープン：開発者'},
                                         {'value': '146', 'label': 'F13：カルダノオープン：開発者'},
                                         {'value': '147', 'label': 'F13：カルダノオープン：エコシステム'},
                                         {'value': '149', 'label': 'F13：カルダノユースケース：コンセプト'},
