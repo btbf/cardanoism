@@ -29,7 +29,6 @@ template_page_style = {
 
 template_content_style = {
     "border_radius": border_radius,
-    "padding_top": "1.2em",
     "margin_bottom": "2em",
     "min_height": "85vh",
     "font_family": "Noto Sans JP",
@@ -59,9 +58,7 @@ markdown_style = {
 }
 
 section_style = {
-    "padding_left":"20px",
-    "padding_right":"20px",
-    "margin":"10px",
+    "margin":"10px"
 }
 
 

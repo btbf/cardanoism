@@ -7,13 +7,12 @@ from cardanoism import styles
 
 
 def proposal_detail(proposal: Dict[str, int]):
-    return rx.vstack(
-        rx.card(
+    return rx.card(
         rx.inset(
             rx.box(
                 rx.flex(
                     rx.flex(
-                        rx.badge(f"""Ideascale-ID : {proposal["ideascale_id"]}""", variant="solid", size="2", color_scheme="indigo",),
+                        #rx.badge(f"""Ideascale-ID : {proposal["ideascale_id"]}""", variant="solid", size="2", color_scheme="indigo",),
                         rx.match(
                             proposal["funding_status"],
                             ("funded", rx.badge("採択", variant="solid", size="2", color_scheme="green",)),
@@ -29,29 +28,29 @@ def proposal_detail(proposal: Dict[str, int]):
                         justify="center",
                         display=["block","block","block","flex","flex"]
                     ),
-                    rx.link(
-                        rx.flex(
-                            rx.text(
-                                "Ideascaleを開く",
-                                size="3",
-                            ),
-                            rx.icon("square-arrow-out-up-right", size=15),
-                            direction="row",
-                            gap="1",
-                            align="center",
-                            spacing="1",
-                            #padding="8px",
-                            #color="gray",
-                        ),
-                        href=str(proposal["ideascale_link"]),
-                        target="blank",
-                        color_scheme="cyan",
-                        underline="none",
-                        high_contrast=True,
-                    ),
+                    # rx.link(
+                    #     rx.flex(
+                    #         rx.text(
+                    #             "Ideascaleを開く",
+                    #             size="3",
+                    #         ),
+                    #         rx.icon("square-arrow-out-up-right", size=15),
+                    #         direction="row",
+                    #         gap="1",
+                    #         align="center",
+                    #         spacing="1",
+                    #         #padding="8px",
+                    #         #color="gray",
+                    #     ),
+                    #     href=str(proposal["ideascale_link"]),
+                    #     target="blank",
+                    #     color_scheme="cyan",
+                    #     underline="none",
+                    #     high_contrast=True,
+                    # ),
                     justify_content="space-between",
                 ),
-                padding="8px",
+                #padding="8px",
             ),
             rx.tablet_and_desktop(
                     rx.heading(
@@ -78,7 +77,7 @@ def proposal_detail(proposal: Dict[str, int]):
             ),
             rx.blockquote(
                 proposal["title"],
-                size="3",
+                size="1",
                 margin_top="8px",
                 # margin_bottom="12px",
                 weight="light",
@@ -162,7 +161,7 @@ def proposal_detail(proposal: Dict[str, int]):
                         rx.callout("レビュアー評価", icon="award", color_scheme="blue", size="1"),
                         width="100%",
                     ),
-                    #rx.badge("レビュアー評価", variant="surface", size="3", color_scheme="gold", radius="none",),
+                    
                     rx.cond(
                         ~proposal["alignment_score"],
                         rx.text(
@@ -199,7 +198,7 @@ def proposal_detail(proposal: Dict[str, int]):
                           
                     columns="3",
                     spacing="3",
-                    padding="8px",
+                    padding=[0,0,0,"8px","8px"],
                     margin_top="10px",
                     flex_direction="column",
                     #display=["none", "none", "flex", "flex", "flex"],
@@ -326,10 +325,9 @@ def proposal_detail(proposal: Dict[str, int]):
             side="bottom",
             #background_color="var(--accent-3)",
         ),
-        margin_top="20px",
+        #margin_top="20px",
         width="100%",
-        font_family = "Noto Sans JP",
-    ),
+        font_family = "Noto Sans JP"
     )
 
 
