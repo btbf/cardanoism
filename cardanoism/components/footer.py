@@ -102,6 +102,7 @@ def footer_three_columns() -> rx.Component:
                         "center",
                         "start",
                     ],
+                    flex_direction=["column","column","row","row","row"],
                     width="100%",
                 ),
                 socials(),

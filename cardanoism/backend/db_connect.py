@@ -279,7 +279,7 @@ class ProposalAppState(rx.State):
         ON proposals.challenge_id = challenges.id
         INNER JOIN proposal_detail
         ON proposals.ideascale_id = proposal_detail.ideascale_id
-        WHERE proposals.ideascale_id LIKE '{self.ideascale_id}'
+        WHERE proposals.ideascale_id = '{self.ideascale_id}'
         """
         
         print(proposal_query)
