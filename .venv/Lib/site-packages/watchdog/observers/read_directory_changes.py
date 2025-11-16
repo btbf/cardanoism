@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import os.path
 import platform
-import sys
 import threading
 
 from watchdog.events import (
@@ -34,28 +33,24 @@ from watchdog.events import (
     generate_sub_moved_events,
 )
 from watchdog.observers.api import DEFAULT_EMITTER_TIMEOUT, DEFAULT_OBSERVER_TIMEOUT, BaseObserver, EventEmitter
-
-assert sys.platform.startswith("win"), f"{__name__} requires Windows"
-
-from watchdog.observers.winapi import close_directory_handle, get_directory_handle, read_events  # noqa: E402
+from watchdog.observers.winapi import close_directory_handle, get_directory_handle, read_events
 
 # Obsolete constant, it's no more used since v4.0.0.
 WATCHDOG_TRAVERSE_MOVED_DIR_DELAY = 1  # seconds
 
 
 class WindowsApiEmitter(EventEmitter):
-    """
-    Windows API-based emitter that uses ReadDirectoryChangesW
+    """Windows API-based emitter that uses ReadDirectoryChangesW
     to detect file system changes for a watch.
     """
 
     def __init__(self, event_queue, watch, timeout=DEFAULT_EMITTER_TIMEOUT, event_filter=None):
         super().__init__(event_queue, watch, timeout, event_filter)
         self._lock = threading.Lock()
-        self._handle = None
+        self._whandle = None
 
     def on_thread_start(self):
-        self._handle = get_directory_handle(self.watch.path)
+        self._whandle = get_directory_handle(self.watch.path)
 
     if platform.python_implementation() == "PyPy":
 
@@ -67,11 +62,11 @@ class WindowsApiEmitter(EventEmitter):
             sleep(0.01)
 
     def on_thread_stop(self):
-        if self._handle:
-            close_directory_handle(self._handle)
+        if self._whandle:
+            close_directory_handle(self._whandle)
 
     def _read_events(self):
-        return read_events(self._handle, self.watch.path, self.watch.is_recursive)
+        return read_events(self._whandle, self.watch.path, self.watch.is_recursive)
 
     def queue_events(self, timeout):
         winapi_events = self._read_events()
@@ -110,10 +105,9 @@ class WindowsApiEmitter(EventEmitter):
 
 
 class WindowsApiObserver(BaseObserver):
-    """
-    Observer thread that schedules watching directories and dispatches
+    """Observer thread that schedules watching directories and dispatches
     calls to event handlers.
     """
 
     def __init__(self, timeout=DEFAULT_OBSERVER_TIMEOUT):
-        super().__init__(emitter_class=WindowsApiEmitter, timeout=timeout)
+        super().__init__(WindowsApiEmitter, timeout=timeout)

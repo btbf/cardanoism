@@ -1,8 +1,12 @@
+.states
+assets/external/
 *.db
 *.py[cod]
 .env
 .web
 .venv/
+.venv_backup/
+python-version
 __pycache__/
 assets/
 requirements.txt

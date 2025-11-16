@@ -11,6 +11,7 @@ import sys
 import sysconfig
 import tempfile
 import typing
+import warnings
 
 from collections.abc import Collection, Mapping
 
@@ -158,8 +159,21 @@ class _PipBackend(_EnvBackend):
         This checks for a valid global pip. Returns None if pip is missing, False
         if pip is too old, and True if it can be used.
         """
+
         # Version to have added the `--python` option.
-        return _has_dependency('pip', '22.3')
+        if not _has_dependency('pip', '22.3'):  # pragma: no cover
+            return False
+
+        # `pip install --python` is nonfunctional on Gentoo debundled pip.
+        # Detect that by checking if pip._vendor` module exists.  However,
+        # searching for pip could yield warnings from _distutils_hack,
+        # so silence them.
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            if importlib.util.find_spec('pip._vendor') is None:
+                return False  # pragma: no cover
+
+        return True
 
     @functools.cached_property
     def _has_virtualenv(self) -> bool:
@@ -192,18 +206,25 @@ class _PipBackend(_EnvBackend):
 
     def create(self, path: str) -> None:
         if self._create_with_virtualenv:
+            import packaging.version
             import virtualenv
 
-            result = virtualenv.cli_run(
-                [
-                    path,
-                    '--activators',
-                    '',
-                    '--no-setuptools',
-                    '--no-wheel',
-                ],
-                setup_logging=False,
-            )
+            from ._compat import importlib
+
+            virtualenv_ver = packaging.version.Version(importlib.metadata.version('virtualenv'))
+
+            opts = [
+                path,
+                '--activators',
+                '',
+                '--no-setuptools',
+                '--no-periodic-update',
+            ]
+
+            if virtualenv_ver < packaging.version.Version('20.31.0'):
+                opts.append('--no-wheel')
+
+            result = virtualenv.cli_run(opts, setup_logging=False)
 
             # The creator attributes are `pathlib.Path`s.
             self.python_executable = str(result.creator.exe)
@@ -305,7 +326,7 @@ class _UvBackend(_EnvBackend):
         return 'venv+uv'
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _fs_supports_symlink() -> bool:
     """Return True if symlinks are supported"""
     # Using definition used by venv.main()
@@ -367,6 +388,6 @@ def _find_executable_and_scripts(path: str) -> tuple[str, str, str]:
 
 
 __all__ = [
-    'IsolatedEnv',
     'DefaultIsolatedEnv',
+    'IsolatedEnv',
 ]

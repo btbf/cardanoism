@@ -16,7 +16,7 @@ __all__ = ['registered','failures','succeeds']
 import warnings; warnings.filterwarnings("ignore", category=DeprecationWarning)
 import sys
 import queue as Queue
-import dbm as anydbm
+#import dbm as anydbm #XXX: delete foo
 from io import BytesIO as StringIO
 import re
 import array
@@ -71,6 +71,8 @@ try:
 except ImportError: # MacPorts
     HAS_CTYPES = False
     IS_PYPY = False
+
+IS_PYODIDE = sys.platform == 'emscripten'
 
 # helper objects
 class _class:
@@ -250,13 +252,15 @@ a['NotImplementedType'] = NotImplemented
 a['SliceType'] = slice(1)
 a['UnboundMethodType'] = _class._method #XXX: works when not imported!
 d['TextWrapperType'] = open(os.devnull, 'r') # same as mode='w','w+','r+'
-d['BufferedRandomType'] = open(os.devnull, 'r+b') # same as mode='w+b'
+if not IS_PYODIDE:
+    d['BufferedRandomType'] = open(os.devnull, 'r+b') # same as mode='w+b'
 d['BufferedReaderType'] = open(os.devnull, 'rb') # (default: buffering=-1)
 d['BufferedWriterType'] = open(os.devnull, 'wb')
 try: # oddities: deprecated
     from _pyio import open as _open
     d['PyTextWrapperType'] = _open(os.devnull, 'r', buffering=-1)
-    d['PyBufferedRandomType'] = _open(os.devnull, 'r+b', buffering=-1)
+    if not IS_PYODIDE:
+        d['PyBufferedRandomType'] = _open(os.devnull, 'r+b', buffering=-1)
     d['PyBufferedReaderType'] = _open(os.devnull, 'rb', buffering=-1)
     d['PyBufferedWriterType'] = _open(os.devnull, 'wb', buffering=-1)
 except ImportError:

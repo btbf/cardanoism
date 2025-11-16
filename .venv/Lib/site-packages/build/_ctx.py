@@ -15,7 +15,7 @@ class _Logger(typing.Protocol):  # pragma: no cover
     def __call__(self, message: str, *, origin: tuple[str, ...] | None = None) -> None: ...
 
 
-_package_name = __spec__.parent  # type: ignore[name-defined]
+_package_name = __spec__.parent
 _default_logger = logging.getLogger(_package_name)
 
 
@@ -51,9 +51,10 @@ def run_subprocess(cmd: Sequence[StrPath], env: Mapping[str, str] | None = None)
             for line in stream:
                 log(line, origin=('subprocess', stream_name))
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor, subprocess.Popen(
-            cmd, encoding='utf-8', env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        ) as process:
+        with (
+            concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor,
+            subprocess.Popen(cmd, encoding='utf-8', env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as process,
+        ):
             log(subprocess.list2cmdline(cmd), origin=('subprocess', 'cmd'))
 
             # Logging in sub-thread to more-or-less ensure order of stdout and stderr whilst also
@@ -63,7 +64,7 @@ def run_subprocess(cmd: Sequence[StrPath], env: Mapping[str, str] | None = None)
             )
 
             code = process.wait()
-            if code:
+            if code:  # pragma: no cover
                 raise subprocess.CalledProcessError(code, process.args)
 
     else:
@@ -89,10 +90,10 @@ else:
 
 
 __all__ = [
-    'log_subprocess_error',
-    'log',
-    'run_subprocess',
     'LOGGER',
-    'verbosity',
     'VERBOSITY',
+    'log',
+    'log_subprocess_error',
+    'run_subprocess',
+    'verbosity',
 ]

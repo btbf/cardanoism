@@ -3,11 +3,9 @@
 Tests for greenlet.
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import os
 import sys
+import sysconfig
 import unittest
 
 from gc import collect
@@ -27,7 +25,24 @@ from greenlet._greenlet import get_total_main_greenlets
 from . import leakcheck
 
 PY312 = sys.version_info[:2] >= (3, 12)
+PY313 = sys.version_info[:2] >= (3, 13)
+# XXX: First tested on 3.14a7. Revisit all uses of this on later versions to ensure they
+# are still valid.
+PY314 = sys.version_info[:2] >= (3, 14)
+
 WIN = sys.platform.startswith("win")
+RUNNING_ON_GITHUB_ACTIONS = os.environ.get('GITHUB_ACTIONS')
+RUNNING_ON_TRAVIS = os.environ.get('TRAVIS') or RUNNING_ON_GITHUB_ACTIONS
+RUNNING_ON_APPVEYOR = os.environ.get('APPVEYOR')
+RUNNING_ON_CI = RUNNING_ON_TRAVIS or RUNNING_ON_APPVEYOR
+RUNNING_ON_MANYLINUX = os.environ.get('GREENLET_MANYLINUX')
+
+# Is the current interpreter free-threaded?) Note that this
+# isn't the same as whether the GIL is enabled, this is the build-time
+# value. Certain CPython details, like the garbage collector,
+# work very differently on potentially-free-threaded builds than
+# standard builds.
+RUNNING_ON_FREETHREAD_BUILD = bool(sysconfig.get_config_var("Py_GIL_DISABLED"))
 
 class TestCaseMetaClass(type):
     # wrap each test method with
@@ -51,10 +66,7 @@ class TestCaseMetaClass(type):
         return type.__new__(cls, classname, bases, classDict)
 
 
-class TestCase(TestCaseMetaClass(
-        "NewBase",
-        (unittest.TestCase,),
-        {})):
+class TestCase(unittest.TestCase, metaclass=TestCaseMetaClass):
 
     cleanup_attempt_sleep_duration = 0.001
     cleanup_max_sleep_seconds = 1
@@ -203,7 +215,6 @@ class TestCase(TestCaseMetaClass(
 
     def run_script(self, script_name, show_output=True):
         import subprocess
-        import os
         script = os.path.join(
             os.path.dirname(__file__),
             script_name,

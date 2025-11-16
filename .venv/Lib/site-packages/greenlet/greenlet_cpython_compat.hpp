@@ -12,17 +12,22 @@
 
 #if PY_VERSION_HEX >= 0x30A00B1
 #    define GREENLET_PY310 1
+#else
+#    define GREENLET_PY310 0
+#endif
+
 /*
 Python 3.10 beta 1 changed tstate->use_tracing to a nested cframe member.
 See https://github.com/python/cpython/pull/25276
 We have to save and restore this as well.
+
+Python 3.13 removed PyThreadState.cframe (GH-108035).
 */
+#if GREENLET_PY310 && PY_VERSION_HEX < 0x30D0000
 #    define GREENLET_USE_CFRAME 1
 #else
 #    define GREENLET_USE_CFRAME 0
-#    define GREENLET_PY310 0
 #endif
-
 
 
 #if PY_VERSION_HEX >= 0x30B00A4
@@ -50,13 +55,27 @@ https://bugs.python.org/issue46090). Summary of breaking internal changes:
 #    define GREENLET_PY312 0
 #endif
 
+#if PY_VERSION_HEX >= 0x30D0000
+#    define GREENLET_PY313 1
+#else
+#    define GREENLET_PY313 0
+#endif
+
+#if PY_VERSION_HEX >= 0x30E0000
+#    define GREENLET_PY314 1
+#else
+#    define GREENLET_PY314 0
+#endif
+
 #ifndef Py_SET_REFCNT
 /* Py_REFCNT and Py_SIZE macros are converted to functions
 https://bugs.python.org/issue39573 */
 #    define Py_SET_REFCNT(obj, refcnt) Py_REFCNT(obj) = (refcnt)
 #endif
 
-#ifndef _Py_DEC_REFTOTAL
+#ifdef _Py_DEC_REFTOTAL
+#  define GREENLET_Py_DEC_REFTOTAL _Py_DEC_REFTOTAL
+#else
 /* _Py_DEC_REFTOTAL macro has been removed from Python 3.9 by:
   https://github.com/python/cpython/commit/49932fec62c616ec88da52642339d83ae719e924
 
@@ -64,12 +83,12 @@ https://bugs.python.org/issue39573 */
 */
 #    ifdef Py_REF_DEBUG
 #      if GREENLET_PY312
-#         define _Py_DEC_REFTOTAL
+#         define GREENLET_Py_DEC_REFTOTAL
 #      else
-#        define _Py_DEC_REFTOTAL _Py_RefTotal--
+#        define GREENLET_Py_DEC_REFTOTAL _Py_RefTotal--
 #      endif
 #    else
-#        define _Py_DEC_REFTOTAL
+#        define GREENLET_Py_DEC_REFTOTAL
 #    endif
 #endif
 // Define these flags like Cython does if we're on an old version.
@@ -122,6 +141,10 @@ static inline void PyThreadState_LeaveTracing(PyThreadState *tstate)
     tstate->use_tracing = use_tracing;
 #endif
 }
+#endif
+
+#if !defined(Py_C_RECURSION_LIMIT) && defined(C_RECURSION_LIMIT)
+#  define Py_C_RECURSION_LIMIT C_RECURSION_LIMIT
 #endif
 
 #endif /* GREENLET_CPYTHON_COMPAT_H */

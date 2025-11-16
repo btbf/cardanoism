@@ -1,12 +1,11 @@
 import reflex as rx
-import reflex_chakra as rc
 from cardanoism.templates import template
 
 
 
 def hero_section_text(mobile=False):
     return rx.vstack(
-        rc.text(
+        rx.text(
             "Cardano Governance Japanese Potal",
             text_align="left" if not mobile else "center",
             color="#6C6C81",
@@ -15,7 +14,7 @@ def hero_section_text(mobile=False):
             line_height="1",
             #max_width=["200px", "300px", "400px", "650px", "650px", "650px"],
         ),
-         rc.text(
+         rx.text(
             "カルダノガバナンス日本語ポータルサイト",
             text_align="left" if not mobile else "center",
             color="#6C6C81",

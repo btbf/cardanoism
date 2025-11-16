@@ -1,12 +1,13 @@
 import reflex as rx
-from typing import List, Dict
+from typing import List, Dict, Any
+
 
 from cardanoism.backend.db_connect import ProposalAppState
 from cardanoism.components.proposal_card import ProjectRating
 from cardanoism import styles
 
 
-def proposal_detail(proposal: Dict[str, int]):
+def proposal_detail(proposal: List[Dict[str, Any]]):
     return rx.card(
         rx.inset(
             rx.box(

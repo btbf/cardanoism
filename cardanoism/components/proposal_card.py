@@ -2,44 +2,44 @@ import reflex as rx
 import math
 from typing import List, Dict, Any, Union
 from cardanoism.backend.db_connect import AppState
+from reflex.utils.imports import ImportVar
 
 class ReactStarLib(rx.Component):
     library = "rsuite"
     tag = "Rate"
     
-    def _get_custom_code(self) -> str:
-        return """import 'rsuite/dist/rsuite.min.css';
-        """
+    def add_imports(self):
+        return {
+            "": "rsuite/Rate/styles/index.css",
+        }
 
 class CatalystRating(ReactStarLib):
-    defaultValue: rx.Var[int]
-    allowHalf=True
-    readOnly=True
-    color="yellow"
-    size="xs"
+    defaultValue: float
+    allowHalf: bool = True
+    readOnly: bool = True
+    color: str = "yellow"
+    size: str = "xs"
 
 proposal_rating = CatalystRating.create
 
 def ProjectRating(value_rate):
     return rx.box(
-        proposal_rating(value="5",defaultValue=value_rate)
+        proposal_rating(value="5",defaultValue=value_rate),
     ),
     
 
 def ProjectProgress(currency_symbol, amount_received, amount_requested, proposal_fund_percent, project_status):
-    cul =  proposal_fund_percent * 100
-    print(cul)
     return rx.box(
         rx.match(
             project_status,
             ("in_progress",
              rx.box(
-                 rx.text.strong(f"進行中 {cul}%")),
+                 rx.text.strong(f"進行中 {proposal_fund_percent}%")),
              ),
-            ("complete",rx.text(f"完了 {cul}%")),
+            ("complete",rx.text(f"完了 {proposal_fund_percent}%")),
         ),
         rx.box(
-            rx.progress(value=cul, height="15px"),
+            rx.progress(value=proposal_fund_percent, height="15px"),
             padding_y="8px",
         ),
         rx.flex(
@@ -55,7 +55,7 @@ def ProjectProgress(currency_symbol, amount_received, amount_requested, proposal
         padding_y="10px",
     ),
 
-def proposal_list(proposal: list[Dict[str, int]]):
+def proposal_list(proposal: list[Dict[str, Any]]):
     return rx.card(
         rx.inset(
             rx.box(
@@ -162,12 +162,12 @@ def proposal_list(proposal: list[Dict[str, int]]):
                     rx.box(
                         rx.flex(
                             rx.badge("要求額", variant="surface", size="2", color_scheme="gray", radius="full"),
-                            rx.text(
-                                proposal['currency_symbol'] + proposal['amount_requested_comma'],
-                                color_scheme="crimson",
-                                weight="medium",
-                                size="3",
-                            ),
+                            # rx.text(
+                            #     proposal['currency_symbol'] + proposal['amount_requested_comma'],
+                            #     color_scheme="crimson",
+                            #     weight="medium",
+                            #     size="3",
+                            # ),
                             spacing="3",
                             padding="8px",
                         ),

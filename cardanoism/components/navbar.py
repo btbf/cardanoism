@@ -1,18 +1,17 @@
 import reflex as rx
-import reflex_chakra as rc
 from reflex.style import toggle_color_mode
 
 def navbar_icons_item(
     text: str, icon: str, url: str, disabled: bool
 ) -> rx.Component:
     return rx.link(
-        rc.button(
+        rx.button(
             rx.hstack(
                 rx.icon(icon),
                 rx.text(text, size="4", weight="medium"),
             ),
             variant="ghost",
-            size="md",
+            size="2",
             is_disabled=disabled
         ),
         href=url,
