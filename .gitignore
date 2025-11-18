@@ -5,6 +5,7 @@ assets/external/
 .env
 .web
 .venv/
+venv/
 .venv_backup/
 python-version
 __pycache__/
