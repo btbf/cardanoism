@@ -1,6 +1,5 @@
 import reflex as rx
 from typing import Any, Dict, List, Union
-import reflex_chakra as rc
 
 from cardanoism import styles
 from cardanoism.templates import template
@@ -19,6 +18,7 @@ class ReactSelectLib(rx.Component):
 class CatalystChallengeSelect(ReactSelectLib):
     is_default = True
     isClearable = True
+    isMulti: rx.Var[bool]
     placeholder:rx.Var[str]
     options: rx.Var[List[Dict[str, str]]]
     defaultValue: rx.Var[Dict[str, str]]
@@ -26,6 +26,12 @@ class CatalystChallengeSelect(ReactSelectLib):
 
 
 challegeFilter = CatalystChallengeSelect.create
+
+FUND_SELECT_OPTIONS = [
+    {"value": "147", "label": "Fund 14"},
+    {"value": "146", "label": "Fund 13"},
+    {"value": "139", "label": "Fund 12"},
+]
 
 
 class ChallengeState(rx.State):
@@ -40,8 +46,24 @@ def catalyst() -> rx.Component:
                     rx.flex(
                         #フィルター
                         rx.vstack(
-                            #----1段目----
+                            rx.box(
+                                rx.input(
+                                    placeholder="全文検索...(IdeascaleNo、タイトル、提案者、課題、解決策など)",
+                                    size="3",
+                                    max_length=100,
+                                    on_change=lambda value: AppState.set_inputed_value(value),
+                                    width="100%",
+                                ),
+                                width="100%",
+                            ),
                             rx.flex(
+                                challegeFilter(
+                                    options = FUND_SELECT_OPTIONS,
+                                    placeholder="ファンド選択",
+                                    onChange = lambda value: AppState.set_selected_fund_value(value),
+                                    isMulti=True,
+                                    width=["100%","100%","48%","230px","230px"],
+                                ),
                                 challegeFilter(
                                     options = [
                                         {'value': '153', 'label': 'F14：カルダノユースケース：パートナー&製品'},
@@ -61,27 +83,11 @@ def catalyst() -> rx.Component:
                                         {'value': '140', 'label': 'F12：カルダノオープン：開発者'},
                                         {'value': '141', 'label': 'F12：カルダノオープン：エコシステム'},
                                     ],
-                                    #defaultValue = ChallengeState.defaultValue,
-                                    #value = ChallengeState.value,
                                     placeholder="ファンドカテゴリ選択",
                                     onChange = lambda value: AppState.set_selected_chllenge_value(value),
-                                    width=["100%","100%","100%","400px","400px"],
-                                    margin_bottom=["10px","10px","10px",0,0],
+                                    isMulti=True,
+                                    width=["100%","100%","48%","230px","230px"],
                                 ),
-                                rx.input(
-                                    placeholder="全文検索...(IdeascaleNo、タイトル、提案者、課題、解決策、本文、etc...)",
-                                    size="3",
-                                    max_length=100,
-                                    on_change=lambda value: AppState.set_inputed_value(value,ChallengeState.value),
-                                    width=["100%","100%","100%","500px","500px"],
-                                ),
-                                width="100%",
-                                spacing="2",
-                                #padding_y="10px",
-                                display=["block","block","block","flex","flex"],
-                            ),
-                            #----2段目----
-                            rx.flex(
                                 challegeFilter(
                                     options = [
                                         {'value': 'funded', 'label': '採択'},
@@ -89,27 +95,27 @@ def catalyst() -> rx.Component:
                                         {'value': 'over_budget', 'label': '申請不備'},
                                         {'value': 'pending', 'label': '投票期間中'},
                                     ],
-                                    #defaultValue = ChallengeState.defaultValue,
-                                    #value = ChallengeState.value,
-                                    placeholder="投票ステータス",
+                                    placeholder="投票ステータス選択",
                                     onChange = lambda value: AppState.set_selected_fundingStatus_value(value),
-                                    margin_bottom=["10px","10px","10px",0,0],
+                                    isMulti=True,
+                                    width=["100%","100%","48%","230px","230px"],
                                 ),
                                 challegeFilter(
                                     options = [
                                         {'value': 'in_progress', 'label': '進行中'},
                                         {'value': 'complete', 'label': '完了'},
                                     ],
-                                    #defaultValue = "ChallengeState.defaultValue",
-                                    #value = ChallengeState.value,
-                                    placeholder="プロジェクト進捗",
+                                    placeholder="プロジェクト進捗選択",
                                     onChange = lambda value: AppState.set_selected_projectStatus_value(value),
-                                    #margin_x="10px"
+                                    isMulti=True,
+                                    width=["100%","100%","48%","230px","230px"],
                                 ),
                                 width="100%",
                                 spacing="2",
                                 padding_y="10px",
-                                display=["block","block","block","flex","flex"],
+                                display=["block","block","flex","flex","flex"],
+                                flex_wrap="wrap",
+                                row_gap="10px",
                             ),
                             spacing='0'
                             

@@ -3,15 +3,19 @@ import sys
 import mariadb
 from typing import List, Dict, Any
 import reflex as rx
+import dataclasses
 
 #Connect to MariaDB Platform
 def dbConnect():
     try:
         conn = mariadb.connect(
             user=os.getenv("DB_USER"),
+            #user="root",
             password=os.getenv('DB_PASS'),
             host=os.getenv('DB_HOST'),
+            #host="localhost",
             port=int(os.getenv('DB_PORT')),
+            #port=3306,
             database=os.getenv('DB_NAME')
             
         )
@@ -23,52 +27,52 @@ def dbConnect():
     cursor = conn.cursor(dictionary=True)
     return cursor, conn
 
-class ProposalsVar(rx.Base):
-    id: int
-    user_id: int
-    fund_id: int
-    challenge_id: int 
-    title: str
-    title_ja: str
-    ideascale_link: str
-    ideascale_user: str
-    ideascale_id: int
-    amount_requested: int
-    amount_received: int
-    project_status: str
-    funding_status: str
-    yes_votes_count: int
-    no_votes_count: int
-    abstain_votes_count: int
-    unique_wallets: int
-    problem: str
-    problem_ja: str
-    solution: str
-    solution_ja: str
-    currency_symbol: str
-    currency: str
-    alignment_score: float
-    feasibility_score: float
-    auditability_score: float
-    tags: str
-    challenge_title: str
-    challenge_title_ja: str
-    headline_problem_ja: str
-    applicant_name: str
-    project_duration: str
-    headline_solution_ja: str
-    open_source: str
-    tag: str
-    proposul_fund_percent: float
-    amount_requested_comma: str
-    yes_votes_count_comma: str
-    abstain_votes_count_comma: str
-    unique_wallets_comma: str
+# @dataclasses.dataclass
+# class ProposalsVar:
+#     id: int
+#     user_id: int
+#     fund_id: int
+#     challenge_id: int 
+#     title: str
+#     title_ja: str
+#     ideascale_link: str
+#     ideascale_user: str
+#     ideascale_id: int
+#     amount_requested: int
+#     amount_received: int
+#     project_status: str
+#     funding_status: str
+#     yes_votes_count: int
+#     no_votes_count: int
+#     abstain_votes_count: int
+#     unique_wallets: int
+#     problem: str
+#     problem_ja: str
+#     solution: str
+#     solution_ja: str
+#     currency_symbol: str
+#     currency: str
+#     alignment_score: float
+#     feasibility_score: float
+#     auditability_score: float
+#     tags: str
+#     challenge_title: str
+#     challenge_title_ja: str
+#     headline_problem_ja: str
+#     applicant_name: str
+#     project_duration: str
+#     headline_solution_ja: str
+#     open_source: str
+#     tag: str
+#     proposul_fund_percent: float
+#     amount_requested_comma: str
+#     yes_votes_count_comma: str
+#     abstain_votes_count_comma: str
+#     unique_wallets_comma: str
     
 
 class AppState(rx.State):
-    challenge_id: str = "%"
-    proposals: List[Dict[str, int]] = []
+    proposals: List[Dict[str, Any]] = []
     #proposals: List[Dict[str, ProposalsVar]] = []
     current_page: int = 1
     items_per_page: int = 30
@@ -76,20 +80,23 @@ class AppState(rx.State):
     pagenation_number: list[int]
     total_pages: int = 0
     total_items: int = 0
-    funding_status: str = "%"
-    project_status: str = "%"
     inputed_value: str = ""
     start_page: int = ""
     end_page: int = ""
-    middle_page:list[str]
+    middle_page:list[int]
     load: bool = False
+    challenge_ids: List[str] = []
+    fund_ids: List[str] = []
+    funding_statuses: List[str] = []
+    project_statuses: List[str] = []
     
     def on_load(self):
         # super().__init__()
-        self.challenge_id: str = "%"
+        self.challenge_ids = []
+        self.fund_ids = []
+        self.funding_statuses = []
+        self.project_statuses = []
         self.inputed_value: str = ""
-        self.funding_status: str = "%"
-        self.project_status: str = "%"
         self.data_fetch()
         
     def data_fetch(self):
@@ -109,7 +116,7 @@ class AppState(rx.State):
         proposal_detail.headline_solution_ja,
         proposal_detail.open_source,
         proposal_detail.tag,
-        CAST(ROUND(proposals.amount_received / proposals.amount_requested, 2) as FLOAT) as proposal_fund_percent,
+        CAST(ROUND((proposals.amount_received / proposals.amount_requested) * 100 , 2) as FLOAT) as proposal_fund_percent,
         FORMAT(amount_requested, 0) as amount_requested_comma,
         FORMAT(yes_votes_count, 0) as yes_votes_count_comma,
         FORMAT(abstain_votes_count, 0) as abstain_votes_count_comma,
@@ -122,8 +129,16 @@ class AppState(rx.State):
         """
         count_query = f"SELECT COUNT(*) as total FROM proposals INNER JOIN proposal_detail ON proposals.ideascale_id = proposal_detail.ideascale_id"
         
-        #if self.challenge_id:
-        where_query = f" WHERE proposals.challenge_id LIKE '{self.challenge_id}' AND proposals.funding_status LIKE '{self.funding_status}' AND proposals.project_status LIKE '{self.project_status}'"
+        where_conditions = ["1=1"]
+        if self.fund_ids:
+            where_conditions.append(self._build_in_clause("proposals.fund_id", self.fund_ids))
+        if self.challenge_ids:
+            where_conditions.append(self._build_in_clause("proposals.challenge_id", self.challenge_ids))
+        if self.funding_statuses:
+            where_conditions.append(self._build_in_clause("proposals.funding_status", self.funding_statuses))
+        if self.project_statuses:
+            where_conditions.append(self._build_in_clause("proposals.project_status", self.project_statuses))
+        where_query = f" WHERE {' AND '.join(where_conditions)}"
         data_query += where_query
         count_query += where_query
             
@@ -135,12 +150,8 @@ class AppState(rx.State):
             where_clause = " OR ".join([f"proposals.{column} LIKE '{search_value}'" for column in columns])
             where_clause += f""" OR proposal_detail.applicant_name LIKE '{search_value}'"""
             
-            if self.challenge_id:
-                data_query += f" AND ({where_clause})"
-                count_query += f" AND ({where_clause})"
-            else:
-                data_query += f" WHERE {where_clause}"
-                count_query += f" WHERE {where_clause}"
+            data_query += f" AND ({where_clause})"
+            count_query += f" AND ({where_clause})"
                 
         asc_query = " ORDER BY fund_id DESC,CASE WHEN funding_status LIKE '%funded%' THEN 0 ELSE 1 END, yes_votes_count DESC, challenge_id DESC"
         limit_query = f" LIMIT {self.items_per_page} OFFSET {(self.current_page - 1) * self.items_per_page}"
@@ -170,28 +181,43 @@ class AppState(rx.State):
     
     
     #--------フィルター関数群----------------
+    def _build_in_clause(self, column: str, values: List[str]) -> str:
+        sanitized = [str(v).replace("'", "''") for v in values if v]
+        if not sanitized:
+            return "1=1"
+        joined_values = "', '".join(sanitized)
+        return f"{column} IN ('{joined_values}')"
     
-    def set_selected_chllenge_value(self, value: dict[str, str]):
+    def _normalize_selection(self, value: Any) -> List[str]:
+        selections: List[str] = []
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict) and item.get("value"):
+                    selections.append(str(item["value"]))
+        elif isinstance(value, dict) and value.get("value"):
+            selections.append(str(value["value"]))
+        return selections
+    
+    def _refresh_after_filter_change(self):
+        self.current_page = 1
+        self.data_fetch()
+    
+    def set_selected_chllenge_value(self, value):
         print(value)
-        if value:
-            self.challenge_id = value["value"]
-        else:
-            self.challenge_id = "%"
-        self.data_fetch()
-        
-    def set_selected_fundingStatus_value(self, value: dict[str, str]):
-        if value:
-            self.funding_status = value["value"]
-        else:
-            self.funding_status = "%"
-        self.data_fetch()
+        self.challenge_ids = self._normalize_selection(value)
+        self._refresh_after_filter_change()
     
-    def set_selected_projectStatus_value(self, value: dict[str, str]):
-        if value:
-            self.project_status = value["value"]
-        else:
-            self.project_status = "%"
-        self.data_fetch()
+    def set_selected_fund_value(self, value):
+        self.fund_ids = self._normalize_selection(value)
+        self._refresh_after_filter_change()
+        
+    def set_selected_fundingStatus_value(self, value):
+        self.funding_statuses = self._normalize_selection(value)
+        self._refresh_after_filter_change()
+    
+    def set_selected_projectStatus_value(self, value):
+        self.project_statuses = self._normalize_selection(value)
+        self._refresh_after_filter_change()
         
     def set_inputed_value(self, value: str):
         self.inputed_value = value
@@ -229,7 +255,7 @@ class AppState(rx.State):
     #--------------------------------------------------
             
 class ProposalAppState(rx.State):
-    proposal: list[dict[str, int]] = []
+    proposal: List[Dict[str, Any]] = []
     ideascale_id: str
     load: bool = False
     

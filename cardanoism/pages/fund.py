@@ -4,7 +4,7 @@ from cardanoism.templates import template
 
 import reflex as rx
 
-@template(route="/catalyst/fund", title="カタリストファンド")
+@template(route="/catalyst/f/fund", title="カタリストファンド")
 def fund() -> rx.Component:
     """The dashboard page.
 
