@@ -139,6 +139,7 @@ def template(
                 background=f"radial-gradient(circle at top right, {rx.color('accent', 2)}, {rx.color('mauve', 1)});",
                 #background=f"radial-gradient(circle at top right, {rx.color('white', 2)}, {rx.color('mauve', 1)});",
                 position="relative",
+                style={"scrollbar_gutter": "stable"},
             )
 
         @rx.page(

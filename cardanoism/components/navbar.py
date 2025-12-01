@@ -60,7 +60,7 @@ def navbar_icons() -> rx.Component:
                 ),
                 justify_content="space-between",
                 align_items="center",
-                max_width="1200px",
+                max_width="1130px",
                 margin_x="auto"
             ),
         ),

@@ -89,6 +89,9 @@ class AppState(rx.State):
     fund_ids: List[str] = []
     funding_statuses: List[str] = []
     project_statuses: List[str] = []
+    view_mode: str = "list"
+    modal_open: bool = False
+    modal_proposal: Dict[str, Any] = {}
     
     def on_load(self):
         # super().__init__()
@@ -161,6 +164,14 @@ class AppState(rx.State):
         print(query)
         cursor.execute(query)
         self.proposals = cursor.fetchall()
+        # add computed fund percent for UI use
+        for p in self.proposals:
+            try:
+                amt_req = float(p.get("amount_requested") or 0)
+                amt_recv = float(p.get("amount_received") or 0)
+                p["fund_percent"] = round((amt_recv / amt_req) * 100, 1) if amt_req else 0.0
+            except Exception:
+                p["fund_percent"] = 0.0
         
         #データ件数クエリ
         print(count_query)
@@ -201,6 +212,20 @@ class AppState(rx.State):
     def _refresh_after_filter_change(self):
         self.current_page = 1
         self.data_fetch()
+
+    def set_view_mode(self, mode: str):
+        """Switch between list and grid views."""
+        self.view_mode = mode
+
+    def open_modal(self, proposal: Dict[str, Any]):
+        """Open detail modal with selected proposal."""
+        self.modal_proposal = proposal or {}
+        self.modal_open = True
+
+    def close_modal(self):
+        """Close detail modal."""
+        self.modal_open = False
+        self.modal_proposal = {}
     
     def set_selected_chllenge_value(self, value):
         print(value)
@@ -311,6 +336,13 @@ class ProposalAppState(rx.State):
         print(proposal_query)
         cursor.execute(proposal_query)
         self.proposal = cursor.fetchall()
+        for p in self.proposal:
+            try:
+                amt_req = float(p.get("amount_requested") or 0)
+                amt_recv = float(p.get("amount_received") or 0)
+                p["fund_percent"] = round((amt_recv / amt_req) * 100, 1) if amt_req else 0.0
+            except Exception:
+                p["fund_percent"] = 0.0
         self.load = True
         print(self.proposal)
         
