@@ -1,0 +1,32 @@
+USE cardanoism;
+
+CREATE TABLE `proposal_detail_new` (
+  `id` int(11) DEFAULT NULL,
+  `uuid` char(36) NOT NULL,
+  `ideascale_id` varchar(100) DEFAULT NULL,
+  `title` text DEFAULT NULL,
+  `title_ja` text DEFAULT NULL,
+  `headline_problem` text DEFAULT NULL,
+  `headline_problem_ja` text DEFAULT NULL,
+  `applicant_name` text DEFAULT NULL,
+  `project_duration` varchar(20) DEFAULT NULL,
+  `headline_solution` text DEFAULT NULL,
+  `headline_solution_ja` text DEFAULT NULL,
+  `open_source` varchar(20) DEFAULT NULL,
+  `tag` text DEFAULT NULL,
+  `solution` text DEFAULT NULL,
+  `solution_ja` text DEFAULT NULL,
+  `impact` text DEFAULT NULL,
+  `impact_ja` text DEFAULT NULL,
+  `capability_feasibility` text DEFAULT NULL,
+  `capability_feasibility_ja` text DEFAULT NULL,
+  `project_milestones` text DEFAULT NULL,
+  `project_milestones_ja` text DEFAULT NULL,
+  `resources` text DEFAULT NULL,
+  `resources_ja` text DEFAULT NULL,
+  `budget_costs` text DEFAULT NULL,
+  `budget_costs_ja` text DEFAULT NULL,
+  `value_for_money` text DEFAULT NULL,
+  `value_for_money_ja` text DEFAULT NULL,
+  PRIMARY KEY (`uuid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
