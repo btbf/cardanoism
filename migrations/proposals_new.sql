@@ -37,6 +37,7 @@ CREATE TABLE `proposals_new` (
   PRIMARY KEY (`uuid`),
   KEY `proposals_new_funds_new_FK` (`fund_uuid`),
   KEY `proposals_new_campaigns_new_FK` (`campaign_uuid`),
+  FULLTEXT KEY `proposals_new_user_name_IDX` (`user_name`,`title`,`title_ja`,`problem`,`problem_ja`,`solution`,`solution_ja`,`tags`),
   CONSTRAINT `proposals_new_campaigns_new_FK` FOREIGN KEY (`campaign_uuid`) REFERENCES `campaigns_new` (`id`),
   CONSTRAINT `proposals_new_funds_new_FK` FOREIGN KEY (`fund_uuid`) REFERENCES `funds_new` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

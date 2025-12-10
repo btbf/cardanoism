@@ -28,5 +28,6 @@ CREATE TABLE `proposal_detail_new` (
   `budget_costs_ja` text DEFAULT NULL,
   `value_for_money` text DEFAULT NULL,
   `value_for_money_ja` text DEFAULT NULL,
-  PRIMARY KEY (`uuid`)
+  PRIMARY KEY (`uuid`),
+  FULLTEXT KEY `proposal_detail_new_applicant_name_IDX` (`applicant_name`,`solution`,`solution_ja`,`impact`,`impact_ja`,`capability_feasibility`,`capability_feasibility_ja`,`project_milestones`,`project_milestones_ja`,`resources`,`resources_ja`,`budget_costs`,`budget_costs_ja`,`value_for_money`,`value_for_money_ja`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
