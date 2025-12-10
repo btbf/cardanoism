@@ -136,8 +136,10 @@ def template(
                 footer_three_columns(),
                 #menu_button(),
                 align="start",
-                background=f"radial-gradient(circle at top right, {rx.color('accent', 2)}, {rx.color('mauve', 1)});",
-                #background=f"radial-gradient(circle at top right, {rx.color('white', 2)}, {rx.color('mauve', 1)});",
+                background=rx.color_mode_cond(
+                    f"radial-gradient(circle at top right, {rx.color('accent', 2)}, {rx.color('mauve', 1)})",
+                    f"radial-gradient(circle at top right, {rx.color('gray', 3)}, {rx.color('gray', 1)})",
+                ),
                 position="relative",
                 style={"scrollbar_gutter": "stable"},
             )
@@ -154,7 +156,7 @@ def template(
         def theme_wrap():
             return rx.theme(
                 templated_page(),
-                appearance="light",
+                appearance="inherit",
                 has_background=True,
                 accent_color=ThemeState.accent_color,
                 gray_color=ThemeState.gray_color,
