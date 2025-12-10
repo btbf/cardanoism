@@ -13,3 +13,4 @@ assets/
 requirements.txt
 cardanoism/backend/proposals_extract_csv.py
 cardanoism/backend/proposals_export.csv
+/node_modules/
