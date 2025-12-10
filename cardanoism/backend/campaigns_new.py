@@ -16,6 +16,7 @@ COLUMN_ORDER = [
     "id",
     "title",
     "title_jp",
+    "fund_uuid",
     "slug",
     "excerpt",
     "excerpt_jp",
@@ -139,6 +140,7 @@ def translate_text(kind: str, text: str, prompt: str) -> str | None:
 
 
 def transform_record(raw: Dict[str, Any]) -> Dict[str, Any]:
+    fund_uuid = None
     return {
         "id": raw.get("id"),
         "title": raw.get("title"),
@@ -149,6 +151,7 @@ def transform_record(raw: Dict[str, Any]) -> Dict[str, Any]:
         "awarded_at": parse_datetime(raw.get("awarded_at")),
         "color": raw.get("color"),
         "label": raw.get("label"),
+        "fund_uuid": fund_uuid,
     }
 
 
@@ -156,6 +159,29 @@ def fetch_existing_campaigns(cursor) -> Dict[str, Dict[str, Any]]:
     cursor.execute("SELECT * FROM campaigns_new")
     rows = cursor.fetchall()
     return {row["id"]: row for row in rows}
+
+
+def load_fund_slug_map(cursor) -> Dict[str, str]:
+    cursor.execute("SELECT id, slug FROM funds_new")
+    rows = cursor.fetchall()
+    return {row["id"]: row["slug"] for row in rows}
+
+
+def match_fund_uuid(title: str, fund_slug_map: Dict[str, str]) -> str | None:
+    if not title:
+        return None
+    match = re.match(r"\s*[Ff]?\s*(\d+)", title)
+    if not match:
+        return None
+    number = match.group(1)
+    target_slug = number.lower()
+    for fund_id, slug in fund_slug_map.items():
+        if not slug:
+            continue
+        slug_l = slug.lower()
+        if slug_l == target_slug or slug_l == f"fund-{target_slug}":
+            return fund_id
+    return None
 
 
 def build_insert_params(record: Dict[str, Any]) -> Tuple[Any, ...]:
@@ -200,6 +226,7 @@ def enrich_with_translations(
 def save_campaigns(records: List[Dict[str, Any]]) -> Dict[str, int]:
     cursor, conn = dbConnect()
     existing = fetch_existing_campaigns(cursor)
+    fund_slug_map = load_fund_slug_map(cursor)
 
     insert_sql = f"""
         INSERT INTO campaigns_new ({", ".join(COLUMN_ORDER)})
@@ -212,6 +239,10 @@ def save_campaigns(records: List[Dict[str, Any]]) -> Dict[str, int]:
     for record in records:
         if not record.get("id"):
             continue
+
+        # assign fund_uuid by matching Fund number in title to funds_new.slug
+        if not record.get("fund_uuid"):
+            record["fund_uuid"] = match_fund_uuid(record.get("title") or "", fund_slug_map)
 
         current = existing.get(record["id"])
         enrich_with_translations(record, current)

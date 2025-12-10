@@ -239,6 +239,10 @@ def normalize_record(raw: Dict[str, Any]) -> Dict[str, Any]:
     fund = raw.get("fund") or {}
     team = extract_team(raw)
     meta = raw.get("meta_data") or {}
+    # Require chain_proposal_id for downstream insert; skip entirely if missing
+    chain_proposal_id = meta.get("chain_proposal_id")
+    if not chain_proposal_id:
+        return {}
 
     record: Dict[str, Any] = {
         # idはAUTO_INCREMENT想定のため明示セットしない
@@ -275,6 +279,7 @@ def normalize_record(raw: Dict[str, Any]) -> Dict[str, Any]:
         "auditability_score": to_float(meta.get("auditability_score")),
         "tags": serialize_tags(raw.get("tags")),
         "slug": make_slug(raw.get("title")),
+        "_chain_proposal_id": meta.get("chain_proposal_id"),
     }
 
     return record
@@ -365,9 +370,16 @@ def save_records(records: List[Dict[str, Any]]) -> Dict[str, int]:
         enrich_translations(record, current)
 
         if current is None:
+            # Insert only if chain_proposal_id is present (from meta_data)
+            if not record.get("_chain_proposal_id"):
+                continue
             cursor.execute(insert_sql, build_insert_tuple(record))
             inserted += 1
             existing_map[uuid] = record.copy()
+            continue
+
+        # For updates, require yes_votes_count to be present
+        if record.get("yes_votes_count") is None:
             continue
 
         changes = diff_record(current, record)

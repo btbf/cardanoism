@@ -1,31 +1,78 @@
+import logging
 import os
 import sys
 import mariadb
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
+from contextlib import contextmanager
 import reflex as rx
 import dataclasses
+
+logger = logging.getLogger(__name__)
+# Ensure debug logs appear even if the app does not configure logging.
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s - %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+POOL_SIZE = 10
+
+try:
+    pool = mariadb.ConnectionPool(
+        pool_name="cardanoism_pool",
+        pool_size=POOL_SIZE,
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASS"),
+        host=os.getenv("DB_HOST"),
+        port=int(os.getenv("DB_PORT")),
+        database=os.getenv("DB_NAME"),
+    )
+except mariadb.Error as e:
+    logger.error("Error creating MariaDB pool: %s", e)
+    sys.exit(1)
 
 #Connect to MariaDB Platform
 def dbConnect():
     try:
-        conn = mariadb.connect(
-            user=os.getenv("DB_USER"),
-            #user="root",
-            password=os.getenv('DB_PASS'),
-            host=os.getenv('DB_HOST'),
-            #host="localhost",
-            port=int(os.getenv('DB_PORT')),
-            #port=3306,
-            database=os.getenv('DB_NAME')
-            
-        )
+        conn = pool.get_connection()
     except mariadb.Error as e:
-        print(f"Error connecting to MariaDB Platform: {e}")
+        print(f"Error getting connection from pool: {e}")
         sys.exit(1)
 
     #Get Cursor
     cursor = conn.cursor(dictionary=True)
     return cursor, conn
+
+@contextmanager
+def get_db():
+    """Context manager that yields (cursor, conn) and always closes them."""
+    cursor, conn = dbConnect()
+    try:
+        yield cursor, conn
+    finally:
+        try:
+            cursor.close()
+        finally:
+            conn.close()
+
+def get_fund_options() -> List[Dict[str, str]]:
+    """Fetch fund select options (value=id, label=label) from funds_new."""
+    try:
+        with get_db() as (cursor, _):
+            cursor.execute(
+                """
+                SELECT id, label
+                FROM funds_new
+                WHERE label IN ('Fund 12', 'Fund 13', 'Fund 14', 'Fund 15')
+                ORDER BY launched_at DESC
+                """
+            )
+            rows = cursor.fetchall()
+            return [{"value": row["id"], "label": row.get("label") or row["id"]} for row in rows]
+    except Exception as e:
+        logger.error("Failed to load fund options: %s", e)
+        return []
 
 # @dataclasses.dataclass
 # class ProposalsVar:
@@ -74,6 +121,8 @@ def dbConnect():
 class AppState(rx.State):
     proposals: List[Dict[str, Any]] = []
     #proposals: List[Dict[str, ProposalsVar]] = []
+    proposal_columns_cache: List[str] = []
+    challenge_options: List[Dict[str, str]] = []
     current_page: int = 1
     items_per_page: int = 30
     page_number: list[int]
@@ -92,6 +141,8 @@ class AppState(rx.State):
     view_mode: str = "list"
     modal_open: bool = False
     modal_proposal: Dict[str, Any] = {}
+    modal_loading: bool = False
+    modal_pending_uuid: str = ""
     
     def on_load(self):
         # super().__init__()
@@ -100,104 +151,125 @@ class AppState(rx.State):
         self.funding_statuses = []
         self.project_statuses = []
         self.inputed_value: str = ""
+        # preload challenge options (all funds)
+        self.load_challenge_options()
         self.data_fetch()
         
     def data_fetch(self):
-        dbCon = dbConnect()
-        cursor = dbCon[0]
-        conn = dbCon[1]
-        print(cursor)
-        print(conn)
-        
-        data_query = """
-        SELECT proposals.*,
-        challenges.title as challenge_title, 
-        challenges.title_ja as challenge_title_ja,
-        proposal_detail.headline_problem_ja,
-        proposal_detail.applicant_name,
-        proposal_detail.project_duration,
-        proposal_detail.headline_solution_ja,
-        proposal_detail.open_source,
-        proposal_detail.tag,
-        CAST(ROUND((proposals.amount_received / proposals.amount_requested) * 100 , 2) as FLOAT) as proposal_fund_percent,
-        FORMAT(amount_requested, 0) as amount_requested_comma,
-        FORMAT(yes_votes_count, 0) as yes_votes_count_comma,
-        FORMAT(abstain_votes_count, 0) as abstain_votes_count_comma,
-        FORMAT(unique_wallets, 0) as unique_wallets_comma
-        FROM proposals
-        INNER JOIN challenges
-        ON proposals.challenge_id = challenges.id
-        INNER JOIN proposal_detail
-        ON proposals.ideascale_id = proposal_detail.ideascale_id
+        with get_db() as (cursor, conn):
+            logger.debug("DB connection opened: cursor=%s, conn=%s", cursor, conn)
+            
+            data_query = """
+        SELECT
+            p.uuid,
+            p.fund_uuid,
+            p.campaign_uuid,
+            p.user_name,
+            p.title,
+            p.title_ja,
+            p.amount_requested,
+            p.amount_received,
+            p.project_status,
+            p.funding_status,
+            p.problem_ja,
+            p.solution_ja,
+            p.currency_symbol,
+            p.currency,
+            p.tags,
+            p.slug,
+            c.title as campaign_title,
+            c.title_jp as campaign_title_ja,
+            f.title as fund_title,
+            COUNT(*) OVER() AS total_items
+        FROM proposals_new p
+        INNER JOIN campaigns_new c
+            ON p.campaign_uuid = c.id
+        LEFT JOIN funds_new f
+            ON p.fund_uuid = f.id
         """
-        count_query = f"SELECT COUNT(*) as total FROM proposals INNER JOIN proposal_detail ON proposals.ideascale_id = proposal_detail.ideascale_id"
         
-        where_conditions = ["1=1"]
-        if self.fund_ids:
-            where_conditions.append(self._build_in_clause("proposals.fund_id", self.fund_ids))
-        if self.challenge_ids:
-            where_conditions.append(self._build_in_clause("proposals.challenge_id", self.challenge_ids))
-        if self.funding_statuses:
-            where_conditions.append(self._build_in_clause("proposals.funding_status", self.funding_statuses))
-        if self.project_statuses:
-            where_conditions.append(self._build_in_clause("proposals.project_status", self.project_statuses))
-        where_query = f" WHERE {' AND '.join(where_conditions)}"
-        data_query += where_query
-        count_query += where_query
-            
-        if self.inputed_value:
-            cursor.execute("SHOW COLUMNS FROM proposals")
-            columns = [column["Field"] for column in cursor.fetchall()]
-            search_value = f"%{str(self.inputed_value).lower()}%"
-            # WHERE句を動的に生成
-            where_clause = " OR ".join([f"proposals.{column} LIKE '{search_value}'" for column in columns])
-            where_clause += f""" OR proposal_detail.applicant_name LIKE '{search_value}'"""
-            
-            data_query += f" AND ({where_clause})"
-            count_query += f" AND ({where_clause})"
+            where_conditions: List[str] = ["1=1"]
+            params: List[Any] = []
+            if self.fund_ids:
+                clause, clause_params = self._build_in_clause("p.fund_uuid", self.fund_ids)
+                where_conditions.append(clause)
+                params.extend(clause_params)
+            if self.challenge_ids:
+                clause, clause_params = self._build_in_clause("p.campaign_uuid", self.challenge_ids)
+                where_conditions.append(clause)
+                params.extend(clause_params)
+            if self.funding_statuses:
+                clause, clause_params = self._build_in_clause("p.funding_status", self.funding_statuses)
+                where_conditions.append(clause)
+                params.extend(clause_params)
+            if self.project_statuses:
+                clause, clause_params = self._build_in_clause("p.project_status", self.project_statuses)
+                where_conditions.append(clause)
+                params.extend(clause_params)
+            where_query = f" WHERE {' AND '.join(where_conditions)}"
+            data_query += where_query
                 
-        asc_query = " ORDER BY fund_id DESC,CASE WHEN funding_status LIKE '%funded%' THEN 0 ELSE 1 END, yes_votes_count DESC, challenge_id DESC"
-        limit_query = f" LIMIT {self.items_per_page} OFFSET {(self.current_page - 1) * self.items_per_page}"
-        
-        #データ取得クエリ
-        query = data_query + asc_query + limit_query
-        print(query)
-        cursor.execute(query)
-        self.proposals = cursor.fetchall()
-        # add computed fund percent for UI use
-        for p in self.proposals:
-            try:
-                amt_req = float(p.get("amount_requested") or 0)
-                amt_recv = float(p.get("amount_received") or 0)
-                p["fund_percent"] = round((amt_recv / amt_req) * 100, 1) if amt_req else 0.0
-            except Exception:
-                p["fund_percent"] = 0.0
-        
-        #データ件数クエリ
-        print(count_query)
-        cursor.execute(count_query)
-        self.total_items = cursor.fetchone()['total']
-        print(self.total_items)
+            if self.inputed_value:
+                # LIKE検索対象をインデックス（FULLTEXT含む）設定済みカラムに限定
+                proposal_like_columns = [
+                    "user_name",
+                    "title",
+                    "title_ja",
+                    "problem",
+                    "problem_ja",
+                    "solution",
+                    "solution_ja",
+                    "tags",
+                ]
+                search_value = f"{str(self.inputed_value).lower()}%"
+                where_clause_parts = [f"LOWER(p.{column}) LIKE ?" for column in proposal_like_columns]
+                where_clause = " OR ".join(where_clause_parts)
+                params.extend([search_value] * (len(proposal_like_columns)))
+                data_query += f" AND ({where_clause})"
+                    
+            asc_query = " ORDER BY p.fund_uuid DESC,CASE WHEN p.funding_status LIKE '%funded%' THEN 0 ELSE 1 END, p.yes_votes_count DESC, p.campaign_uuid DESC"
+            limit_query = f" LIMIT {self.items_per_page} OFFSET {(self.current_page - 1) * self.items_per_page}"
+            
+            #データ取得クエリ
+            query = data_query + asc_query + limit_query
+            logger.debug("Executing data query: %s | params=%s", query, params)
+            cursor.execute(query, params)
+            self.proposals = cursor.fetchall()
+            # add computed fund percent for UI use
+            for p in self.proposals:
+                p["fund_title"] = p.get("fund_title") or p.get("fund_uuid") or ""
+                p["campaign_title_ja"] = p.get("campaign_title_ja") or p.get("campaign_title") or ""
+                # format numbers for display
+                p["amount_requested_comma"] = f"{int(p.get('amount_requested') or 0):,}"
+                p["yes_votes_count_comma"] = f"{int(p.get('yes_votes_count') or 0):,}"
+                p["abstain_votes_count_comma"] = f"{int(p.get('abstain_votes_count') or 0):,}"
+                p["unique_wallets_comma"] = f"{int(p.get('unique_wallets') or 0):,}"
+                try:
+                    amt_req = float(p.get("amount_requested") or 0)
+                    amt_recv = float(p.get("amount_received") or 0)
+                    p["fund_percent"] = round((amt_recv / amt_req) * 100, 1) if amt_req else 0.0
+                except Exception:
+                    p["fund_percent"] = 0.0
+            # total items from window function (fallback 0 if no rows)
+            self.total_items = int(self.proposals[0].get("total_items", 0)) if self.proposals else 0
+            logger.debug("Total items: %s", self.total_items)
         
         #ページネーション変数
         self.total_pages = (self.total_items + self.items_per_page - 1) // self.items_per_page
         self.start_page = max(1, self.current_page - 3)
         self.end_page = min(self.total_pages, self.current_page + 3)
-        self.middle_page = list(range(self.start_page, self.end_page))
-        print(self.middle_page)
+        self.middle_page = list(range(self.start_page, self.end_page + 1))
+        logger.debug("Pagination pages: %s", self.middle_page)
         self.load = True
-        #データベースクローズ
-        cursor.close()
-        conn.close()
     
     
     #--------フィルター関数群----------------
-    def _build_in_clause(self, column: str, values: List[str]) -> str:
-        sanitized = [str(v).replace("'", "''") for v in values if v]
+    def _build_in_clause(self, column: str, values: List[str]) -> Tuple[str, List[str]]:
+        sanitized = [str(v) for v in values if v]
         if not sanitized:
-            return "1=1"
-        joined_values = "', '".join(sanitized)
-        return f"{column} IN ('{joined_values}')"
+            return "1=1", []
+        placeholders = ", ".join(["?"] * len(sanitized))
+        return f"{column} IN ({placeholders})", sanitized
     
     def _normalize_selection(self, value: Any) -> List[str]:
         selections: List[str] = []
@@ -218,22 +290,101 @@ class AppState(rx.State):
         self.view_mode = mode
 
     def open_modal(self, proposal: Dict[str, Any]):
-        """Open detail modal with selected proposal."""
-        self.modal_proposal = proposal or {}
+        """Open detail modal then fetch full detail in a follow-up event."""
+        base_proposal = proposal or {}
+        self.modal_loading = True
         self.modal_open = True
+        self.modal_pending_uuid = base_proposal.get("uuid", "")
+        self.modal_proposal = base_proposal
+
+    def load_modal_detail(self, uuid: str | None = None):
+        """Requery full detail for modal after open."""
+        target_uuid = uuid or self.modal_pending_uuid
+        if not target_uuid:
+            self.modal_loading = False
+            return
+
+        detail_query = """
+        SELECT
+            p.uuid,
+            p.fund_uuid,
+            p.campaign_uuid,
+            p.user_name,
+            p.projectcatalyst_link,
+            p.title,
+            p.title_ja,
+            p.problem_ja,
+            p.solution_ja,
+            p.amount_requested,
+            p.amount_received,
+            p.project_status,
+            p.funding_status,
+            p.currency_symbol,
+            p.currency,
+            p.tags,
+            p.slug,
+            p.alignment_score,
+            p.feasibility_score,
+            p.auditability_score,
+            c.title as campaign_title,
+            c.title_jp as campaign_title_ja,
+            f.title as fund_title,
+            pd.headline_problem_ja,
+            pd.headline_solution_ja,
+            pd.solution_ja as detail_solution_ja,
+            pd.impact_ja,
+            pd.capability_feasibility_ja,
+            pd.project_milestones_ja,
+            pd.resources_ja,
+            pd.budget_costs_ja,
+            pd.value_for_money_ja
+        FROM proposals_new p
+        INNER JOIN campaigns_new c ON p.campaign_uuid = c.id
+        LEFT JOIN funds_new f ON p.fund_uuid = f.id
+        LEFT JOIN proposal_detail_new pd ON p.uuid = pd.uuid
+        WHERE p.uuid = ?
+        """
+
+        try:
+            with get_db() as (cursor, conn):
+                cursor.execute(detail_query, [target_uuid])
+                row = cursor.fetchone()
+                if row:
+                    row = {**(self.modal_proposal or {}), **row}
+                    row["fund_title"] = row.get("fund_title") or row.get("fund_uuid") or ""
+                    row["campaign_title_ja"] = row.get("campaign_title_ja") or row.get("campaign_title") or ""
+                    row["amount_requested_comma"] = f"{int(row.get('amount_requested') or 0):,}"
+                    try:
+                        amt_req = float(row.get("amount_requested") or 0)
+                        amt_recv = float(row.get("amount_received") or 0)
+                        row["fund_percent"] = round((amt_recv / amt_req) * 100, 1) if amt_req else 0.0
+                    except Exception:
+                        row["fund_percent"] = 0.0
+                    self.modal_proposal = row
+                else:
+                    self.modal_proposal = self.modal_proposal or {}
+        except Exception as e:
+            logger.exception("Failed to load modal proposal (uuid=%s): %s", target_uuid, e)
+        finally:
+            self.modal_loading = False
+            self.modal_pending_uuid = ""
 
     def close_modal(self):
         """Close detail modal."""
         self.modal_open = False
         self.modal_proposal = {}
+        self.modal_loading = False
+        self.modal_pending_uuid = ""
     
     def set_selected_chllenge_value(self, value):
-        print(value)
+        logger.debug("Challenge filter change: %s", value)
         self.challenge_ids = self._normalize_selection(value)
         self._refresh_after_filter_change()
     
     def set_selected_fund_value(self, value):
         self.fund_ids = self._normalize_selection(value)
+        # reload challenge options based on selected funds
+        self.load_challenge_options(self.fund_ids)
         self._refresh_after_filter_change()
         
     def set_selected_fundingStatus_value(self, value):
@@ -247,7 +398,35 @@ class AppState(rx.State):
     def set_inputed_value(self, value: str):
         self.inputed_value = value
         self.current_page = 1
+        # call directly; UI debounce should be handled on the client side
         self.data_fetch()
+    
+    def load_challenge_options(self, fund_ids: List[str] | None = None):
+        # Show no challenges until a fund is selected
+        if not fund_ids:
+            self.challenge_options = []
+            return
+        params: List[Any] = []
+        query = """
+            SELECT id, label, title, title_jp, fund_uuid, launched_at
+            FROM campaigns_new
+        """
+        clause, clause_params = self._build_in_clause("fund_uuid", fund_ids)
+        query += f" WHERE {clause}"
+        params.extend(clause_params)
+        query += " ORDER BY launched_at DESC"
+        try:
+            with get_db() as (cursor, _):
+                cursor.execute(query, params)
+                rows = cursor.fetchall()
+                options: List[Dict[str, str]] = []
+                for row in rows:
+                    label = row.get("label") or row.get("title_jp") or row.get("title") or ""
+                    options.append({"value": row["id"], "label": label})
+                self.challenge_options = options
+        except Exception as e:
+            logger.error("Failed to load challenge options: %s", e)
+            self.challenge_options = []
         
     #--------------------------------------------------
     
@@ -286,6 +465,7 @@ class ProposalAppState(rx.State):
     
     def on_load(self):
         self.ideascale_id = self.router.page.params.get("proposal_id", "")
+        # UUID前提になったため数値チェックは不要だが互換のため残しつつ同処理
         if self.ideascale_id.isdecimal():
             self.data_fetch()
         else:
@@ -293,59 +473,61 @@ class ProposalAppState(rx.State):
             # self.proposal = ""
         
     def data_fetch(self):
-        dbCon = dbConnect()
-        cursor = dbCon[0]
-        conn = dbCon[1]
-        print(cursor)
-        print(conn)
-        
-        proposal_query = f"""
-        SELECT proposals.*,
-        challenges.title as challenge_title,
-        challenges.title_ja as challenge_title_ja,
-        proposal_detail.title as proposal_title,
-        proposal_detail.title_ja as proposal_title_ja,
-        proposal_detail.headline_problem_ja,
-        proposal_detail.applicant_name,
-        proposal_detail.project_duration,
-        proposal_detail.headline_solution_ja,
-        proposal_detail.open_source,
-        proposal_detail.tag,
-        proposal_detail.solution,
-        proposal_detail.solution_ja as detail_solution_ja,
-        proposal_detail.impact,
-        proposal_detail.impact_ja,
-        proposal_detail.capability_feasibility,
-        proposal_detail.capability_feasibility_ja,
-        proposal_detail.project_milestones,
-        proposal_detail.project_milestones_ja,
-        proposal_detail.resources,
-        proposal_detail.resources_ja,
-        proposal_detail.budget_costs,
-        proposal_detail.budget_costs_ja,
-        proposal_detail.value_for_money,
-        proposal_detail.value_for_money_ja
-        FROM proposals
-        INNER JOIN challenges
-        ON proposals.challenge_id = challenges.id
-        INNER JOIN proposal_detail
-        ON proposals.ideascale_id = proposal_detail.ideascale_id
-        WHERE proposals.ideascale_id = '{self.ideascale_id}'
-        """
-        
-        print(proposal_query)
-        cursor.execute(proposal_query)
-        self.proposal = cursor.fetchall()
-        for p in self.proposal:
-            try:
-                amt_req = float(p.get("amount_requested") or 0)
-                amt_recv = float(p.get("amount_received") or 0)
-                p["fund_percent"] = round((amt_recv / amt_req) * 100, 1) if amt_req else 0.0
-            except Exception:
-                p["fund_percent"] = 0.0
-        self.load = True
-        print(self.proposal)
-        
-        #データベースクローズ
-        cursor.close()
-        conn.close()
+        with get_db() as (cursor, conn):
+            logger.debug("DB connection opened: cursor=%s, conn=%s", cursor, conn)
+            
+            proposal_query = """
+            SELECT p.*,
+            c.title as campaign_title,
+            c.title_jp as campaign_title_ja,
+            f.title as fund_title,
+            pd.title as proposal_title,
+            pd.title_ja as proposal_title_ja,
+            pd.headline_problem_ja,
+            pd.applicant_name,
+            pd.project_duration,
+            pd.headline_solution_ja,
+            pd.open_source,
+            pd.tag,
+            pd.solution,
+            pd.solution_ja as detail_solution_ja,
+            pd.impact,
+            pd.impact_ja,
+            pd.capability_feasibility,
+            pd.capability_feasibility_ja,
+            pd.project_milestones,
+            pd.project_milestones_ja,
+            pd.resources,
+            pd.resources_ja,
+            pd.budget_costs,
+            pd.budget_costs_ja,
+            pd.value_for_money,
+            pd.value_for_money_ja
+            FROM proposals_new p
+            INNER JOIN campaigns_new c
+            ON p.campaign_uuid = c.id
+            LEFT JOIN funds_new f
+            ON p.fund_uuid = f.id
+            INNER JOIN proposal_detail_new pd
+            ON p.uuid = pd.uuid
+            WHERE p.uuid = ?
+            """
+            
+            logger.debug("Executing proposal query: %s | params=%s", proposal_query, [self.ideascale_id])
+            cursor.execute(proposal_query, [self.ideascale_id])
+            self.proposal = cursor.fetchall()
+            for p in self.proposal:
+                p["fund_title"] = p.get("fund_title") or p.get("fund_uuid") or ""
+                p["campaign_title_ja"] = p.get("campaign_title_ja") or p.get("campaign_title") or ""
+                p["amount_requested_comma"] = f"{int(p.get('amount_requested') or 0):,}"
+                p["yes_votes_count_comma"] = f"{int(p.get('yes_votes_count') or 0):,}"
+                p["abstain_votes_count_comma"] = f"{int(p.get('abstain_votes_count') or 0):,}"
+                p["unique_wallets_comma"] = f"{int(p.get('unique_wallets') or 0):,}"
+                try:
+                    amt_req = float(p.get("amount_requested") or 0)
+                    amt_recv = float(p.get("amount_received") or 0)
+                    p["fund_percent"] = round((amt_recv / amt_req) * 100, 1) if amt_req else 0.0
+                except Exception:
+                    p["fund_percent"] = 0.0
+            self.load = True
+            logger.debug("Proposal detail loaded: %s", self.proposal)
