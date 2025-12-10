@@ -1,4 +1,6 @@
 import reflex as rx
+from reflex.style import toggle_color_mode
+
 
 
 def footer_item(text: str, href: str) -> rx.Component:
@@ -59,10 +61,13 @@ def social_link(icon: str, href: str) -> rx.Component:
 
 def socials() -> rx.Component:
     return rx.flex(
-        # social_link("github", "/#"),
-        social_link("twitter", "https://x.com/cardanoism"),
-        # social_link("facebook", "/#"),
-        # social_link("linkedin", "/#"),
+        rx.button(
+            rx.color_mode_cond(light=rx.icon("moon"), dark=rx.icon("sun")),
+            on_click=toggle_color_mode,
+            variant="ghost",
+            size="3",
+        ),
+        social_link("x", "https://x.com/cardanoism"),
         spacing="3",
         justify_content=["center", "center", "end"],
         width="100%",

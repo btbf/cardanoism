@@ -1,355 +1,637 @@
 import reflex as rx
-import math
-from typing import List, Dict, Any, Union
+from typing import Dict, Any
 from cardanoism.backend.db_connect import AppState
-from reflex.utils.imports import ImportVar
+
 
 class ReactStarLib(rx.Component):
+    """RSuite Rate wrapper for compatibility with detail view."""
+
     library = "rsuite"
     tag = "Rate"
-    
+
     def add_imports(self):
-        return {
-            "": "rsuite/Rate/styles/index.css",
-        }
+        return {"": "rsuite/Rate/styles/index.css"}
+
 
 class CatalystRating(ReactStarLib):
     defaultValue: float
     allowHalf: bool = True
     readOnly: bool = True
-    color: str = "yellow"
+    color: rx.Var[str] = "var(--rs-yellow-500)"
     size: str = "xs"
+
 
 proposal_rating = CatalystRating.create
 
-def ProjectRating(value_rate):
-    return rx.box(
-        proposal_rating(value="5",defaultValue=value_rate),
-    ),
-    
 
-def ProjectProgress(currency_symbol, amount_received, amount_requested, proposal_fund_percent, project_status):
-    return rx.box(
+def ProjectRating(value_rate) -> rx.Component:
+    """Stars for detail page (kept for proposal_detail)."""
+    return rx.box(proposal_rating(value="5", defaultValue=value_rate))
+
+
+def status_badge(proposal: Dict[str, Any]) -> rx.Component:
+    """Status pill aligned with Fund badge sizing."""
+    funding_status = proposal.get("funding_status", "")
+    project_status = proposal.get("project_status", "")
+    return rx.cond(
+        funding_status == "funded",
         rx.match(
             project_status,
-            ("in_progress",
-             rx.box(
-                 rx.text.strong(f"進行中 {proposal_fund_percent}%")),
-             ),
-            ("complete",rx.text(f"完了 {proposal_fund_percent}%")),
+            ("in_progress", rx.badge("進行中", variant="solid", size="2", color_scheme="blue", radius="full", class_name="animate-[pulse_1.4s_ease-in-out_infinite] shadow-[0_0_12px_rgba(59,130,246,0.55)] ring-1 ring-[rgba(59,130,246,0.4)]")),
+            ("complete", rx.badge("完了", variant="surface", size="2", color_scheme="green", radius="full")),
+            rx.badge("採択", variant="surface", size="2", color_scheme="green", radius="full"),
         ),
-        rx.box(
-            rx.progress(value=proposal_fund_percent, height="15px"),
-            padding_y="8px",
+        rx.match(
+            funding_status,
+            ("not_approved", rx.badge("不採択", variant="surface", size="2", color_scheme="red", radius="full")),
+            ("over_budget", rx.badge("申請不備", variant="surface", size="2", color_scheme="red", radius="full")),
+            ("pending", rx.badge("投票期間中", variant="surface", size="2", color_scheme="iris", radius="full")),
+            rx.badge("進行中", variant="solid", size="2", color_scheme="blue", radius="full", class_name="animate-[pulse_1.4s_ease-in-out_infinite] shadow-[0_0_12px_rgba(59,130,246,0.55)] ring-1 ring-[rgba(59,130,246,0.4)]"),
         ),
-        rx.flex(
-            rx.cond(
-                amount_received,
-                rx.text(f"ファンド済: {currency_symbol} {amount_received}"),
-                rx.text(f"初回ファンド待ち"),
-            ),
-            rx.text(f"合計: {currency_symbol} {amount_requested}"),
-            justify_content="space-between",
-        ),
-        padding_x=["8px", "8px", "15px", "15px", "15px" ],
-        padding_y="10px",
-    ),
-
-def proposal_list(proposal: list[Dict[str, Any]]):
-    return rx.card(
-        rx.inset(
-            rx.box(
-                rx.flex(
-                    rx.flex(
-                        #rx.badge(f"""ID : {proposal["ideascale_id"]}""", variant="solid", size="2", color_scheme="indigo",),
-                        rx.match(
-                            proposal["funding_status"],
-                            ("funded", rx.badge("採択", variant="solid", size="2", color_scheme="green",)),
-                            ("not_approved", rx.badge("不採択", variant="solid", size="2", color_scheme="red",)),
-                            ("over_budget", rx.badge("申請不備", variant="solid", size="2", color_scheme="red",)),
-                            ("pending", rx.badge("投票期間中", variant="solid", size="2", color_scheme="iris",)),
-                        ),
-                        rx.tooltip(
-                            rx.text(f"""{proposal["challenge_title_ja"]}""", color_scheme="gray", size="2"),
-                            content=f"""{proposal["challenge_title"]}"""
-                        ),
-                        spacing="5",
-                        justify="center",
-                        display=["block","block","block","flex","flex"]
-                    ),
-                    # rx.link(
-                    #     rx.flex(
-                    #         rx.text(
-                    #             "Ideascaleを開く",
-                    #             size="3",
-                    #         ),
-                    #         rx.icon("square-arrow-out-up-right", size=15),
-                    #         direction="row",
-                    #         gap="1",
-                    #         align="center",
-                    #         spacing="1",
-                    #         #padding="8px",
-                    #         #color="gray",
-                    #     ),
-                    #     href=str(proposal["ideascale_link"]),
-                    #     target="blank",
-                    #     color_scheme="cyan",
-                    #     underline="none",
-                    #     high_contrast=True,
-                    # ),
-                    justify_content="space-between",
-                ),
-                padding_bottom="3px",
-            ),
-            rx.tablet_and_desktop(
-                rx.link(
-                    rx.heading(
-                    proposal["title_ja"],
-                    as_="h2",
-                    size="4",
-                    # margin_top="8px",
-                    # margin_bottom="12px",
-                    weight="medium",
-                    text_wrap="wrap",
-                    font_family = "Noto Sans JP",
-                    ),
-                    href=f"""/catalyst/{proposal["ideascale_id"]}""",
-                    is_external=True,
-                ),
-            ),
-            rx.mobile_only(
-                rx.link(
-                    rx.heading(
-                        proposal["title_ja"],
-                        #as_="h2",
-                        size="4",
-                        margin_top="8px",
-                        margin_bottom="12px",
-                        weight="medium",
-                        font_family = "Noto Sans JP",
-                    ),
-                    href=f"""/catalyst/{proposal["ideascale_id"]}""",
-                    is_external=True,
-                ),
-            ),
-            rx.blockquote(
-                proposal["title"],
-                size="1",
-                margin_top="8px",
-                weight="light",
-                text_wrap="wrap",
-            ),
-            side="top",
-            pb="current",
-            background_color="var(--accent-2)",
-            padding="12px",
-        ),
-        
-        rx.flex(
-            rx.box(
-                rx.flex(
-                    rx.box(
-                        rx.flex(
-                            rx.badge("提案者", variant="surface", size="2", color_scheme="gray", radius="full"),
-                            rx.tooltip(
-                                rx.text(proposal["applicant_name"]),
-                                content=str(f"""{proposal["ideascale_user"]}"""),
-                            ),
-                            spacing="3",
-                            padding="8px",
-                        ),
-                    ),
-                    rx.box(
-                        rx.flex(
-                            rx.badge("要求額", variant="surface", size="2", color_scheme="gray", radius="full"),
-                            # rx.text(
-                            #     proposal['currency_symbol'] + proposal['amount_requested_comma'],
-                            #     color_scheme="crimson",
-                            #     weight="medium",
-                            #     size="3",
-                            # ),
-                            spacing="3",
-                            padding="8px",
-                        ),
-                    ),
-                    display=["block","block","block","flex","flex"],
-                ),
-
-                rx.divider(size="4"),
-                
-                rx.cond(
-                    proposal["funding_status"] == "funded",
-                    rx.box(
-                        ProjectProgress(proposal['currency_symbol'], proposal['amount_received'], proposal['amount_requested'], proposal['proposal_fund_percent'], proposal["project_status"]),
-                    ),
-                    rx.text(""),
-                ),
-                rx.box(
-                    rx.flex(
-                        rx.callout("課題", icon="triangle_alert", color_scheme="red", size="1"),
-                        rx.text(
-                            proposal["problem_ja"],
-                            size="3", 
-                            padding="10px",
-                            text_wrap="wrap",
-                        ),
-                        #spacing="3",
-                        #margin_top="8px",
-                        direction="column",
-                        display=["block","block","block","flex","flex"]
-                    ),
-                    rx.flex(
-                        rx.callout("解決策", icon="info", color_scheme="green", size="1"),
-                        #rx.avatar(fallback="解決策", variant="soft", color_scheme="cyan"),
-                        #rx.badge("提案", variant="soft", size="3", color_scheme="cyan", radius="medium"),
-                        rx.text(
-                            proposal["solution_ja"],
-                            size="3",
-                            padding="10px",
-                            text_wrap="wrap",
-                        ),
-                        #spacing="3",
-                        margin_top="10px",
-                        direction="column",
-                        display=["block","block","block","flex","flex"]
-                    ),
-                    padding_top=["8px", "8px", "12px", "12px", "12px" ],
-                    width="100%"      
-                ),
-                width="100%"
-            ),
-            rx.box(
-                rx.stack(
-                    rx.box(
-                        rx.callout("レビュアー評価", icon="award", color_scheme="blue", size="1"),
-                        width="100%",
-                    ),
-                    rx.flex(
-                        rx.cond(
-                            ~proposal["alignment_score"],
-                            rx.text(
-                                "コミュニティレビュー中",
-                                color_scheme="crimson",
-                            ),
-                            rx.box(
-                                rx.text(
-                                "エコシステム影響度",
-                                weight="bold",
-                                size="3",
-                                ),
-                                rx.flex(
-                                    ProjectRating(proposal["alignment_score"]),
-                                ),
-                                rx.text(
-                                    "実現可能性",
-                                    weight="bold",
-                                    size="3",
-                                ),
-                                rx.flex(
-                                    ProjectRating(proposal["feasibility_score"]),
-                                ),
-                                rx.text(
-                                    "コストパフォーマンス",
-                                    weight="bold",
-                                    size="3",
-                                ),     
-                                rx.flex(
-                                    ProjectRating(proposal["auditability_score"]),
-                                ),
-                            ),
-                        ),
-                        rx.box(
-                            rx.match(
-                                proposal["funding_status"],
-                                (
-                                    "funded",
-                                    rx.vstack(
-                                        rx.callout(
-                                            f"賛成：{proposal['currency_symbol']} {proposal['yes_votes_count_comma']}",
-                                            icon="thumbs-up",
-                                            color_scheme="green",
-                                            variant="surface",
-                                            size="1",
-                                        ),
-                                        rx.callout(
-                                            f"棄権：{proposal['currency_symbol']} {proposal['abstain_votes_count_comma']}",
-                                            icon="message-circle-more",
-                                            color_scheme="gray",
-                                            variant="outline",
-                                            size="1",
-                                        ),
-                                        rx.callout(
-                                            f"投票WL数：{proposal['unique_wallets_comma']}",
-                                            icon="wallet",
-                                            variant="surface",
-                                            size="1",
-                                        ),
-                                    ),
-                                ),
-                                (
-                                    "not_approved",
-                                    rx.vstack(
-                                        rx.callout(
-                                            f"賛成：{proposal['currency_symbol']} {proposal['yes_votes_count_comma']}",
-                                            icon="thumbs-up",
-                                            color_scheme="green",
-                                            variant="outline",
-                                            size="1",
-                                        ),
-                                        rx.callout(
-                                            f"棄権：{proposal['currency_symbol']} {proposal['abstain_votes_count_comma']}",
-                                            icon="message-circle-more",
-                                            color_scheme="gray",
-                                            variant="surface",
-                                            size="1",
-                                        ),
-                                        rx.callout(
-                                            f"投票WL数：{proposal['unique_wallets_comma']}",
-                                            icon="wallet",
-                                            variant="surface",
-                                            size="1",
-                                        ),
-                                    ),
-                                ),
-                            ),
-                            margin_left=["10px","10px","10px",0,0],
-                            margin_top="10px",
-                        ),
-                        padding="8px",
-                        flex_direction=["row","row","row","column","column"],
-                    ),
-                    columns="3",
-                    spacing="3",
-                    padding=[0,0,0,"8px","8px"],
-                    margin_top="10px",
-                    flex_direction="column",
-                    #display=["none", "none", "flex", "flex", "flex"],
-                ),
-                flex_direction=["column","column","row","row","row"],
-                width=["100%","100%","40%","40%","40%"],
-            ),
-        display=["block","block","block","flex","flex"]
-        ),
-        rx.inset(
-            rx.link(
-                rx.button("詳細を見る", width="100%", size="3", variant="soft", color_scheme="indigo", _hover={"cursor": "pointer"}),
-                href=f"""/catalyst/{proposal["ideascale_id"]}""",
-                is_external=True,
-            ),
-            side="bottom",
-            #background_color="var(--accent-3)",
-        ),
-        width="100%",
-        font_family = "Noto Sans JP",
-        margin_bottom="1.5em"
     )
 
 
-def card_foreach_dict():
+def pill(text: str, icon: str, scheme: str = "indigo") -> rx.Component:
+    return rx.badge(
+        rx.hstack(rx.icon(icon, size=14), rx.text(text, size="1"), spacing="1", align="center"),
+        variant="surface",
+        color_scheme=scheme,
+        radius="full",
+        size="2",
+    )
+
+
+def fund_label(proposal: Dict[str, Any]):
+    """Return fund title (expected to be always set)."""
+    return proposal["fund_title"]
+
+
+def campaign_label(proposal: Dict[str, Any]):
+    """Return campaign title (ja if present, else fallback)."""
+    return rx.cond(
+        proposal.get("campaign_title_ja"),
+        proposal.get("campaign_title_ja"),
+        proposal.get("campaign_title", ""),
+    )
+
+
+def fund_progress_bar(proposal: Dict[str, Any]) -> rx.Component:
+    """Progress bar for funded proposals using precomputed fund_percent."""
+    return rx.cond(
+        proposal["funding_status"] == "funded",
+        rx.hstack(
+            rx.text("資金調達率", size="2", color="var(--gray-10)"),
+            rx.box(
+                rx.progress(
+                    value=proposal["fund_percent"],
+                    height="10px",
+                    color_scheme="green",
+                ),
+                width="160px",
+            ),
+            rx.text(f"{proposal['fund_percent']}%", size="2", color="var(--green-11)", weight="bold"),
+            spacing="2",
+            align="center",
+        ),
+        rx.box(),
+    )
+
+
+def score_star(label: str, value: Any) -> rx.Component:
+    """Compact star score display for modal."""
+    star_value = rx.cond(value, value, 0)
+    display_value = rx.cond(value, value, "-")
+    return rx.hstack(
+        rx.text(label, size="2", color="var(--gray-10)"),
+        proposal_rating(value="5", defaultValue=star_value, size="xs"),
+        rx.text(display_value, size="2", color="var(--gray-11)"),
+        spacing="2",
+        align="center",
+    )
+
+
+def score_panel(label: str, value: Any, color: str) -> rx.Component:
+    """Tinted card for score display to improve readability."""
+    star_value = rx.cond(value, value, 0)
+    display_value = rx.cond(value, value, "-")
     return rx.box(
+        rx.vstack(
+            rx.hstack(
+                rx.text(label, size="1", color=f"var(--{color}-11)", weight="medium"),
+                rx.box(
+                    proposal_rating(value="5", defaultValue=star_value, size={14}),
+                    style={"transform": "scale(0.8) translateY(-1.5px)"},
+                ),
+                rx.text(display_value, size="1", color="var(--gray-12)", weight="bold"),
+                spacing="1",
+                align="center",
+            ),
+            spacing="1",
+            align_items="start",
+        ),
+        padding="5px",
+        
+        border=f"1px solid var(--{color}-4)",
+        background_color="var(--gray-1)",
+        border_radius="6px",
+        width="100%",
+    )
+
+def html_section(title: str, content: Any) -> rx.Component:
+    """Render stored HTML (already sanitized upstream) inside modal sections."""
+    safe_content = rx.cond(content, content, "")
+    return rx.vstack(
+        rx.box(
+            rx.hstack(
+                rx.icon("bookmark", size=14, color="white"),
+                rx.text(
+                    title,
+                    size="1",
+                    color="white",
+                    weight="bold",
+                    class_name="tracking-wide text-[12px] uppercase",
+                    style={"letterSpacing": "0.08em"},
+                ),
+                spacing="2",
+                align="center",
+            ),
+            padding_x="12px",
+            padding_y="8px",
+            background_color="var(--indigo-10)",
+            border_radius="6px",
+            width="100%",
+        ),
+        rx.box(
+            rx.html(safe_content),
+            class_name=(
+                "text-[16px] leading-7 text-[var(--gray-11)] prose max-w-none "
+                "prose-strong:text-[var(--indigo-12)] dark:prose-strong:text-[var(--indigo-12)]"
+            ),
+            width="100%",
+        ),
+        spacing="1",
+        width="100%",
+    )
+
+
+def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
+    description = rx.cond(
+        proposal["solution_ja"],
+        proposal["solution_ja"],
+        rx.cond(
+            proposal["problem_ja"],
+            proposal["problem_ja"],
+            proposal["title"],
+        ),
+    )
+
+
+    fund_progress = fund_progress_bar(proposal)
+
+    mobile_footer = rx.vstack(
+        rx.hstack(
+            rx.hstack(
+                rx.icon("user", size=16, color="var(--gray-9)"),
+                rx.text(proposal["user_name"], size="2", color="var(--gray-10)"),
+                spacing="2",
+                align="center",
+            ),
+            rx.hstack(
+                rx.icon("coins", size=16, color="var(--indigo-9)"),
+                rx.text(
+                    f"{proposal['currency_symbol']} {proposal['amount_requested_comma']}",
+                    size="3",
+                    weight="bold",
+                    color="var(--indigo-11)",
+                ),
+                rx.text(proposal["currency"], size="2", color="var(--gray-9)"),
+                fund_progress,
+                spacing="2",
+                align="center",
+            ),
+            spacing="3",
+            align="center",
+            justify="start",
+            wrap="wrap",
+            width="100%",
+        ),
+        spacing="2",
+        width="100%",
+    )
+
+    desktop_footer = rx.hstack(
+        rx.hstack(
+            rx.icon("user", size=16, color="var(--gray-9)"),
+            rx.text(proposal["user_name"], size="2", color="var(--gray-10)"),
+            spacing="2",
+            align="center",
+        ),
+        rx.hstack(
+            rx.icon("coins", size=16, color="var(--indigo-9)"),
+            rx.text(
+                f"{proposal['currency_symbol']} {proposal['amount_requested_comma']}",
+                size="3",
+                weight="bold",
+                color="var(--indigo-11)",
+            ),
+            rx.text(proposal["currency"], size="2", color="var(--gray-9)"),
+            spacing="2",
+            align="center",
+        ),
+        rx.hstack(
+            fund_progress,
+            spacing="2",
+            align="center",
+        ),
+        justify="start",
+        align="center",
+        spacing="3",
+        wrap="wrap",
+        width="100%",
+    )
+
+    page_icon = rx.box(
+        rx.icon("expand", size=20, color="var(--indigo-9)"),
+        position="absolute",
+        right="0px",
+        bottom="0px",
+        border_radius="full",
+        pointer_events="none",
+    )
+
+    return rx.card(
+        rx.box(
+            rx.vstack(
+                rx.hstack(
+            rx.hstack(
+                status_badge(proposal),
+                pill(f"{fund_label(proposal)}", "layers", "indigo"),
+                pill(campaign_label(proposal), "flag", "gray"),
+                spacing="2",
+                wrap="wrap",
+                align="center",
+                    ),
+                    justify="between",
+                    width="100%",
+                ),
+                rx.text(
+                    proposal["title_ja"],
+                    size="4",
+                    weight="bold",
+                    color="var(--indigo-12)",
+                    line_height="1.2",
+                    class_name="hover:text-indigo-10 transition-colors cursor-pointer",
+                ),
+                rx.text(proposal["title"], size="2", color="var(--gray-9)", class_name="mt-0"),
+                rx.text(
+                    description,
+                    size="3",
+                    color="var(--gray-11)",
+                    line_height="1.6",
+                    text_wrap="wrap",
+                    class_name="mt-2",
+                ),
+                rx.mobile_and_tablet(mobile_footer),
+                rx.desktop_only(desktop_footer),
+                spacing="3",
+                width="100%",
+            ),
+            page_icon,
+            position="relative",
+            width="100%",
+        ),
+        width="100%",
+        margin_bottom="1.5em",
+        padding="18px",
+        class_name=(
+            "transition-all duration-300 overflow-hidden "
+            "bg-white border border-[var(--gray-4)] "
+            "hover:border-[var(--indigo-6)] "
+            "hover:shadow-[0_0_6px_rgba(99,132,255,0.12)] "
+            "dark:bg-[var(--gray-3)] dark:border-[var(--gray-7)] "
+            "dark:hover:border-[var(--indigo-6)] "
+            "dark:hover:shadow-[0_0_8px_rgba(0,0,0,0.22)]"
+        ),
+        on_click=lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"])],
+        cursor="pointer",
+    )
+
+
+def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
+    description = rx.cond(
+        proposal["solution_ja"],
+        proposal["solution_ja"],
+        rx.cond(
+            proposal["problem_ja"],
+            proposal["problem_ja"],
+            proposal["title"],
+        ),
+    )
+    fund_progress = fund_progress_bar(proposal)
+    page_icon = rx.box(
+        rx.icon("expand", size=16, color="var(--indigo-9)"),
+        position="absolute",
+        right="0px",
+        bottom="0px",
+        border_radius="full",
+        pointer_events="none",
+    )
+    return rx.card(
+        rx.box(
+            rx.vstack(
+                rx.hstack(
+                    status_badge(proposal),
+                    pill(f"{fund_label(proposal)}", "layers", "indigo"),
+                    pill(campaign_label(proposal), "flag", "gray"),
+                    spacing="2",
+                    wrap="wrap",
+                    align="center",
+                ),
+                rx.text(
+                    proposal["title_ja"],
+                    size="3",
+                    weight="bold",
+                    color="var(--indigo-12)",
+                    class_name="hover:text-indigo-10 transition-colors cursor-pointer",
+                ),
+                rx.text(proposal["title"], size="2", color="var(--gray-9)", class_name="mt-0"),
+                rx.text(
+                    description,
+                    size="2",
+                    color="var(--gray-11)",
+                    line_height="1.6",
+                    text_wrap="wrap",
+                    class_name="line-clamp-3 mt-1",
+                ),
+                rx.vstack(
+                    rx.hstack(
+                        rx.hstack(
+                            rx.icon("user", size=14, color="var(--gray-9)"),
+                            rx.text(proposal["user_name"], size="2", color="var(--gray-10)"),
+                            spacing="2",
+                            align="center",
+                        ),
+                        rx.hstack(
+                            rx.icon("coins", size=14, color="var(--indigo-9)"),
+                            rx.text(
+                                f"{proposal['currency_symbol']} {proposal['amount_requested_comma']}",
+                                size="3",
+                                weight="bold",
+                                color="var(--indigo-11)",
+                            ),
+                            spacing="2",
+                            align="center",
+                        ),
+                        justify="start",
+                        align="center",
+                        spacing="3",
+                        wrap="wrap",
+                        width="100%",
+                    ),
+                    fund_progress,
+                    spacing="2",
+                    width="100%",
+                ),
+                spacing="3",
+            ),
+            page_icon,
+            position="relative",
+            width="100%",
+        ),
+        class_name=(
+            "transition-all duration-300 overflow-hidden "
+            "bg-white border border-[var(--gray-4)] "
+            "hover:border-[var(--indigo-6)] "
+            "hover:shadow-[0_0_6px_rgba(99,132,255,0.12)] "
+            "dark:bg-[var(--gray-3)] dark:border-[var(--gray-7)] "
+            "dark:hover:border-[var(--indigo-6)] "
+            "dark:hover:shadow-[0_0_8px_rgba(0,0,0,0.22)]"
+        ),
+        on_click=lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"])],
+        cursor="pointer",
+    )
+
+
+def detail_modal() -> rx.Component:
+    p = AppState.modal_proposal
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.html(
+                """
+                <style>
+                @media (prefers-color-scheme: dark) {
+                  .proposal-modal a {
+                    color: #7cc7ff !important;
+                    text-decoration: underline;
+                  }
+                  .proposal-modal a:hover {
+                    color: #a7d9ff !important;
+                  }
+                  .proposal-modal ::-webkit-scrollbar {
+                    width: 8px;
+                    height: 8px;
+                  }
+                  .proposal-modal ::-webkit-scrollbar-track {
+                    background: rgba(255,255,255,0.06);
+                  }
+                  .proposal-modal ::-webkit-scrollbar-thumb {
+                    background: rgba(136,136,136,0.8);
+                    border-radius: 9999px;
+                  }
+                  .proposal-modal ::-webkit-scrollbar-thumb:hover {
+                    background: rgba(170,170,170,0.95);
+                  }
+                  .proposal-modal {
+                    scrollbar-color: rgba(136,136,136,0.85) rgba(255,255,255,0.08);
+                    scrollbar-width: thin;
+                  }
+                }
+                </style>
+                """
+            ),
+            rx.vstack(
+                rx.hstack(
+                    rx.vstack(
+                        rx.text(
+                            p.get("title_ja", "提案詳細"),
+                            size="5",
+                            weight="bold",
+                            width="100%",
+                            style={"wordBreak": "break-word"},
+                        ),
+                        rx.text(
+                            p.get("title", ""),
+                            size="2",
+                            color="var(--gray-10)",
+                            width="100%",
+                            style={"wordBreak": "break-word"},
+                        ),
+                        spacing="1",
+                        align_items="start",
+                    ),
+                    rx.icon_button("x", on_click=AppState.close_modal, variant="ghost"),
+                    justify="between",
+                    align="start",
+                    width="100%",
+                ),
+                rx.hstack(
+                    status_badge(p),
+                    pill(f"{fund_label(p)}", "layers", "indigo"),
+                    pill(campaign_label(p), "flag", "gray"),
+                    rx.hstack(
+                        rx.text(p.get("user_name", ""), size="2", color="var(--gray-10)"),
+                        rx.text(
+                            f"{p.get('currency_symbol','')} {p.get('amount_requested_comma','')}",
+                            size="3",
+                            weight="bold",
+                            color="var(--indigo-11)",
+                        ),
+                        rx.link(
+                            rx.hstack(
+                                rx.text("Project Catalyst", size="2", weight="medium", color="var(--gray-10)"),
+                                rx.icon("external-link", size=16, color="var(--gray-10)"),
+                                spacing="1",
+                                align="center",
+                            ),
+                            href=p.get("projectcatalyst_link", ""),
+                            underline="auto",
+                            is_external=True,
+                            style={"text-decoration": "none !important"},
+                        ),
+                        spacing="3",
+                        align="center",
+                    ),
+                    spacing="2",
+                    wrap="wrap",
+                ),
+                rx.divider(),
+                rx.cond(
+                    AppState.modal_loading,
+                    rx.flex(
+                        rx.spinner(size="3"),
+                        justify="center",
+                        align="center",
+                        width="100%",
+                        flex="1",
+                        padding_y="20px",
+                    ),
+                    rx.flex(
+                        rx.tablet_and_desktop(
+                            rx.grid(
+                                score_panel("提案整合性", p.get("alignment_score"), "indigo"),
+                                score_panel("実現可能性", p.get("feasibility_score"), "indigo"),
+                                score_panel("監査可能性", p.get("auditability_score"), "indigo"),
+                                columns={"base": "1", "md": "3"},
+                                spacing="4",
+                                width="100%",
+                            ),
+                        ),
+                        rx.divider(margin_y="6px"),
+                        rx.box(
+                            rx.vstack(
+                                rx.vstack(
+                                    rx.text("課題", size="2", color="var(--gray-10)"),
+                                    rx.text(p.get("problem_ja", ""), size="3", line_height="1.6", color="var(--gray-11)"),
+                                    spacing="1",
+                                    width="100%",
+                                    padding_top="8px",
+                                ),
+                                rx.vstack(
+                                    rx.text("解決策", size="2", color="var(--gray-10)"),
+                                    rx.text(p.get("solution_ja", ""), size="3", line_height="1.6", color="var(--gray-11)"),
+                                    spacing="1",
+                                    width="100%",
+                                ),
+                                html_section("解決策", p.get("detail_solution_ja", "")),
+                                html_section("エコシステムインパクト", p.get("impact_ja", "")),
+                                html_section("実現可能性", p.get("capability_feasibility_ja", "")),
+                                html_section("マイルストーン", p.get("project_milestones_ja", "")),
+                                html_section("リソース", p.get("resources_ja", "")),
+                                html_section("予算とコスト", p.get("budget_costs_ja", "")),
+                                html_section("コストパフォーマンス", p.get("value_for_money_ja", "")),
+                                rx.mobile_only(
+                                    rx.vstack(
+                                        score_panel("提案整合性", p.get("alignment_score"), "indigo"),
+                                        score_panel("実現可能性", p.get("feasibility_score"), "indigo"),
+                                        score_panel("監査可能性", p.get("auditability_score"), "indigo"),
+                                        spacing="1",
+                                        width="100%",
+                                        justify="center",
+                                    ),
+                                ),
+                                spacing="3",
+                                width="100%",
+                            ),
+                            flex="1",
+                            min_height="0",
+                            overflow_y="auto",
+                            padding_right="6px",
+                            width="100%",
+                        ),
+                        direction="column",
+                        gap="4",
+                        width="100%",
+                        flex="1",
+                        min_height="0",
+                    ),
+                ),
+                rx.button("閉じる", on_click=AppState.close_modal, width="100%", variant="soft"),
+                spacing="3",
+                width="100%",
+                align_items="stretch",
+                height="100%",
+                min_height="0",
+            ),
+            max_width="900px",
+            max_height="95vh",
+            width="95vw",
+            class_name=(
+                "proposal-modal "
+                "shadow-xl rounded-2xl "
+                "border border-[rgba(0,0,0,0.08)] "
+                "bg-white text-[var(--gray-11)] "
+                "dark:border-[rgba(255,255,255,0.12)] "
+                "dark:bg-[var(--gray-3)] dark:text-[var(--gray-11)] "
+                "text-[var(--gray-11)]"
+            ),
+            style={"display": "flex", "flexDirection": "column"},
+        ),
+        open=AppState.modal_open,
+        modal=False,
+    )
+
+
+def card_foreach_dict() -> rx.Component:
+    return rx.box(
+        detail_modal(),
         rx.cond(
             AppState.load,
-            rx.foreach(AppState.proposals, proposal_list),
-            rx.spinner(size="3"),
-        ),  
+            rx.fragment(
+                rx.mobile_only(
+                    rx.grid(
+                        rx.foreach(AppState.proposals, proposal_grid),
+                        columns={"base": "1"},
+                        spacing="4",
+                    )
+                ),
+                rx.tablet_and_desktop(
+                    rx.cond(
+                        AppState.view_mode == "grid",
+                        rx.grid(
+                            rx.foreach(AppState.proposals, proposal_grid),
+                            columns={"base": "1", "md": "2", "lg": "2"},
+                            spacing="4",
+                        ),
+                        rx.foreach(AppState.proposals, proposal_list),
+                    )
+                ),
+            ),
+            rx.flex(
+                rx.spinner(size="3"),
+                justify="center",
+                align="center",
+                width="100%",
+                padding_y="20px",
+            ),
+        ),
     )

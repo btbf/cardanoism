@@ -1,18 +1,20 @@
 USE cardanoism;
 
 CREATE TABLE `proposals_new` (
-  `id` int(11) NOT NULL,
-  `uuid` char(36) DEFAULT NULL,
+  `id` int(11) DEFAULT NULL,
+  `uuid` char(36) NOT NULL,
   `fund_uuid` char(36) DEFAULT NULL,
   `campaign_uuid` char(36) DEFAULT NULL,
   `user_id` int(11) DEFAULT NULL,
+  `user_name` varchar(100) DEFAULT NULL,
+  `projectcatalyst_link` varchar(2038) DEFAULT NULL,
   `fund_id` int(11) DEFAULT NULL,
   `challenge_id` int(11) DEFAULT NULL,
-  `title` text DEFAULT NULL,
-  `title_ja` text DEFAULT NULL,
+  `title` varchar(255) DEFAULT NULL,
+  `title_ja` varchar(255) DEFAULT NULL,
   `ideascale_link` varchar(255) DEFAULT NULL,
   `ideascale_user` varchar(100) DEFAULT NULL,
-  `ideascale_id` varchar(100) NOT NULL,
+  `ideascale_id` varchar(100) DEFAULT NULL,
   `amount_requested` int(11) DEFAULT NULL,
   `amount_received` int(11) DEFAULT NULL,
   `project_status` varchar(100) DEFAULT NULL,
@@ -31,8 +33,11 @@ CREATE TABLE `proposals_new` (
   `feasibility_score` float DEFAULT NULL,
   `auditability_score` float DEFAULT NULL,
   `tags` text DEFAULT NULL,
-  `slug` text DEFAULT NULL,
-  PRIMARY KEY (`ideascale_id`),
-  KEY `proposals_challenges_FK` (`challenge_id`) USING BTREE,
-  KEY `proposals_funds_FK` (`fund_id`) USING BTREE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+  `slug` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`uuid`),
+  KEY `proposals_new_funds_new_FK` (`fund_uuid`),
+  KEY `proposals_new_campaigns_new_FK` (`campaign_uuid`),
+  FULLTEXT KEY `proposals_new_user_name_IDX` (`user_name`,`title`,`title_ja`,`problem`,`problem_ja`,`solution`,`solution_ja`,`tags`),
+  CONSTRAINT `proposals_new_campaigns_new_FK` FOREIGN KEY (`campaign_uuid`) REFERENCES `campaigns_new` (`id`),
+  CONSTRAINT `proposals_new_funds_new_FK` FOREIGN KEY (`fund_uuid`) REFERENCES `funds_new` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
