@@ -23,6 +23,22 @@ class CatalystRating(ReactStarLib):
 
 proposal_rating = CatalystRating.create
 
+# Neon pulse animation for "in progress" badges.
+NEON_PULSE_STYLE = rx.html(
+    """
+    <style>
+      @keyframes neon-pulse {
+        0%   { box-shadow: 0 0 0 0 rgba(99,102,241,0.55); }
+        70%  { box-shadow: 0 0 0 12px rgba(99,102,241,0); }
+        100% { box-shadow: 0 0 0 0 rgba(99,102,241,0); }
+      }
+      .neon-pulse {
+        animation: neon-pulse 1.6s ease-in-out infinite;
+      }
+    </style>
+    """
+)
+
 
 def ProjectRating(value_rate) -> rx.Component:
     """Stars for detail page (kept for proposal_detail)."""
@@ -37,27 +53,32 @@ def status_badge(proposal: Dict[str, Any]) -> rx.Component:
         funding_status == "funded",
         rx.match(
             project_status,
-            ("in_progress", rx.badge("進行中", variant="solid", size="2", color_scheme="blue", radius="full", class_name="animate-[pulse_1.4s_ease-in-out_infinite] shadow-[0_0_12px_rgba(59,130,246,0.55)] ring-1 ring-[rgba(59,130,246,0.4)]")),
-            ("complete", rx.badge("完了", variant="surface", size="2", color_scheme="green", radius="full")),
-            rx.badge("採択", variant="surface", size="2", color_scheme="green", radius="full"),
+            ("in_progress", rx.badge("進行中", variant="solid", size="2", radius="full", background_color="var(--color-primary-200)", color="white", class_name="neon-pulse")),
+            ("complete", rx.badge("完了", variant="surface", size="2", radius="full", background_color="var(--color-primary-300)", color="var(--color-primary-100)")),
+            rx.badge("採択", variant="surface", size="2", radius="full", background_color="var(--color-primary-300)", color="var(--color-primary-100)"),
         ),
         rx.match(
             funding_status,
-            ("not_approved", rx.badge("不採択", variant="surface", size="2", color_scheme="red", radius="full")),
-            ("over_budget", rx.badge("申請不備", variant="surface", size="2", color_scheme="red", radius="full")),
-            ("pending", rx.badge("投票期間中", variant="surface", size="2", color_scheme="iris", radius="full")),
-            rx.badge("進行中", variant="solid", size="2", color_scheme="blue", radius="full", class_name="animate-[pulse_1.4s_ease-in-out_infinite] shadow-[0_0_12px_rgba(59,130,246,0.55)] ring-1 ring-[rgba(59,130,246,0.4)]"),
+            ("not_approved", rx.badge("不採択", variant="surface", size="2", radius="full", background_color="var(--color-bg-300)", color="var(--color-text-200)")),
+            ("over_budget", rx.badge("申請不備", variant="surface", size="2", radius="full", background_color="var(--color-bg-300)", color="var(--color-text-200)")),
+            ("pending", rx.badge("投票期間中", variant="surface", size="2", radius="full", background_color="var(--color-primary-300)", color="var(--color-primary-100)")),
+            rx.badge("進行中", variant="solid", size="2", radius="full", background_color="var(--color-primary-200)", color="white", class_name="neon-pulse"),
         ),
     )
 
 
 def pill(text: str, icon: str, scheme: str = "indigo") -> rx.Component:
     return rx.badge(
-        rx.hstack(rx.icon(icon, size=14), rx.text(text, size="1"), spacing="1", align="center"),
+        rx.hstack(
+            rx.icon(icon, size=14, color="var(--color-primary-100)"),
+            rx.text(text, size="1", color="var(--color-primary-100)"),
+            spacing="1",
+            align="center",
+        ),
         variant="surface",
-        color_scheme=scheme,
         radius="full",
         size="2",
+        background_color="var(--color-primary-300)",
     )
 
 
@@ -191,24 +212,24 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
     mobile_footer = rx.vstack(
         rx.hstack(
             rx.hstack(
-                rx.icon("user", size=16, color="var(--gray-9)"),
-                rx.text(proposal["user_name"], size="2", color="var(--gray-10)"),
-                spacing="2",
-                align="center",
+            rx.icon("user", size=16, color="var(--color-text-200)"),
+            rx.text(proposal["user_name"], size="2", color="var(--color-text-200)"),
+            spacing="2",
+            align="center",
+        ),
+        rx.hstack(
+            rx.icon("coins", size=16, color="var(--color-primary-200)"),
+            rx.text(
+                f"{proposal['currency_symbol']} {proposal['amount_requested_comma']}",
+                size="3",
+                weight="bold",
+                color="var(--color-primary-100)",
             ),
-            rx.hstack(
-                rx.icon("coins", size=16, color="var(--indigo-9)"),
-                rx.text(
-                    f"{proposal['currency_symbol']} {proposal['amount_requested_comma']}",
-                    size="3",
-                    weight="bold",
-                    color="var(--indigo-11)",
-                ),
-                rx.text(proposal["currency"], size="2", color="var(--gray-9)"),
-                fund_progress,
-                spacing="2",
-                align="center",
-            ),
+            rx.text(proposal["currency"], size="2", color="var(--color-text-200)"),
+            fund_progress,
+            spacing="2",
+            align="center",
+        ),
             spacing="3",
             align="center",
             justify="start",
@@ -251,7 +272,7 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
     )
 
     page_icon = rx.box(
-        rx.icon("expand", size=20, color="var(--indigo-9)"),
+        rx.icon("expand", size=20, color="var(--color-primary-200)"),
         position="absolute",
         right="0px",
         bottom="0px",
@@ -263,13 +284,13 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
         rx.box(
             rx.vstack(
                 rx.hstack(
-            rx.hstack(
-                status_badge(proposal),
-                pill(f"{fund_label(proposal)}", "layers", "indigo"),
-                pill(campaign_label(proposal), "flag", "gray"),
-                spacing="2",
-                wrap="wrap",
-                align="center",
+                    rx.hstack(
+                        status_badge(proposal),
+                        pill(f"{fund_label(proposal)}", "layers", "indigo"),
+                        pill(campaign_label(proposal), "flag", "gray"),
+                        spacing="2",
+                        wrap="wrap",
+                        align="center",
                     ),
                     justify="between",
                     width="100%",
@@ -283,14 +304,14 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
                     class_name="hover:text-indigo-10 transition-colors cursor-pointer",
                 ),
                 rx.text(proposal["title"], size="2", color="var(--gray-9)", class_name="mt-0"),
-                rx.text(
-                    description,
-                    size="3",
-                    color="var(--gray-11)",
-                    line_height="1.6",
-                    text_wrap="wrap",
-                    class_name="mt-2",
-                ),
+            rx.text(
+                description,
+                size="3",
+                color="var(--gray-10)",
+                line_height="1.6",
+                text_wrap="wrap",
+                class_name="mt-2",
+            ),
                 rx.mobile_and_tablet(mobile_footer),
                 rx.desktop_only(desktop_footer),
                 spacing="3",
@@ -305,11 +326,11 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
         padding="18px",
         class_name=(
             "transition-all duration-300 overflow-hidden "
-            "bg-white border border-[var(--gray-4)] "
-            "hover:border-[var(--indigo-6)] "
-            "hover:shadow-[0_0_6px_rgba(99,132,255,0.12)] "
-            "dark:bg-[var(--gray-3)] dark:border-[var(--gray-7)] "
-            "dark:hover:border-[var(--indigo-6)] "
+            "bg-[var(--color-bg-200)] border border-[var(--color-border)] "
+            "hover:border-[var(--color-primary-200)] "
+            "hover:shadow-[0_0_6px_rgba(79,169,255,0.12)] "
+            "dark:bg-[var(--color-bg-200)] dark:border-[var(--color-border)] "
+            "dark:hover:border-[var(--color-primary-200)] "
             "dark:hover:shadow-[0_0_8px_rgba(0,0,0,0.22)]"
         ),
         on_click=lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"])],
@@ -329,7 +350,7 @@ def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
     )
     fund_progress = fund_progress_bar(proposal)
     page_icon = rx.box(
-        rx.icon("expand", size=16, color="var(--indigo-9)"),
+        rx.icon("expand", size=16, color="var(--color-primary-200)"),
         position="absolute",
         right="0px",
         bottom="0px",
@@ -347,22 +368,22 @@ def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
                     wrap="wrap",
                     align="center",
                 ),
-                rx.text(
-                    proposal["title_ja"],
-                    size="3",
-                    weight="bold",
+            rx.text(
+                proposal["title_ja"],
+                size="3",
+                weight="bold",
                     color="var(--indigo-12)",
                     class_name="hover:text-indigo-10 transition-colors cursor-pointer",
                 ),
                 rx.text(proposal["title"], size="2", color="var(--gray-9)", class_name="mt-0"),
-                rx.text(
-                    description,
-                    size="2",
-                    color="var(--gray-11)",
-                    line_height="1.6",
-                    text_wrap="wrap",
-                    class_name="line-clamp-3 mt-1",
-                ),
+            rx.text(
+                description,
+                size="2",
+                color="var(--gray-10)",
+                line_height="1.6",
+                text_wrap="wrap",
+                class_name="line-clamp-3 mt-1",
+            ),
                 rx.vstack(
                     rx.hstack(
                         rx.hstack(
@@ -400,11 +421,11 @@ def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
         ),
         class_name=(
             "transition-all duration-300 overflow-hidden "
-            "bg-white border border-[var(--gray-4)] "
-            "hover:border-[var(--indigo-6)] "
-            "hover:shadow-[0_0_6px_rgba(99,132,255,0.12)] "
-            "dark:bg-[var(--gray-3)] dark:border-[var(--gray-7)] "
-            "dark:hover:border-[var(--indigo-6)] "
+            "bg-[var(--color-bg-200)] border border-[var(--color-border)] "
+            "hover:border-[var(--color-primary-200)] "
+            "hover:shadow-[0_0_6px_rgba(79,169,255,0.12)] "
+            "dark:bg-[var(--color-bg-200)] dark:border-[var(--color-border)] "
+            "dark:hover:border-[var(--color-primary-200)] "
             "dark:hover:shadow-[0_0_8px_rgba(0,0,0,0.22)]"
         ),
         on_click=lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"])],
@@ -419,32 +440,33 @@ def detail_modal() -> rx.Component:
             rx.html(
                 """
                 <style>
-                @media (prefers-color-scheme: dark) {
-                  .proposal-modal a {
-                    color: #7cc7ff !important;
-                    text-decoration: underline;
-                  }
-                  .proposal-modal a:hover {
-                    color: #a7d9ff !important;
-                  }
-                  .proposal-modal ::-webkit-scrollbar {
-                    width: 8px;
-                    height: 8px;
-                  }
-                  .proposal-modal ::-webkit-scrollbar-track {
-                    background: rgba(255,255,255,0.06);
-                  }
-                  .proposal-modal ::-webkit-scrollbar-thumb {
-                    background: rgba(136,136,136,0.8);
-                    border-radius: 9999px;
-                  }
-                  .proposal-modal ::-webkit-scrollbar-thumb:hover {
-                    background: rgba(170,170,170,0.95);
-                  }
-                  .proposal-modal {
-                    scrollbar-color: rgba(136,136,136,0.85) rgba(255,255,255,0.08);
-                    scrollbar-width: thin;
-                  }
+                .proposal-modal a {
+                  color: var(--color-primary-200) !important;
+                  text-decoration: underline;
+                }
+                .proposal-modal a:hover {
+                  color: var(--color-primary-100) !important;
+                }
+                .proposal-modal ::-webkit-scrollbar {
+                  width: 8px;
+                  height: 8px;
+                }
+                .proposal-modal ::-webkit-scrollbar-track {
+                  background: var(--color-bg-200);
+                }
+                .proposal-modal ::-webkit-scrollbar-thumb {
+                  background: var(--color-border);
+                  border-radius: 9999px;
+                }
+                .proposal-modal ::-webkit-scrollbar-thumb:hover {
+                  background: var(--color-primary-200);
+                }
+                .proposal-modal {
+                  background: var(--color-bg-100);
+                  color: var(--color-text-200);
+                  border: 1px solid var(--color-border);
+                  scrollbar-color: var(--color-border) var(--color-bg-200);
+                  scrollbar-width: thin;
                 }
                 </style>
                 """
@@ -452,20 +474,21 @@ def detail_modal() -> rx.Component:
             rx.vstack(
                 rx.hstack(
                     rx.vstack(
-                        rx.text(
-                            p.get("title_ja", "提案詳細"),
-                            size="5",
-                            weight="bold",
-                            width="100%",
-                            style={"wordBreak": "break-word"},
-                        ),
-                        rx.text(
-                            p.get("title", ""),
-                            size="2",
-                            color="var(--gray-10)",
-                            width="100%",
-                            style={"wordBreak": "break-word"},
-                        ),
+            rx.text(
+                p.get("title_ja", "提案詳細"),
+                size="5",
+                weight="bold",
+                width="100%",
+                color="var(--color-primary-100)",
+                style={"wordBreak": "break-word"},
+            ),
+            rx.text(
+                p.get("title", ""),
+                size="2",
+                color="var(--color-text-200)",
+                width="100%",
+                style={"wordBreak": "break-word"},
+            ),
                         spacing="1",
                         align_items="start",
                     ),
@@ -474,26 +497,26 @@ def detail_modal() -> rx.Component:
                     align="start",
                     width="100%",
                 ),
+            rx.hstack(
+                status_badge(p),
+                pill(f"{fund_label(p)}", "layers", "primary"),
+                pill(campaign_label(p), "flag", "primary"),
                 rx.hstack(
-                    status_badge(p),
-                    pill(f"{fund_label(p)}", "layers", "indigo"),
-                    pill(campaign_label(p), "flag", "gray"),
-                    rx.hstack(
-                        rx.text(p.get("user_name", ""), size="2", color="var(--gray-10)"),
-                        rx.text(
-                            f"{p.get('currency_symbol','')} {p.get('amount_requested_comma','')}",
-                            size="3",
-                            weight="bold",
-                            color="var(--indigo-11)",
+                    rx.text(p.get("user_name", ""), size="2", color="var(--color-text-200)"),
+                    rx.text(
+                        f"{p.get('currency_symbol','')} {p.get('amount_requested_comma','')}",
+                        size="3",
+                        weight="bold",
+                        color="var(--color-primary-100)",
+                    ),
+                    rx.link(
+                        rx.hstack(
+                            rx.text("Project Catalyst", size="2", weight="medium", color="var(--color-text-200)"),
+                            rx.icon("external-link", size=16, color="var(--color-text-200)"),
+                            spacing="1",
+                            align="center",
                         ),
-                        rx.link(
-                            rx.hstack(
-                                rx.text("Project Catalyst", size="2", weight="medium", color="var(--gray-10)"),
-                                rx.icon("external-link", size=16, color="var(--gray-10)"),
-                                spacing="1",
-                                align="center",
-                            ),
-                            href=p.get("projectcatalyst_link", ""),
+                        href=p.get("projectcatalyst_link", ""),
                             underline="auto",
                             is_external=True,
                             style={"text-decoration": "none !important"},
@@ -518,9 +541,9 @@ def detail_modal() -> rx.Component:
                     rx.flex(
                         rx.tablet_and_desktop(
                             rx.grid(
-                                score_panel("提案整合性", p.get("alignment_score"), "indigo"),
-                                score_panel("実現可能性", p.get("feasibility_score"), "indigo"),
-                                score_panel("監査可能性", p.get("auditability_score"), "indigo"),
+                                score_panel("提案整合性", p.get("alignment_score"), "primary"),
+                                score_panel("実現可能性", p.get("feasibility_score"), "primary"),
+                                score_panel("監査可能性", p.get("auditability_score"), "primary"),
                                 columns={"base": "1", "md": "3"},
                                 spacing="4",
                                 width="100%",
@@ -530,15 +553,15 @@ def detail_modal() -> rx.Component:
                         rx.box(
                             rx.vstack(
                                 rx.vstack(
-                                    rx.text("課題", size="2", color="var(--gray-10)"),
-                                    rx.text(p.get("problem_ja", ""), size="3", line_height="1.6", color="var(--gray-11)"),
+                                    rx.text("課題", size="2", color="var(--color-text-200)"),
+                                    rx.text(p.get("problem_ja", ""), size="3", line_height="1.6", color="var(--color-text-200)"),
                                     spacing="1",
                                     width="100%",
                                     padding_top="8px",
                                 ),
                                 rx.vstack(
-                                    rx.text("解決策", size="2", color="var(--gray-10)"),
-                                    rx.text(p.get("solution_ja", ""), size="3", line_height="1.6", color="var(--gray-11)"),
+                                    rx.text("解決策", size="2", color="var(--color-text-200)"),
+                                    rx.text(p.get("solution_ja", ""), size="3", line_height="1.6", color="var(--color-text-200)"),
                                     spacing="1",
                                     width="100%",
                                 ),
@@ -551,9 +574,9 @@ def detail_modal() -> rx.Component:
                                 html_section("コストパフォーマンス", p.get("value_for_money_ja", "")),
                                 rx.mobile_only(
                                     rx.vstack(
-                                        score_panel("提案整合性", p.get("alignment_score"), "indigo"),
-                                        score_panel("実現可能性", p.get("feasibility_score"), "indigo"),
-                                        score_panel("監査可能性", p.get("auditability_score"), "indigo"),
+                                        score_panel("提案整合性", p.get("alignment_score"), "primary"),
+                                        score_panel("実現可能性", p.get("feasibility_score"), "primary"),
+                                        score_panel("監査可能性", p.get("auditability_score"), "primary"),
                                         spacing="1",
                                         width="100%",
                                         justify="center",
@@ -575,7 +598,15 @@ def detail_modal() -> rx.Component:
                         min_height="0",
                     ),
                 ),
-                rx.button("閉じる", on_click=AppState.close_modal, width="100%", variant="soft"),
+                rx.button(
+                    "閉じる",
+                    on_click=AppState.close_modal,
+                    width="100%",
+                    variant="soft",
+                    background_color="var(--color-primary-300)",
+                    color="var(--color-primary-100)",
+                    _hover={"background_color": "var(--color-primary-200)", "color": "white"},
+                ),
                 spacing="3",
                 width="100%",
                 align_items="stretch",
@@ -588,11 +619,10 @@ def detail_modal() -> rx.Component:
             class_name=(
                 "proposal-modal "
                 "shadow-xl rounded-2xl "
-                "border border-[rgba(0,0,0,0.08)] "
-                "bg-white text-[var(--gray-11)] "
-                "dark:border-[rgba(255,255,255,0.12)] "
-                "dark:bg-[var(--gray-3)] dark:text-[var(--gray-11)] "
-                "text-[var(--gray-11)]"
+                "border border-[var(--color-border)] "
+                "bg-[var(--color-bg-100)] text-[var(--color-text-200)] "
+                "dark:border-[var(--color-border)] "
+                "dark:bg-[var(--color-bg-100)] dark:text-[var(--color-text-200)] "
             ),
             style={"display": "flex", "flexDirection": "column"},
         ),
@@ -603,6 +633,7 @@ def detail_modal() -> rx.Component:
 
 def card_foreach_dict() -> rx.Component:
     return rx.box(
+        NEON_PULSE_STYLE,
         detail_modal(),
         rx.cond(
             AppState.load,
