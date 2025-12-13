@@ -1,5 +1,6 @@
 import reflex as rx
 from cardanoism.templates import template
+from cardanoism.backend.warmup import WarmupState
 
 
 
@@ -68,7 +69,7 @@ def hero_section_buttons(mobile=False):
         width="100%",
     )
 
-@template(route="/", title="カルダノイズム | カルダノガバナンス日本語ポータルサイト")
+@template(route="/", title="カルダノイズム | カルダノガバナンス日本語ポータルサイト", on_load=WarmupState.warm_up_only)
 def index() -> rx.Component:
     return rx.center(
         rx.vstack(

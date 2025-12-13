@@ -4,6 +4,7 @@ import sys
 import mariadb
 from typing import List, Dict, Any, Tuple
 from contextlib import contextmanager
+from time import perf_counter
 import reflex as rx
 import dataclasses
 
@@ -17,6 +18,9 @@ if not logger.handlers:
 logger.setLevel(logging.DEBUG)
 
 POOL_SIZE = 10
+
+# One-time warmup flag
+_warmed_up = False
 
 try:
     pool = mariadb.ConnectionPool(
@@ -56,6 +60,25 @@ def get_db():
         finally:
             conn.close()
 
+
+def warm_up():
+    """Lightweight query to warm up connection pool/metadata."""
+    try:
+        with get_db() as (cursor, _):
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+            logger.debug("Warm-up query executed.")
+    except Exception as e:
+        logger.debug("Warm-up query failed (non-fatal): %s", e)
+
+
+def ensure_warm():
+    """Ensure warm-up runs only once per process."""
+    global _warmed_up
+    if not _warmed_up:
+        warm_up()
+        _warmed_up = True
+
 def get_fund_options() -> List[Dict[str, str]]:
     """Fetch fund select options (value=id, label=label) from funds_new."""
     try:
@@ -74,6 +97,102 @@ def get_fund_options() -> List[Dict[str, str]]:
         logger.error("Failed to load fund options: %s", e)
         return []
 
+
+def normalize_fund_key(value: Any) -> str:
+    """Normalize fund key/slug for matching (case-insensitive, strip fund- prefix)."""
+    text = str(value or "").strip().lower()
+    for prefix in ("fund-", "fund ", "fund"):
+        if text.startswith(prefix):
+            text = text[len(prefix) :]
+            break
+    return text.replace("_", "").replace(" ", "")
+
+
+def fetch_funds() -> List[Dict[str, Any]]:
+    """Load fund records for list/detail views."""
+    try:
+        with get_db() as (cursor, _):
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    title,
+                    label,
+                    slug,
+                    description,
+                    status,
+                    currency,
+                    currency_symbol,
+                    amount,
+                    launched_at,
+                    proposals_count,
+                    funded_proposals_count,
+                    completed_proposals_count,
+                    hero_img_url,
+                    banner_img_url
+                FROM funds_new
+                ORDER BY launched_at DESC
+                """
+            )
+            rows = cursor.fetchall()
+            for row in rows:
+                # Cache common bool-ish helpers to avoid Var truthiness in the UI layer
+                row["has_label"] = bool(row.get("label"))
+                row["has_title"] = bool(row.get("title"))
+                row["has_description"] = bool(row.get("description"))
+                row["has_slug"] = bool(row.get("slug"))
+                row["has_id"] = bool(row.get("id"))
+                # Precompute display fields to avoid client-side conditional issues
+                label = row.get("label") or row.get("title") or "Fund"
+                title = row.get("title") or label
+                description = row.get("description") or "Fundごとの提案状況を確認できます。"
+                try:
+                    amount_comma = f"{int(float(row.get('amount') or 0)):,}"
+                except Exception:
+                    amount_comma = "-"
+
+                row["display_label"] = label
+                row["display_title"] = title
+                row["display_description"] = description
+                row["display_amount_comma"] = amount_comma
+                row["display_currency_symbol"] = row.get("currency_symbol") or ""
+                row["display_proposals"] = row.get("proposals_count") or 0
+                row["display_funded"] = row.get("funded_proposals_count") or 0
+                row["display_completed"] = row.get("completed_proposals_count") or 0
+                row["display_status"] = row.get("status") or "active"
+
+                slug = (row.get("slug") or "").strip()
+                row_id = str(row.get("id") or "").strip()
+                if slug:
+                    row["path"] = f"/catalyst/funds/{slug}"
+                elif row_id:
+                    row["path"] = f"/catalyst/funds/{row_id}"
+                else:
+                    row["path"] = "/catalyst"
+            return rows
+    except Exception as e:
+        logger.error("Failed to load funds list: %s", e)
+        return []
+
+
+def find_fund_record(identifier: str) -> Dict[str, Any]:
+    """Find a single fund by slug/label/id; fallback to newest fund."""
+    records = fetch_funds()
+    if not records:
+        return {}
+    key_raw = str(identifier or "").strip()
+    key_norm = normalize_fund_key(identifier)
+    for record in records:
+        record_id = str(record.get("id") or "").strip()
+        if record_id and (record_id == key_raw):
+            return record
+        if normalize_fund_key(record.get("slug")) == key_norm:
+            return record
+        if normalize_fund_key(record.get("label")) == key_norm:
+            return record
+        if normalize_fund_key(record.get("title")) == key_norm:
+            return record
+    return records[0]
 # @dataclasses.dataclass
 # class ProposalsVar:
 #     id: int
@@ -130,9 +249,9 @@ class AppState(rx.State):
     total_pages: int = 0
     total_items: int = 0
     inputed_value: str = ""
-    start_page: int = ""
-    end_page: int = ""
-    middle_page:list[int]
+    start_page: int = 1
+    end_page: int = 1
+    middle_page: list[int] = []
     load: bool = False
     challenge_ids: List[str] = []
     fund_ids: List[str] = []
@@ -143,22 +262,82 @@ class AppState(rx.State):
     modal_proposal: Dict[str, Any] = {}
     modal_loading: bool = False
     modal_pending_uuid: str = ""
+    fund_route_slug: str = ""
+    fund_meta: Dict[str, Any] = {}
+    fund_page_loading: bool = True
     
-    def on_load(self):
-        # super().__init__()
+    def _reset_query_state(self):
+        """Reset filters and pagination before a fresh query."""
+        self.proposals = []
         self.challenge_ids = []
         self.fund_ids = []
         self.funding_statuses = []
         self.project_statuses = []
-        self.inputed_value: str = ""
+        self.inputed_value = ""
+        self.current_page = 1
+        self.items_per_page = 30
+        self.page_number = []
+        self.pagenation_number = []
+        self.total_pages = 0
+        self.total_items = 0
+        self.start_page = 1
+        self.end_page = 1
+        self.middle_page = []
+        self.view_mode = "list"
+        self.modal_open = False
+        self.modal_proposal = {}
+        self.modal_loading = False
+        self.modal_pending_uuid = ""
+        self.load = False
+        self.fund_meta = {}
+        self.fund_route_slug = ""
+        self.fund_page_loading = True
+    
+    def on_load(self):
+        # super().__init__()
+        ensure_warm()
+        self._reset_query_state()
         # preload challenge options (all funds)
         self.load_challenge_options()
         self.data_fetch()
+
+    def load_fund_page(self):
+        """Initialize state for fund detail pages based on route param."""
+        self._reset_query_state()
+        # Clear any leftover fund filter/results before resolving the new fund.
+        self.fund_ids = []
+        self.proposals = []
+        self.fund_page_loading = True
+        self.load = False
+        self.fund_route_slug = self.router.page.params.get("fund", "")
+        self.fund_meta = find_fund_record(self.fund_route_slug)
+        fund_id = self.fund_meta.get("id")
+        if not fund_id:
+            self.load = True
+            self.fund_page_loading = False
+            return
+        try:
+            self.fund_meta["amount_comma"] = f"{int(float(self.fund_meta.get('amount') or 0)):,}"
+        except Exception:
+            self.fund_meta["amount_comma"] = ""
+        self.fund_ids = [str(fund_id)]
+        self.load_challenge_options(self.fund_ids)
+        self.data_fetch()
+        self.fund_page_loading = False
         
     def data_fetch(self):
+        t0 = perf_counter()
         with get_db() as (cursor, conn):
             logger.debug("DB connection opened: cursor=%s, conn=%s", cursor, conn)
             
+            base_from = """
+        FROM proposals_new p
+        INNER JOIN campaigns_new c
+            ON p.campaign_uuid = c.id
+        LEFT JOIN funds_new f
+            ON p.fund_uuid = f.id
+        """
+
             data_query = """
         SELECT
             p.uuid,
@@ -179,14 +358,9 @@ class AppState(rx.State):
             p.slug,
             c.title as campaign_title,
             c.title_jp as campaign_title_ja,
-            f.title as fund_title,
-            COUNT(*) OVER() AS total_items
-        FROM proposals_new p
-        INNER JOIN campaigns_new c
-            ON p.campaign_uuid = c.id
-        LEFT JOIN funds_new f
-            ON p.fund_uuid = f.id
+            f.title as fund_title
         """
+            data_query += base_from
         
             where_conditions: List[str] = ["1=1"]
             params: List[Any] = []
@@ -209,6 +383,8 @@ class AppState(rx.State):
             where_query = f" WHERE {' AND '.join(where_conditions)}"
             data_query += where_query
                 
+            search_clause = ""
+            search_params: List[Any] = []
             if self.inputed_value:
                 # LIKE検索対象をインデックス（FULLTEXT含む）設定済みカラムに限定
                 proposal_like_columns = [
@@ -221,20 +397,23 @@ class AppState(rx.State):
                     "solution_ja",
                     "tags",
                 ]
-                search_value = f"{str(self.inputed_value).lower()}%"
-                where_clause_parts = [f"LOWER(p.{column}) LIKE ?" for column in proposal_like_columns]
-                where_clause = " OR ".join(where_clause_parts)
-                params.extend([search_value] * (len(proposal_like_columns)))
-                data_query += f" AND ({where_clause})"
+                search_value = f"%{str(self.inputed_value)}%"
+                where_clause_parts = [f"p.{column} LIKE ?" for column in proposal_like_columns]
+                search_clause = " OR ".join(where_clause_parts)
+                search_params = [search_value] * len(where_clause_parts)
+                data_query += f" AND ({search_clause})"
+            data_params = params + search_params
                     
             asc_query = " ORDER BY p.fund_uuid DESC,CASE WHEN p.funding_status LIKE '%funded%' THEN 0 ELSE 1 END, p.yes_votes_count DESC, p.campaign_uuid DESC"
             limit_query = f" LIMIT {self.items_per_page} OFFSET {(self.current_page - 1) * self.items_per_page}"
             
             #データ取得クエリ
             query = data_query + asc_query + limit_query
-            logger.debug("Executing data query: %s | params=%s", query, params)
-            cursor.execute(query, params)
+            tq = perf_counter()
+            logger.debug("Executing data query: %s | params=%s", query, data_params)
+            cursor.execute(query, data_params)
             self.proposals = cursor.fetchall()
+            t_query = perf_counter()
             # add computed fund percent for UI use
             for p in self.proposals:
                 p["fund_title"] = p.get("fund_title") or p.get("fund_uuid") or ""
@@ -250,9 +429,29 @@ class AppState(rx.State):
                     p["fund_percent"] = round((amt_recv / amt_req) * 100, 1) if amt_req else 0.0
                 except Exception:
                     p["fund_percent"] = 0.0
-            # total items from window function (fallback 0 if no rows)
-            self.total_items = int(self.proposals[0].get("total_items", 0)) if self.proposals else 0
-            logger.debug("Total items: %s", self.total_items)
+            t_format = perf_counter()
+
+            # 総件数を常に取得
+            count_query = "SELECT COUNT(*) AS total_items " + base_from + where_query
+            if self.inputed_value:
+                count_query += f" AND ({search_clause})"
+            count_params = params + search_params
+            logger.debug("Executing count query: %s | params=%s", count_query, count_params)
+            cursor.execute(count_query, count_params)
+            total_row = cursor.fetchone() or {}
+            t_count = perf_counter()
+            try:
+                self.total_items = int(total_row.get("total_items", 0))
+            except Exception:
+                self.total_items = 0
+            logger.debug(
+                "Timing: query=%.3fms format=%.3fms count=%.3fms total=%.3fms | total items=%s",
+                (t_query - tq) * 1000,
+                (t_format - t_query) * 1000,
+                (t_count - t_format) * 1000,
+                (t_count - t0) * 1000,
+                self.total_items,
+            )
         
         #ページネーション変数
         self.total_pages = (self.total_items + self.items_per_page - 1) // self.items_per_page
@@ -531,3 +730,13 @@ class ProposalAppState(rx.State):
                     p["fund_percent"] = 0.0
             self.load = True
             logger.debug("Proposal detail loaded: %s", self.proposal)
+
+
+class FundListState(rx.State):
+    funds: List[Dict[str, Any]] = []
+    load: bool = False
+
+    def on_load(self):
+        self.load = False
+        self.funds = fetch_funds()
+        self.load = True
