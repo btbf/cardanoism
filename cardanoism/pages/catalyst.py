@@ -2,9 +2,8 @@ import reflex as rx
 from typing import Dict, List
 
 from cardanoism.templates import template
-from cardanoism.backend.db_connect import AppState, ProposalAppState, get_fund_options
+from cardanoism.backend.db_connect import AppState, get_fund_options
 from cardanoism.components.proposal_card import card_foreach_dict
-from cardanoism.components.proposal_detail import detail_foreach_dict
 from cardanoism.components.proposal_pagenation import pagination_component
 from cardanoism.components.componets import top_button_component
 
@@ -46,32 +45,46 @@ FUND_SELECT_DARK_CSS = """
 <style>
 @media (prefers-color-scheme: dark) {
   .filter__control {
-    background-color: var(--color-surface) !important;
-    border-color: var(--gray-a7) !important;
+    background-color: var(--color-bg-200) !important;
+    border-color: var(--color-border) !important;
     border-width: 1.4px !important;
   }
   .filter__menu {
-    background-color: var(--gray-3) !important;
+    background-color: var(--color-bg-200) !important;
   }
   .filter__option--is-focused {
-    background-color: var(--accent-10) !important;
+    background-color: var(--color-primary-300) !important;
   }
   .filter__placeholder {
-    color: var(--gray-10) !important;
+    color: var(--color-text-200) !important;
     font-weight: 450 !important;
   }
   .filter__multi-value {
-    background-color: var(--accent-9) !important;
-    }
+    background-color: var(--color-primary-300) !important;
+  }
   .filter__multi-value__label {
-    color: var(--glay-4) !important;
-    }
-   .filter__multi-value__label:hover {
-    color: var(--gray-a12) !important;
-    background-color: var(--accent-10) !important;
+    color: var(--color-primary-100) !important;
+  }
+  .filter__multi-value__label:hover {
+    color: var(--color-primary-100) !important;
+    background-color: var(--color-primary-300) !important;
+  }
 }
 </style>
 """
+
+
+def catalyst_breadcrumb() -> rx.Component:
+    return rx.hstack(
+        rx.link(rx.hstack(rx.icon("home", size=16), rx.text("HOME", size="2")), href="/", underline="none"),
+        rx.icon("chevron-right", size=14, color="var(--color-text-200)"),
+        rx.text("Catalyst", size="2", color="var(--color-text-200)"),
+        spacing="2",
+        align="center",
+        width="100%",
+        padding_top="15px",
+        padding_bottom="0px",
+    )
 
 
 @template(route="/catalyst/", title="カタリスト", on_load=AppState.on_load)
@@ -80,10 +93,10 @@ def catalyst() -> rx.Component:
         rx.html(FUND_SELECT_DARK_CSS),
         rx.box(
             rx.input(
-                placeholder="キーワード検索...(Ideascale番号・タイトルなど)",
+                placeholder="キーワードを入力...(Ideascaleリンクやタイトルなど)",
                 size="3",
                 max_length=100,
-                on_change=lambda value: AppState.set_inputed_value(value).debounce(300),
+                on_change=lambda value: AppState.set_inputed_value(value).debounce(500),
                 width="100%",
             ),
             width="100%",
@@ -92,7 +105,7 @@ def catalyst() -> rx.Component:
             challegeFilter(
                 classNamePrefix="filter",
                 options=FUND_SELECT_OPTIONS,
-                placeholder="ファンド",
+                placeholder="ファンドを選択",
                 onChange=lambda value: AppState.set_selected_fund_value(value),
                 isMulti=True,
                 styles=None,
@@ -102,7 +115,7 @@ def catalyst() -> rx.Component:
             challegeFilter(
                 options=AppState.challenge_options,
                 classNamePrefix="filter",
-                placeholder="チャレンジ",
+                placeholder="チャレンジを選択",
                 onChange=lambda value: AppState.set_selected_chllenge_value(value),
                 isMulti=True,
                 styles=None,
@@ -120,7 +133,7 @@ def catalyst() -> rx.Component:
             challegeFilter(
                 options=FUNDING_STATUS_OPTIONS,
                 classNamePrefix="filter",
-                placeholder="資金状況",
+                placeholder="資金調達ステータス",
                 onChange=lambda value: AppState.set_selected_fundingStatus_value(value),
                 isMulti=True,
                 styles=None,
@@ -130,7 +143,7 @@ def catalyst() -> rx.Component:
             challegeFilter(
                 options=PROJECT_STATUS_OPTIONS,
                 classNamePrefix="filter",
-                placeholder="プロジェクト状況",
+                placeholder="プロジェクト進捗",
                 onChange=lambda value: AppState.set_selected_projectStatus_value(value),
                 isMulti=True,
                 styles=None,
@@ -146,12 +159,12 @@ def catalyst() -> rx.Component:
         ),
         spacing="2",
         width="100%",
-        padding_y="20px",
+        padding_bottom="20px",
     )
 
     header = rx.flex(
         rx.flex(
-            rx.text(AppState.total_items, size="6", weight="bold", color="var(--indigo-11)"),
+            rx.text(AppState.total_items, size="6", weight="bold", color="var(--color-primary-100)"),
             rx.text("件", size="4"),
             align_items="baseline",
             margin_left="5px",
@@ -162,14 +175,50 @@ def catalyst() -> rx.Component:
                 rx.button(
                     rx.icon("list"),
                     variant=rx.cond(AppState.view_mode == "list", "solid", "soft"),
-                    color_scheme="indigo",
+                    color_scheme=None,
+                    background_color=rx.cond(
+                        AppState.view_mode == "list",
+                        "var(--color-primary-200)",
+                        "var(--color-bg-200)",
+                    ),
+                    color=rx.cond(
+                        AppState.view_mode == "list",
+                        "white",
+                        "var(--color-text-200)",
+                    ),
+                    _hover={
+                        "background_color": rx.cond(
+                            AppState.view_mode == "list",
+                            "var(--color-primary-300)",
+                            "var(--color-primary-300)",
+                        ),
+                        "color": "var(--color-primary-100)",
+                    },
                     size="2",
                     on_click=lambda: AppState.set_view_mode("list"),
                 ),
                 rx.button(
                     rx.icon("layout-grid"),
                     variant=rx.cond(AppState.view_mode == "grid", "solid", "soft"),
-                    color_scheme="indigo",
+                    color_scheme=None,
+                    background_color=rx.cond(
+                        AppState.view_mode == "grid",
+                        "var(--color-primary-200)",
+                        "var(--color-bg-200)",
+                    ),
+                    color=rx.cond(
+                        AppState.view_mode == "grid",
+                        "white",
+                        "var(--color-text-200)",
+                    ),
+                    _hover={
+                        "background_color": rx.cond(
+                            AppState.view_mode == "grid",
+                            "var(--color-primary-300)",
+                            "var(--color-primary-300)",
+                        ),
+                        "color": "var(--color-primary-100)",
+                    },
                     size="2",
                     on_click=lambda: AppState.set_view_mode("grid"),
                 ),
@@ -187,6 +236,7 @@ def catalyst() -> rx.Component:
         AppState.load,
         rx.box(
             rx.vstack(
+                catalyst_breadcrumb(),
                 filters,
                 header,
                 card_foreach_dict(),
@@ -199,12 +249,4 @@ def catalyst() -> rx.Component:
             max_width="1130px",
         ),
         rx.box(rx.spinner(size="3"), padding_y="15px"),
-    )
-
-
-@template(route="/catalyst/[proposal_id]", title="カタリスト | 詳細", on_load=ProposalAppState.on_load)
-def proposal_detail_page():
-    return rx.vstack(
-        detail_foreach_dict(),
-        margin_top="15px",
     )

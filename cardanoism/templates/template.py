@@ -10,6 +10,37 @@ from typing import Callable
 
 import reflex as rx
 
+# Palette tuned to new logo colors
+CUSTOM_COLORS = """
+:root {
+  /* Light mode */
+  --color-primary-100: #000E1C;  /* ロゴ濃紺 */
+  --color-primary-200: #0071C9;  /* ロゴライトブルー */
+  --color-primary-300: #4FA9FF;  /* ホバー/アクセント用の少し明るいブルー */
+  --color-text-100:    #1A1A1A;
+  --color-text-200:    #4A4A4A;
+  --color-bg-100:      #FFFFFF;
+  --color-bg-200:      #F6F8FB;
+  --color-bg-300:      #D8DDE5;
+  --color-border:      #D8DDE5;
+}
+[data-theme="dark"] {
+  /* Dark mode */
+  --color-primary-100: #0071C9;  /* ロゴブルーを軸に */
+  --color-primary-200: #4FA9FF;  /* 明るめブルー（ホバー） */
+  --color-primary-300: #1A2635;  /* 低彩度の濃紺 */
+  --color-text-100:    #F1F4FA;
+  --color-text-200:    #C3CADA;
+  --color-bg-100:      #000000;
+  --color-bg-200:      #0B121C;
+  --color-bg-300:      #1A2630;
+  --color-border:      #1F2A38;
+}
+body {
+  background-color: var(--color-bg-100);
+  color: var(--color-text-100);
+}
+"""
 # Meta tags for the app.
 default_meta = [
     {
@@ -124,12 +155,14 @@ def template(
         
         def templated_page():
             return rx.vstack(
+                rx.html(f"<style>{CUSTOM_COLORS}</style>") if CUSTOM_COLORS else rx.fragment(),
                 # sidebar(),
                 navbar_icons(),
                 rx.box(
                     rx.box(
                         page_content(),
                         **styles.template_content_style,
+                        width="100%",
                     ),
                     **styles.template_page_style,
                 ),
@@ -137,8 +170,8 @@ def template(
                 #menu_button(),
                 align="start",
                 background=rx.color_mode_cond(
-                    f"radial-gradient(circle at top right, {rx.color('accent', 2)}, {rx.color('mauve', 1)})",
-                    f"radial-gradient(circle at top right, {rx.color('gray', 3)}, {rx.color('gray', 1)})",
+                    "var(--color-bg-100)",
+                    "var(--color-bg-100)",
                 ),
                 position="relative",
                 style={"scrollbar_gutter": "stable"},
