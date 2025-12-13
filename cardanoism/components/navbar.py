@@ -1,31 +1,21 @@
 import reflex as rx
-from reflex.style import toggle_color_mode
 
-def navbar_icons_item(
-    text: str, icon: str, url: str, disabled: bool
-) -> rx.Component:
+
+def navbar_icons_item(text: str, icon: str, url: str, disabled: bool) -> rx.Component:
     return rx.link(
         rx.button(
-            rx.hstack(
-                rx.icon(icon),
-                rx.text(text, size="4", weight="medium"),
-            ),
+            rx.hstack(rx.icon(icon), rx.text(text, size="4", weight="medium")),
             variant="ghost",
             size="2",
-            is_disabled=disabled
+            is_disabled=disabled,
         ),
         href=url,
     )
 
 
-def navbar_icons_menu_item(
-    text: str, icon: str, url: str
-) -> rx.Component:
+def navbar_icons_menu_item(text: str, icon: str, url: str) -> rx.Component:
     return rx.link(
-        rx.hstack(
-            rx.icon(icon, size=16),
-            rx.text(text, size="3", weight="medium"),
-        ),
+        rx.hstack(rx.icon(icon, size=16), rx.text(text, size="3", weight="medium")),
         href=url,
     )
 
@@ -37,27 +27,25 @@ def navbar_icons() -> rx.Component:
                 rx.hstack(
                     rx.link(
                         rx.image(
-                        src="/cardanoism-logo.png",
-                        width="15em",
-                        height="auto",
-                        alt="カルダノイズム",
+                            src="/cardanoism-logo.png",
+                            width="15em",
+                            height="auto",
+                            alt="カルダノイズム",
                         ),
-                        href="./"
+                        href="./",
                     ),
-
                 ),
                 rx.hstack(
                     navbar_icons_item("ホーム", "home", "/", False),
                     navbar_icons_item("カタリスト", "landmark", "/catalyst", False),
                     navbar_icons_item("ガバナンス", "vote", "/#", True),
-                    #navbar_icons_item("連絡先", "mail", "/#", False),
                     spacing="6",
                     padding_right="5px",
                 ),
                 justify_content="space-between",
                 align_items="center",
                 max_width="1130px",
-                margin_x="auto"
+                margin_x="auto",
             ),
         ),
         rx.mobile_and_tablet(
@@ -65,32 +53,21 @@ def navbar_icons() -> rx.Component:
                 rx.hstack(
                     rx.link(
                         rx.image(
-                        src="/cardanoism-logo.png",
-                        width="15em",
-                        height="auto",
-                        alt="カルダノイズム",
+                            src="/cardanoism-logo.png",
+                            width="15em",
+                            height="auto",
+                            alt="カルダノイズム",
                         ),
-                        href="./"
+                        href="./",
                     ),
                     align_items="center",
                 ),
                 rx.menu.root(
-                    rx.menu.trigger(
-                        rx.icon("menu", size=30)
-                    ),
+                    rx.menu.trigger(rx.icon("menu", size=30)),
                     rx.menu.content(
-                        navbar_icons_menu_item(
-                            "ホーム", "home", "/"
-                        ),
-                        navbar_icons_menu_item(
-                            "カタリスト", "coins", "/catalyst"
-                        ),
-                        navbar_icons_menu_item(
-                            "ガバナンス", "layers", "/#"
-                        ),
-                        # navbar_icons_menu_item(
-                        #     "連絡先", "mail", "/#"
-                        # ),
+                        navbar_icons_menu_item("ホーム", "home", "/"),
+                        navbar_icons_menu_item("カタリスト", "coins", "/catalyst"),
+                        navbar_icons_menu_item("ガバナンス", "layers", "/#"),
                     ),
                 ),
                 justify_content="space-between",
@@ -104,5 +81,4 @@ def navbar_icons() -> rx.Component:
         position="fixed",
         z_index="500",
         width="100%",
-        #border_radius="12px",
     )
