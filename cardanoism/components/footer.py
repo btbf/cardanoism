@@ -90,12 +90,12 @@ def footer_three_columns() -> rx.Component:
             rx.flex(
                 rx.hstack(
                     rx.image(
-                        src="/cardanoism-logo.png",
+                        src="/cardanoism-new-logo-light.png",
                         width="8em",
                         height="auto",
                     ),
                     rx.text(
-                        "© 2024 Cardanoism by Everada Labs",
+                        "© 2025 Cardanoism by Everada Labs",
                         size="3",
                         white_space="nowrap",
                         weight="medium",

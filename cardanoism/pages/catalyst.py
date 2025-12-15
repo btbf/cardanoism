@@ -76,9 +76,9 @@ FUND_SELECT_DARK_CSS = """
 
 def catalyst_breadcrumb() -> rx.Component:
     return rx.hstack(
-        rx.link(rx.hstack(rx.icon("home", size=16), rx.text("HOME", size="2")), href="/", underline="none"),
+        rx.link(rx.icon("home", size=16), href="/", underline="none",color_scheme="gray"),
         rx.icon("chevron-right", size=14, color="var(--color-text-200)"),
-        rx.text("Catalyst", size="2", color="var(--color-text-200)"),
+        rx.text("Catalyst", size="2", color="var(--color-text-100)",weight="medium"),
         spacing="2",
         align="center",
         width="100%",
@@ -93,7 +93,7 @@ def catalyst() -> rx.Component:
         rx.html(FUND_SELECT_DARK_CSS),
         rx.box(
             rx.input(
-                placeholder="キーワードを入力...(Ideascaleリンクやタイトルなど)",
+                placeholder="キーワードを入力...(タイトル、タグ、提案者名など)",
                 size="3",
                 max_length=100,
                 on_change=lambda value: AppState.set_inputed_value(value).debounce(500),
@@ -164,7 +164,7 @@ def catalyst() -> rx.Component:
 
     header = rx.flex(
         rx.flex(
-            rx.text(AppState.total_items, size="6", weight="bold", color="var(--color-primary-100)"),
+            rx.text(AppState.total_items, size="6", weight="bold", color="var(--color-accent-text)"),
             rx.text("件", size="4"),
             align_items="baseline",
             margin_left="5px",
@@ -178,24 +178,25 @@ def catalyst() -> rx.Component:
                     color_scheme=None,
                     background_color=rx.cond(
                         AppState.view_mode == "list",
-                        "var(--color-primary-200)",
+                        "var(--color-accent-text)",
                         "var(--color-bg-200)",
                     ),
                     color=rx.cond(
                         AppState.view_mode == "list",
-                        "white",
+                        "var(--color-primary-100)",
                         "var(--color-text-200)",
                     ),
                     _hover={
                         "background_color": rx.cond(
                             AppState.view_mode == "list",
-                            "var(--color-primary-300)",
-                            "var(--color-primary-300)",
+                            "var(--color-accent-text)",
+                            "var(--color-accent-text)",
                         ),
                         "color": "var(--color-primary-100)",
                     },
                     size="2",
                     on_click=lambda: AppState.set_view_mode("list"),
+                    cursor="pointer",
                 ),
                 rx.button(
                     rx.icon("layout-grid"),
@@ -203,24 +204,25 @@ def catalyst() -> rx.Component:
                     color_scheme=None,
                     background_color=rx.cond(
                         AppState.view_mode == "grid",
-                        "var(--color-primary-200)",
+                        "var(--color-accent-text)",
                         "var(--color-bg-200)",
                     ),
                     color=rx.cond(
                         AppState.view_mode == "grid",
-                        "white",
+                        "var(--color-primary-100)",
                         "var(--color-text-200)",
                     ),
                     _hover={
                         "background_color": rx.cond(
                             AppState.view_mode == "grid",
-                            "var(--color-primary-300)",
-                            "var(--color-primary-300)",
+                            "var(--color-accent-text)",
+                            "var(--color-accent-text)",
                         ),
                         "color": "var(--color-primary-100)",
                     },
                     size="2",
                     on_click=lambda: AppState.set_view_mode("grid"),
+                    cursor="pointer",
                 ),
                 spacing="2",
                 align_items="center",

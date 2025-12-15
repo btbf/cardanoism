@@ -309,13 +309,13 @@ def fund_breadcrumb() -> rx.Component:
     """Simple breadcrumb for fund detail pages."""
     fund = AppState.fund_meta
     return rx.hstack(
-        rx.link(rx.hstack(rx.icon("home", size=16), rx.text("HOME", size="2")), href="/", underline="none"),
+        rx.link(rx.icon("home", size=16), href="/", underline="none",color_scheme="gray"),
         rx.icon("chevron-right", size=14, color="var(--color-text-200)"),
-        rx.link(rx.text("Catalyst", size="2"), href="/catalyst", underline="none"),
+        rx.link(rx.text("Catalyst", size="2"), href="/catalyst", underline="none", color_scheme="gray"),
         rx.icon("chevron-right", size=14, color="var(--color-text-200)"),
-        rx.link(rx.text("Funds", size="2"), href="/catalyst/funds", underline="none"),
+        rx.link(rx.text("Funds", size="2"), href="/catalyst/funds", underline="none",color_scheme="gray"),
         rx.icon("chevron-right", size=14, color="var(--color-text-200)"),
-        rx.text(fund.get("display_title", fund.get("title", fund.get("label", ""))), size="2", color="var(--color-text-200)"),
+        rx.text(fund.get("display_title", fund.get("title", fund.get("label", ""))), size="2", color="var(--color-text-100)", weight="medium"),
         spacing="2",
         align="center",
         width="100%",
@@ -329,7 +329,7 @@ def proposal_controls() -> rx.Component:
     return rx.hstack(
         rx.hstack(
             rx.text(AppState.total_items, size="6", weight="bold", color="var(--color-primary-100)"),
-            rx.text("????", size="3", color="var(--color-text-200)"),
+            rx.text("件", size="3", color="var(--color-text-200)"),
             spacing="2",
             align="baseline",
         ),

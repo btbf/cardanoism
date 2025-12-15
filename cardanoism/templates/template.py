@@ -14,14 +14,17 @@ import reflex as rx
 CUSTOM_COLORS = """
 :root {
   /* Light mode */
-  --color-primary-100: #000E1C;  /* ロゴ濃紺 */
+  --color-primary-100: #073ff4;  /* ロゴ濃紺 */ バッジ文字色
   --color-primary-200: #0071C9;  /* ロゴライトブルー */
-  --color-primary-300: #4FA9FF;  /* ホバー/アクセント用の少し明るいブルー */
-  --color-text-100:    #1A1A1A;
-  --color-text-200:    #4A4A4A;
-  --color-bg-100:      #FFFFFF;
+  --color-primary-300: #f5f4f1;  /* ホバー/アクセント用の少し明るいブルー */
+  --color-text-100:    #444444;  /* メインテキストカラー */
+  --color-text-200:    #4c4c4c;  /* サブテキストカラー */
+  --color-text-300:    #707070;  /* サブテキストカラー2 */
+  --color-accent-text: #ffcf00;  /* ロゴカラー色 */
+  --color-bg-100:      #fcfcfc;
   --color-bg-200:      #F6F8FB;
   --color-bg-300:      #D8DDE5;
+  --color-bg-accent:   #808080;  /* 見出し背景グレー */
   --color-border:      #D8DDE5;
 }
 [data-theme="dark"] {
@@ -29,8 +32,9 @@ CUSTOM_COLORS = """
   --color-primary-100: #0071C9;  /* ロゴブルーを軸に */
   --color-primary-200: #4FA9FF;  /* 明るめブルー（ホバー） */
   --color-primary-300: #1A2635;  /* 低彩度の濃紺 */
-  --color-text-100:    #F1F4FA;
-  --color-text-200:    #C3CADA;
+  --color-text-100:    #444444;  /* メインテキストカラー */
+  --color-text-200:    #999999;  /* サブテキストカラー */
+  --color-text-300:    #CCCCCC;  /* サブテキストカラー2 */
   --color-bg-100:      #000000;
   --color-bg-200:      #0B121C;
   --color-bg-300:      #1A2630;

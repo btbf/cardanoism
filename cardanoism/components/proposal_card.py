@@ -23,17 +23,23 @@ class CatalystRating(ReactStarLib):
 
 proposal_rating = CatalystRating.create
 
-# Neon pulse animation for "in progress" badges.
-NEON_PULSE_STYLE = rx.html(
+STATUS_DOT_STYLE = rx.html(
     """
     <style>
-      @keyframes neon-pulse {
-        0%   { box-shadow: 0 0 0 0 rgba(99,102,241,0.55); }
-        70%  { box-shadow: 0 0 0 12px rgba(99,102,241,0); }
-        100% { box-shadow: 0 0 0 0 rgba(99,102,241,0); }
+      @keyframes status-dot-blink {
+        0%   { opacity: 1; transform: scale(1); }
+        50%  { opacity: 0.35; transform: scale(0.8); }
+        100% { opacity: 1; transform: scale(1); }
       }
-      .neon-pulse {
-        animation: neon-pulse 1.6s ease-in-out infinite;
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 9999px;
+        display: inline-block;
+        vertical-align: middle;
+      }
+      .status-dot.blink {
+        animation: status-dot-blink 1.7s ease-in-out infinite;
       }
     </style>
     """
@@ -45,40 +51,73 @@ def ProjectRating(value_rate) -> rx.Component:
     return rx.box(proposal_rating(value="5", defaultValue=value_rate))
 
 
+def badge_with_dot(label: str, dot_color: str, *, bg: str | None = None, text_color: str | None = None, blink: bool = False) -> rx.Component:
+    """Badge with leading colored dot; optional blink for active states."""
+    dot_class = "status-dot blink" if blink else "status-dot"
+    return rx.badge(
+        rx.hstack(
+            rx.box(
+                class_name=dot_class,
+                background_color=dot_color,
+                width="8px",
+                height="8px",
+                border="1px solid rgba(255,255,255,0.55)",
+            ),
+            rx.text(label, size="1"),
+            spacing="1",
+            align="center",
+        ),
+        variant="surface",
+        radius="full",
+        size="1",
+        background_color=bg,
+        color=text_color,
+        padding_x="8px",
+        padding_y="4px",
+    )
+
+
 def status_badge(proposal: Dict[str, Any]) -> rx.Component:
     """Status pill aligned with Fund badge sizing."""
     funding_status = proposal.get("funding_status", "")
     project_status = proposal.get("project_status", "")
+    # color palette
+    blue = "#073ff4"
+    indigo = "#4b0082"
+    gray = "#808080"
+    gray_text = "var(--color-text-200)"
+    green = "#22c55e"
+    badge_bg = None  # use solid color per status
     return rx.cond(
         funding_status == "funded",
         rx.match(
             project_status,
-            ("in_progress", rx.badge("進行中", variant="solid", size="2", radius="full", background_color="var(--color-primary-200)", color="white", class_name="neon-pulse")),
-            ("complete", rx.badge("完了", variant="surface", size="2", radius="full", background_color="var(--color-primary-300)", color="var(--color-primary-100)")),
-            rx.badge("採択", variant="surface", size="2", radius="full", background_color="var(--color-primary-300)", color="var(--color-primary-100)"),
+            ("in_progress", badge_with_dot("進行中", "white", bg=blue, text_color="white", blink=True)),
+            ("complete", badge_with_dot("完了", "white", bg=indigo, text_color="white")),
+            badge_with_dot("採択", "white", bg=indigo, text_color="white"),
         ),
         rx.match(
             funding_status,
-            ("not_approved", rx.badge("不採択", variant="surface", size="2", radius="full", background_color="var(--color-bg-300)", color="var(--color-text-200)")),
-            ("over_budget", rx.badge("申請不備", variant="surface", size="2", radius="full", background_color="var(--color-bg-300)", color="var(--color-text-200)")),
-            ("pending", rx.badge("投票期間中", variant="surface", size="2", radius="full", background_color="var(--color-primary-300)", color="var(--color-primary-100)")),
-            rx.badge("進行中", variant="solid", size="2", radius="full", background_color="var(--color-primary-200)", color="white", class_name="neon-pulse"),
+            ("not_approved", badge_with_dot("不採択", "white", bg=gray, text_color=gray_text)),
+            ("over_budget", badge_with_dot("申請不備", "white", bg=gray, text_color=gray_text)),
+            ("pending", badge_with_dot("投票期間中", "white", bg=green, text_color="white", blink=True)),
+            badge_with_dot("進行中", "white", bg=blue, text_color="white", blink=True),
         ),
     )
 
 
-def pill(text: str, icon: str, scheme: str = "indigo") -> rx.Component:
+def pill(text: str, icon: str, scheme: str) -> rx.Component:
     return rx.badge(
         rx.hstack(
-            rx.icon(icon, size=14, color="var(--color-primary-100)"),
-            rx.text(text, size="1", color="var(--color-primary-100)"),
+            rx.icon(icon, size=14),
+            rx.text(text, size="1"),
             spacing="1",
             align="center",
         ),
         variant="surface",
         radius="full",
         size="2",
-        background_color="var(--color-primary-300)",
+        color_scheme=scheme,
     )
 
 
@@ -106,11 +145,11 @@ def fund_progress_bar(proposal: Dict[str, Any]) -> rx.Component:
                 rx.progress(
                     value=proposal["fund_percent"],
                     height="10px",
-                    color_scheme="green",
+                    color_scheme="indigo",
                 ),
                 width="160px",
             ),
-            rx.text(f"{proposal['fund_percent']}%", size="2", color="var(--green-11)", weight="bold"),
+            rx.text(f"{proposal['fund_percent']}%", size="2", color="var(--indigo-11)", weight="bold"),
             spacing="2",
             align="center",
         ),
@@ -163,32 +202,28 @@ def html_section(title: str, content: Any) -> rx.Component:
     safe_content = rx.cond(content, content, "")
     return rx.vstack(
         rx.box(
-            rx.hstack(
-                rx.icon("bookmark", size=14, color="white"),
-                rx.text(
-                    title,
-                    size="1",
-                    color="white",
-                    weight="bold",
-                    class_name="tracking-wide text-[12px] uppercase",
-                    style={"letterSpacing": "0.08em"},
-                ),
-                spacing="2",
-                align="center",
+            rx.text(
+                title,
+                size="3",
+                color="white",
+                weight="bold",
+                class_name="tracking-wide uppercase",
+                style={"letterSpacing": "0.08em"},
             ),
             padding_x="12px",
             padding_y="8px",
-            background_color="var(--indigo-10)",
+            background_color="var(--color-bg-accent)",
             border_radius="6px",
             width="100%",
         ),
         rx.box(
             rx.html(safe_content),
             class_name=(
-                "text-[16px] leading-7 text-[var(--gray-11)] prose max-w-none "
-                "prose-strong:text-[var(--indigo-12)] dark:prose-strong:text-[var(--indigo-12)]"
+                "text-[16px] leading-7 text-[var(--color-text-200)] prose max-w-none "
+                "prose-strong:text-[var(--color-text-100)] dark:prose-strong:text-[var(--color-text-100)]"
             ),
             width="100%",
+            padding_x="8px",
         ),
         spacing="1",
         width="100%",
@@ -225,7 +260,6 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
                 weight="bold",
                 color="var(--color-primary-100)",
             ),
-            rx.text(proposal["currency"], size="2", color="var(--color-text-200)"),
             fund_progress,
             spacing="2",
             align="center",
@@ -248,14 +282,12 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
             align="center",
         ),
         rx.hstack(
-            rx.icon("coins", size=16, color="var(--indigo-9)"),
             rx.text(
                 f"{proposal['currency_symbol']} {proposal['amount_requested_comma']}",
                 size="3",
                 weight="bold",
-                color="var(--indigo-11)",
+                color="var(--color-primary-100)",
             ),
-            rx.text(proposal["currency"], size="2", color="var(--gray-9)"),
             spacing="2",
             align="center",
         ),
@@ -286,7 +318,7 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
                 rx.hstack(
                     rx.hstack(
                         status_badge(proposal),
-                        pill(f"{fund_label(proposal)}", "layers", "indigo"),
+                        pill(f"{fund_label(proposal)}", "layers", "yellow"),
                         pill(campaign_label(proposal), "flag", "gray"),
                         spacing="2",
                         wrap="wrap",
@@ -299,15 +331,15 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
                     proposal["title_ja"],
                     size="4",
                     weight="bold",
-                    color="var(--indigo-12)",
+                    color="var(--color-text-100)",
                     line_height="1.2",
                     class_name="hover:text-indigo-10 transition-colors cursor-pointer",
                 ),
-                rx.text(proposal["title"], size="2", color="var(--gray-9)", class_name="mt-0"),
+                rx.text(proposal["title"], size="2", color="var(--color-text-300)", class_name="mt-0"),
             rx.text(
                 description,
                 size="3",
-                color="var(--gray-10)",
+                color="var(--color-text-200)",
                 line_height="1.6",
                 text_wrap="wrap",
                 class_name="mt-2",
@@ -326,7 +358,7 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
         padding="18px",
         class_name=(
             "transition-all duration-300 overflow-hidden "
-            "bg-[var(--color-bg-200)] border border-[var(--color-border)] "
+            "bg-[var(--color-bg-200)] border-[var(--color-border)] "
             "hover:border-[var(--color-primary-200)] "
             "hover:shadow-[0_0_6px_rgba(79,169,255,0.12)] "
             "dark:bg-[var(--color-bg-200)] dark:border-[var(--color-border)] "
@@ -362,7 +394,7 @@ def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
             rx.vstack(
                 rx.hstack(
                     status_badge(proposal),
-                    pill(f"{fund_label(proposal)}", "layers", "indigo"),
+                    pill(f"{fund_label(proposal)}", "layers", "yellow"),
                     pill(campaign_label(proposal), "flag", "gray"),
                     spacing="2",
                     wrap="wrap",
@@ -393,12 +425,11 @@ def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
                             align="center",
                         ),
                         rx.hstack(
-                            rx.icon("coins", size=14, color="var(--indigo-9)"),
                             rx.text(
                                 f"{proposal['currency_symbol']} {proposal['amount_requested_comma']}",
                                 size="3",
                                 weight="bold",
-                                color="var(--indigo-11)",
+                                color="var(--color-primary-100)",
                             ),
                             spacing="2",
                             align="center",
@@ -421,7 +452,7 @@ def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
         ),
         class_name=(
             "transition-all duration-300 overflow-hidden "
-            "bg-[var(--color-bg-200)] border border-[var(--color-border)] "
+            "bg-[var(--color-bg-200)] border-[var(--color-border)] "
             "hover:border-[var(--color-primary-200)] "
             "hover:shadow-[0_0_6px_rgba(79,169,255,0.12)] "
             "dark:bg-[var(--color-bg-200)] dark:border-[var(--color-border)] "
@@ -474,33 +505,43 @@ def detail_modal() -> rx.Component:
             rx.vstack(
                 rx.hstack(
                     rx.vstack(
-            rx.text(
-                p.get("title_ja", "提案詳細"),
-                size="5",
-                weight="bold",
-                width="100%",
-                color="var(--color-primary-100)",
-                style={"wordBreak": "break-word"},
-            ),
-            rx.text(
-                p.get("title", ""),
-                size="2",
-                color="var(--color-text-200)",
-                width="100%",
-                style={"wordBreak": "break-word"},
-            ),
+                        rx.text(
+                            p.get("title_ja", "提案詳細"),
+                            size="5",
+                            weight="bold",
+                            width="100%",
+                            color="var(--color-text-100)",
+                            style={"wordBreak": "break-word"},
+                        ),
+                        rx.text(
+                            p.get("title", ""),
+                            size="2",
+                            color="var(--color-text-200)",
+                            width="100%",
+                            style={"wordBreak": "break-word"},
+                        ),
                         spacing="1",
                         align_items="start",
                     ),
-                    rx.icon_button("x", on_click=AppState.close_modal, variant="ghost"),
+                    rx.button(
+                        rx.icon("x"),
+                        variant="solid",
+                        color_scheme=None,
+                        background_color="var(--color-bg-100)",
+                        color="var(--color-text-200)",
+                        _hover={"background_color": "var(--color-accent-text)"},
+                        size="2",
+                        on_click=AppState.close_modal,
+                        cursor="pointer",
+                    ),
                     justify="between",
                     align="start",
                     width="100%",
                 ),
             rx.hstack(
                 status_badge(p),
-                pill(f"{fund_label(p)}", "layers", "primary"),
-                pill(campaign_label(p), "flag", "primary"),
+                pill(f"{fund_label(p)}", "layers", "yellow"),
+                pill(campaign_label(p), "flag", "gray"),
                 rx.hstack(
                     rx.text(p.get("user_name", ""), size="2", color="var(--color-text-200)"),
                     rx.text(
@@ -604,8 +645,9 @@ def detail_modal() -> rx.Component:
                     width="100%",
                     variant="soft",
                     background_color="var(--color-primary-300)",
-                    color="var(--color-primary-100)",
-                    _hover={"background_color": "var(--color-primary-200)", "color": "white"},
+                    color="var(--color-text-100)",
+                    cursor="pointer",
+                    _hover={"background_color": "var(--color-accent-text)", "color": "var(--color-text-100)"},
                 ),
                 spacing="3",
                 width="100%",
@@ -633,7 +675,7 @@ def detail_modal() -> rx.Component:
 
 def card_foreach_dict() -> rx.Component:
     return rx.box(
-        NEON_PULSE_STYLE,
+        STATUS_DOT_STYLE,
         detail_modal(),
         rx.cond(
             AppState.load,

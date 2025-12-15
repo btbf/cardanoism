@@ -1,22 +1,38 @@
 import reflex as rx
 
 
-def navbar_icons_item(text: str, icon: str, url: str, disabled: bool) -> rx.Component:
+UNDERLINE_STYLE = {
+    "color": "var(--color-text-100)",
+    "textDecoration": "none",
+    "display": "inline-block",
+    "backgroundImage": "linear-gradient(#ffcf00, #ffcf00)",
+    "backgroundSize": "0% 2px",
+    "backgroundPosition": "0 100%",
+    "backgroundRepeat": "no-repeat",
+    "transition": "color 0.2s ease, background-size 0.2s ease",
+    "paddingBottom": "2px",
+}
+
+HOVER_UNDERLINE = {"color": "var(--color-text-100)", "backgroundSize": "100% 2px"}
+
+
+def navbar_icons_item(text: str, url: str, disabled: bool) -> rx.Component:
+    disabled_style = {"pointerEvents": "none", "opacity": "0.6"} if disabled else {}
     return rx.link(
-        rx.button(
-            rx.hstack(rx.icon(icon), rx.text(text, size="4", weight="medium")),
-            variant="ghost",
-            size="2",
-            is_disabled=disabled,
-        ),
+        rx.text(text, size="4", weight="medium"),
         href=url,
+        style=UNDERLINE_STYLE | disabled_style,
+        _hover=HOVER_UNDERLINE,
     )
 
 
-def navbar_icons_menu_item(text: str, icon: str, url: str) -> rx.Component:
+def navbar_icons_menu_item(text: str, url: str, disabled: bool = False) -> rx.Component:
+    disabled_style = {"pointerEvents": "none", "opacity": "0.6"} if disabled else {}
     return rx.link(
-        rx.hstack(rx.icon(icon, size=16), rx.text(text, size="3", weight="medium")),
+        rx.text(text, size="3", weight="medium"),
         href=url,
+        style=UNDERLINE_STYLE | disabled_style,
+        _hover=HOVER_UNDERLINE,
     )
 
 
@@ -26,19 +42,55 @@ def navbar_icons() -> rx.Component:
             rx.hstack(
                 rx.hstack(
                     rx.link(
-                        rx.image(
-                            src="/cardanoism-logo.png",
-                            width="15em",
-                            height="auto",
-                            alt="カルダノイズム",
+                        rx.color_mode_cond(
+                            light=rx.image(
+                                src="/cardanoism-new-logo-light.png",
+                                width="15em",
+                                height="auto",
+                                alt="カルダノイズム",
+                            ),
+                            dark=rx.image(
+                                src="/cardanoism-new-logo-dark.png",
+                                width="15em",
+                                height="auto",
+                                alt="カルダノイズム",
+                            ),
                         ),
                         href="./",
                     ),
                 ),
                 rx.hstack(
-                    navbar_icons_item("ホーム", "home", "/", False),
-                    navbar_icons_item("カタリスト", "landmark", "/catalyst", False),
-                    navbar_icons_item("ガバナンス", "vote", "/#", True),
+                    navbar_icons_item("ホーム", "/", False),
+                    rx.menu.root(
+                        rx.menu.trigger(
+                            rx.button(
+                                rx.text("カタリスト", size="4", weight="medium"),
+                                rx.icon("chevron-down"),
+                                weight="medium",
+                                variant="ghost",
+                                size="3",
+                            ),
+                        ),
+                        rx.menu.content(
+                            rx.menu.item(        
+                                rx.link(
+                                    rx.text("ファンド一覧", size="3", weight="medium"),
+                                    href="/catalyst/funds",
+                                    width="100%",
+                                    color="inherit",
+                                ),
+                            ),
+                            rx.menu.item(
+                                rx.link(
+                                    rx.text("提案一覧", size="3", weight="medium"),
+                                    href="/catalyst",
+                                    width="100%",
+                                    color="inherit",
+                                ),
+                            ),
+                        ),
+                    ),
+                    navbar_icons_item("ガバナンス", "/#", True),
                     spacing="6",
                     padding_right="5px",
                 ),
@@ -53,7 +105,7 @@ def navbar_icons() -> rx.Component:
                 rx.hstack(
                     rx.link(
                         rx.image(
-                            src="/cardanoism-logo.png",
+                            src="/cardanoism-new-logo-light.png",
                             width="15em",
                             height="auto",
                             alt="カルダノイズム",
@@ -65,16 +117,16 @@ def navbar_icons() -> rx.Component:
                 rx.menu.root(
                     rx.menu.trigger(rx.icon("menu", size=30)),
                     rx.menu.content(
-                        navbar_icons_menu_item("ホーム", "home", "/"),
-                        navbar_icons_menu_item("カタリスト", "coins", "/catalyst"),
-                        navbar_icons_menu_item("ガバナンス", "layers", "/#"),
+                        navbar_icons_menu_item("ホーム", "/"),
+                        navbar_icons_menu_item("カタリスト", "/catalyst"),
+                        navbar_icons_menu_item("ガバナンス", "/#", True),
                     ),
                 ),
                 justify_content="space-between",
                 align_items="center",
             ),
         ),
-        background=f"radial-gradient(circle at top right, {rx.color('accent', 2)}, {rx.color('mauve', 1)});",
+        background="var(--color-bg-100)",
         padding_x="5em",
         padding_y="1em",
         justify="center",
