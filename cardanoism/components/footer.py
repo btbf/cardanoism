@@ -60,14 +60,17 @@ def dark_mode_toggle() -> rx.Component:
         rx.segmented_control.item(
             rx.icon(tag="monitor", size=20),
             value="system",
+            cursor="pointer",
         ),
         rx.segmented_control.item(
             rx.icon(tag="sun", size=20),
             value="light",
+            cursor="pointer",
         ),
         rx.segmented_control.item(
             rx.icon(tag="moon", size=20),
             value="dark",
+            cursor="pointer",
         ),
         on_change=set_color_mode,
         variant="classic",
@@ -100,12 +103,15 @@ def footer_three_columns() -> rx.Component:
             rx.flex(
                 rx.hstack(
                     rx.image(
-                        src="/cardanoism-new-logo-light.png",
+                        src=rx.color_mode_cond(
+                            light="/cardanoism-new-logo-light.png",
+                            dark="/cardanoism-new-logo-dark.png",
+                        ),
                         width="8em",
                         height="auto",
                     ),
                     rx.text(
-                        "© 2025 Cardanoism by Everada Labs",
+                        "© 2025 Cardanoism All rights reserved.",
                         size="3",
                         white_space="nowrap",
                         weight="medium",
