@@ -85,7 +85,7 @@ def status_badge(proposal: Dict[str, Any]) -> rx.Component:
     blue = "#073ff4"
     indigo = "#4b0082"
     gray = "#808080"
-    gray_text = "var(--color-text-200)"
+    gray_text = "var(--gray-11)"
     green = "#22c55e"
     badge_bg = None  # use solid color per status
     return rx.cond(
@@ -94,11 +94,11 @@ def status_badge(proposal: Dict[str, Any]) -> rx.Component:
             project_status,
             ("in_progress", badge_with_dot("進行中", "white", bg=blue, text_color="white", blink=True)),
             ("complete", badge_with_dot("完了", "white", bg=indigo, text_color="white")),
-            badge_with_dot("採択", "white", bg=indigo, text_color="white"),
+            badge_with_dot("採用", "white", bg=indigo, text_color="white"),
         ),
         rx.match(
             funding_status,
-            ("not_approved", badge_with_dot("不採択", "white", bg=gray, text_color=gray_text)),
+            ("not_approved", badge_with_dot("不採用", "white", bg=gray, text_color=gray_text)),
             ("over_budget", badge_with_dot("申請不備", "white", bg=gray, text_color=gray_text)),
             ("pending", badge_with_dot("投票期間中", "white", bg=green, text_color="white", blink=True)),
             badge_with_dot("進行中", "white", bg=blue, text_color="white", blink=True),
@@ -212,18 +212,18 @@ def html_section(title: str, content: Any) -> rx.Component:
             ),
             padding_x="12px",
             padding_y="8px",
-            background_color="var(--color-bg-accent)",
+            background_color="var(--gray-8)",
             border_radius="6px",
             width="100%",
         ),
         rx.box(
             rx.html(safe_content),
             class_name=(
-                "text-[16px] leading-7 text-[var(--color-text-200)] prose max-w-none "
-                "prose-strong:text-[var(--color-text-100)] dark:prose-strong:text-[var(--color-text-100)]"
+                "text-[16px] leading-7 prose max-w-none prose-strong:text-[var(--gray-12)] dark:prose-strong:text-[var(--gray-12)] ",
             ),
             width="100%",
             padding_x="8px",
+            color="var(--gray-11)",
         ),
         spacing="1",
         width="100%",
@@ -247,18 +247,17 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
     mobile_footer = rx.vstack(
         rx.hstack(
             rx.hstack(
-            rx.icon("user", size=16, color="var(--color-text-200)"),
-            rx.text(proposal["user_name"], size="2", color="var(--color-text-200)"),
+            rx.icon("user", size=16, color="var(--gray-9)"),
+            rx.text(proposal["user_name"], size="2", color="var(--gray-9)"),
             spacing="2",
             align="center",
         ),
         rx.hstack(
-            rx.icon("coins", size=16, color="var(--color-primary-200)"),
             rx.text(
                 f"{proposal['currency_symbol']} {proposal['amount_requested_comma']}",
                 size="3",
                 weight="bold",
-                color="var(--color-primary-100)",
+                color="var(--indigo-11)",
             ),
             fund_progress,
             spacing="2",
@@ -277,7 +276,7 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
     desktop_footer = rx.hstack(
         rx.hstack(
             rx.icon("user", size=16, color="var(--gray-9)"),
-            rx.text(proposal["user_name"], size="2", color="var(--gray-10)"),
+            rx.text(proposal["user_name"], size="2", color="var(--gray-9)"),
             spacing="2",
             align="center",
         ),
@@ -286,7 +285,7 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
                 f"{proposal['currency_symbol']} {proposal['amount_requested_comma']}",
                 size="3",
                 weight="bold",
-                color="var(--color-primary-100)",
+                color="var(--indigo-11)",
             ),
             spacing="2",
             align="center",
@@ -304,7 +303,7 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
     )
 
     page_icon = rx.box(
-        rx.icon("expand", size=20, color="var(--color-primary-200)"),
+        rx.icon("expand", size=20),
         position="absolute",
         right="0px",
         bottom="0px",
@@ -331,18 +330,17 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
                     proposal["title_ja"],
                     size="4",
                     weight="bold",
-                    color="var(--color-text-100)",
                     line_height="1.2",
-                    class_name="hover:text-indigo-10 transition-colors cursor-pointer",
+                    color="var(--gray-12)",
                 ),
-                rx.text(proposal["title"], size="2", color="var(--color-text-300)", class_name="mt-0"),
+                rx.text(proposal["title"], size="2", color="var(--gray-9)", class_name="mt-0"),
             rx.text(
                 description,
                 size="3",
-                color="var(--color-text-200)",
                 line_height="1.6",
                 text_wrap="wrap",
                 class_name="mt-2",
+                color="var(--gray-11)",
             ),
                 rx.mobile_and_tablet(mobile_footer),
                 rx.desktop_only(desktop_footer),
@@ -356,14 +354,16 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
         width="100%",
         margin_bottom="1.5em",
         padding="18px",
-        class_name=(
+        background_color="var(--gray-3)",
+        class_name=rx.color_mode_cond(
+            light=(
             "transition-all duration-300 overflow-hidden "
-            "bg-[var(--color-bg-200)] border-[var(--color-border)] "
-            "hover:border-[var(--color-primary-200)] "
-            "hover:shadow-[0_0_6px_rgba(79,169,255,0.12)] "
-            "dark:bg-[var(--color-bg-200)] dark:border-[var(--color-border)] "
-            "dark:hover:border-[var(--color-primary-200)] "
-            "dark:hover:shadow-[0_0_8px_rgba(0,0,0,0.22)]"
+            "hover:shadow-[0_0_8px_rgba(0,0,0,0.22)] "
+            ),
+            dark=(
+            "transition-all duration-300 overflow-hidden "
+            "hover:shadow-[0_0_6px_rgba(229,229,229,229.12)]"
+            ),
         ),
         on_click=lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"])],
         cursor="pointer",
@@ -382,82 +382,95 @@ def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
     )
     fund_progress = fund_progress_bar(proposal)
     page_icon = rx.box(
-        rx.icon("expand", size=16, color="var(--color-primary-200)"),
+        rx.icon("expand", size=16),
         position="absolute",
         right="0px",
         bottom="0px",
         border_radius="full",
         pointer_events="none",
     )
+    content_block = rx.vstack(
+        rx.hstack(
+            status_badge(proposal),
+            pill(f"{fund_label(proposal)}", "layers", "yellow"),
+            pill(campaign_label(proposal), "flag", "gray"),
+            spacing="2",
+            wrap="wrap",
+            align="center",
+        ),
+        rx.text(
+            proposal["title_ja"],
+            size="3",
+            weight="bold",
+            color="var(--gray-12)",
+        ),
+        rx.text(proposal["title"], size="2", color="var(--gray-9)", class_name="mt-0"),
+        rx.text(
+            description,
+            size="2",
+            color="var(--gray-11)",
+            line_height="1.6",
+            text_wrap="wrap",
+            class_name="line-clamp-3 mt-1",
+        ),
+        spacing="3",
+        width="100%",
+    )
+
+    footer_block = rx.vstack(
+        rx.hstack(
+            rx.hstack(
+                rx.icon("user", size=14, color="var(--gray-9)"),
+                rx.text(proposal["user_name"], size="2", color="var(--gray-10)"),
+                spacing="2",
+                align="center",
+            ),
+            rx.hstack(
+                rx.text(
+                    f"{proposal['currency_symbol']} {proposal['amount_requested_comma']}",
+                    size="3",
+                    weight="bold",
+                    color="var(--indigo-11)",
+                ),
+                spacing="2",
+                align="center",
+            ),
+            justify="start",
+            align="center",
+            spacing="3",
+            wrap="wrap",
+            width="100%",
+        ),
+        fund_progress,
+        spacing="2",
+        width="100%",
+    )
+
     return rx.card(
         rx.box(
             rx.vstack(
-                rx.hstack(
-                    status_badge(proposal),
-                    pill(f"{fund_label(proposal)}", "layers", "yellow"),
-                    pill(campaign_label(proposal), "flag", "gray"),
-                    spacing="2",
-                    wrap="wrap",
-                    align="center",
-                ),
-            rx.text(
-                proposal["title_ja"],
-                size="3",
-                weight="bold",
-                    color="var(--indigo-12)",
-                    class_name="hover:text-indigo-10 transition-colors cursor-pointer",
-                ),
-                rx.text(proposal["title"], size="2", color="var(--gray-9)", class_name="mt-0"),
-            rx.text(
-                description,
-                size="2",
-                color="var(--gray-10)",
-                line_height="1.6",
-                text_wrap="wrap",
-                class_name="line-clamp-3 mt-1",
-            ),
-                rx.vstack(
-                    rx.hstack(
-                        rx.hstack(
-                            rx.icon("user", size=14, color="var(--gray-9)"),
-                            rx.text(proposal["user_name"], size="2", color="var(--gray-10)"),
-                            spacing="2",
-                            align="center",
-                        ),
-                        rx.hstack(
-                            rx.text(
-                                f"{proposal['currency_symbol']} {proposal['amount_requested_comma']}",
-                                size="3",
-                                weight="bold",
-                                color="var(--color-primary-100)",
-                            ),
-                            spacing="2",
-                            align="center",
-                        ),
-                        justify="start",
-                        align="center",
-                        spacing="3",
-                        wrap="wrap",
-                        width="100%",
-                    ),
-                    fund_progress,
-                    spacing="2",
-                    width="100%",
-                ),
+                content_block,
+                footer_block,
                 spacing="3",
+                width="100%",
+                height="100%",
+                justify="between",
             ),
             page_icon,
             position="relative",
             width="100%",
+            height="100%",
         ),
-        class_name=(
+        background_color="var(--gray-3)",
+        class_name=rx.color_mode_cond(
+            light=(
             "transition-all duration-300 overflow-hidden "
-            "bg-[var(--color-bg-200)] border-[var(--color-border)] "
-            "hover:border-[var(--color-primary-200)] "
-            "hover:shadow-[0_0_6px_rgba(79,169,255,0.12)] "
-            "dark:bg-[var(--color-bg-200)] dark:border-[var(--color-border)] "
-            "dark:hover:border-[var(--color-primary-200)] "
-            "dark:hover:shadow-[0_0_8px_rgba(0,0,0,0.22)]"
+            "hover:shadow-[0_0_8px_rgba(0,0,0,0.22)] "
+            ),
+            dark=(
+            "transition-all duration-300 overflow-hidden "
+            "hover:shadow-[0_0_6px_rgba(229,229,229,229.12)]"
+            ),
         ),
         on_click=lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"])],
         cursor="pointer",
@@ -472,31 +485,30 @@ def detail_modal() -> rx.Component:
                 """
                 <style>
                 .proposal-modal a {
-                  color: var(--color-primary-200) !important;
+                  color: var(--amber-11) !important;
                   text-decoration: underline;
                 }
                 .proposal-modal a:hover {
-                  color: var(--color-primary-100) !important;
+                  color: var(--amber-9) !important;
                 }
                 .proposal-modal ::-webkit-scrollbar {
                   width: 8px;
                   height: 8px;
                 }
                 .proposal-modal ::-webkit-scrollbar-track {
-                  background: var(--color-bg-200);
+                  background: var(--gray-3);
                 }
                 .proposal-modal ::-webkit-scrollbar-thumb {
-                  background: var(--color-border);
+                  background: var(--gray-6);
                   border-radius: 9999px;
                 }
                 .proposal-modal ::-webkit-scrollbar-thumb:hover {
-                  background: var(--color-primary-200);
+                  background: var(--gray-7);
                 }
                 .proposal-modal {
-                  background: var(--color-bg-100);
-                  color: var(--color-text-200);
-                  border: 1px solid var(--color-border);
-                  scrollbar-color: var(--color-border) var(--color-bg-200);
+                  #color: var(--gray-11);
+                  border: 1px solid var(--slate-6);
+                  scrollbar-color: var(--gray-5) var(--gray-3);
                   scrollbar-width: thin;
                 }
                 </style>
@@ -510,13 +522,11 @@ def detail_modal() -> rx.Component:
                             size="5",
                             weight="bold",
                             width="100%",
-                            color="var(--color-text-100)",
                             style={"wordBreak": "break-word"},
                         ),
                         rx.text(
                             p.get("title", ""),
                             size="2",
-                            color="var(--color-text-200)",
                             width="100%",
                             style={"wordBreak": "break-word"},
                         ),
@@ -527,9 +537,9 @@ def detail_modal() -> rx.Component:
                         rx.icon("x"),
                         variant="solid",
                         color_scheme=None,
-                        background_color="var(--color-bg-100)",
-                        color="var(--color-text-200)",
-                        _hover={"background_color": "var(--color-accent-text)"},
+                        color="var(--gray-12)",
+                        background_color="var(--amver-7)",
+                        _hover={"background_color": "var(--amber-6)"},
                         size="2",
                         on_click=AppState.close_modal,
                         cursor="pointer",
@@ -543,17 +553,17 @@ def detail_modal() -> rx.Component:
                 pill(f"{fund_label(p)}", "layers", "yellow"),
                 pill(campaign_label(p), "flag", "gray"),
                 rx.hstack(
-                    rx.text(p.get("user_name", ""), size="2", color="var(--color-text-200)"),
+                    rx.text(p.get("user_name", ""), size="2", color="var(--gray-9)"),
                     rx.text(
-                        f"{p.get('currency_symbol','')} {p.get('amount_requested_comma','')}",
+                        f"{p.get('currency_symbol','')} {p.get('amount_requested_comma')}",
                         size="3",
                         weight="bold",
-                        color="var(--color-primary-100)",
+                        color="var(--indigo-11)",
                     ),
                     rx.link(
                         rx.hstack(
-                            rx.text("Project Catalyst", size="2", weight="medium", color="var(--color-text-200)"),
-                            rx.icon("external-link", size=16, color="var(--color-text-200)"),
+                            rx.text("Project Catalyst", size="2", weight="medium"),
+                            rx.icon("external-link", size=16),
                             spacing="1",
                             align="center",
                         ),
@@ -594,22 +604,22 @@ def detail_modal() -> rx.Component:
                         rx.box(
                             rx.vstack(
                                 rx.vstack(
-                                    rx.text("課題", size="2", color="var(--color-text-200)"),
-                                    rx.text(p.get("problem_ja", ""), size="3", line_height="1.6", color="var(--color-text-200)"),
+                                    rx.text("課題", size="2", color="var(--gray-12)" ,waight="bold"),
+                                    rx.text(p.get("problem_ja", ""), size="3", line_height="1.6", color="var(--gray-11)"),
                                     spacing="1",
                                     width="100%",
                                     padding_top="8px",
                                 ),
                                 rx.vstack(
-                                    rx.text("解決策", size="2", color="var(--color-text-200)"),
-                                    rx.text(p.get("solution_ja", ""), size="3", line_height="1.6", color="var(--color-text-200)"),
+                                    rx.text("解決策", size="2", color="var(--gray-12)" ,waight="bold"),
+                                    rx.text(p.get("solution_ja", ""), size="3", line_height="1.6", color="var(--gray-11)"),
                                     spacing="1",
                                     width="100%",
                                 ),
                                 html_section("解決策", p.get("detail_solution_ja", "")),
                                 html_section("エコシステムインパクト", p.get("impact_ja", "")),
                                 html_section("実現可能性", p.get("capability_feasibility_ja", "")),
-                                html_section("マイルストーン", p.get("project_milestones_ja", "")),
+                                html_section("マイルストートン", p.get("project_milestones_ja", "")),
                                 html_section("リソース", p.get("resources_ja", "")),
                                 html_section("予算とコスト", p.get("budget_costs_ja", "")),
                                 html_section("コストパフォーマンス", p.get("value_for_money_ja", "")),
@@ -644,10 +654,10 @@ def detail_modal() -> rx.Component:
                     on_click=AppState.close_modal,
                     width="100%",
                     variant="soft",
-                    background_color="var(--color-primary-300)",
-                    color="var(--color-text-100)",
+                    background_color="var(--amber-7)",
+                    color="var(--gray-12)",
                     cursor="pointer",
-                    _hover={"background_color": "var(--color-accent-text)", "color": "var(--color-text-100)"},
+                    _hover={"background_color": "var(--amber-6)"},
                 ),
                 spacing="3",
                 width="100%",
@@ -661,10 +671,7 @@ def detail_modal() -> rx.Component:
             class_name=(
                 "proposal-modal "
                 "shadow-xl rounded-2xl "
-                "border border-[var(--color-border)] "
-                "bg-[var(--color-bg-100)] text-[var(--color-text-200)] "
-                "dark:border-[var(--color-border)] "
-                "dark:bg-[var(--color-bg-100)] dark:text-[var(--color-text-200)] "
+                "border"
             ),
             style={"display": "flex", "flexDirection": "column"},
         ),
