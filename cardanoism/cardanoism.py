@@ -1,9 +1,9 @@
 """Welcome to Reflex!."""
 
+import reflex as rx
+
 # Import all the pages.
 from cardanoism.pages import *
-
-import reflex as rx
 
 
 class State(rx.State):

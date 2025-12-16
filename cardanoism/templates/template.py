@@ -92,6 +92,7 @@ def template(
                 align="start",
                 position="relative",
                 style={"scrollbar_gutter": "stable", "min-height": "100vh", "display": "flex", "flex_direction": "column"},
+                background_color="var(--gray-1)",
             )
 
         @rx.page(

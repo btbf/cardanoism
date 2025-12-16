@@ -12,42 +12,92 @@ UNDERLINE_STYLE = {
     "paddingBottom": "2px",
 }
 
-HOVER_UNDERLINE = {"backgroundSize": "100% 2px"}
+HOVER_UNDERLINE = {"backgroundSize": "100% 2px", "backgroundColor": "unset"}
 
 
 def navbar_icons_item(text: str, url: str, disabled: bool) -> rx.Component:
     disabled_style = {"pointerEvents": "none", "opacity": "0.6"} if disabled else {}
     return rx.link(
-        rx.text(text, size="4", weight="medium",color="var(--gray-12)"),
+        rx.text(text, size="4", weight="medium", color="var(--gray-12)"),
         href=url,
         style=UNDERLINE_STYLE | disabled_style,
         _hover=HOVER_UNDERLINE,
     )
 
+
 def navbar_icons() -> rx.Component:
-    return rx.box(
-        rx.desktop_only(
+    logo = rx.link(
+        rx.image(
+            src=rx.color_mode_cond(
+                light="/cardanoism-new-logo-light.png",
+                dark="/cardanoism-new-logo-dark.png",
+            ),
+            width="15em",
+            height="auto",
+            alt="カルダノイズム",
+        ),
+        href="./",
+    )
+
+    desktop_nav = rx.desktop_only(
+        rx.hstack(
+            logo,
             rx.hstack(
-                rx.hstack(
-                    rx.link(
-                        rx.image(
-                            src=rx.color_mode_cond(
-                                light="/cardanoism-new-logo-light.png",
-                                dark="/cardanoism-new-logo-dark.png",
-                                ),
-                            width="15em",
-                            height="auto",
-                            alt="カルダノイズム",
+                navbar_icons_item("ホーム", "/", False),
+                rx.menu.root(
+                    rx.menu.trigger(
+                        rx.button(
+                            rx.text("カタリスト", size="4", weight="medium", color="var(--gray-12)"),
+                            weight="medium",
+                            variant="ghost",
+                            size="3",
+                            style=UNDERLINE_STYLE,
+                            _hover=HOVER_UNDERLINE,
+                            _active={"background_color": "unset"},
+                            cursor="pointer",
                         ),
-                        href="./",
+                    ),
+                    rx.menu.content(
+                        rx.menu.item(
+                            rx.link(
+                                rx.text("提案一覧", size="3", weight="medium", color="var(--gray-12)"),
+                                href="/catalyst",
+                                width="100%",
+                                underline="none"
+                            ),
+                        ),
+                        rx.menu.item(
+                            rx.link(
+                                rx.text("ファンド一覧", size="3", weight="medium", color="var(--gray-12)"),
+                                href="/catalyst/funds",
+                                width="100%",
+                                underline="none"
+                            ),
+                        ),
                     ),
                 ),
-                rx.hstack(
+                navbar_icons_item("ガバナンス", "/#", True),
+                spacing="6",
+                padding_right="5px",
+            ),
+            justify_content="space-between",
+            align_items="center",
+            max_width="1130px",
+            margin_x="auto",
+        ),
+    )
+
+    mobile_nav = rx.mobile_and_tablet(
+        rx.hstack(
+            logo,
+            rx.menu.root(
+                rx.menu.trigger(rx.icon("menu", size=30)),
+                rx.menu.content(
                     navbar_icons_item("ホーム", "/", False),
                     rx.menu.root(
                         rx.menu.trigger(
                             rx.button(
-                                rx.text("カタリスト", size="4", weight="medium",color="var(--gray-12)"),
+                                rx.text("カタリスト", size="4", weight="medium", color="var(--gray-12)"),
                                 rx.icon("chevron-down"),
                                 weight="medium",
                                 variant="ghost",
@@ -57,14 +107,14 @@ def navbar_icons() -> rx.Component:
                         rx.menu.content(
                             rx.menu.item(
                                 rx.link(
-                                    rx.text("提案一覧", size="3", weight="medium",color="var(--gray-12)"),
+                                    rx.text("提案一覧", size="3", weight="medium", color="var(--gray-12)"),
                                     href="/catalyst",
                                     width="100%",
                                 ),
                             ),
                             rx.menu.item(
                                 rx.link(
-                                    rx.text("ファンド一覧", size="3", weight="medium",color="var(--gray-12)"),
+                                    rx.text("ファンド一覧", size="3", weight="medium", color="var(--gray-12)"),
                                     href="/catalyst/funds",
                                     width="100%",
                                 ),
@@ -72,74 +122,20 @@ def navbar_icons() -> rx.Component:
                         ),
                     ),
                     navbar_icons_item("ガバナンス", "/#", True),
-                    spacing="6",
-                    padding_right="5px",
                 ),
-                justify_content="space-between",
-                align_items="center",
-                max_width="1130px",
-                margin_x="auto",
             ),
+            justify_content="space-between",
         ),
-        rx.mobile_and_tablet(
-            rx.hstack(
-                rx.link(
-                    rx.image(
-                        src=rx.color_mode_cond(
-                            light="/cardanoism-new-logo-light.png",
-                            dark="/cardanoism-new-logo-dark.png",
-                            ),
-                        width="15em",
-                        height="auto",
-                        alt="カルダノイズム",
-                    ),
-                    href="./",
-                ),
-                rx.menu.root(
-                    rx.menu.trigger(rx.icon("menu", size=30)),
-                    rx.menu.content(
-                        navbar_icons_item("ホーム", "/", False),
-                        rx.menu.root(
-                            rx.menu.trigger(
-                                rx.button(
-                                    rx.text("カタリスト", size="4", weight="medium",color="var(--gray-12)"),
-                                    rx.icon("chevron-down"),
-                                    weight="medium",
-                                    variant="ghost",
-                                    size="3",
-                                ),
-                            ),
-                            rx.menu.content(
-                                rx.menu.item(
-                                    rx.link(
-                                        rx.text("提案一覧", size="3", weight="medium",color="var(--gray-12)"),
-                                        href="/catalyst",
-                                        width="100%",
-                                    ),
-                                ),
-                                rx.menu.item(
-                                    rx.link(
-                                        rx.text("ファンド一覧", size="3", weight="medium",color="var(--gray-12)"),
-                                        href="/catalyst/funds",
-                                        width="100%",
-                                    ),
-                                ),
-                            ),
-                        ),
-                        navbar_icons_item("ガバナンス", "/#", True),
-                    ),
-                ),
-                justify_content="space-between",
-            ),
-        ),
+    )
+
+    return rx.box(
+        desktop_nav,
+        mobile_nav,
         padding_x="1em",
         padding_y="1em",
         justify="center",
         position="fixed",
         z_index="500",
         width="100%",
-        background=rx.color_mode_cond(
-            light="var(--rs-body)", 
-            dark="var(--gray-1)",
-        )
+        background_color="var(--gray-1)",
     )
