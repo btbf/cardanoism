@@ -1,4 +1,4 @@
-﻿import reflex as rx
+import reflex as rx
 
 from cardanoism.templates import template
 from cardanoism.backend.db_connect import AppState, FundListState
@@ -32,15 +32,15 @@ def stat_chip(icon: str, label: str, value: str | int) -> rx.Component:
     return rx.box(
         rx.hstack(
             rx.box(
-                rx.icon(icon, size=16, color="white"),
+                rx.icon(icon, size=16, color=rx.color("slate", 12)),
                 padding="8px",
-                background_color="var(--color-primary-200)",
+                background_color=rx.color("slate", 3),
                 border_radius="full",
-                shadow="0 6px 18px rgba(76, 81, 191, 0.25)",
+                shadow="0 6px 18px rgba(0, 0, 0, 0.08)",
             ),
             rx.vstack(
-                rx.text(label.upper(), size="1", color="var(--color-text-200)", weight="medium", letter_spacing="0.06em"),
-                rx.text(value, size="4", weight="bold", color="var(--color-primary-100)", text_wrap="nowrap"),
+                rx.text(label.upper(), size="1", color=rx.color("slate", 10), weight="medium", letter_spacing="0.06em"),
+                rx.text(value, size="4", weight="bold", color=rx.color("slate", 12), text_wrap="nowrap"),
                 spacing="1",
                 align_items="start",
             ),
@@ -49,10 +49,10 @@ def stat_chip(icon: str, label: str, value: str | int) -> rx.Component:
         ),
         padding="12px",
         border_radius="14px",
-        background_color="var(--color-bg-200)",
-        border="1px solid var(--color-border)",
+        background_color=rx.color("slate", 2),
+        border=f"1px solid {rx.color('slate', 6)}",
         width="100%",
-        shadow="0 10px 25px rgba(76, 81, 191, 0.10)",
+        shadow="0 10px 25px rgba(0, 0, 0, 0.05)",
     )
 
 
@@ -67,75 +67,78 @@ def fund_card(fund: dict) -> rx.Component:
     completed = fund["display_completed"]
     href = fund["path"]
 
+    amount_box = rx.box(
+        rx.hstack(
+            rx.hstack(
+                rx.icon("coins", size=18, color=rx.color("slate", 11)),
+                rx.text("総額", size="2", color=rx.color("slate", 10)),
+                spacing="2",
+                align="center",
+            ),
+            rx.text(f"{currency_symbol} {amount}".strip(), size="5", weight="bold", color=rx.color("slate", 12)),
+            justify="between",
+            align="center",
+            width="100%",
+        ),
+        padding="12px",
+        border_radius="14px",
+        background_color="var(--gray-1)",
+        border=f"1px solid {rx.color('slate', 6)}",
+        width="100%",
+    )
+
+    stats_box = rx.box(
+        rx.hstack(
+            rx.vstack(
+                rx.text("提案数", size="2", color=rx.color("slate", 10), text_align="center"),
+                rx.text(proposals, size="4", weight="bold", color=rx.color("slate", 12), text_align="center"),
+                spacing="1",
+                align_items="center",
+                width="33%",
+            ),
+            rx.divider(orientation="vertical", height="40px", border_color=rx.color("slate", 6)),
+            rx.vstack(
+                rx.text("採択", size="2", color=rx.color("slate", 10), text_align="center"),
+                rx.text(funded, size="4", weight="bold", color=rx.color("slate", 12), text_align="center"),
+                spacing="1",
+                align_items="center",
+                width="33%",
+            ),
+            rx.divider(orientation="vertical", height="40px", border_color=rx.color("slate", 6)),
+            rx.vstack(
+                rx.text("完了", size="2", color=rx.color("slate", 10), text_align="center"),
+                rx.text(completed, size="4", weight="bold", color=rx.color("slate", 12), text_align="center"),
+                spacing="1",
+                align_items="center",
+                width="33%",
+            ),
+            spacing="3",
+            justify="between",
+            width="100%",
+            wrap="nowrap",
+            align="center",
+        ),
+        padding="12px",
+        border_radius="14px",
+        background_color="var(--gray-1)",
+        border=f"1px solid {rx.color('slate', 6)}",
+        width="100%",
+    )
+
     return rx.card(
         rx.vstack(
             rx.hstack(
-                rx.badge(label, variant="solid", radius="full", background_color="var(--color-primary-200)", color="white"),
-                rx.badge(fund["display_status"], variant="soft", radius="full", background_color="var(--color-primary-300)", color="var(--color-primary-100)"),
+                rx.heading(title, size="5", color=rx.color("slate", 12)),
+                #rx.badge(fund["display_status"], variant="soft", radius="full", color_scheme="gray",size="2"),
                 justify="between",
                 width="100%",
             ),
-            rx.heading(title, size="4", color="var(--color-primary-100)"),
-            rx.box(
-                rx.hstack(
-                    rx.hstack(
-                        rx.icon("coins", size=18, color="var(--color-primary-100)"),
-                        rx.text("総額", size="2", color="var(--color-text-200)"),
-                        spacing="2",
-                        align="center",
-                    ),
-                    rx.text(f"{currency_symbol} {amount}".strip(), size="5", weight="bold", color="var(--color-primary-100)"),
-                    justify="between",
-                    align="center",
-                    width="100%",
-                ),
-                padding="12px",
-                border_radius="14px",
-                background_color="var(--color-primary-300)",
-                border="1px solid var(--color-border)",
-                width="100%",
-            ),
-            rx.box(
-                rx.hstack(
-                    rx.vstack(
-                        rx.text("提案数", size="2", color="var(--color-text-200)", text_align="center"),
-                        rx.text(proposals, size="4", weight="bold", color="var(--color-primary-100)", text_align="center"),
-                        spacing="1",
-                        align_items="center",
-                        width="33%",
-                    ),
-                    rx.divider(orientation="vertical", height="40px", border_color="var(--color-border)"),
-                    rx.vstack(
-                        rx.text("採用", size="2", color="var(--color-text-200)", text_align="center"),
-                        rx.text(funded, size="4", weight="bold", color="var(--color-primary-100)", text_align="center"),
-                        spacing="1",
-                        align_items="center",
-                        width="33%",
-                    ),
-                    rx.divider(orientation="vertical", height="40px", border_color="var(--color-border)"),
-                    rx.vstack(
-                        rx.text("確定", size="2", color="var(--color-text-200)", text_align="center"),
-                        rx.text(completed, size="4", weight="bold", color="var(--color-primary-100)", text_align="center"),
-                        spacing="1",
-                        align_items="center",
-                        width="33%",
-                    ),
-                    spacing="3",
-                    justify="between",
-                    width="100%",
-                    wrap="nowrap",
-                    align="center",
-                ),
-                padding="12px",
-                border_radius="14px",
-                background_color="var(--color-bg-200)",
-                border="1px solid var(--color-border)",
-                width="100%",
-            ),
+            amount_box,
+            stats_box,
             rx.box(
                 rx.link(
                     rx.button(
-                        "Fundを見る",
+                        "Fund提案を見る",
                         variant="solid",
                         color_scheme=None,
                         size="2",
@@ -143,9 +146,7 @@ def fund_card(fund: dict) -> rx.Component:
                         padding_x="12px",
                         padding_y="10px",
                         border_radius="8px",
-                        background_color="var(--color-primary-200)",
-                        color="white",
-                        _hover={"background_color": "var(--color-primary-300)"},
+                        cursor="pointer",
                     ),
                     href=href,
                     width="100%",
@@ -160,11 +161,11 @@ def fund_card(fund: dict) -> rx.Component:
         ),
         variant="ghost",
         background=rx.color_mode_cond(
-            "linear-gradient(135deg, var(--color-bg-200), rgba(0,113,201,0.12))",
-            "linear-gradient(135deg, var(--color-bg-200), rgba(0,113,201,0.12))",
+            rx.color("slate", 2),
+            rx.color("slate", 3),
         ),
-        border="1px solid var(--color-border)",
-        shadow="0px 14px 35px -24px rgba(76, 81, 191, 0.40)",
+        border=f"1px solid {rx.color('slate', 6)}",
+        shadow="0px 14px 35px -24px rgba(0, 0, 0, 0.16)",
         padding="20px",
         height="auto",
     )
@@ -174,35 +175,36 @@ def fund_hero() -> rx.Component:
     """Hero block for fund landing page."""
     return rx.box(
         rx.vstack(
-            rx.text("Catalyst Funds", size="3", color="var(--color-primary-200)", weight="medium", letter_spacing="0.08em"),
-            rx.heading("ファンド別にカタリストを探そう", size="8", color="var(--color-primary-100)", line_height="1.1"),
+            rx.text("Catalyst Funds", size="3", color=rx.color("slate", 11), weight="medium", letter_spacing="0.08em"),
+            rx.heading("ファンド別", size="8", color=rx.color("slate", 12), line_height="1.1"),
             rx.text(
                 "Fundごとの提案状況と実績をまとめました。気になるFundを選んで提案を探してみましょう。",
                 size="3",
-                color="var(--color-text-200)",
+                color=rx.color("slate", 10),
                 max_width="720px",
             ),
             rx.hstack(
                 rx.link(rx.button("Catalyst一覧に戻る", variant="soft", color_scheme=None, size="3",
-                                   background_color="var(--color-primary-300)", color="var(--color-primary-100)",
-                                   _hover={"background_color": "var(--color-primary-200)", "color": "white"}), href="/catalyst"),
-                rx.link(rx.button("最新のFundを見る", variant="solid", color_scheme=None, size="3",
-                                   background_color="var(--color-primary-200)", color="white",
-                                   _hover={"background_color": "var(--color-primary-300)"}), href="/catalyst/funds"),
+                                   background_color=rx.color("slate", 3), color=rx.color("slate", 12),
+                                   _hover={"background_color": rx.color("amber", 10), "color": "white"}),href="/catalyst"),
+                #rx.link(rx.button("�ŐV��Fund������", variant="solid", color_scheme=None, size="3",
+                #                   background_color=rx.color("amber", 10), color="white",
+                #                   _hover={"background_color": rx.color("amber", 9)}), href="/catalyst/funds"),
                 spacing="3",
                 wrap="wrap",
+                cursor="pointer",
             ),
             spacing="3",
             align_items="start",
         ),
-        padding="28px",
+        padding="25px",
         border_radius="16px",
         background=(
             "radial-gradient(circle at 20% 20%, rgba(0,113,201,0.18), transparent 35%),"
-            "radial-gradient(circle at 80% 0%, rgba(0,113,201,0.22), transparent 35%),"
-            "linear-gradient(135deg, var(--color-bg-200), rgba(0,113,201,0.16))"
+            "radial-gradient(circle at 80% 0%, rgba(255,193,7,0.22), transparent 35%),"
+            f"linear-gradient(135deg, {rx.color('slate', 2)}, rgba(0,0,0,0.05))"
         ),
-        border="1px solid var(--color-border)",
+        border=f"1px solid {rx.color('slate', 6)}",
         shadow="0px 20px 60px -40px rgba(59, 91, 219, 0.45)",
         width="100%",
     )
@@ -212,12 +214,12 @@ def empty_fund_state() -> rx.Component:
     """Shown when no fund data is available."""
     return rx.card(
         rx.vstack(
-            rx.icon("folder-x", size=32, color="var(--color-text-200)"),
-            rx.heading("ファンド情報が見つかりません", size="5"),
-            rx.text("Fundが見つかりませんでした。同期後に再度お試しください", color="var(--color-text-200)", text_align="center"),
-            rx.link(rx.button("Catalystトップへ", variant="soft", color_scheme=None,
-                               background_color="var(--color-primary-300)", color="var(--color-primary-100)",
-                               _hover={"background_color": "var(--color-primary-200)", "color": "white"}), href="/catalyst"),
+            rx.icon("folder-x", size=32, color=rx.color("slate", 10)),
+            rx.heading("ファンド別", size="5"),
+            rx.text("Fundごとの提案状況と実績をまとめました。気になるFundを選んで提案を探してみましょう", color=rx.color("slate", 10), text_align="center"),
+            rx.link(rx.button("Catalyst一覧に戻る", variant="soft", color_scheme=None,
+                               background_color=rx.color("amber", 4), color=rx.color("amber", 11),
+                               _hover={"background_color": rx.color("amber", 10), "color": "white"}), href="/catalyst"),
             spacing="3",
             align="center",
         ),
@@ -229,79 +231,97 @@ def empty_fund_state() -> rx.Component:
 def fund_header_detail() -> rx.Component:
     """Header block for individual fund pages."""
     fund = AppState.fund_meta
+    stats_box = rx.box(
+        rx.hstack(
+            rx.vstack(
+                rx.text("提案数", size="2", color=rx.color("slate", 10), text_align="center"),
+                rx.text(fund.get("display_proposals", fund.get("proposals_count", 0)), size="4", weight="bold", color=rx.color("slate", 12), text_align="center"),
+                spacing="1",
+                align_items="center",
+                width="33%",
+            ),
+            rx.divider(orientation="vertical", height="40px", border_color=rx.color("slate", 6)),
+            rx.vstack(
+                rx.text("採択", size="2", color=rx.color("slate", 10), text_align="center"),
+                rx.text(fund.get("display_funded", fund.get("funded_proposals_count", 0)), size="4", weight="bold", color=rx.color("slate", 12), text_align="center"),
+                spacing="1",
+                align_items="center",
+                width="33%",
+            ),
+            rx.divider(orientation="vertical", height="40px", border_color=rx.color("slate", 6)),
+            rx.vstack(
+                rx.text("完了", size="2", color=rx.color("slate", 10), text_align="center"),
+                rx.text(fund.get("display_completed", fund.get("completed_proposals_count", 0)), size="4", weight="bold", color=rx.color("slate", 12), text_align="center"),
+                spacing="1",
+                align_items="center",
+                width="33%",
+            ),
+            spacing="3",
+            justify="between",
+            width="100%",
+            wrap="nowrap",
+            align="center",
+        ),
+        padding="12px",
+        border_radius="14px",
+        background_color=rx.color("slate", 2),
+        border=f"1px solid {rx.color('slate', 6)}",
+        width=["100%", "100%", "50%", "50%", "50%"],
+    )
     return rx.card(
         rx.box(
             rx.vstack(
                 rx.hstack(
-                    rx.badge(
-                        fund.get("display_label", fund.get("label", "Fund")),
-                        variant="solid",
-                        radius="full",
-                        background_color="var(--color-primary-200)",
-                        color="white",
+                    rx.vstack(
+                        rx.hstack(
+                            rx.badge(
+                                fund.get("display_label", fund.get("label", "Fund")),
+                                variant="solid",
+                                radius="full",
+                                background_color=rx.color("amber", 10),
+                                color="white",
+                            ),
+                            rx.badge(
+                                fund.get("display_status", fund.get("status", "")),
+                                variant="soft",
+                                radius="full",
+                                background_color=rx.color("amber", 4),
+                                color=rx.color("amber", 11),
+                            ),
+                            spacing="2",
+                            wrap="wrap",
+                        ),
+                        rx.hstack(
+                            rx.heading(fund.get("display_title", fund.get("title", fund.get("label", ""))), size="7", color=rx.color("amber", 11)),
+                            rx.text(
+                                f"{fund.get('display_currency_symbol', fund.get('currency_symbol',''))} {fund.get('display_amount_comma', fund.get('amount_comma','-'))}".strip(),
+                                size="5",
+                                weight="bold",
+                                color=rx.color("amber", 11),
+                            ),
+                            spacing="3",
+                            align="center",
+                            wrap="wrap",
+                        ),
                     ),
-                    rx.badge(
-                        fund.get("display_status", fund.get("status", "")),
-                        variant="soft",
-                        radius="full",
-                        background_color="var(--color-primary-300)",
-                        color="var(--color-primary-100)",
-                    ),
-                    spacing="2",
-                    wrap="wrap",
-                ),
-                rx.hstack(
-                    rx.heading(fund.get("display_title", fund.get("title", fund.get("label", ""))), size="7", color="var(--color-primary-100)"),
-                    rx.text(
-                        f"{fund.get('display_currency_symbol', fund.get('currency_symbol',''))} {fund.get('display_amount_comma', fund.get('amount_comma','-'))}".strip(),
-                        size="5",
-                        weight="bold",
-                        color="var(--color-primary-100)",
-                    ),
-                    spacing="3",
-                    align="center",
-                    wrap="wrap",
-                ),
-                rx.text(fund.get("display_description", fund.get("description", "Fundに紐づく提案一覧")), size="3", color="var(--color-text-200)", max_width="900px"),
-                rx.flex(
-                    stat_chip("layers", "提案数", fund.get("display_proposals", fund.get("proposals_count", 0))),
-                    stat_chip("award", "採用", fund.get("display_funded", fund.get("funded_proposals_count", 0))),
-                    stat_chip("check", "確定", fund.get("display_completed", fund.get("completed_proposals_count", 0))),
-                    wrap="wrap",
-                    gap="3",
+                    stats_box,
+                    flex_direction=["column", "column", "row", "row", "row"],
+                    justify="between",
+                    align="start",
                     width="100%",
                 ),
+                rx.text(fund.get("display_description", fund.get("description", "Fund")), size="3", color=rx.color("slate", 10), max_width="900px"),
                 spacing="4",
                 width="100%",
             ),
-            rx.box(
-                challegeFilter(
-                    options=AppState.challenge_options,
-                    classNamePrefix="filter",
-                    placeholder="キャンペーンを選択",
-                    onChange=lambda value: AppState.set_selected_chllenge_value(value),
-                    isMulti=True,
-                    width="320px",
-                ),
-                position="absolute",
-                top="16px",
-                right="16px",
-                z_index=2000,
-                width=["100%", "340px"],
-                style={"overflow": "visible"},
-            ),
-            position="relative",
-            width="100%",
-            style={"overflow": "visible"},
         ),
         background=rx.color_mode_cond(
-            "linear-gradient(135deg, rgba(0,113,201,0.14), rgba(79,169,255,0.08))",
-            "linear-gradient(135deg, rgba(0,113,201,0.16), rgba(79,169,255,0.10))",
+            f"linear-gradient(135deg, rgba(255,193,7,0.14), rgba(255,193,7,0.08))",
+            f"linear-gradient(135deg, rgba(255,193,7,0.16), rgba(255,193,7,0.10))",
         ),
-        border="1px solid var(--color-border)",
+        border=f"1px solid {rx.color('slate', 6)}",
         shadow="0px 20px 60px -40px rgba(59, 91, 219, 0.45)",
         width="100%",
-        style={"overflow": "visible"},
     )
 
 
@@ -310,12 +330,12 @@ def fund_breadcrumb() -> rx.Component:
     fund = AppState.fund_meta
     return rx.hstack(
         rx.link(rx.icon("home", size=16), href="/", underline="none",color_scheme="gray"),
-        rx.icon("chevron-right", size=14, color="var(--color-text-200)"),
+        rx.icon("chevron-right", size=14, color="gray"),
         rx.link(rx.text("Catalyst", size="2"), href="/catalyst", underline="none", color_scheme="gray"),
-        rx.icon("chevron-right", size=14, color="var(--color-text-200)"),
+        rx.icon("chevron-right", size=14, color="gray"),
         rx.link(rx.text("Funds", size="2"), href="/catalyst/funds", underline="none",color_scheme="gray"),
-        rx.icon("chevron-right", size=14, color="var(--color-text-200)"),
-        rx.text(fund.get("display_title", fund.get("title", fund.get("label", ""))), size="2", color="var(--color-text-100)", weight="medium"),
+        rx.icon("chevron-right", size=14, color="gray"),
+        rx.text(fund.get("display_title", fund.get("title", fund.get("label", ""))), size="2", weight="medium"),
         spacing="2",
         align="center",
         width="100%",
@@ -328,63 +348,68 @@ def proposal_controls() -> rx.Component:
     """Small toolbar for fund detail proposal list."""
     return rx.hstack(
         rx.hstack(
-            rx.text(AppState.total_items, size="6", weight="bold", color="var(--color-primary-100)"),
-            rx.text("件", size="3", color="var(--color-text-200)"),
+            rx.text(AppState.total_items, size="6", weight="bold", color="var(--amber-11)"),
+            rx.text("件", size="4"),
             spacing="2",
             align="baseline",
         ),
-        rx.hstack(
-            rx.button(
-                rx.icon("list"),
-                variant=rx.cond(AppState.view_mode == "list", "solid", "soft"),
-                color_scheme=None,
-                background_color=rx.cond(
-                    AppState.view_mode == "list",
-                    "var(--color-primary-200)",
-                    "var(--color-bg-200)",
-                ),
-                color=rx.cond(
-                    AppState.view_mode == "list",
-                    "white",
-                    "var(--color-text-200)",
-                ),
-                _hover={
-                    "background_color": rx.cond(
+        rx.tablet_and_desktop(
+            rx.hstack(
+                rx.button(
+                    rx.icon("list"),
+                    variant=rx.cond(AppState.view_mode == "list", "solid", "soft"),
+                    color_scheme=None,
+                    background_color=rx.cond(
                         AppState.view_mode == "list",
-                        "var(--color-primary-300)",
-                        "var(--color-primary-300)",
+                            "var(--amber-7)",
+                            "var(--gray-3)",
                     ),
-                    "color": "var(--color-primary-100)",
-                },
-                size="2",
-                on_click=lambda: AppState.set_view_mode("list"),
-            ),
-            rx.button(
-                rx.icon("layout-grid"),
-                variant=rx.cond(AppState.view_mode == "grid", "solid", "soft"),
-                color_scheme=None,
-                background_color=rx.cond(
-                    AppState.view_mode == "grid",
-                    "var(--color-primary-200)",
-                    "var(--color-bg-200)",
+                    color=rx.cond(
+                        AppState.view_mode == "list",
+                            "var(--gray-12)",
+                            "var(--gray-10)",
+                    ),
+                    _hover={
+                        "background_color": rx.cond(
+                            AppState.view_mode == "list",
+                                "var(--amber-7)",
+                                "var(--amber-7)",
+                        ),
+                        "color": "var(--gray-12)",
+                    },
+                    size="2",
+                    on_click=lambda: AppState.set_view_mode("list"),
+                    cursor="pointer",
                 ),
-                color=rx.cond(
-                    AppState.view_mode == "grid",
-                    "white",
-                    "var(--color-text-200)",
-                ),
-                _hover={
-                    "background_color": rx.cond(
+                rx.button(
+                    rx.icon("layout-grid"),
+                    variant=rx.cond(AppState.view_mode == "grid", "solid", "soft"),
+                    color_scheme=None,
+                    background_color=rx.cond(
                         AppState.view_mode == "grid",
-                        "var(--color-primary-300)",
-                        "var(--color-primary-300)",
+                            "var(--amber-7)",
+                            "var(--gray-3)",
                     ),
-                    "color": "var(--color-primary-100)",
-                },
-                size="2",
-                on_click=lambda: AppState.set_view_mode("grid"),
+                    color=rx.cond(
+                        AppState.view_mode == "grid",
+                            "var(--gray-12)",
+                            "var(--gray-10)",
+                    ),
+                    _hover={
+                        "background_color": rx.cond(
+                            AppState.view_mode == "grid",
+                                "var(--amber-7)",
+                                "var(--amber-7)",
+                        ),
+                        "color": "var(--gray-12)",
+                    },
+                    size="2",
+                    on_click=lambda: AppState.set_view_mode("grid"),
+                    cursor="pointer",
+                ),
+                spacing="2",
+                align_items="center",
             ),
-            spacing="2",
         ),
         justify="between",
         align="center",
@@ -419,19 +444,19 @@ def fund() -> rx.Component:
     return rx.box(
         content,
         width="100%",
-        max_width="1200px",
+        max_width="1130px",
         margin_x="auto",
     )
 
 
-@template(route="/catalyst/funds/[fund]", title="Catalyst Fund | 提案一覧", on_load=AppState.load_fund_page)
+@template(route="/catalyst/funds/[fund]", title="Catalyst Fund | Cardanoism", on_load=AppState.load_fund_page)
 def fund_detail() -> rx.Component:
     """Fund detail page showing proposals scoped to the selected fund."""
     loading_view = rx.flex(rx.spinner(size="3"), justify="center", align="center", width="100%", padding_y="20px")
     no_proposals_view = rx.card(
         rx.vstack(
-            rx.icon("circle-off", size=28, color="var(--color-text-200)"),
-            rx.text("No proposals found for this fund", color="var(--color-text-200)"),
+            rx.icon("circle-off", size=28),
+            rx.text("提案が見つかりませんでした"),
             spacing="2",
             align="center",
         ),
@@ -467,6 +492,4 @@ def fund_detail() -> rx.Component:
         width="100%",
         max_width="1130px",
     )
-
-
 

@@ -21,7 +21,6 @@ template_page_style = {
     "flex": "1",
     "max-width": "1130px",
     "font_family": font_family,
-
     "width":"100%",
     "display":"flex",
     "flex_wrap":"wrap",
@@ -32,7 +31,7 @@ template_page_style = {
 template_content_style = {
     "border_radius": border_radius,
     "margin_bottom": "2em",
-    "min_height": "85vh",
+    # Fill most of the viewport while leaving space for header/footer.
     "font_family": font_family,
 }
 

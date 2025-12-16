@@ -41,34 +41,45 @@ PROJECT_STATUS_OPTIONS = [
     {"value": "complete", "label": "完了"},
 ]
 
-FUND_SELECT_DARK_CSS = """
+FILTER_THEME_CSS = """
 <style>
-@media (prefers-color-scheme: dark) {
-  .filter__control {
-    background-color: var(--color-bg-200) !important;
-    border-color: var(--color-border) !important;
-    border-width: 1.4px !important;
-  }
-  .filter__menu {
-    background-color: var(--color-bg-200) !important;
-  }
-  .filter__option--is-focused {
-    background-color: var(--color-primary-300) !important;
-  }
-  .filter__placeholder {
-    color: var(--color-text-200) !important;
-    font-weight: 450 !important;
-  }
-  .filter__multi-value {
-    background-color: var(--color-primary-300) !important;
-  }
-  .filter__multi-value__label {
-    color: var(--color-primary-100) !important;
-  }
-  .filter__multi-value__label:hover {
-    color: var(--color-primary-100) !important;
-    background-color: var(--color-primary-300) !important;
-  }
+:where(html, body) .filter__control {
+  background-color: var(--slate-2) !important;
+  border-color: var(--gray-4) !important;
+  color: var(--slate-12) !important;
+}
+:where(html, body) .filter__menu,
+:where(html, body) .filter__menu-list {
+  background-color: var(--slate-1) !important;
+  color: var(--slate-12) !important;
+}
+:where(html, body) .filter__option { color: var(--slate-12) !important; }
+:where(html, body) .filter__option--is-focused {
+  background-color: var(--amber-7) !important;
+  color: var(--slate-12) !important;
+}
+:where(html, body) .filter__placeholder {
+  color: var(--slate-10) !important;
+}
+:where(html, body) .filter__multi-value {
+  background-color: var(--amber-3) !important;
+  color: var(--amber-11) !important;
+}
+:where(html, body) .filter__multi-value__label { color: var(--amber-11) !important; }
+:where(html, body) .filter__multi-value__label:hover { background-color: var(--amber-4) !important; }
+:where(html, body) .filter__indicator-separator { display: none !important; }
+:where(html, body) .filter__control--is-focused { box-shadow: 0 0 0 2px var(--amber-7) !important; }
+
+:where(html.dark, body.dark) .filter__control {
+  background-color: var(--slate-3) !important;
+  border-color: var(--slate-1) !important;
+  color: var(--slate-12) !important;
+}
+:where(html.dark, body.dark) .filter__menu,
+:where(html.dark, body.dark) .filter__menu-list {
+  background-color: var(--slate-2) !important;
+  border-color: var(--slate-7) !important;
+  color: var(--slate-12) !important;
 }
 </style>
 """
@@ -77,8 +88,8 @@ FUND_SELECT_DARK_CSS = """
 def catalyst_breadcrumb() -> rx.Component:
     return rx.hstack(
         rx.link(rx.icon("home", size=16), href="/", underline="none",color_scheme="gray"),
-        rx.icon("chevron-right", size=14, color="var(--color-text-200)"),
-        rx.text("Catalyst", size="2", color="var(--color-text-100)",weight="medium"),
+        rx.icon("chevron-right", size=14, color="gray"),
+        rx.text("Catalyst", size="2", weight="medium"),
         spacing="2",
         align="center",
         width="100%",
@@ -87,10 +98,10 @@ def catalyst_breadcrumb() -> rx.Component:
     )
 
 
-@template(route="/catalyst/", title="カタリスト", on_load=AppState.on_load)
+@template(route="/catalyst/", title="カタリスト | Cardanoism", on_load=AppState.on_load)
 def catalyst() -> rx.Component:
     filters = rx.vstack(
-        rx.html(FUND_SELECT_DARK_CSS),
+        rx.html(FILTER_THEME_CSS),
         rx.box(
             rx.input(
                 placeholder="キーワードを入力...(タイトル、タグ、提案者名など)",
@@ -164,7 +175,7 @@ def catalyst() -> rx.Component:
 
     header = rx.flex(
         rx.flex(
-            rx.text(AppState.total_items, size="6", weight="bold", color="var(--color-accent-text)"),
+            rx.text(AppState.total_items, size="6", weight="bold", color="var(--amber-11)"),
             rx.text("件", size="4"),
             align_items="baseline",
             margin_left="5px",
@@ -178,21 +189,21 @@ def catalyst() -> rx.Component:
                     color_scheme=None,
                     background_color=rx.cond(
                         AppState.view_mode == "list",
-                        "var(--color-accent-text)",
-                        "var(--color-bg-200)",
+                        "var(--amber-7)",
+                        "var(--gray-3)",
                     ),
                     color=rx.cond(
                         AppState.view_mode == "list",
-                        "var(--color-primary-100)",
-                        "var(--color-text-200)",
+                        "var(--gray-12)",
+                        "var(--gray-10)",
                     ),
                     _hover={
                         "background_color": rx.cond(
                             AppState.view_mode == "list",
-                            "var(--color-accent-text)",
-                            "var(--color-accent-text)",
+                            "var(--amber-7)",
+                            "var(--amber-7)",
                         ),
-                        "color": "var(--color-primary-100)",
+                        "color": "var(--gray-12)",
                     },
                     size="2",
                     on_click=lambda: AppState.set_view_mode("list"),
@@ -204,21 +215,21 @@ def catalyst() -> rx.Component:
                     color_scheme=None,
                     background_color=rx.cond(
                         AppState.view_mode == "grid",
-                        "var(--color-accent-text)",
-                        "var(--color-bg-200)",
+                        "var(--amber-7)",
+                        "var(--gray-3)",
                     ),
                     color=rx.cond(
                         AppState.view_mode == "grid",
-                        "var(--color-primary-100)",
-                        "var(--color-text-200)",
+                        "var(--gray-12)",
+                        "var(--gray-10)",
                     ),
                     _hover={
                         "background_color": rx.cond(
                             AppState.view_mode == "grid",
-                            "var(--color-accent-text)",
-                            "var(--color-accent-text)",
+                            "var(--amber-7)",
+                            "var(--amber-7)",
                         ),
-                        "color": "var(--color-primary-100)",
+                        "color": "var(--gray-12)",
                     },
                     size="2",
                     on_click=lambda: AppState.set_view_mode("grid"),
@@ -250,5 +261,5 @@ def catalyst() -> rx.Component:
             width="100%",
             max_width="1130px",
         ),
-        rx.box(rx.spinner(size="3"), padding_y="15px"),
+        rx.flex(rx.spinner(size="3"), justify="center", align="center", width="100%", padding_y="20px"),
     )
