@@ -12,18 +12,18 @@ TEXT_MUTED = "var(--gray-9)"
 def hero_section() -> rx.Component:
     stats = rx.hstack(
         rx.hstack(rx.icon("activity", size=16, color=ACCENT_DARK), rx.text("提案データを毎日更新", size="2"), spacing="2"),
-        rx.hstack(rx.icon("layers", size=16, color=ACCENT_DARK), rx.text("Fund・ガバナンスを俯瞰", size="2"), spacing="2"),
-        rx.hstack(rx.icon("sparkles", size=16, color=ACCENT_DARK), rx.text("日本語でナビゲート", size="2"), spacing="2"),
+        rx.hstack(rx.icon("layers", size=16, color=ACCENT_DARK), rx.text("ガバナンス管理", size="2"), spacing="2"),
+        rx.hstack(rx.icon("sparkles", size=16, color=ACCENT_DARK), rx.text("ステーキング管理", size="2"), spacing="2"),
         spacing="4",
         wrap="wrap",
         align="start",
     )
 
     content = rx.vstack(
-        rx.text("Project Catalyst JP / Cardano Governance", size="2", letter_spacing="0.08em", color="var(--gray-9)"),
-        rx.heading("カルダノガバナンスを日本語でナビゲート", size="8", line_height="1.05"),
+        rx.text("Project Catalyst / Governance / Staking", size="2", letter_spacing="0.08em", color="var(--gray-9)"),
+        rx.text("カルダノガバナンスを日本語でナビゲート", size="7", weight="bold", line_height="1.05"),
         rx.text(
-            "Catalystの提案検索からFund・ガバナンス・ステーキングの管理まで。Cardanoの意思決定を日本語でキャッチアップし、ワンストップで扱えるプラットフォームへ進化させます。",
+            "Catalystの提案検索からガバナンス・ステーキングの管理まで。Cardanoの意思決定を日本語でキャッチアップし、ワンストップで扱えるプラットフォームへ進化させます。",
             size="4",
             color=rx.color_mode_cond("rgba(30,30,30,0.82)", "rgba(230,230,245,0.9)"),
             line_height="1.6",
@@ -122,7 +122,7 @@ def feature_section() -> rx.Component:
     ]
     return rx.container(
         rx.vstack(
-            rx.heading("Cardanoismのコア機能", size="6"),
+            rx.text("Cardanoismのコア機能", size="6", weight="bold"),
             rx.text("プロダクトの進化軸を3つの視点で整理しました", size="3", color=TEXT_MUTED),
             rx.hstack(
                 *[feature_card(title, desc, icon) for title, desc, icon in items],
@@ -201,7 +201,7 @@ def roadmap_section() -> rx.Component:
     roadmap_items = list(roadmap.items())
     return rx.container(
         rx.vstack(
-            rx.heading("ロードマップ", size="6"),
+            rx.text("ロードマップ", size="6", weight="bold"),
             rx.text("クォーターごとの主要マイルストーン", size="3", color=TEXT_MUTED),
             rx.box(
                 rx.vstack(

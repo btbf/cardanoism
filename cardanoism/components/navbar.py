@@ -12,7 +12,7 @@ UNDERLINE_STYLE = {
     "paddingBottom": "2px",
 }
 
-HOVER_UNDERLINE = {"backgroundSize": "100% 2px"}
+HOVER_UNDERLINE = {"backgroundSize": "100% 2px", "backgroundColor": "unset"}
 
 
 def navbar_icons_item(text: str, url: str, disabled: bool) -> rx.Component:
@@ -48,10 +48,13 @@ def navbar_icons() -> rx.Component:
                     rx.menu.trigger(
                         rx.button(
                             rx.text("カタリスト", size="4", weight="medium", color="var(--gray-12)"),
-                            rx.icon("chevron-down"),
                             weight="medium",
                             variant="ghost",
                             size="3",
+                            style=UNDERLINE_STYLE,
+                            _hover=HOVER_UNDERLINE,
+                            _active={"background_color": "unset"},
+                            cursor="pointer",
                         ),
                     ),
                     rx.menu.content(
@@ -60,6 +63,7 @@ def navbar_icons() -> rx.Component:
                                 rx.text("提案一覧", size="3", weight="medium", color="var(--gray-12)"),
                                 href="/catalyst",
                                 width="100%",
+                                underline="none"
                             ),
                         ),
                         rx.menu.item(
@@ -67,6 +71,7 @@ def navbar_icons() -> rx.Component:
                                 rx.text("ファンド一覧", size="3", weight="medium", color="var(--gray-12)"),
                                 href="/catalyst/funds",
                                 width="100%",
+                                underline="none"
                             ),
                         ),
                     ),
@@ -132,8 +137,5 @@ def navbar_icons() -> rx.Component:
         position="fixed",
         z_index="500",
         width="100%",
-        background=rx.color_mode_cond(
-            light="var(--rs-body)",
-            dark="var(--gray-1)",
-        ),
+        background_color="var(--gray-1)",
     )
