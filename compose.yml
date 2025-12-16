@@ -1,0 +1,17 @@
+services:
+  backend:
+    build:
+      dockerfile: Dockerfile
+    ports:
+     - 8000:8000
+    depends_on:
+     - redis
+  frontend:
+    build:
+      dockerfile: web.Dockerfile
+    ports:
+      - 3000:80
+    depends_on:
+      - backend
+  redis:
+    image: redis

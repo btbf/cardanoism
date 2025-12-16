@@ -7,5 +7,5 @@ requires-python = ">=3.11"
 dependencies = [
     "mariadb>=1.1.14",
     "openai>=2.8.0",
-    "reflex==0.8.19",
+    "reflex==0.8.23",
 ]
