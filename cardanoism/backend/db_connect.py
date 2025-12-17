@@ -22,15 +22,14 @@ POOL_SIZE = 10
 # One-time warmup flag
 _warmed_up = False
 
-_poolc=None
+_pool=None
 
 def get_pool():
-    global _poolc
-    global pool
-    _poolc=True
-    if _poolc is None:
+    global _pool
+
+    if _pool is None:
         try:
-            pool = mariadb.ConnectionPool(
+            _pool = mariadb.ConnectionPool(
                 pool_name="cardanoism_pool",
                 pool_size=POOL_SIZE,
                 user=os.getenv("DB_USER"),
@@ -45,6 +44,7 @@ def get_pool():
 
 #Connect to MariaDB Platform
 def dbConnect():
+    pool = get_pool()
     try:
         get_pool()
         conn = pool.get_connection()
