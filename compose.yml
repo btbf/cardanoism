@@ -3,30 +3,31 @@ services:
     build:
       dockerfile: Dockerfile
     environment:
-      DB_HOST="${DB_HOST}" 
-      DB_PORT="${DB_PORT}" 
-      DB_USER="${DB_USER}" 
-      DB_PASSWORD="${DB_PASSWORD}" 
-      DB_NAME="${DB_NAME}" 
-      GPT_API_KEY="${GPT_API_KEY}"
+      DB_HOST: "${DB_HOST}"
+      DB_PORT: "${DB_PORT}"
+      DB_USER: "${DB_USER}"
+      DB_PASSWORD: "${DB_PASSWORD}"
+      DB_NAME: "${DB_NAME}"
+      GPT_API_KEY: "${GPT_API_KEY}"
     ports:
-     - 8000:8000
+      - "8000:8000"
     depends_on:
-     - redis
+      - redis
+
   frontend:
     build:
       dockerfile: web.Dockerfile
     environment:
-      DB_HOST="${DB_HOST}" 
-      DB_PORT="${DB_PORT}" 
-      DB_USER="${DB_USER}" 
-      DB_PASSWORD="${DB_PASSWORD}" 
-      DB_NAME="${DB_NAME}" 
-      GPT_API_KEY="${GPT_API_KEY}"
+      DB_HOST: "${DB_HOST}"
+      DB_PORT: "${DB_PORT}"
+      DB_USER: "${DB_USER}"
+      DB_PASSWORD: "${DB_PASSWORD}"
+      DB_NAME: "${DB_NAME}"
+      GPT_API_KEY: "${GPT_API_KEY}"
     ports:
-      - 3000:80
+      - "3000:80"
     depends_on:
       - backend
+
   redis:
     image: redis
-`
