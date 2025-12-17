@@ -3,7 +3,7 @@ name = "cardanoism"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12
 dependencies = [
     "mariadb>=1.1.14",
     "openai>=2.8.0",
