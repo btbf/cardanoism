@@ -8,5 +8,5 @@ RUN reflex export --frontend-only --no-zip
 
 FROM nginx
 
-COPY --from=builder /app/.web/_static /usr/share/nginx/html
+COPY --from=builder /app/.web/build/client /usr/share/nginx/html
 COPY ./nginx.conf /etc/nginx/conf.d/default.conf
