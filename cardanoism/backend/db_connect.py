@@ -22,23 +22,30 @@ POOL_SIZE = 10
 # One-time warmup flag
 _warmed_up = False
 
-try:
-    pool = mariadb.ConnectionPool(
-        pool_name="cardanoism_pool",
-        pool_size=POOL_SIZE,
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASS"),
-        host=os.getenv("DB_HOST"),
-        port=int(os.getenv("DB_PORT")),
-        database=os.getenv("DB_NAME"),
-    )
-except mariadb.Error as e:
-    logger.error("Error creating MariaDB pool: %s", e)
-    sys.exit(1)
+_poolc=None
+
+def get_pool():
+    global _poolc
+    global pool
+    if _poolc is None:
+        try:
+            pool = mariadb.ConnectionPool(
+                pool_name="cardanoism_pool",
+                pool_size=POOL_SIZE,
+                user=os.getenv("DB_USER"),
+                password=os.getenv("DB_PASS"),
+                host=os.getenv("DB_HOST"),
+                port=int(os.getenv("DB_PORT")),
+                database=os.getenv("DB_NAME"),
+            )
+        except mariadb.Error as e:
+            logger.error("Error creating MariaDB pool: %s", e)
+            sys.exit(1)
 
 #Connect to MariaDB Platform
 def dbConnect():
     try:
+        get_pool()
         conn = pool.get_connection()
     except mariadb.Error as e:
         print(f"Error getting connection from pool: {e}")
