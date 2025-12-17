@@ -27,6 +27,7 @@ _poolc=None
 def get_pool():
     global _poolc
     global pool
+    _poolc=True
     if _poolc is None:
         try:
             pool = mariadb.ConnectionPool(
