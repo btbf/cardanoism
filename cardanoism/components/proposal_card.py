@@ -94,11 +94,11 @@ def status_badge(proposal: Dict[str, Any]) -> rx.Component:
             project_status,
             ("in_progress", badge_with_dot("進行中", "white", bg=blue, text_color="white", blink=True)),
             ("complete", badge_with_dot("完了", "white", bg=indigo, text_color="white")),
-            badge_with_dot("採用", "white", bg=indigo, text_color="white"),
+            badge_with_dot("採択", "white", bg=indigo, text_color="white"),
         ),
         rx.match(
             funding_status,
-            ("not_approved", badge_with_dot("不採用", "white", bg=gray, text_color="white")),
+            ("not_approved", badge_with_dot("不採択", "white", bg=gray, text_color="white")),
             ("over_budget", badge_with_dot("申請不備", "white", bg=gray, text_color="white")),
             ("pending", badge_with_dot("投票期間中", "white", bg=green, text_color="white", blink=True)),
             badge_with_dot("進行中", "white", bg=blue, text_color="white", blink=True),
