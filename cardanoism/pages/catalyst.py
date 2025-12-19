@@ -244,6 +244,15 @@ def catalyst() -> rx.Component:
         align_items="center",
         display="flex",
     )
+    no_proposals_view = rx.card(
+        rx.vstack(
+            rx.icon("circle-off", size=28),
+            rx.text("提案が見つかりませんでした"),
+            spacing="2",
+            align="center",
+        ),
+        width="100%",
+    )
 
     return rx.cond(
         AppState.load,
@@ -252,9 +261,9 @@ def catalyst() -> rx.Component:
                 catalyst_breadcrumb(),
                 filters,
                 header,
-                card_foreach_dict(),
-                top_button_component(),
-                pagination_component(AppState),
+                rx.cond(AppState.proposals, card_foreach_dict(), no_proposals_view),
+                rx.cond(AppState.proposals, top_button_component(), rx.fragment()),
+                rx.cond(AppState.proposals, pagination_component(AppState), rx.fragment()),
                 spacing="4",
                 width="100%",
             ),

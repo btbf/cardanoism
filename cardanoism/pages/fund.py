@@ -26,6 +26,60 @@ class CatalystChallengeSelect(ReactSelectLib):
 
 challegeFilter = CatalystChallengeSelect.create
 
+FUNDING_STATUS_OPTIONS = [
+    {"value": "funded", "label": "採択"},
+    {"value": "not_approved", "label": "不採択"},
+    {"value": "over_budget", "label": "申請不備"},
+    {"value": "pending", "label": "投票期間中"},
+]
+
+PROJECT_STATUS_OPTIONS = [
+    {"value": "in_progress", "label": "進行中"},
+    {"value": "complete", "label": "完了"},
+]
+
+FILTER_THEME_CSS = """
+<style>
+:where(html, body) .filter__control {
+  background-color: var(--slate-2) !important;
+  border-color: var(--gray-4) !important;
+  color: var(--slate-12) !important;
+}
+:where(html, body) .filter__menu,
+:where(html, body) .filter__menu-list {
+  background-color: var(--slate-1) !important;
+  color: var(--slate-12) !important;
+}
+:where(html, body) .filter__option { color: var(--slate-12) !important; }
+:where(html, body) .filter__option--is-focused {
+  background-color: var(--amber-7) !important;
+  color: var(--slate-12) !important;
+}
+:where(html, body) .filter__placeholder {
+  color: var(--slate-10) !important;
+}
+:where(html, body) .filter__multi-value {
+  background-color: var(--amber-3) !important;
+  color: var(--amber-11) !important;
+}
+:where(html, body) .filter__multi-value__label { color: var(--amber-11) !important; }
+:where(html, body) .filter__multi-value__label:hover { background-color: var(--amber-4) !important; }
+:where(html, body) .filter__indicator-separator { display: none !important; }
+:where(html, body) .filter__control--is-focused { box-shadow: 0 0 0 2px var(--amber-7) !important; }
+
+:where(html.dark, body.dark) .filter__control {
+  background-color: var(--slate-3) !important;
+  border-color: var(--slate-1) !important;
+  color: var(--slate-12) !important;
+}
+:where(html.dark, body.dark) .filter__menu,
+:where(html.dark, body.dark) .filter__menu-list {
+  background-color: var(--slate-2) !important;
+  border-color: var(--slate-7) !important;
+  color: var(--slate-12) !important;
+}
+</style>
+"""
 
 def stat_chip(icon: str, label: str, value: str | int) -> rx.Component:
     """Compact stat block used in fund headers."""
@@ -310,7 +364,7 @@ def fund_header_detail() -> rx.Component:
                     align="start",
                     width="100%",
                 ),
-                rx.text(fund.get("display_description", fund.get("description", "Fund")), size="3", color=rx.color("slate", 10), max_width="900px"),
+                #rx.text(fund.get("display_description", fund.get("description", "Fund")), size="3", color=rx.color("slate", 10), max_width="900px"),
                 spacing="4",
                 width="100%",
             ),
@@ -465,25 +519,85 @@ def fund_detail() -> rx.Component:
 
     current_route_fund = AppState.router.page.params.get("fund", "")
     ready = AppState.load & (AppState.fund_route_slug == current_route_fund)
+    filters = rx.vstack(
+        rx.html(FILTER_THEME_CSS),
+
+        rx.flex(
+            rx.box(
+                rx.input(
+                    placeholder="キーワードを入力..(タイトル、タグ、提案情報など)",
+                    size="3",
+                    max_length=100,
+                    on_change=lambda value: AppState.set_inputed_value(value).debounce(500),
+                    width="100%",
+                ),
+                width=["100%", "100%", "49.5%", "49.5%", "49.5%"],
+            ),
+            challegeFilter(
+                options=AppState.challenge_options,
+                classNamePrefix="filter",
+                placeholder="チャレンジを選択",
+                onChange=lambda value: AppState.set_selected_chllenge_value(value),
+                isMulti=True,
+                styles=None,
+                theme=None,
+                width=["100%", "100%", "49.5%", "49.5%", "49.5%"],
+            ),
+            width="100%",
+            spacing="2",
+            justify="between",
+            direction={"base": "column", "md": "row"},
+            flex_wrap="wrap",
+            row_gap="10px",
+        ),
+        rx.flex(
+            challegeFilter(
+                options=FUNDING_STATUS_OPTIONS,
+                classNamePrefix="filter",
+                placeholder="資金調達ステータス",
+                onChange=lambda value: AppState.set_selected_fundingStatus_value(value),
+                isMulti=True,
+                styles=None,
+                theme=None,
+                width=["100%", "100%", "49.5%", "49.5%", "49.5%"],
+            ),
+            challegeFilter(
+                options=PROJECT_STATUS_OPTIONS,
+                classNamePrefix="filter",
+                placeholder="プロジェクト進捗",
+                onChange=lambda value: AppState.set_selected_projectStatus_value(value),
+                isMulti=True,
+                styles=None,
+                theme=None,
+                width=["100%", "100%", "49.5%", "49.5%", "49.5%"],
+            ),
+            width="100%",
+            spacing="2",
+            justify="between",
+            direction={"base": "column", "md": "row"},
+            flex_wrap="wrap",
+            row_gap="10px",
+        ),
+        spacing="2",
+        width="100%",
+        padding_bottom="20px",
+    )
 
     return rx.box(
         rx.cond(
             ready,
             rx.cond(
                 AppState.fund_ids,
-                rx.cond(
-                    AppState.proposals,
-                    rx.vstack(
-                        fund_breadcrumb(),
-                        fund_header_detail(),
-                        proposal_controls(),
-                        card_foreach_dict(),
-                        top_button_component(),
-                        pagination_component(AppState),
-                        spacing="4",
-                        width="100%",
-                    ),
-                    no_proposals_view,
+                rx.vstack(
+                    fund_breadcrumb(),
+                    fund_header_detail(),
+                    filters,
+                    proposal_controls(),
+                    rx.cond(AppState.proposals, card_foreach_dict(), no_proposals_view),
+                    rx.cond(AppState.proposals, top_button_component(), rx.fragment()),
+                    rx.cond(AppState.proposals, pagination_component(AppState), rx.fragment()),
+                    spacing="4",
+                    width="100%",
                 ),
                 empty_fund_state(),
             ),

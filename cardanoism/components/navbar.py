@@ -36,7 +36,7 @@ def navbar_icons() -> rx.Component:
             height="auto",
             alt="カルダノイズム",
         ),
-        href="./",
+        href="/",
     )
 
     desktop_nav = rx.desktop_only(
