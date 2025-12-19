@@ -404,7 +404,7 @@ class AppState(rx.State):
                 data_query += f" AND ({search_clause})"
             data_params = params + search_params
                     
-            asc_query = " ORDER BY p.fund_uuid DESC,CASE WHEN p.funding_status LIKE '%funded%' THEN 0 ELSE 1 END, p.yes_votes_count DESC, p.campaign_uuid DESC"
+            asc_query = " ORDER BY fund_title DESC,CASE WHEN p.funding_status LIKE 'funded' THEN 0 ELSE 1 END, p.campaign_uuid DESC, p.yes_votes_count DESC"
             limit_query = f" LIMIT {self.items_per_page} OFFSET {(self.current_page - 1) * self.items_per_page}"
             
             #データ取得クエリ
