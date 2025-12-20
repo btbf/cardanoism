@@ -477,6 +477,39 @@ def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
     )
 
 
+def modal_history_script() -> rx.Component:
+    return rx.script(
+        """
+        if (!window.__proposalModalHistory) {
+          window.__proposalModalHistory = true;
+          window.proposalModalPush = (uuid, state) => {
+            history.pushState(
+              { scrollY: window.scrollY, search: state.search, filter: state.filter },
+              "",
+              `/catalyst/proposals/${uuid}`
+            );
+          };
+          window.proposalModalReplace = (state) => {
+            history.replaceState(
+              { scrollY: window.scrollY, search: state.search, filter: state.filter },
+              "",
+              window.location.pathname + window.location.search
+            );
+          };
+          window.addEventListener("popstate", (event) => {
+            if (window.reflex) {
+              window.reflex.send({
+                state: "AppState",
+                event: "on_popstate",
+                data: event.state,
+              });
+            }
+          });
+        }
+        """
+    )
+
+
 def detail_modal() -> rx.Component:
     p = AppState.modal_proposal
     return rx.dialog.root(
@@ -510,6 +543,14 @@ def detail_modal() -> rx.Component:
                   border: 1px solid var(--slate-6);
                   scrollbar-color: var(--gray-5) var(--gray-3);
                   scrollbar-width: thin;
+                }
+                @media (max-width: 768px) {
+                  .rt-DialogContent.proposal-modal {
+                    position: fixed !important;
+                    inset: 0 !important;
+                    margin: 0 !important;
+                    transform: none !important;
+                  }
                 }
                 </style>
                 """
@@ -665,9 +706,11 @@ def detail_modal() -> rx.Component:
                 height="100%",
                 min_height="0",
             ),
-            max_width="900px",
-            max_height="95vh",
-            width="95vw",
+            max_width=["100vw", "100vw", "900px"],
+            max_height=["100vh", "100vh", "95vh"],
+            width=["100vw", "100vw", "95vw"],
+            height=["100vh", "100vh", "auto"],
+            padding="20px",
             class_name=(
                 "proposal-modal "
                 "shadow-xl rounded-2xl "
@@ -683,6 +726,7 @@ def detail_modal() -> rx.Component:
 def card_foreach_dict() -> rx.Component:
     return rx.box(
         STATUS_DOT_STYLE,
+        modal_history_script(),
         detail_modal(),
         rx.cond(
             AppState.load,

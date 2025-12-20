@@ -20,7 +20,7 @@ class CatalystChallengeSelect(ReactSelectLib):
     placeholder: rx.Var[str]
     options: rx.Var[list[dict[str, str]]]
     controlShouldRenderValue: rx.Var[bool] = True
-    defaultValue: rx.Var[dict[str, str]]
+    defaultValue: rx.Var[list[dict[str, str]]]
     onChange: rx.EventHandler[lambda value: [value]]
 
 
@@ -517,8 +517,7 @@ def fund_detail() -> rx.Component:
         width="100%",
     )
 
-    current_route_fund = AppState.router.page.params.get("fund", "")
-    ready = AppState.load & (AppState.fund_route_slug == current_route_fund)
+    ready = AppState.load & (AppState.fund_route_slug != "")
     filters = rx.vstack(
         rx.html(FILTER_THEME_CSS),
 
@@ -528,6 +527,7 @@ def fund_detail() -> rx.Component:
                     placeholder="キーワードを入力..(タイトル、タグ、提案情報など)",
                     size="3",
                     max_length=100,
+                    value=AppState.search_query,
                     on_change=lambda value: AppState.set_inputed_value(value).debounce(500),
                     width="100%",
                 ),
@@ -537,6 +537,7 @@ def fund_detail() -> rx.Component:
                 options=AppState.challenge_options,
                 classNamePrefix="filter",
                 placeholder="チャレンジを選択",
+                defaultValue=AppState.selected_challenge_filters,
                 onChange=lambda value: AppState.set_selected_chllenge_value(value),
                 isMulti=True,
                 styles=None,
@@ -555,6 +556,7 @@ def fund_detail() -> rx.Component:
                 options=FUNDING_STATUS_OPTIONS,
                 classNamePrefix="filter",
                 placeholder="資金調達ステータス",
+                defaultValue=AppState.selected_funding_status_filters,
                 onChange=lambda value: AppState.set_selected_fundingStatus_value(value),
                 isMulti=True,
                 styles=None,
@@ -565,6 +567,7 @@ def fund_detail() -> rx.Component:
                 options=PROJECT_STATUS_OPTIONS,
                 classNamePrefix="filter",
                 placeholder="プロジェクト進捗",
+                defaultValue=AppState.selected_project_status_filters,
                 onChange=lambda value: AppState.set_selected_projectStatus_value(value),
                 isMulti=True,
                 styles=None,

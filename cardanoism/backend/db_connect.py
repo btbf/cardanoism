@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import json
 import mariadb
 from typing import List, Dict, Any, Tuple
 from contextlib import contextmanager
@@ -258,14 +259,100 @@ class AppState(rx.State):
     funding_statuses: List[str] = []
     project_statuses: List[str] = []
     view_mode: str = "list"
+    search_query: str = ""
     modal_open: bool = False
     modal_proposal: Dict[str, Any] = {}
     modal_loading: bool = False
     modal_pending_uuid: str = ""
+    selected_proposal_uuid: str | None = None
+    scroll_position: int = 0
+    filter_params: Dict[str, Any] = {}
+    last_list_path: str = ""
     fund_route_slug: str = ""
     fund_meta: Dict[str, Any] = {}
     fund_page_loading: bool = True
     
+    def _default_filter_params(self) -> Dict[str, Any]:
+        return {
+            "funds": [],
+            "challenges": [],
+            "funding_statuses": [],
+            "project_statuses": [],
+        }
+
+    def _sync_filter_params_defaults(self) -> None:
+        if not isinstance(self.filter_params, dict):
+            self.filter_params = self._default_filter_params()
+            return
+        defaults = self._default_filter_params()
+        for key, value in defaults.items():
+            self.filter_params.setdefault(key, value)
+
+    def _history_state_payload(self) -> Dict[str, Any]:
+        self._sync_filter_params_defaults()
+        return {"search": self.search_query, "filter": self.filter_params}
+
+    def _history_replace_script(self) -> rx.event.EventHandler:
+        payload = json.dumps(self._history_state_payload(), ensure_ascii=True)
+        return rx.call_script(
+            "const state = "
+            f"{payload};"
+            "if (window.proposalModalReplace) {"
+            "  window.proposalModalReplace(state);"
+            "} else {"
+            "  history.replaceState("
+            "    { scrollY: window.scrollY, search: state.search, filter: state.filter },"
+            "    '',"
+            "    window.location.pathname + window.location.search"
+            "  );"
+            "}"
+        )
+
+    def _history_push_script(self, uuid: str) -> rx.event.EventHandler | None:
+        if not uuid:
+            return None
+        payload = json.dumps(self._history_state_payload(), ensure_ascii=True)
+        return rx.call_script(
+            "const state = "
+            f"{payload};"
+            "if (window.proposalModalPush) {"
+            f"  window.proposalModalPush({json.dumps(uuid)}, state);"
+            "} else {"
+            "  history.pushState("
+            "    { scrollY: window.scrollY, search: state.search, filter: state.filter },"
+            "    '',"
+            f"    `/catalyst/proposals/{uuid}`"
+            "  );"
+            "}"
+        )
+
+    def _apply_filter_params(self) -> None:
+        self._sync_filter_params_defaults()
+        self.fund_ids = self._normalize_selection(self.filter_params.get("funds"))
+        self.challenge_ids = self._normalize_selection(self.filter_params.get("challenges"))
+        self.funding_statuses = self._normalize_selection(self.filter_params.get("funding_statuses"))
+        self.project_statuses = self._normalize_selection(self.filter_params.get("project_statuses"))
+
+    @rx.var
+    def selected_fund_filters(self) -> List[Dict[str, str]]:
+        self._sync_filter_params_defaults()
+        return self.filter_params.get("funds", [])
+
+    @rx.var
+    def selected_challenge_filters(self) -> List[Dict[str, str]]:
+        self._sync_filter_params_defaults()
+        return self.filter_params.get("challenges", [])
+
+    @rx.var
+    def selected_funding_status_filters(self) -> List[Dict[str, str]]:
+        self._sync_filter_params_defaults()
+        return self.filter_params.get("funding_statuses", [])
+
+    @rx.var
+    def selected_project_status_filters(self) -> List[Dict[str, str]]:
+        self._sync_filter_params_defaults()
+        return self.filter_params.get("project_statuses", [])
+
     def _reset_query_state(self):
         """Reset filters and pagination before a fresh query."""
         self.proposals = []
@@ -284,10 +371,15 @@ class AppState(rx.State):
         self.end_page = 1
         self.middle_page = []
         self.view_mode = "list"
+        self.search_query = ""
         self.modal_open = False
         self.modal_proposal = {}
         self.modal_loading = False
         self.modal_pending_uuid = ""
+        self.selected_proposal_uuid = None
+        self.scroll_position = 0
+        self.filter_params = self._default_filter_params()
+        self.last_list_path = ""
         self.load = False
         self.fund_meta = {}
         self.fund_route_slug = ""
@@ -300,6 +392,7 @@ class AppState(rx.State):
         # preload challenge options (all funds)
         self.load_challenge_options()
         self.data_fetch()
+        return self._history_replace_script()
 
     def load_fund_page(self):
         """Initialize state for fund detail pages based on route param."""
@@ -309,21 +402,32 @@ class AppState(rx.State):
         self.proposals = []
         self.fund_page_loading = True
         self.load = False
-        self.fund_route_slug = self.router.page.params.get("fund", "")
+        path = self.router.url.path or ""
+        path_parts = [part for part in path.split("/") if part]
+        self.fund_route_slug = path_parts[-1] if path_parts else ""
         self.fund_meta = find_fund_record(self.fund_route_slug)
         fund_id = self.fund_meta.get("id")
         if not fund_id:
             self.load = True
             self.fund_page_loading = False
-            return
+            return self._history_replace_script()
         try:
             self.fund_meta["amount_comma"] = f"{int(float(self.fund_meta.get('amount') or 0)):,}"
         except Exception:
             self.fund_meta["amount_comma"] = ""
         self.fund_ids = [str(fund_id)]
+        self.filter_params["funds"] = [
+            {
+                "value": str(fund_id),
+                "label": self.fund_meta.get("label")
+                or self.fund_meta.get("title")
+                or str(fund_id),
+            }
+        ]
         self.load_challenge_options(self.fund_ids)
         self.data_fetch()
         self.fund_page_loading = False
+        return self._history_replace_script()
         
     def data_fetch(self):
         t0 = perf_counter()
@@ -494,7 +598,10 @@ class AppState(rx.State):
         self.modal_loading = True
         self.modal_open = True
         self.modal_pending_uuid = base_proposal.get("uuid", "")
+        self.selected_proposal_uuid = self.modal_pending_uuid or None
         self.modal_proposal = base_proposal
+        self.last_list_path = self.router.url.path or ""
+        return self._history_push_script(self.modal_pending_uuid)
 
     def load_modal_detail(self, uuid: str | None = None):
         """Requery full detail for modal after open."""
@@ -574,31 +681,103 @@ class AppState(rx.State):
         self.modal_proposal = {}
         self.modal_loading = False
         self.modal_pending_uuid = ""
+        self.selected_proposal_uuid = None
+        target_path = self.last_list_path or "/catalyst"
+        return rx.call_script(
+            "if (window.location.pathname.startsWith('/catalyst/proposals/')) {"
+            "  if (history.state) {"
+            "    history.back();"
+            "  } else {"
+            f"    history.replaceState(null, '', '{target_path}');"
+            "  }"
+            "}"
+        )
+
+    def on_popstate(self, event_state: Dict[str, Any] | None):
+        event_state = event_state or {}
+        filters_changed = False
+
+        if self.modal_open:
+            self.modal_open = False
+            self.modal_proposal = {}
+            self.modal_loading = False
+            self.modal_pending_uuid = ""
+            self.selected_proposal_uuid = None
+
+        if "search" in event_state:
+            incoming_search = event_state.get("search") or ""
+            if incoming_search != self.search_query:
+                self.search_query = incoming_search
+                self.inputed_value = incoming_search
+                filters_changed = True
+
+        if "filter" in event_state:
+            incoming_filters = event_state.get("filter") or self._default_filter_params()
+            if incoming_filters != self.filter_params:
+                self.filter_params = incoming_filters
+                self._sync_filter_params_defaults()
+                self._apply_filter_params()
+                self.load_challenge_options(self.fund_ids)
+                filters_changed = True
+
+        if "scrollY" in event_state:
+            try:
+                self.scroll_position = int(event_state.get("scrollY") or 0)
+            except Exception:
+                self.scroll_position = 0
+
+        if filters_changed:
+            self.current_page = 1
+            self.data_fetch()
+
+        return rx.call_script(
+            "if (window.location.pathname.startsWith('/catalyst/proposals/')) {"
+            "  window.location.reload();"
+            "  return;"
+            "}"
+            "if (history.state && history.state.scrollY !== undefined) {"
+            "  window.scrollTo(0, history.state.scrollY);"
+            "}"
+        )
     
     def set_selected_chllenge_value(self, value):
         logger.debug("Challenge filter change: %s", value)
         self.challenge_ids = self._normalize_selection(value)
+        self._sync_filter_params_defaults()
+        self.filter_params["challenges"] = value or []
         self._refresh_after_filter_change()
+        return self._history_replace_script()
     
     def set_selected_fund_value(self, value):
         self.fund_ids = self._normalize_selection(value)
+        self._sync_filter_params_defaults()
+        self.filter_params["funds"] = value or []
         # reload challenge options based on selected funds
         self.load_challenge_options(self.fund_ids)
         self._refresh_after_filter_change()
+        return self._history_replace_script()
         
     def set_selected_fundingStatus_value(self, value):
         self.funding_statuses = self._normalize_selection(value)
+        self._sync_filter_params_defaults()
+        self.filter_params["funding_statuses"] = value or []
         self._refresh_after_filter_change()
+        return self._history_replace_script()
     
     def set_selected_projectStatus_value(self, value):
         self.project_statuses = self._normalize_selection(value)
+        self._sync_filter_params_defaults()
+        self.filter_params["project_statuses"] = value or []
         self._refresh_after_filter_change()
+        return self._history_replace_script()
         
     def set_inputed_value(self, value: str):
         self.inputed_value = value
+        self.search_query = value
         self.current_page = 1
         # call directly; UI debounce should be handled on the client side
         self.data_fetch()
+        return self._history_replace_script()
     
     def load_challenge_options(self, fund_ids: List[str] | None = None):
         # Show no challenges until a fund is selected
@@ -663,7 +842,9 @@ class ProposalAppState(rx.State):
     load: bool = False
     
     def on_load(self):
-        self.ideascale_id = self.router.page.params.get("proposal_id", "")
+        path = self.router.url.path or ""
+        path_parts = [part for part in path.split("/") if part]
+        self.ideascale_id = path_parts[-1] if path_parts else ""
         # UUID前提になったため数値チェックは不要だが互換のため残しつつ同処理
         if self.ideascale_id.isdecimal():
             self.data_fetch()
