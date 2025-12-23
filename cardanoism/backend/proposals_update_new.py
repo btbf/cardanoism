@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import sys
+import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -168,6 +169,37 @@ def make_slug(title: Optional[str]) -> str:
     return slug.strip("-").lower()
 
 
+def slugify_url_limited(text: str, max_length: int = 200) -> str:
+    if not text:
+        return ""
+
+    text = unicodedata.normalize("NFKD", text).lower()
+
+    replacements = {
+        "&": " and ",
+        ">>>": " greatergreatergreater ",
+        "<<<": " lesslessless ",
+        "->": " to ",
+        "|": "or",
+        "/": "",
+        "：": "",
+        ":": "",
+        ".": "",
+        "_": "",
+    }
+    for key, value in replacements.items():
+        text = text.replace(key, value)
+
+    text = re.sub(r"([a-zA-Z])\.(\d)", r"\1\2", text)
+    text = re.sub(r"(\d)\.(\d)", r"\1\2", text)
+    text = re.sub(r"[’']", "", text)
+
+    text = text.encode("ascii", "ignore").decode("ascii")
+    text = re.sub(r"[^\w\s-]", " ", text)
+    text = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
+    return text[:max_length]
+
+
 def to_int(value: Any) -> Optional[int]:
     if value in (None, "", "null"):
         return None
@@ -239,7 +271,6 @@ def normalize_record(raw: Dict[str, Any]) -> Dict[str, Any]:
     fund = raw.get("fund") or {}
     team = extract_team(raw)
     meta = raw.get("meta_data") or {}
-    chain_proposal_id = meta.get("chain_proposal_id")
 
     record: Dict[str, Any] = {
         # idはAUTO_INCREMENT想定のため明示セットしない
@@ -277,6 +308,7 @@ def normalize_record(raw: Dict[str, Any]) -> Dict[str, Any]:
         "tags": serialize_tags(raw.get("tags")),
         "slug": make_slug(raw.get("title")),
         "_chain_proposal_id": meta.get("chain_proposal_id"),
+        "_projectcatalyst_io_url": meta.get("projectcatalyst_io_url"),
     }
 
     return record
@@ -310,6 +342,47 @@ def build_projectcatalyst_link(record: Dict[str, Any], fund_map: Dict[str, str],
     proj_slug = record.get("slug") or ""
     if fund_slug and campaign_slug and proj_slug:
         return f"https://projectcatalyst.io/funds/{fund_slug}/{campaign_slug}/{proj_slug}"
+    return None
+
+
+def get_status_code(url: Optional[str]) -> Optional[int]:
+    if not url or not isinstance(url, str) or not url.startswith("http"):
+        return None
+    try:
+        response = requests.get(url, allow_redirects=True, timeout=15)
+        return response.status_code
+    except requests.RequestException:
+        return None
+
+
+def resolve_projectcatalyst_link(
+    record: Dict[str, Any],
+    fund_map: Dict[str, str],
+    campaign_map: Dict[str, str],
+) -> Optional[str]:
+    api_url = record.get("_projectcatalyst_io_url")
+    if api_url and isinstance(api_url, str) and api_url.startswith("https"):
+        status = get_status_code(api_url)
+        if status == 200:
+            return api_url
+        if status != 404:
+            return None
+
+    generated_url = build_projectcatalyst_link(record, fund_map, campaign_map)
+    status = get_status_code(generated_url)
+    if status == 200:
+        return generated_url or ""
+    if status != 200:
+        new_slug = slugify_url_limited(record.get("title") or "")
+        if new_slug and new_slug != record.get("slug"):
+            record["slug"] = new_slug
+        regenerated_url = build_projectcatalyst_link(record, fund_map, campaign_map)
+        status = get_status_code(regenerated_url)
+        if status == 200:
+            return regenerated_url or ""
+        if status == 404:
+            return ""
+        return None
     return None
 
 
@@ -361,9 +434,11 @@ def save_records(records: List[Dict[str, Any]]) -> Dict[str, int]:
         if not uuid:
             continue
 
-        record["projectcatalyst_link"] = build_projectcatalyst_link(record, fund_map, campaign_map)
+        record["projectcatalyst_link"] = resolve_projectcatalyst_link(record, fund_map, campaign_map)
 
         current = existing_map.get(uuid)
+        if current and record.get("projectcatalyst_link") == "" and current.get("projectcatalyst_link"):
+            record["projectcatalyst_link"] = None
         enrich_translations(record, current)
 
         if current is None:

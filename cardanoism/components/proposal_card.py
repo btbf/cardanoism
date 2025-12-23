@@ -150,8 +150,44 @@ def fund_progress_bar(proposal: Dict[str, Any]) -> rx.Component:
                 width="160px",
             ),
             rx.text(f"{proposal['fund_percent']}%", size="2", color="var(--indigo-11)", weight="bold"),
+            rx.hstack(
+                rx.tooltip(
+                    rx.hstack(
+                        rx.icon("wallet", size=14, color="var(--gray-10)"),
+                        rx.text("投票", size="1", color="var(--gray-10)"),
+                        rx.text(proposal.get("unique_wallets_display", "0"), size="2", color="var(--gray-10)"),
+                        spacing="1",
+                        align="center",
+                    ),
+                    content="投票ウォレット数",
+                ),
+                rx.tooltip(
+                    rx.hstack(
+                        rx.icon("thumbs-up", size=14, color="var(--gray-10)"),
+                        rx.text("賛成", size="1", color="var(--gray-10)"),
+                        rx.text(proposal.get("yes_votes_count_display", "0"), size="2", color="var(--gray-10)"),
+                        spacing="1",
+                        align="center",
+                    ),
+                    content="賛成票数",
+                ),
+                rx.tooltip(
+                    rx.hstack(
+                        rx.icon("hand", size=14, color="var(--gray-10)"),
+                        rx.text("棄権", size="1", color="var(--gray-10)"),
+                        rx.text(proposal.get("abstain_votes_count_display", "0"), size="2", color="var(--gray-10)"),
+                        spacing="1",
+                        align="center",
+                    ),
+                    content="棄権票数",
+                ),
+                spacing="3",
+                align="center",
+                wrap="wrap",
+            ),
             spacing="2",
             align="center",
+            wrap="wrap",
         ),
         rx.box(),
     )
@@ -589,11 +625,11 @@ def detail_modal() -> rx.Component:
                     align="start",
                     width="100%",
                 ),
-            rx.hstack(
-                status_badge(p),
-                pill(f"{fund_label(p)}", "layers", "yellow"),
-                pill(campaign_label(p), "flag", "gray"),
                 rx.hstack(
+                    status_badge(p),
+                    pill(f"{fund_label(p)}", "layers", "yellow"),
+                    pill(campaign_label(p), "flag", "gray"),
+                    rx.hstack(
                     rx.text(p.get("user_name", ""), size="2", color="var(--gray-9)"),
                     rx.text(
                         f"{p.get('currency_symbol','')} {p.get('amount_requested_comma')}",
@@ -619,6 +655,7 @@ def detail_modal() -> rx.Component:
                     spacing="2",
                     wrap="wrap",
                 ),
+                fund_progress_bar(p),
                 rx.divider(),
                 rx.cond(
                     AppState.modal_loading,

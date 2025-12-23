@@ -109,6 +109,27 @@ def normalize_fund_key(value: Any) -> str:
     return text.replace("_", "").replace(" ", "")
 
 
+def format_count_display(value: Any) -> str:
+    """Format counts with rounding rules for UI display."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = 0
+    abs_number = abs(number)
+    if abs_number >= 100_000_000:
+        oku_value = round(number / 100_000_000, 2)
+        oku_text = f"{oku_value:.2f}".rstrip("0").rstrip(".")
+        return f"{oku_text}億"
+    if abs_number >= 1_000_000:
+        rounded = int(round(number / 1_000_000)) * 1_000_000
+        man_value = int(round(rounded / 10_000))
+        return f"{man_value}万"
+    if abs_number >= 1_000:
+        thousand_value = int(round(number / 1_000)) * 1_000
+        return f"{thousand_value:,}"
+    return f"{int(round(number)):,}"
+
+
 def fetch_funds() -> List[Dict[str, Any]]:
     """Load fund records for list/detail views."""
     try:
@@ -452,6 +473,9 @@ class AppState(rx.State):
             p.title_ja,
             p.amount_requested,
             p.amount_received,
+            p.yes_votes_count,
+            p.abstain_votes_count,
+            p.unique_wallets,
             p.project_status,
             p.funding_status,
             p.problem_ja,
@@ -527,6 +551,9 @@ class AppState(rx.State):
                 p["yes_votes_count_comma"] = f"{int(p.get('yes_votes_count') or 0):,}"
                 p["abstain_votes_count_comma"] = f"{int(p.get('abstain_votes_count') or 0):,}"
                 p["unique_wallets_comma"] = f"{int(p.get('unique_wallets') or 0):,}"
+                p["yes_votes_count_display"] = format_count_display(p.get("yes_votes_count"))
+                p["abstain_votes_count_display"] = format_count_display(p.get("abstain_votes_count"))
+                p["unique_wallets_display"] = format_count_display(p.get("unique_wallets"))
                 try:
                     amt_req = float(p.get("amount_requested") or 0)
                     amt_recv = float(p.get("amount_received") or 0)
@@ -623,6 +650,9 @@ class AppState(rx.State):
             p.solution_ja,
             p.amount_requested,
             p.amount_received,
+            p.yes_votes_count,
+            p.abstain_votes_count,
+            p.unique_wallets,
             p.project_status,
             p.funding_status,
             p.currency_symbol,
@@ -660,6 +690,9 @@ class AppState(rx.State):
                     row["fund_title"] = row.get("fund_title") or row.get("fund_uuid") or ""
                     row["campaign_title_ja"] = row.get("campaign_title_ja") or row.get("campaign_title") or ""
                     row["amount_requested_comma"] = f"{int(row.get('amount_requested') or 0):,}"
+                    row["yes_votes_count_display"] = format_count_display(row.get("yes_votes_count"))
+                    row["abstain_votes_count_display"] = format_count_display(row.get("abstain_votes_count"))
+                    row["unique_wallets_display"] = format_count_display(row.get("unique_wallets"))
                     try:
                         amt_req = float(row.get("amount_requested") or 0)
                         amt_recv = float(row.get("amount_received") or 0)
@@ -903,6 +936,9 @@ class ProposalAppState(rx.State):
                 p["yes_votes_count_comma"] = f"{int(p.get('yes_votes_count') or 0):,}"
                 p["abstain_votes_count_comma"] = f"{int(p.get('abstain_votes_count') or 0):,}"
                 p["unique_wallets_comma"] = f"{int(p.get('unique_wallets') or 0):,}"
+                p["yes_votes_count_display"] = format_count_display(p.get("yes_votes_count"))
+                p["abstain_votes_count_display"] = format_count_display(p.get("abstain_votes_count"))
+                p["unique_wallets_display"] = format_count_display(p.get("unique_wallets"))
                 try:
                     amt_req = float(p.get("amount_requested") or 0)
                     amt_recv = float(p.get("amount_received") or 0)

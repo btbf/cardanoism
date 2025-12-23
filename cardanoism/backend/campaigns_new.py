@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import unicodedata
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Tuple
@@ -30,6 +31,7 @@ DATETIME_FIELDS = {"launched_at", "awarded_at"}
 DECIMAL_FIELDS = {"amount"}
 SLUG_PREFIX_PATTERN = re.compile(r"f\d+-", re.IGNORECASE)
 SLUG_SUFFIX_PATTERN = re.compile(r"-f\d+", re.IGNORECASE)
+TITLE_F_PREFIX_PATTERN = re.compile(r"^\s*[Ff]\s*\d+\s*[:：]\s*")
 
 TRANSLATION_MODEL = "gpt-4.1-mini"
 TITLE_PROMPT = (
@@ -94,6 +96,44 @@ def clean_slug(slug: str | None) -> str:
     return cleaned
 
 
+def strip_title_f_prefix(title: str | None) -> str:
+    if not title:
+        return ""
+    return TITLE_F_PREFIX_PATTERN.sub("", title).strip()
+
+
+def slugify_url_limited(text: str, max_length: int = 200) -> str:
+    if not text:
+        return ""
+
+    text = unicodedata.normalize("NFKD", text).lower()
+    text = re.sub(r"([a-zA-Z])&([a-zA-Z])", r"\1and\2", text)
+
+    replacements = {
+        "&": " and ",
+        ">>>": " greatergreatergreater ",
+        "<<<": " lesslessless ",
+        "->": " to ",
+        "|": "or",
+        "/": "",
+        "：": "",
+        ":": "",
+        ".": "",
+        "_": "",
+    }
+    for key, value in replacements.items():
+        text = text.replace(key, value)
+
+    text = re.sub(r"([a-zA-Z])\.(\d)", r"\1\2", text)
+    text = re.sub(r"(\d)\.(\d)", r"\1\2", text)
+    text = re.sub(r"[’']", "", text)
+
+    text = text.encode("ascii", "ignore").decode("ascii")
+    text = re.sub(r"[^\w\s-]", " ", text)
+    text = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
+    return text[:max_length]
+
+
 def normalize_for_compare(column: str, value: Any) -> Any:
     if column in DATETIME_FIELDS:
         if value in (None, ""):
@@ -141,10 +181,12 @@ def translate_text(kind: str, text: str, prompt: str) -> str | None:
 
 def transform_record(raw: Dict[str, Any]) -> Dict[str, Any]:
     fund_uuid = None
+    original_title = raw.get("title") or ""
+    cleaned_title = strip_title_f_prefix(original_title)
     return {
         "id": raw.get("id"),
-        "title": raw.get("title"),
-        "slug": clean_slug(raw.get("slug")),
+        "title": cleaned_title or original_title,
+        "slug": slugify_url_limited(cleaned_title or ""),
         "excerpt": raw.get("excerpt"),
         "amount": normalize_decimal(raw.get("amount")),
         "launched_at": parse_datetime(raw.get("launched_at")),
@@ -152,6 +194,7 @@ def transform_record(raw: Dict[str, Any]) -> Dict[str, Any]:
         "color": raw.get("color"),
         "label": raw.get("label"),
         "fund_uuid": fund_uuid,
+        "_original_title": original_title,
     }
 
 
@@ -192,6 +235,8 @@ def diff_record(existing: Dict[str, Any], incoming: Dict[str, Any]) -> Dict[str,
     updates: Dict[str, Any] = {}
     for column, value in incoming.items():
         if column == "id":
+            continue
+        if column.startswith("_"):
             continue
         if normalize_for_compare(column, existing.get(column)) != normalize_for_compare(
             column, value
@@ -240,9 +285,12 @@ def save_campaigns(records: List[Dict[str, Any]]) -> Dict[str, int]:
         if not record.get("id"):
             continue
 
-        # assign fund_uuid by matching Fund number in title to funds_new.slug
+        # assign fund_uuid by matching Fund number in original title to funds_new.slug
         if not record.get("fund_uuid"):
-            record["fund_uuid"] = match_fund_uuid(record.get("title") or "", fund_slug_map)
+            record["fund_uuid"] = match_fund_uuid(
+                record.get("_original_title") or record.get("title") or "",
+                fund_slug_map,
+            )
 
         current = existing.get(record["id"])
         enrich_with_translations(record, current)
