@@ -117,7 +117,7 @@ def catalyst() -> rx.Component:
             challegeFilter(
                 classNamePrefix="filter",
                 options=FUND_SELECT_OPTIONS,
-                placeholder="ファンドを選択",
+                placeholder="対象ファンドを選択してください",
                 defaultValue=AppState.selected_fund_filters,
                 onChange=lambda value: AppState.set_selected_fund_value(value),
                 isMulti=True,
