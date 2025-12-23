@@ -1,0 +1,335 @@
+uuid,fund_uuid,campaign_uuid,user_id,fund_id,challenge_id,title,user_name,ideascale_link,ideascale_user,ideascale_id,amount_requested,amount_received,project_status,funding_status,yes_votes_count,no_votes_count,abstain_votes_count,unique_wallets,problem,solution,currency_symbol,currency,alignment_score,feasibility_score,auditability_score,tags,slug,chain_proposal_id
+ff54bc51-7c0c-49be-a6a0-1772ae477d40,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Educating Crypto's Next Generation
+
+
+",,,,,42065,,unfunded,over_budget,86399916,16981997,,,Educating children about cryptocurrencies an securing their future against endless fiat currencies inflation.,Entertain kids with games that show the benefits of blockchain while providing incentive in the form of real-use tokens to gamers.,,USD,,,,,educating-crypto-s-next-generation,
+fcb01b65-b813-4756-a48f-3731297b606c,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Metadata oracle endpoint in Yoroi,,,,,1200,,unfunded,over_budget,90852658,6169322,,,Yoroi backend doesn't have the capability for fetching metadata from oracle endpoints.,We want to implement a new Yoroi backend endpoint that will provide the metadata oracles datapoints.,,USD,,,,,metadata-oracle-endpoint-in-yoroi,
+f6a274f0-048b-4057-9f59-db0f1af94d07,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Tournaments for Tennis Players
+
+
+",,,,,50000,,unfunded,not_approved,27858980,47654252,,,Non-professional tennis players want to compete too. There are centralized ledgers/leagues. But we depend on 3rd party to organize/govern.,"Create distributed ledger allowing players self-organize matches, keep scoreboards/ratings, and set own rules.",,USD,,,,,tournaments-for-tennis-players,
+f4f1ae61-c820-45ba-b766-aa750bb2aac2,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Free-Commerce: sell online with ADA,,,,,35000,,unfunded,over_budget,87251518,25591027,,,Enabling stores to sell goods and services for ADA requires intermediaries who have control over your money and charge fees and commissions.,"To build opensource, intermediary & commission-free payment integrations with ADA & native tokens which flows directly from buyer to seller.",,USD,,,,,free-commerce-sell-online-with-ada,
+f4940de5-f59a-48fb-a7a2-bdd8114fbaba,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Cardano Dapps Listing Website,,,,,9500,,unfunded,over_budget,36009607,12479748,,,"As DApps are released on the Cardano network, it will become harder to keep track of projects being released.","We want to develop an application where we can list & give DApp creators a platform to promote dapps, much like Product Hunt, but for Dapps.",,USD,,,,,cardano-dapps-listing-website,
+f3d5458f-13fc-4921-a734-5deb95f35558,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,DARP: Cardano's Address Name Servce,,,,,57500,,unfunded,not_approved,28846799,29374337,,,"Complex addresses (e.g. cryptocurrency, network, physical) are difficult to share and remember, which adds risk to their use.",The Decentralised Address Resolution Protocol (DARP) uses easy to remember address names to help mitigate risks & improve user experience.,,USD,,,,,darp-cardano-s-address-name-servce,
+f3276cf5-78f3-4566-b3af-4c12c4dbd5ad,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Educational materials about Cardano,,,,,15000,,unfunded,over_budget,122000000,19248762,,,"As Cardano ecosystem grows, there is a constant need for educational materials in different languages.",Everstake is ready to create many educational materials about Cardano and distribute them among our customer base,,USD,,,,,educational-materials-about-cardano,
+f27daef0-6fa6-43e5-a18f-fa6b16e2ca92,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Localize Yoroi for Czech market,,,,,2300,,unfunded,over_budget,75781975,19458826,,,Yoroi is missing Czech localization making it difficult to use on the local market.,Provide Yoroi with a localized Czech interface. This needs to be up to date with each new Yoroi update and coordinated with translators.,,USD,,,,,localize-yoroi-for-czech-market,
+f1cf90a6-5e07-48f7-bb8f-7dcccaf16e4a,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"BC Wildfire Identification
+
+
+",,,,,50000,,unfunded,not_approved,18409295,44298465,,,"There are many ways that wildfires start, faster identification and acknowledgement can greatly reduce their impact.",Utilization of a distributed app to enable incentivised crowdsourcing would greatly reduce the loss of both property and environments.,,USD,,,,,bc-wildfire-identification,
+f0acdb79-5ebe-4f25-bd74-570a6923b6ae,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Write Dapps as continuous workflows,agocorona,,,,7000,7000,complete,funded,138000000,12149271,,,"DApp developpers maintainers and verifiers face the ""endpoint hell"" in Web, in chain and in out-chain code",Express the entire program flow within a Haskell monad which set HTTP endpoints for microservices and uses Plutus endpoints,,USD,,,,,write-dapps-as-continuous-workflows,
+ef4e3c6b-fcc2-4b2f-8d71-115c4b25ff54,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"ReCheck.Me
+
+
+",,,,,40000,,unfunded,over_budget,76834448,19282418,,,"The adoption of Cardano blockchain is impeded without tools for digital sovereignty, identity management, secure data sharing & el. signing.","DApp to manage your personal data & verifiable credentials in a way that you are in centre, own your data and control access to information.",,USD,,,,,recheck-me,
+eecb132e-a516-4bdf-98a4-ed2d13f2d5a2,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Cardano <> Incognito Bridge
+
+
+",,,,,25000,,unfunded,over_budget,274000000,46385865,,,"There is no way to anonymously buy, sell or transact ADA on the Cardano network.",By bridging Cardano with Incognito chain we can add a working solution as a Layer 2 solution without a trusted custodian rather quickly.,,USD,,,,,cardano-incognito-bridge,
+ee87d4ff-ac4d-45f1-9ce1-4290d9e1fda2,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Decentralized system by staking
+
+
+",,,,,60000,,unfunded,over_budget,44107210,20448856,,,"For more better Cardano POS system, How to make ADA holder Decentalization and stable coin system?. ADA whale can destroy Cardano by sellADA",New system for connecting big ADA holder and new (potentially) ADA entrant using Staking advantage and stable coins for ADA Dcentalize.,,USD,,,,,decentralized-system-by-staking,
+ee5c13c5-cdd9-4137-9bd2-22d6030226cf,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Fanance -Celebrity Trading Platform
+
+
+",,,,,20000,,unfunded,over_budget,52193689,41270311,,,Many people hesitate to invest in the stock/crypto market due to a lack of knowledge about the market/stocks. Lots of research is required,Fanance club is a trading platform where one can capitalize their existing sports knowledge & invest in their favourite Sports Stars,,USD,,,,,fanance-celebrity-trading-platform,
+eb823221-d723-4672-aed9-028230ce520d,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Ouroboros Networking Rust Crate,,,,,7000,,unfunded,over_budget,79298508,8967620,,,"Cardano needs alternative node implementations to increase resilience, networking stack is one of the critical components of such node.",Develop server-side Ouroboros Networking Protocol as part of our already existing client-side Rust crate / library.,,USD,,,,,ouroboros-networking-rust-crate,
+eb4bd25e-1416-4ed2-bac6-6be502e4f65f,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Donating Better with Cardano
+
+
+",,,,,42000,,unfunded,over_budget,56170814,17982851,,,"We should trust charities. However, a lot of people don't know how their donation money is spent thus leading them to giving less.",Bring back trust in charities by using DLT for transparent spending and improve the overall donation experience.,,USD,,,,,donating-better-with-cardano,
+e8a423b3-3bee-4f78-ab20-7f64a1da2b25,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Marlowe and Plutus Mobile,,,,,19000,,unfunded,over_budget,41925402,15074416,,,"Many people have access to cell phones, but not computers which makes programming more difficult to learn in developing nations.",To build a mobile interface for making ASTs that focuses mainly on Cardano languages. Also a server to manage compilation and collaboration.,,USD,,,,,marlowe-and-plutus-mobile,
+e32d2d38-dfd5-438c-86e1-8338bae740a9,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Migrate Multi-PVP game from Tron
+
+
+",,,,,40000,,unfunded,over_budget,92793606,24352157,,,"Cardano needs easy-to-learn, multi-player games where ADA is used as the game currency and where large groups of members can play together",Migrate existing successful Tron DApp to Cardano using KEVM Devnet.,,USD,,,,,migrate-multi-pvp-game-from-tron,
+df9d7f08-72b1-4e25-8add-1599e208f3a5,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Equipo para crear videojuego
+
+
+",,,,,10000,,unfunded,over_budget,26704203,22976758,,,Hay muchas ideas sobre juegos y mucho talento en desarrolladores.,"RPG sobre la historia de la economía, el jefe final es la Centralización del dinero Con recompensa en ADA y deben crear Daedalus para cobrar",,USD,,,,,equipo-para-crear-videojuego,
+dae38fe7-89d4-4527-bd5f-b138c0964d8e,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"African Digital Identity Platform
+
+
+",,,,,15000,,unfunded,over_budget,30234626,17578823,,,"Identity Management in the financial world has become a prerequisite, The steps associated with verifying identity leads to high wait rate","By Creating multiple dapps that fits into the normal day to day activities of an average user, you onboard millions easily and seamlessly",,USD,,,,,african-digital-identity-platform,
+da8736a3-7095-4d5c-8e2d-dae692a6a8ab,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"TRUST: Debunk misinformation DApp
+
+
+",,,,,50000,,unfunded,over_budget,28919958,20826050,,,Quality information scarce. Misinformation is crippling our ability to make (the right) choices and is taking power from the people.,"TRUST: dapp that guarantees information closest to truth. Only allowing raw data and inscentified, gamified, falsification for the masses.",,USD,,,,,trust-debunk-misinformation-dapp,
+d7e25e73-a59d-459b-9ca3-0824b6da7f89,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Adding Cardano to TOP Game Dapp
+
+
+",,,,,10000,,unfunded,over_budget,31885743,17689215,,,One of the biggest problems in the current Cardano ecosystem is the unavailability of dapps use cases. We can change that!,"We propose adding Cardano to the CryptoBrewMaster as a Login method, token swap possibility, NFT creation and swap, and so on",,USD,,,,,adding-cardano-to-top-game-dapp,
+d6a4f0b0-2b53-4bec-ae60-60be21be0105,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Liqwid Developer Portal:Cardano SDK,Liqwid Labs,,,,53000,53000,complete,funded,671000000,14840477,,,DeFi teams need software development kits for dApps & oracles to build extensible use-cases with maximum security & composability on Cardano,"1. JavaScript SDK for Cardano & the Liqwid Protocol. The SDK wraps around the Adrestia JS SDK
+2. Oracle Open Price Feed SDK
+3. Android SDK",,USD,,,,,liqwid-developer-portal-cardano-sdk,
+d28037fd-3307-44d2-9714-248ea1e85a7e,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,CardanoSharp - .NET Library,Kyle | SHARP | CardanoSharp,,,,19520,19520,complete,funded,573000000,22516096,,,There is no common libraries to help .NET Developers build on Cardano.,Build a collection of libraries that will help facilitate .NET development for Cardano.,,USD,,,,,cardanosharp-net-library,
+d1babf76-a210-4b74-95e0-47723dce333b,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Python module,emes,,,,10000,10000,in_progress,funded,1070000000,15388494,,,Right now there is a plain REST API available for communicating with the wallet but no higher-level abstraction classes for Python.,"Create a Python module that implements base classes for Wallet, Address, Key, Transaction, etc. and offers well-structured exception tree.",,USD,,,,,python-module,
+d13bd144-934f-4432-8453-c064fad860b5,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Cardano Sticker Marketing Campaign
+
+
+",,,,,700,,unfunded,over_budget,98007625,25734962,,,I want to raise awareness and adoption of Cardano by distributing many Cardano stickers (especially in East Europe).,"Cardano stickers can be a very cheap, but effective marketing method in my opinion.",,USD,,,,,cardano-sticker-marketing-campaign,
+d042d647-58c8-4115-a3d4-abfa7343dc79,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Orphic CLI Connector to BigCommerce,,,,,55000,,unfunded,not_approved,23625809,21096628,,,"Developers need a way to easily connect their projects or work to a cryptocurrency and our CLI connects them to Ruby, Golang, and NodeJS.","Our CLI connects various APIs like BigCommerce Checkout-JS and web utilities like Ruby on Rails. These CLIs are built in Ruby, Golang, JS.",,USD,,,,,orphic-cli-connector-to-bigcommerce,
+cfc2e793-d65c-44d4-8890-56fd45025441,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,"ADApools kit for developers, APIs",,,,,40000,,unfunded,over_budget,124000000,25054569,,,We want to provide to developers a few basic tools in an open way to make it much easier to start developing on Cardano network.,We will provide several useful tools and extensions to developers and make their work easier.,,USD,,,,,adapools-kit-for-developers-apis,
+ce237526-9e1c-4aa2-9350-0a6a1ac8614d,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Fandom Auction and Sales Platform
+
+
+",,,,,25000,,unfunded,over_budget,34823602,19871925,,,"We would like to completely rebuild our sales platform with a focus on security, stability, and interactivity with the Cardano blockchain.",Fund 3 can assist us in acquiring the necessary resources to hire professionals to code our new platform and write smart contracts.,,USD,,,,,fandom-auction-and-sales-platform,
+ccffd49c-498b-4f4c-a1e1-fa2b255d530f,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Automation platform integration,,,,,30000,,unfunded,not_approved,29931410,34650355,,,Blockchain and traditional tools should not compete. Bringing blockchain in automation tools like IFTT or Zapier can encourage developers.,Tools to integrate event listening on top of contract address to trigger automation,,USD,,,,,automation-platform-integration,
+cc76b287-3fe7-4877-9cbd-73211c2038cd,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,Comprehensive NFT Framework Collab,Troy,,,,48965,48965,complete,funded,693000000,45804734,,,42 Catalyst proposals address NFT point solutions—yet we lack an overarching DApp strategy to dominate as the de facto NFT platform choice.,Coordinate an NFT DAO that implements all NFT DApp requirements to build a penultimate composable NFT Framework—a WAX Killer on Cardano.,,USD,,,,,comprehensive-nft-framework-collab,
+c97ab60b-4577-4c95-8eae-0f2dda16c0aa,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,Decentralized Accounting <- IFRS,quirin.schlegel,,,,4000,4000,complete,funded,295000000,57951968,,,Companies are using balance sheets to keep their books .,I want to implement a blank balance sheet in Plutus.,,USD,,,,,decentralized-accounting-ifrs,
+c88f20c1-8259-4a4d-9087-8073f57d198a,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Decentralised Funding Report,,,,,6109,,unfunded,over_budget,31128159,11971275,,,See PDF attached,See PDF attached,,USD,,,,,decentralised-funding-report,
+c775504f-eeb5-42cb-84ed-d631ec2744a8,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Cardano Widgets to embed in DAPPs,,,,,5000,,unfunded,not_approved,35512751,34931327,,,"For a newbie in the crypto/DAPP ecosystem, it is difficult to obtain cryptos and maintain wallets etc.,","Help developers embed a widget in their DAPP page that enables easy FIAT on-ramp, account creation, transaction signing etc., for users",,USD,,,,,cardano-widgets-to-embed-in-dapps,
+c5fce0b9-9c2c-46e1-91af-2cea703d4f71,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,Food traceability solution - Africa,gwendal.ledivechen,,,,3500,3500,in_progress,funded,147000000,19413707,,,African food supply chain is made of smallholder farmers who often do not get the due reward for their produce thereby leaving them poorer.,"Mapping potential opportunities in Nigeria to apply a pilot using the outcomes of ""EMURGO Traceability Solution"" implemented in Indonesia.",,USD,,,,,food-traceability-solution-africa,
+c5f09a6c-0107-4000-9471-a359f04d0829,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Customizable DeFi Data Streams,,,,,75000,,unfunded,over_budget,41352481,16978576,,,Developers will not build on Cardano if they do not have robust and affordable API endpoints from the blockchain. How can we solve this?,Construct a comprehensive data system giving Cardano developers access to blockchain data similar to Etherscan for the Ethereum network.,,USD,,,,,customizable-defi-data-streams,
+c577df57-64ce-4486-b872-bace3c6710ea,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Complete Cardano Training Center,,,,,50000,,unfunded,over_budget,78687460,15193570,,,Cardano knowledge is spread everywhere. People don't know where to start & how to learn. There is no simple way to prove/assess your skills.,"Native Cardano e-learning platform allowing IOG, CF, etc. to create interactive courses, quizzes and credentials on the blockchain.",,USD,,,,,complete-cardano-training-center,
+c25f4f44-9705-4126-8136-d16633c9f0ec,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Decentralized Social Media Platform
+
+
+",,,,,100000,,unfunded,over_budget,50605371,21580227,,,People should be able to speak freely on the internet. Centralized services like Twitter control what content can be shared and by whom.,"Create a decentralized, public, permission-less social media platform that ensures freedom of speech and data sovereignty.",,USD,,,,,decentralized-social-media-platform,
+c1404277-cd2c-4a43-b630-49fabe84db4b,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Multiplayer strategy game
+
+
+",,,,,2500,,unfunded,over_budget,53996164,44445344,,,Increase adoption,Build a mobile/desktop game that does not require a blockchain but adds additional features to the game which will be exposed to the users.,,USD,,,,,multiplayer-strategy-game,
+c03649d7-2330-4e01-96ef-ebf26fbbcec3,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,The Basket DApp - 売買カート,,,,,1,,unfunded,funded,54837372,22449295,,,"Helping communities in COVID times, small local business can't afford to sell on current online platforms: high fees & long payment terms.","Make and experiment DApp with seller/buyer within an existing LOCAL food/farming community, leveraging smart contracts, instant settlements.",,USD,,,,,the-basket-dapp,
+bc733285-76d9-44b2-b72b-997a8d2c8890,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Funding portal (smart dApp)
+
+
+",,,,,50000,,unfunded,over_budget,36160520,16634215,,,"We will create a funding website, where users can create own fund requests, optionally benefits from that and smart contract will solve that",We will create a funding website where users will be able to create their own applications for funding and a smart contract will solve it.,,USD,,,,,funding-portal-smart-dapp,
+b5898b0a-a42c-4259-b12a-3015ad068002,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Metadata oracle node,Five Binaries,,,,23000,23000,complete,funded,226000000,10760525,,,"Cardano metadata oracles are missing an operator-friendly node, making it hard for people to participate.",We want to build an operator-friendly node software and would lower the barrier of entry for new oracle operators.,,USD,,,,,metadata-oracle-node,
+b4fe7894-36af-4bf1-b2b4-56f6c6105f5e,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"CHESS - 600 Million People
+
+
+",,,,,100000,,unfunded,not_approved,34994466,38520500,,,Chess APP incentivising Grandmasters to play lower ranked players + bespoke AI puzzles to improve each INDIVIDUAL player's game,Utilising blockchain to facilitate payments in cryptocurrency and also in rating between players. Play for rating points or crypto or both.,,USD,,,,,chess-600-million-people,
+b389f57f-07d8-45f5-96b0-0ec5e0149cd3,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"RedToken-Blood Donation dApp
+
+
+",,,,,15000,,unfunded,over_budget,26005273,18643761,,,Nigeria and similar nations lack infrastructure/resources needed to increase physical and financial wellness. Blood is the resource!,"Increase life-saving blood supply via Tokenizing Incentives for donors by provide access to education, health, and financial wellness tools.",,USD,,,,,redtoken-blood-donation-dapp,
+b2d0ec5f-827f-4e20-9248-998e9ddbfe61,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"In-Store Currency (Shopify)
+
+
+",,,,,100000,,unfunded,over_budget,128000000,28444242,,,"Stores manage different centralised value mechanisms including credit, loyalty & gift cards which adds complexity, cost & limits innovation.",Unify the use of in-store currency that can be issued by the store and/or transferred by the customer to be redeemed through checkout.,,USD,,,,,in-store-currency-shopify,
+ad1ef95e-6a55-4e3b-8220-6908746485a5,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Fun competitive games with Cardano
+
+
+",,,,,30000,,unfunded,not_approved,16156516,23137895,,,Introducing games into Cardano is a way to attract more users and more transactions into Cardano.,"Create series of competitive games, starting with slither.io clone. Entry fee for players could be 1 to X ADA and winner takes all.",,USD,,,,,fun-competitive-games-with-cardano,
+a97fc254-b864-4768-82b6-faf19e5d4272,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Legitimatize blockchain solutions,,,,,1200,,unfunded,over_budget,26495420,18983134,,,Massive user adoption of Cardano's blockchain solutions will be obstructed in many countries due the lack of legislation related to crypto.,"We will bring juridical validity for blockchain transactions in Brazil, ensuring liability for Cardano's DApps and developer ecosystem.",,USD,,,,,legitimatize-blockchain-solutions,
+a745e404-7e1d-4553-bfe4-92509d165396,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Coinmarketcap for Dapps by Adapools
+
+
+",,,,,40000,,unfunded,over_budget,77460664,13936960,,,We would like to create adadapps.org. It should be something like a coinmarketcap for decentralized applications in the Cardano ecosystem.,"We will create awesome page with cool stuffs, open API and open source code. Idea is, in future can community devs contribute with code too.",,USD,,,,,coinmarketcap-for-dapps-by-adapools,
+a6d84fa2-01b0-47f6-bb30-a2ec9af3fe28,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,ABCD,Joshua Akpan,,,,13800,13800,complete,funded,234000000,20411700,,,Africa has brilliant minds that are full of ideas and energy but who lack access to the infrastructure and funds to realize their dreams.,ABCD will create opportunities for Africans providing blockchain solutions to the world utilizing the pool of talent working from Africa.,,USD,,,,,abcd,
+a6bca98e-6b55-4cc7-8c7b-ad8db65d281f,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Cardvrytin Mobile App to Drive Digi
+
+
+",,,,,150000,,unfunded,over_budget,37823747,26986244,,,The E-commerce industry is growing by the day despite the pandemic. We need to come up with an app to solve financial transactions issues.,"In my Blocking Mobile Technologies academy, I preach much about Cardano and all that students ask is how they can buy cardano with a FIAT.",,USD,,,,,cardvrytin-mobile-app-to-drive-digi,
+a5f97955-d271-4c57-a536-be4b531fb43f,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,"Welcome to Cardano, developer!",,,,,25200,,unfunded,over_budget,30765769,19702898,,,"Too much information in a lot of places, sometimes difficult to find can discourage many developers. All with our support","We will create an updated signpost, a kind of developer portal, where all the information will be available.",,USD,,,,,welcome-to-cardano-developer,
+9ef6f281-fbbf-44ad-ab6a-2fb1e9d62812,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"OpenAPI Integration: Ebay & Shopify
+
+
+",,,,,40000,,unfunded,not_approved,19958481,29428247,,,Selling platforms put so much fees on top of sold products & drives Entrepreneurs to quit selling. Online sellers are paying too much fees.,Create a DApp/API integration maintained on the blockchain to expose Cardano to quality markets and customers that will drive mass adoption.,,USD,,,,,openapi-integration-ebay-shopify,
+9c96b073-d79e-48f1-a1ac-c3405674383c,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Infura-like Cardano API IaaS,,,,,9000,,unfunded,over_budget,53769677,17834691,,,"Running and developing custom backend infrastructure is expensive, time-consuming and slows down development of crucial parts of software.","Provide fast, rich and reliable API access to Cardano for developers and applications through HTTPS and websockets on mainnet and testnets.",,USD,,,,,infura-like-cardano-api-iaas,
+9931c23f-10cb-45eb-aa07-e6d4ef7159f0,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"play_x 😉😵😌 - Adult Role Play 🎭
+
+
+",,,,,1000,,unfunded,not_approved,28502275,39740981,,,the loneliness epidemic leads to a higher risk of premature death.,a decentralised app that enables fun adult role playing with anonymity and accountability.,,USD,,,,,play-x-adult-role-play,
+957a0e71-f5b7-4031-bde5-696543f0e418,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"D Timestamped Registration System
+
+
+",,,,,5000,,unfunded,over_budget,95362841,28572164,,,"Patent registration with govt agencies is long, expensive and centralized process.
+DTRS wants to simplify, reduce costs and decentralize it.","DTRS is a simple and secure Dapp which gives as many people as possible the opportunity to register patents, ideas, etc. on the blockchain.",,USD,,,,,d-timestamped-registration-system,
+94d26450-b69a-4167-b870-e6d2236341bb,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Open dApp Auditing Platform
+
+
+",,,,,20000,,unfunded,over_budget,22862088,19788542,,,"Sh*tcoin and scam are everywhere, and investors don't understand how these protocol works","An blockchain-based open platform where experts can audit the ICO projects, provide their insight and get reward if their analysis are right",,USD,,,,,open-dapp-auditing-platform,
+94335c3b-b255-4026-9050-ad1d75f21b9d,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Goguen Launch Global Hackathon,,,,,80000,,unfunded,over_budget,52631202,24655696,,,How do we raise awareness and excitement about the Goguen launch and accelerate dApp development on Cardano?,Work with Hackethon.com one of the biggest providers of turnkey Hackathon services to produce a world class Hackathon event.,,USD,,,,,goguen-launch-global-hackathon,
+8ca37e0f-f1c5-40e1-ab1e-8bc0a90a5982,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Tatum.io - Cardano integration,,,,,15000,,unfunded,over_budget,33406065,15077643,,,Wallet transactions are alpha omega. We have well-known platform tatum.io and we want bring Cardano to developers via our platform.,"We will implement full Cardano support into our platform - wallets, tokens, staking.",,USD,,,,,tatum-io-cardano-integration,
+8c3dc3d4-ee4f-4ca4-9d1c-ddd6ed25f195,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Aregato - ADA ebook marketplace
+
+
+",,,,,7999,,unfunded,not_approved,21208115,18956567,,,"Ebooks market is highly centralized, censored, and dominated by Amazon Kindle. There is a general lack of marketplaces in the crypto world","Aregato - ebook marketplace with blogging and social media features, built on top of Cardano, with Cardano native assets and NFTs",,USD,,,,,aregato-ada-ebook-marketplace,
+8a892285-103a-4f88-9134-277a1eaaa69c,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"TrashApp
+
+
+",,,,,30000,,unfunded,over_budget,59450801,21812930,,,"Litter. It's everywhere and it's awful for the earth/wildlife. Few people volunteer to clean it, but what if anyone could get paid to do it?","A simple DApp that enables peer to peer litter collection using photos, timestamps, and a bounty payment system.",,USD,,,,,trashapp,
+8930c43c-1840-4cbf-b63a-c91151ff5677,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"TCG fractional-share marketplace
+
+
+",,,,,11000,,unfunded,over_budget,26507237,20917685,,,"With highly sought after chase cards reaching new highs, many graded card collectors are priced out from ownership.",A marketplace where users can purchase fractional ownership of real graded cards (insured and in a vault).,,USD,,,,,tcg-fractional-share-marketplace,
+87dea0eb-23c0-487d-993e-45f02fe7a1e2,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Implement CIP12 to Yoroi backends,Five Binaries,,,,930,930,in_progress,funded,95727029,17589862,,,CIP12 defines on-chain stake pool operator to delegates communication and is missing implementation in Yoroi backend.,We will implement CIP12 communications to Yoroi backend software.,,USD,,,,,implement-cip12-to-yoroi-backends,
+8714a939-c0c7-4439-8dc7-eef6d88eb110,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"OctoWars - a game platform
+
+
+",,,,,125000,,unfunded,over_budget,41234074,25030559,,,Cardano doesn't provide a simple and elegant way to build trading cards and turn based strategies.,Build a PoC game and continue development until it's deployed to production. Based on that experience build a game platform.,,USD,,,,,octowars-a-game-platform,
+853594be-c536-4c11-a267-38bcae922179,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Cardano Review Platform
+
+
+",,,,,10000,,unfunded,not_approved,37273155,33443406,,,There are many proposals in each funding round. It can take a long time to sift through them individually and make an informed decision.,"We will provide detailed reviews and in-depth analysis of each proposal that we deem worthy of our investigation, with expertise insight.",,USD,,,,,cardano-review-platform,
+81210114-e1d3-48f3-8e0b-6200160da59e,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Crowdfunding/DAO opensource pharma
+
+
+",,,,,60000,,unfunded,not_approved,35196288,33796388,,,"Pharma funding is heavily centralised, many diseases lack treatments. Scientists trying to discover new treatments struggle to get funding.","Open source, decentralised drug discovery (the Github for drug discovery) with crowdfunding (via augmented bonding curves) & DAO grants.",,USD,,,,,crowdfunding-dao-opensource-pharma,
+810338bd-abe3-4faa-8d59-c7f35c31d79f,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Wadspare
+
+
+",,,,,20000,,unfunded,not_approved,16981534,34495941,,,"Africa has lots of creative minds who want to establish the ""next big thing"" but lacks access to capital to fund these ideas.",Wadspare is creating a fundraising platform built on the blockchain for startups.,,USD,,,,,wadspare,
+803c58c4-b286-42d9-bb0b-8c9248e56562,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Cardano IntelliJ IDEA Plugin (MVP),Satya,,,,15000,15000,complete,funded,324000000,25466126,,,Plugin to support development on Cardano inside IntelliJ IDE. One of the major blocker for mainstream developers is unfamiliar / no tooling.,Build an IntelliJ plugin with following features:,,USD,,,,,cardano-intellij-idea-plugin-mvp,
+7e3c15ab-8e81-492d-b006-97fcb639d675,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"e-invoicing standard
+
+
+",,,,,22500,,unfunded,over_budget,70930160,21914748,,,"E-invoicing project are hard to put in place. They need tx, routing and rules that must be established in a project specification.","e-invoice as NFT with metadata and smart contract (self-invoicing, periodic invoices,...)",,USD,,,,,e-invoicing-standard,
+7da1cd06-e520-406e-8734-4e9c37520b5e,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Better Ideascale But Open-Source,,,,,55000,,unfunded,over_budget,27482719,21184026,,,"Ideascale is not pleasant to use, it sucks. As users, we feel more often restricted than empowered on this platform when proposing new ideas","A native idea generation platform dedicated to Cardano blockchain. Open-source, simplified, gamified, modern, mobile, made to scale global.",,USD,,,,,better-ideascale-but-open-source,
+7cb91c0b-bf10-47ad-88f1-2b029c26c04d,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"GreenSavings (PoupVerde)
+
+
+",,,,,21163,,unfunded,over_budget,138000000,59489906,,,"Every day, liters of cooking oil waste are incorrectly disposed of by the population.They pose serious risk of pollution to the environment.","Development of a dApp for the collection of waste used cooking oil, in exchange ADA, which will be used for the production of biodiesel.",,USD,,,,,greensavings-poupverde,
+7b2e929b-9085-4384-b80b-9b0941c554b3,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Army of Spies-A Market for Secrets
+
+
+",,,,,25000,,unfunded,not_approved,29828847,36589727,,,Many secrets & information asymmetries are unnecessary & hinder society. Transactions to erase them are difficult to organize & execute.,"A decentralized marketplace that brokers secrets between Bounty Makers, Intel Sources, & NFT Based Curators.",,USD,,,,,army-of-spies-a-market-for-secrets,
+7aef6a4e-9d66-40eb-938b-a2ed7b7fdf64,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Artano - A Cardano NFT Marketplace
+
+
+",,,,,30000,,unfunded,over_budget,320000000,18988738,,,The NFT market is not accessible to all. High fees and selectivity are barriers to entry for many artists as well as potential collectors.,Building an NFT art marketplace upon Cardano where exclusivity & high fees are not a barrier to entry to artists and collectors.,,USD,,,,,artano-a-cardano-nft-marketplace,
+78d4e62d-8eb2-4793-a574-d1f29ff26bac,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Conversational UX/UI Toolkit,,,,,36000,,unfunded,over_budget,30995761,17702945,,,"The features of blockchain do not align with the features of our page-based interface design, this blocks the adoption of Cardano.","The cUI toolkit speeds up time-to-market, removes dep. risk, aims for near real-time validation by offering conv. modules and scripts.",,USD,,,,,conversational-ux-ui-toolkit,
+78184631-a0f0-4bee-bb1a-0c8cf7233a49,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Cardano TV - Sports LED Advertising,,,,,16000,,unfunded,over_budget,46929943,32752446,,,"TV Sports advertising is eye catching, dynamic and creative, Cardano will be the 1st to reach 1000s of Developers & Entrepreneurs eyes - WOW",TV Advertising puts the Cardano brand in front of people and offers credibility. Fully engaged viewers can be uniquely attracted to Catalyst,,USD,,,,,cardano-tv-sports-led-advertising,
+7726159b-eab7-453b-bdc7-0fca41f8dfe6,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,ADA MakerSpace - DEV lessons,Boone Bergsma,,,,14800,14800,complete,funded,152000000,15872410,,,"Need new training videos for learning how to build with the Marlowe & Plutus playgrounds, some people learn better watching others do things",ADA MakerSpace provides free video lessons for anyone interested in learning how to build things that will run on the Cardano blockchain,,USD,,,,,ada-makerspace-dev-lessons,
+770c41bd-6768-4997-b5c1-f3a8330eb817,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,StakeSync - DB Sync & Smash Add-on,,,,,9000,,unfunded,over_budget,60984518,22281899,,,Developers & Stake pool operators need specific blockchain data often unavailable in existing tools or too intensive to compute on demand.,"StakeSync gathers & computes various live data (e.g. balances, delegations, pool metadata) from DB Sync and Smash into an extra database.",,USD,,,,,stakesync-db-sync-smash-add-on,
+73fce8d7-c03a-42b6-bd17-d594a1a4092d,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Cardano Algorithmic Credit Scoring
+
+
+",,,,,20000,,unfunded,over_budget,146000000,30015631,,,"ADA holders with extensive, reliable crypto lending history want access to more competitive loan products and working capital.","Credmark is building a borrowers portal to facilitate account attestation, aggregating lending history across multiple blockchains.",,USD,,,,,cardano-algorithmic-credit-scoring,
+73db46a0-cefe-4d09-80b6-797b7a029dfb,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,ADA in 4000 Crypto ATMs Globally!,,,,,7500,,unfunded,over_budget,123000000,12786631,,,You cannot currently buy ADA from any Bitcoin ATMs. We will change that if our proposal is chosen,We will integrate ADA into the General Bytes Bitcoin ATMs by developing an extension for ADA in the open software software.,,USD,,,,,ada-in-4000-crypto-atms-globally,
+735bb1b0-ea7a-4140-8d29-93094063d54d,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Ada Tx to Trigger IoT + IO HW Spins
+
+
+",Kyle Solomon [FROG],,,,33000,33000,complete,funded,787000000,58830495,,,"No solution exists to enable arbitrary IoT IO actions as a result of receiving payment in Ada (vending machines, gated access, automation)",Adosia will build new open HW and integrate monitoring of Ada payments into the Adosia IoT platform to enable custom IoT device triggering,,USD,,,,,ada-tx-to-trigger-iot-io-hw-spins,
+71c1972d-3a32-4279-8a93-e6a0f5e1541c,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Online Makerspace
+
+
+",,,,,25000,,unfunded,not_approved,18087493,19631380,,,Currently there are no solution out there with a proper way to incentivize Makers whom explain how something is built.,"Through an online makerspace, tightly aligned with the Industry, we are able to create a proper path for the Makers",,USD,,,,,online-makerspace,
+7176f17f-4669-479c-87f3-be18d7455e03,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Cardano Role-based Access Control,,,,,8000,,unfunded,over_budget,120000000,18159978,,,How can we enable decentralized organizations to share ownership and access of digital assets such as server resources?,Create a protocol and reference implementation defining a standard for creating and consuming RBAC policies on the Cardano blockchain.,,USD,,,,,cardano-role-based-access-control,
+6d7863d0-ae92-4ac8-86c1-a09b61719bc9,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Cardano ETL: Public BigQuery Data,,,,,30000,,unfunded,not_approved,4834637,6676677,,,Collection and democratization of data in the Cardano ecosystem will be critical for feeding new ideas and measuring critical project KPIs,"Cardano ETL will support transformation of blockchain data into convenient formats like JSON Newline, GCP PubSub, and relational databases.",,USD,,,,,cardano-etl-public-bigquery-data,
+6d036fe1-1580-4356-9158-cbaf3d24c76e,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Cardano on Dxsale.network launchpad
+
+
+",,,,,30000,,unfunded,not_approved,13824956,22345569,,,"Cardano requires a user-centric crowdsale, locking and listing platform in a trustless way to grow its ecosystem.","https://dxsale.app has already built a user-centric dapp that provides crowdsale, locking and auto listing to Uniswap on ETH chain.",,USD,,,,,cardano-on-dxsale-network-launchpad,
+6be8ca61-cc77-48dd-b98c-8c87eb47a13f,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Proof of Ownership-Land/Real Estate
+
+
+",,,,,25000,,unfunded,over_budget,58576079,13454576,,,"Many lack confirmation of ownership to parcels of land they occupy, or they become displaced and are not able to provide proof of ownership.","Land plots are created using GPS coordinates for initial ownership, subsequent purchase/sales are made using ADA on a verifiable blockchain.",,USD,,,,,proof-of-ownership-land-real-estate,
+68a1d803-8edb-4f20-bc54-3970e6180dd3,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Authentication for DeepFake Defense
+
+
+",,,,,12000,,unfunded,over_budget,36630315,17937037,,,Deepfake videos are a type of AI generated video that creates a fake video of a person that is convincingly real. This is dangerous.,We will create a cryptographic proof on Cardano that verifies videos are real by connecting their blockchain ID.,,USD,,,,,authentication-for-deepfake-defense,
+6840c49d-b7a8-45d2-8c13-76857ec55c53,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Orihon - Tracing Waste with Cardano
+
+
+",,,,,50000,,unfunded,over_budget,36777657,17984835,,,"2,120,000,000 Tons of waste was dumped on the planet and has a huge negative impact on the natural environment.",We (Orihon) wish to create a Dapp that will trace waste through our Dapp and renumerate users for doing so.,,USD,,,,,orihon-tracing-waste-with-cardano,
+6622af56-d14e-49c3-b9bc-6f647381aab8,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Cardano Central
+
+
+",,,,,5000,,unfunded,over_budget,28622709,22897084,,,No dedicated all encompassing social media sharing platform exists just for Cardano users.,Cardano Central will be a custom and entirely unique social network 100% dedicated to the Cardano community.,,USD,,,,,cardano-central,
+64fd7ff0-ebf7-4df6-95d4-0d8aba96da6c,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Virtual closet (to stake ADA)
+
+
+",,,,,44878,,unfunded,not_approved,30210351,28971904,,,"Staking, DeFi, NFT and many other terms from the blockchain space are foreign words for most people.",Creation of an easy-to-use and understandable dApp version of a virtual closet where you can collect and stake (ADA) your purchased clothes.,,USD,,,,,virtual-closet-to-stake-ada,
+63ed74af-7fdf-471d-8263-1d8050a13b79,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,West Africa Decentralized Alliance,,,,,31885,,unfunded,over_budget,152000000,10401407,,,"West African Developers, Academia & Governments are unaware of Cardano's potential to solve local problems",Create a network of Cardano Resource Hubs for Solutions Design for local influence and developer onboarding throughout West Africa,,USD,,,,,west-africa-decentralized-alliance,
+63521215-5da5-441b-bfc9-fd7a2ac21c4e,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Dice Game
+
+
+",,,,,20000,,unfunded,not_approved,29198993,26598857,,,Let's play some games ,Play a simple mockup version here:,,USD,,,,,dice-game,
+5b84b4f3-75f4-40c7-961e-0dd2e132da24,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Nmadi Space: A Digital Universe
+
+
+",,,,,19000,,unfunded,over_budget,30184827,17864118,,,"Creative, sandbox-style games don't share a common physics system with shared resources subject to conservation laws of matter and energy.","An open source distributed physics system that allows in-game development of sub-games, inventory on Cardano, and conservation of resources.",,USD,,,,,nmadi-space-a-digital-universe,
+575123a1-8564-4f1c-97bf-da356a57f469,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Fullcircl: Democracy @ Work
+
+
+",,,,,83100,,unfunded,not_approved,14501486,25253981,,,How can we help online collaborators prosper safely?,We believe we can solve the needs of both remote workers and project leaders by creating a trustless system for opt-in work.,,USD,,,,,fullcircl-democracy-work,
+54485594-ebea-44e6-a08b-9d500e069196,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,Dapp for business contracts,Ron ADA4Profit,,,,15000,15000,in_progress,funded,127000000,15902162,,,Making business contracts legally valid and bound is not affordable for everyone especially in developing countries.,Create an easy to use app for widely available mobile phones where people can upload PDF contacts and sign or verify them.,,USD,,,,,dapp-for-business-contracts,
+4ff63494-7b9c-4e96-b678-02d27631fcd3,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Scalable fake news detection DApp
+
+
+",,,,,46400,,unfunded,over_budget,109000000,29889707,,,The uncontrollable propagation of fake news through digital media poses direct harm for society in the long term and individual cases now.,"Leveraging Cardano, dynamically construct workflows from third party AI algorithms and data sources for real-time evaluation of content.",,USD,,,,,scalable-fake-news-detection-dapp,
+4a644b1a-a4fd-4de7-8365-e92956f24f91,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"SoMint - Art 3.0 ""A Fresh Approach""
+
+
+",,,,,20000,,unfunded,over_budget,78015941,11474388,,,"The current NFT art market is not open to the masses due to lack of education, high gas fees & exclusivity.",Developing a marketing campaign to educate artists (and collectors) about NFTart.,,USD,,,,,somint-art-3-0-a-fresh-approach,
+4a547cc7-4bb5-4f48-aa72-3162d9e8a602,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Impact the Art Industry with ArtAcy
+
+
+",,,,,35000,,unfunded,over_budget,126000000,34873933,,,"Many artists have faced problems with unauthorized copies of their works, and it hurts emerging artists as well as established artists.","Platform that will engage and educate artists and investors, ready to provide fast-tracked liquidity and confidence in the art industry.",,USD,,,,,impact-the-art-industry-with-artacy,
+48c25aa8-7eea-4657-8482-6fe95049c8bd,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Crowdfunding platform with ADA
+
+
+",,,,,42500,,unfunded,over_budget,37326104,17245897,,,"Crowdfunding platforms that do not accept payments with cryptos and have no control over the funds.
+Many of the financings end in scam.","To release the project funds, investors must authorize them with a Smart Contract , this will allow more transparency and security.",,USD,,,,,crowdfunding-platform-with-ada,
+3ff44b14-9f6f-44ac-8c89-6f9bc34a1317,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Business Governance Application
+
+
+",,,,,97849,,unfunded,over_budget,35025081,20917909,,,Ineffective business governance leads to disengaged employees which costs the U.S. $485-605 billion per year [1].,"Increase engagement by automate project assignment, based on employee strengths, current workload, and management/team voting system.",,USD,,,,,business-governance-application,
+3fbfb6c6-171b-4d79-898d-764e55dadad1,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"DaPassword - a password manager
+
+
+",,,,,48000,,unfunded,over_budget,101000000,28099583,,,Your credentials stored securely on the cardano blockchain forever. No recurring fees. No central server controlling your data.,"DaPassword is a password manager that stores all your website passwords in the blockchain, along with bookmarks or anything important.",,USD,,,,,dapassword-a-password-manager,
+3a7fe362-f720-4780-9ddf-b38ad8c8ade8,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Cardano for Drupal developers,,,,,48000,,unfunded,not_approved,24715307,28745303,,,There are currently no modules or tools that the Drupal community can use to implement Cardano blockchain solutions.,We would like to develop basic open source Drupal modules that are required for developing Cardano blockchain solutions on Drupal.,,USD,,,,,cardano-for-drupal-developers,
+36f99729-e516-4d87-9c9d-03492a559411,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Secured Ticketing System For Events
+
+
+",,,,,55000,,unfunded,over_budget,178000000,24106906,,,"Most of the ticketing systems are heavily centralized and illiquid. Also are in high risk of duplication, fraud and hassle.","Complete ticketing service, allowing users to create, sell and secure tickets simply from any device. At low cost. Using Cardano blockchain.",,USD,,,,,secured-ticketing-system-for-events,
+2e424337-0de4-43cf-a2f0-f482e6d90e44,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Visual Studio Smart Contract Plugin,Rob Greig,,,,16450,16450,complete,funded,780000000,25468676,,,There are no plugins within Microsoft Visual Studio to build Cardano Smart Contracts on vb or c# .NET. VS is used by millions of developers,The plugin will simplify how you create Smart Contracts on Cardano by creating a template project and instructions on how to get started,,USD,,,,,visual-studio-smart-contract-plugin,
+2b73abd1-6a74-4c9b-ba40-26ff6c0f49b5,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Lightweight KEVM Emulator,,,,,20000,,unfunded,over_budget,31714620,14888202,,,"Only EVM emulator exits, not KEVM emulator. Current EVM emulator is not instrumentable, slow and bulk. just a tool not framework.",We build a fully open source cross platform and multi arch lightweight framework since 2019. EVM and WASM module is in closed beta now.,,USD,,,,,lightweight-kevm-emulator,
+24b87b4d-cf9a-4e32-aed7-480a47a1b704,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,Digital Asset Inheritance,Jeronimo Backes,,,,42000,42000,in_progress,funded,436000000,15998344,,,"Inheritance of crypto currencies and other digital assets should not be complicated, expensive or cumbersome to manage.","A dapp to automate fund transfers in case of death, allowing users to also share seed phrases encoded as ""personal memories"" with loved ones",,USD,,,,,digital-asset-inheritance,
+1c39e94f-c01d-4729-a2ce-6af4c2111909,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Wallet Name System (WNS),,,,,30000,,unfunded,over_budget,65345383,24386500,,,Users should be have the option to send funds to human readable names instead of wallet addresses,"To build a decentralized network that maps names and other information to wallet addresses, much like the internet's DNS but for wallets.",,USD,,,,,wallet-name-system-wns,
+1aa7b113-b489-4bf3-b64d-e5119dd21d7c,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"WeThinkItMatters, Cause-based Dapp
+
+
+",,,,,10000,,unfunded,over_budget,31679491,15347147,,,"Advertising is a $500+ Billion dollar a year industry, most of that money being spent to influence you is causing problems not solving them!",Cause-Integrated Advertising offers businesses a way to use marketing as a force for good and WTIM gives people power and influence over ADs,,USD,,,,,wethinkitmatters-cause-based-dapp,
+16f81e22-f39f-4eb2-9f97-7310a624192e,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Smart Plug + Daedalus Wallet
+
+
+",,,,,20000,,unfunded,not_approved,25169670,22485158,,,"Venue owners lose money when power outlets are accessed without permission. They can absorb the cost, or attempt to restrict access.",Usage-based energy payment solution that enables venue owners to monetise power sockets located in public areas and shared accommodation.,,USD,,,,,smart-plug-daedalus-wallet,
+15939f6c-e437-4185-a6fd-a554830afae6,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Marketplace-for-Overstock-Produce
+
+
+",,,,,3000,,unfunded,over_budget,60172918,20864851,,,"Food scarcity is an unnecessary plight in modern society. An Est. 40% of food ends up in landfills, impacting prices to environmental issues",A marketplace for farmers and businesses to buy and sell overstock produce,,USD,,,,,marketplace-for-overstock-produce,
+111ba155-60b7-4bae-aa91-fd9deded4227,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,Liqwid:Cardano DeFi Liquidity Pools,Liqwid Labs,,,,53000,53000,complete,funded,1600000000,18217050,,,DeFi dApps on Ethereum are the leading dApp sector thats found real product market fit. Users want the ability to generate yield trustlessly,Open source algorithmic & non-custodial liquidity protocol for earning interest on Cardano native assets and borrowing supported assets.,,USD,,,,,liqwid-cardano-defi-liquidity-pools,
+10363e9d-82f2-4c32-a570-574f000c5343,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Developer & SPO Tools [CNTools],ola.ahlman,,,,14500,14500,in_progress,funded,384000000,11978267,,,Developers need easy to use tools to query and analyze the blockchain as well as integration opportunities for adoption.,Provide integrations in CNTools to easily query chain data and integrate third-party developed applications.,,USD,,,,,developer-spo-tools-cntools,
+0f4b6771-d1f8-45ae-9c97-83d20b04bffa,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Cardano serialization library in Go,Five Binaries,,,,6000,6000,complete,funded,274000000,14335364,,,Go programming language is currently missing many essential development libraries that would encourage people to develop on Cardano.,We want to create Cardano serialization library for Go.,,USD,,,,,cardano-serialization-library-in-go,
+0ee0bc40-453e-4b91-ac86-d38f48306060,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Crowdano - Crowdfunding Platform
+
+
+",,,,,24030,,unfunded,over_budget,373000000,41483428,,,"Backers of a crowdfunding campaign should be able to ensure their funds are used correctly, however 9% of Kickstarters fail to deliver[1][2]",I propose a crowdfunding platform based on Cardano which implements a staged-funding model to protect backer's investments.,,USD,,,,,crowdano-crowdfunding-platform,
+0c75ac4e-18c1-43c9-a8f9-ea744af33c5a,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Cardano Developer resource portal,,,,,20000,,unfunded,over_budget,26495958,16418069,,,How can we encourage developers and entrepreneurs to build Dapps and businesses on top of Cardano in the next 6 months?,"A Developer Community portal, to support and provide reference material for developers entering the Cardano ecosystem",,USD,,,,,cardano-developer-resource-portal,
+0690a0d4-4608-4271-a570-f819468d42f8,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Metadata oracles explorer,Five Binaries,,,,6000,6000,complete,funded,142000000,10743905,,,"As the number of metadata oracles grows, we're missing a single resource with overview and data about these oracles.","We would like to build a public metadata oracles explorer, that will serve as a go-to place for the developers to learn more about oracles.",,USD,,,,,metadata-oracles-explorer,
+04d6f5ba-6cd8-41b3-9a08-ec89c2a73d69,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"HOT Potato... the Game!
+
+
+",,,,,50000,,unfunded,not_approved,12725538,21442111,,,We need and awesome game to attract the masses! Here is an original / simple / fun game,"Hot potato is a mobile app game I've thought up, that i think will be catchy!",,USD,,,,,hot-potato-the-game,
+045a928b-0264-4d88-961a-bd87f9475322,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"DeFi - High Interest Cert of Dep
+
+
+",,,,,45000,,unfunded,over_budget,39154967,16269929,,,Cardano needs economically-attractive Dapp.,Staking Dapp that incentivizes smart-contract-locking with high interest %,,USD,,,,,defi-high-interest-cert-of-dep,
+044b1008-05fc-4ad6-8002-e7defa916f94,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Cardano on the Rocks,,,,,3900,,unfunded,over_budget,28842306,18181798,,,"Blockchain seems very virtual and a general term to newcomers. Special features are unclear, and mostly only described as laudatory claims.","With energy-efficient, inexpensive small computers, superior technology should be presented in a very visual and marketing-supporting way.",,USD,,,,,cardano-on-the-rocks,
+0423ad66-08dd-44cc-9074-836f9d452a13,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,dde9ff33-0bdf-461d-838a-86a7218bd115,,,,Localize Yoroi for Slovak market,,,,,2300,,unfunded,over_budget,83066028,16239832,,,Yoroi is missing Slovak localization making it difficult to use on the local market.,Provide Yoroi with a localized Slovak interface. This needs to be up to date with each new Yoroi update and coordinated with translators.,,USD,,,,,localize-yoroi-for-slovak-market,
+03610c35-1504-4039-b3e3-b7d44373b004,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Stiff.Money
+
+
+",,,,,5000,,unfunded,over_budget,59769145,28634367,,,Buying your first home is a challenge for a lot of people. And there are lots of other people with savings that are getting less than 1% APY,Stiff.Money helps first time home buyers work towards homeownership with lease-to-own smart contracts. And provides other people awesome APY,,USD,,,,,stiff-money,
+0268595a-620c-4e72-87e7-c184b9e5e29e,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Carbonland Trust
+
+
+",,,,,5000,,unfunded,over_budget,126000000,77996469,,,"Trees are being cut down at a rapid pace, forests are disappearing, co2 is increasing, the ecosystems that clean our air are in major danger",Carbonland Trust's Forest Conservation Smart Contract and fun blockchain NFT virtual nature preserve game will inspire conservation efforts,,USD,,,,,carbonland-trust,
+0261d015-6e41-4f8c-9c7c-e3d43f17c0ae,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Inu.Social - NFT Social Media
+
+
+",,,,,100000,,unfunded,over_budget,30395915,26079233,,,Social media users/content creators are the product but disporporionately recieve less of the value generated due to the ad revenue model.,Create a platform that uses Non-Fungible Tokens (NFT's) to turn all content into collectibles and incentivise users to own/promote them.,,USD,,,,,inu-social-nft-social-media,
+020edaca-a3ad-42d4-8431-9e03c0ba408b,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Hotel Reward token
+
+
+",,,,,5000,,unfunded,not_approved,35519797,45739953,,,Still many people not know how to use crypto currency and they are very scare or think it is very high tech,Join learning about crypto currency with hotel stay and reward them in Token and token can be use to pay for hotel and purchase product from,,USD,,,,,hotel-reward-token,
+001b3231-c3f3-4577-89e9-17d43a05a19c,0dbcc13d-294f-4a0d-b3cf-ed6997babf48,8e9a49d4-6f4e-4234-bdb4-33a504a9271a,,,,"Serv Network Professional Profiles
+
+
+",,,,,3960,,unfunded,over_budget,65634416,32031760,,,LinkedIn have a monopoly power over professionals data that gives them an unfair capture of the value created by the professionals.,Self sovereign professional profile that links to protocols and services. Any value gained from linking the data is paid to the user.,,USD,,,,,serv-network-professional-profiles,
