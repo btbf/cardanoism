@@ -1,14 +1,12 @@
 import argparse
 import json
 import logging
-import os
 import re
 import sys
 import unicodedata
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import requests
-from openai import OpenAI, OpenAIError
 
 from db_connect import dbConnect
 
@@ -65,18 +63,6 @@ EXCLUDE_UPDATE_FIELDS = {
     "fund_id",
 }
 
-TITLE_PROMPT = (
-    "You translate English Project Catalyst proposal titles into concise Japanese "
-    "headlines. Keep terminology accurate for blockchain contexts and always render "
-    '"Cardano" as カルダノ. Output only the translated headline.'
-)
-DETAIL_PROMPT = (
-    "You translate Project Catalyst proposal text to natural Japanese. Preserve meaning "
-    "and structure, render \"Cardano\" as カルダノ, and reply with only the translation."
-)
-
-openai_client = OpenAI(api_key=os.getenv("GPT_API_KEY"))
-translation_cache: Dict[Tuple[str, str], str] = {}
 
 
 def parse_args() -> argparse.Namespace:
@@ -237,35 +223,6 @@ def extract_team(proposal: Dict[str, Any]) -> Dict[str, Any]:
     return {}
 
 
-def translate_text(kind: str, text: str) -> Optional[str]:
-    if not text:
-        return None
-    cache_key = (kind, text)
-    if cache_key in translation_cache:
-        return translation_cache[cache_key]
-
-    prompt = TITLE_PROMPT if kind == "title" else DETAIL_PROMPT
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4.1-mini",
-            temperature=0.2,
-            messages=[
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": text},
-            ],
-        )
-        translated = response.choices[0].message.content.strip()
-        if kind == "title":
-            translated = translated.replace("：", ":")
-            translated = translated.translate(str.maketrans("", "", "、。，．,."))
-            logging.info("Translated title: %s -> %s", text, translated)
-        translation_cache[cache_key] = translated
-        return translated
-    except OpenAIError as error:
-        logging.error("Translation error for %s: %s", kind, error)
-        return None
-
-
 def normalize_record(raw: Dict[str, Any]) -> Dict[str, Any]:
     campaign = raw.get("campaign") or {}
     fund = raw.get("fund") or {}
@@ -404,18 +361,6 @@ def diff_record(existing: Dict[str, Any], incoming: Dict[str, Any]) -> Dict[str,
     return updates
 
 
-def enrich_translations(record: Dict[str, Any], existing: Optional[Dict[str, Any]]) -> None:
-    if existing:
-        record["title_ja"] = existing.get("title_ja")
-        record["problem_ja"] = existing.get("problem_ja")
-        record["solution_ja"] = existing.get("solution_ja")
-        return
-
-    record["title_ja"] = translate_text("title", record.get("title") or "")
-    record["problem_ja"] = translate_text("problem", record.get("problem") or "")
-    record["solution_ja"] = translate_text("solution", record.get("solution") or "")
-
-
 def save_records(records: List[Dict[str, Any]]) -> Dict[str, int]:
     cursor, conn = dbConnect()
     existing_map = fetch_existing(conn)
@@ -439,8 +384,6 @@ def save_records(records: List[Dict[str, Any]]) -> Dict[str, int]:
         current = existing_map.get(uuid)
         if current and record.get("projectcatalyst_link") == "" and current.get("projectcatalyst_link"):
             record["projectcatalyst_link"] = None
-        enrich_translations(record, current)
-
         if current is None:
             cursor.execute(insert_sql, build_insert_tuple(record))
             inserted += 1

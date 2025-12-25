@@ -1,0 +1,296 @@
+version: sample-0.1
+
+terms:
+  - id: staking
+    source: "staking"
+    keep: "ステーキング"
+    note: |
+      Blockchain-specific term. Must not be paraphrased.
+
+  - id: insight
+    source: "insight"
+    avoid: "洞察"
+    note: |
+      Translate naturally depending on context. Avoid overly academic wording.
+
+  - id: leverage
+    source: "leverage"
+    avoid: "レバレッジ"
+    note: |
+      Use natural Japanese verbs like "活用する" if appropriate.
+
+  - id: impact
+    source: "impact"
+    avoid: "インパクト"
+    note: |
+      Prefer neutral tone over marketing language.
+
+  - id: governance
+    source: "governance"
+    prefer: "ガバナンス"
+    note: |
+      Use the preferred term when natural.
+
+  - id: cardano
+    source: "Cardano"
+    keep: "カルダノ"
+    note: |
+      Proper noun. Do not translate.
+
+  - id: catalyst
+    source: "Catalyst"
+    keep: "カタリスト"
+    note: |
+      Proper noun. Do not translate.
+
+  - id: midnight
+    source: "Midnight"
+    keep: "Midnight"
+    note: |
+      Proper noun. Do not translate.
+
+  - id: compact
+    source: "Compact"
+    keep: "Compact"
+    note: |
+      Proper noun. Do not translate.
+
+  - id: night_token
+    source: "NIGHT"
+    keep: "NIGHT"
+    note: |
+      Token symbol. Do not translate.
+
+  - id: dust_token
+    source: "DUST"
+    keep: "DUST"
+    note: |
+      Token symbol. Do not translate.
+
+  - id: tdust_token
+    source: "tDUST"
+    keep: "tDUST"
+    note: |
+      Test token symbol. Do not translate.
+
+  - id: zk_snarks
+    source: "ZK-SNARKs"
+    keep: "ZK-SNARKs"
+    note: |
+      Acronym. Do not translate.
+
+  - id: proof_server
+    source: "Proof Server"
+    keep: "Proof Server"
+    note: |
+      Component name. Do not translate.
+
+  - id: midnight_node
+    source: "Midnight Node"
+    keep: "Midnight Node"
+    note: |
+      Component name. Do not translate.
+
+  - id: lace_wallet
+    source: "Lace Wallet"
+    keep: "Lace Wallet"
+    note: |
+      Product name. Do not translate.
+
+  - id: zero_knowledge_proof
+    source: "zero-knowledge proof"
+    prefer: "ゼロ知識証明"
+    note: |
+      Use the standard cryptography term.
+
+  - id: zero_knowledge_cryptography
+    source: "zero-knowledge cryptography"
+    prefer: "ゼロ知識暗号"
+    note: |
+      Use the standard cryptography term.
+
+  - id: partner_chain
+    source: "partner chain"
+    prefer: "パートナーチェーン"
+    note: |
+      Use a consistent katakana term.
+
+  - id: smart_contract
+    source: "smart contract"
+    prefer: "スマートコントラクト"
+    note: |
+      Use standard Japanese blockchain terminology.
+
+  - id: testnet
+    source: "testnet"
+    prefer: "テストネット"
+    note: |
+      Use the standard katakana term.
+
+  - id: mainnet
+    source: "mainnet"
+    prefer: "メインネット"
+    note: |
+      Use the standard katakana term.
+
+  - id: faucet
+    source: "faucet"
+    prefer: "フォーセット"
+    note: |
+      Use the standard blockchain term.
+
+  - id: ada
+    source: "ADA"
+    keep: "ADA"
+    note: |
+      Token ticker. Do not translate.
+
+  - id: drep
+    source: "DRep"
+    keep: "DRep"
+    note: |
+      Governance role name. Do not translate.
+
+  - id: treasury
+    source: "treasury"
+    prefer: "トレジャリー"
+    note: |
+      Use a consistent katakana term in Cardano governance context.
+
+  - id: governance_action
+    source: "governance action"
+    prefer: "ガバナンスアクション"
+    note: |
+      Use a consistent katakana term.
+
+  - id: proposal
+    source: "proposal"
+    prefer: "提案"
+    note: |
+      Use the standard governance term.
+
+  - id: voting
+    source: "voting"
+    prefer: "投票"
+    note: |
+      Use the standard governance term.
+
+  - id: delegation
+    source: "delegation"
+    prefer: "委任"
+    note: |
+      Use the standard governance term.
+
+  - id: stake_pool_operator
+    source: "stake pool operator"
+    prefer: "ステークプール運営者"
+    note: |
+      Use a consistent Japanese term for SPO.
+
+  - id: cip
+    source: "CIP"
+    keep: "CIP"
+    note: |
+      Acronym. Do not translate.
+
+  - id: on_chain
+    source: "on-chain"
+    prefer: "オンチェーン"
+    note: |
+      Use the standard katakana term.
+
+  - id: off_chain
+    source: "off-chain"
+    prefer: "オフチェーン"
+    note: |
+      Use the standard katakana term.
+
+  - id: project_catalyst
+    source: "Project Catalyst"
+    keep: "Project Catalyst"
+    note: |
+      Program name. Do not translate.
+
+  - id: fund
+    source: "fund"
+    prefer: "ファンド"
+    note: |
+      Use the standard katakana term in Catalyst context.
+
+  - id: challenge
+    source: "challenge"
+    prefer: "チャレンジ"
+    note: |
+      Use the Catalyst program term.
+
+  - id: milestone
+    source: "milestone"
+    prefer: "マイルストーン"
+    note: |
+      Use the standard katakana term.
+
+  - id: proposer
+    source: "proposer"
+    prefer: "提案者"
+    note: |
+      Use the standard term for proposal submitters.
+
+  - id: proposal_summary
+    source: "proposal summary"
+    prefer: "提案の概要"
+    note: |
+      Use a concise Japanese summary term.
+
+  - id: delivery
+    source: "delivery"
+    prefer: "実施"
+    note: |
+      Prefer 実施 in governance/proposal context.
+
+  - id: accountability
+    source: "accountability"
+    prefer: "説明責任"
+    note: |
+      Use the standard governance term.
+
+  - id: ada_holders
+    source: "ada holders"
+    prefer: "ADA保有者"
+    note: |
+      Use the standard term for ADA holders.
+
+  - id: spo
+    source: "SPO"
+    keep: "SPO"
+    note: |
+      Acronym for stake pool operator. Do not translate.
+
+  - id: constitutional_committee
+    source: "constitutional committee"
+    prefer: "憲法委員会"
+    note: |
+      Use the standard governance term.
+
+  - id: cardano_constitution
+    source: "Cardano constitution"
+    prefer: "Cardano憲法"
+    note: |
+      Use a consistent Japanese term.
+
+  - id: participate
+    source: "participate"
+    prefer: "参加"
+    note: |
+      Use the standard governance term.
+
+  - id: governance_detail
+    source: "governance"
+    prefer: "ガバナンス"
+    note: |
+      Use a consistent governance term.
+
+  - id: intersect
+    source: "Intersect"
+    keep: "Intersect"
+    note: |
+      Organization name. Do not translate.

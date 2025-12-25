@@ -1,0 +1,370 @@
+version: sample-0.1
+
+terms:
+  - id: staking
+    source: "staking"
+    keep: "ステーキング"
+    note: |
+      Blockchain-specific term. Must not be paraphrased.
+
+  - id: cardano
+    source: "Cardano"
+    keep: "Cardano"
+    note: |
+      Proper noun. Do not translate.
+
+  - id: catalyst
+    source: "Catalyst"
+    keep: "Catalyst"
+    note: |
+      Proper noun. Do not translate.
+
+  - id: midnight
+    source: "Midnight"
+    keep: "Midnight"
+    note: |
+      Proper noun. Do not translate.
+
+  - id: compact
+    source: "Compact"
+    keep: "Compact"
+    note: |
+      Proper noun. Do not translate.
+
+  - id: night_token
+    source: "NIGHT"
+    keep: "NIGHT"
+    note: |
+      Token symbol. Do not translate.
+
+  - id: dust_token
+    source: "DUST"
+    keep: "DUST"
+    note: |
+      Token symbol. Do not translate.
+
+  - id: tdust_token
+    source: "tDUST"
+    keep: "tDUST"
+    note: |
+      Test token symbol. Do not translate.
+
+  - id: zk_snarks
+    source: "ZK-SNARKs"
+    keep: "ZK-SNARKs"
+    note: |
+      Acronym. Do not translate.
+
+  - id: proof_server
+    source: "Proof Server"
+    keep: "認証サーバー"
+    note: |
+      Component name. Do not translate.
+
+  - id: midnight_node
+    source: "Midnight Node"
+    keep: "Midnightノード"
+    note: |
+      Component name. Do not translate.
+
+  - id: lace_wallet
+    source: "Lace Wallet"
+    keep: "Laceウォレット"
+    note: |
+      Product name. Do not translate.
+
+  - id: ada
+    source: "ADA"
+    keep: "ADA"
+    note: |
+      Token ticker. Do not translate.
+
+  - id: drep
+    source: "DRep"
+    keep: "DRep"
+    note: |
+      Governance role name. Do not translate.
+
+  - id: cip
+    source: "CIP"
+    keep: "CIP"
+    note: |
+      Acronym. Do not translate.
+
+  - id: project_catalyst
+    source: "Project Catalyst"
+    keep: "Project Catalyst"
+    note: |
+      Program name. Do not translate.
+
+  - id: spo
+    source: "SPO"
+    keep: "SPO"
+    note: |
+      Acronym for stake pool operator. Do not translate.
+
+  - id: intersect
+    source: "Intersect"
+    keep: "Intersect"
+    note: |
+      Organization name. Do not translate.
+
+  - id: sundae-swap
+    source: "SundaeSwap"
+    keep: "SundaeSwap"
+    note: |
+      Product name. Do not translate.
+
+  - id: min_swap
+    source: "MinSwap"
+    keep: "MinSwap"
+    note: |
+      Product name. Do not translate.
+
+  - id: muesli_swap
+    source: "MuesliSwap"
+    keep: "MuesliSwap"
+    note: |
+      Product name. Do not translate.
+
+  - id: wingriders
+    source: "WingRiders"
+    keep: "WingRiders"
+    note: |
+      Product name. Do not translate.
+
+  - id: genius_swap
+    source: "Genius Swap"
+    keep: "Genius Swap"
+    note: |
+      Product name. Do not translate.
+  
+  - id: pooltools
+    source: "PoolTool"
+    keep: "PoolTool"
+    note: |
+      Product name. Do not translate.
+
+  - id: adastats
+    source: "AdaStat"
+    keep: "AdaStat"
+    note: |
+      Product name. Do not translate.
+  
+  - id: cardanoscan
+    source: "CardanoScan"
+    keep: "CardanoScan"
+    note: |
+      Product name. Do not translate.
+
+  - id: cardanoexplorer
+    source: "CardanoExplorer"
+    keep: "CardanoExplorer"
+    note: |
+      Product name. Do not translate.
+
+  - id: blockfrost
+    source: "Blockfrost"
+    keep: "Blockfrost"
+    note: |
+      Product name. Do not translate. 
+
+  - id: sundae-lab
+    source: "Sundae Labs"
+    keep: "Sundae Labs"
+    note: |
+      Organization name. Do not translate.
+
+  - id: emurgo
+    source: "Emurgo"
+    keep: "Emurgo"
+    note: |
+      Organization name. Do not translate.
+
+  - id: iohk
+    source: "IOHK"
+    keep: "IOHK"
+    note: |
+      Organization name. Do not translate.
+
+  - id: cardano_foundation
+    source: "Cardano Foundation"
+    keep: "Cardano財団"
+    note: |
+      Organization name. Do not translate.
+
+  - id: daedalus
+    source: "Daedalus"
+    keep: "Daedalus"
+    note: |
+      Product name. Do not translate.
+
+  - id: yoroi
+    source: "Yoroi"
+    keep: "Yoroi"
+    note: |
+      Product name. Do not translate.
+  
+  - id: vespr
+    source: "Vespr"
+    keep: "Vespr"
+    note: |
+      Product name. Do not translate.
+
+  - id: Gimbalabs
+    source: "Gimbalabs"
+    keep: "Gimbalabs"
+    note: |
+      Organization name. Do not translate.
+
+  - id: Nucast
+    source: "Nucast"
+    keep: "Nucast"
+    note: |
+      Organization name. Do not translate.
+
+  - id: Hydra
+    source: "Hydra"
+    keep: "Hydra"
+    note: |
+      Protocol name. Do not translate.
+
+  - id: Plutus
+    source: "Plutus"
+    keep: "Plutus"
+    note: |
+      Programming language name. Do not translate.
+
+  - id: Marlowe
+    source: "Marlowe"
+    keep: "Marlowe"
+    note: |
+      Programming language name. Do not translate.
+
+  - id: Alonzo
+    source: "Alonzo"
+    keep: "Alonzo"
+    note: |
+      Code name for a Cardano upgrade. Do not translate.
+
+  - id: Shelley
+    source: "Shelley"
+    keep: "Shelley"
+    note: |
+      Code name for a Cardano upgrade. Do not translate.
+
+  - id: Goguen
+    source: "Goguen"
+    keep: "Goguen"
+    note: |
+      Code name for a Cardano upgrade. Do not translate.
+
+  - id: Basho
+    source: "Basho"
+    keep: "Basho"
+    note: |
+      Code name for a Cardano upgrade. Do not translate.
+
+  - id: Voltaire
+    source: "Voltaire"
+    keep: "Voltaire"
+    note: |
+      Code name for a Cardano upgrade. Do not translate.
+
+  - id: Ouroboros
+    source: "Ouroboros"
+    keep: "Ouroboros"
+    note: |
+      Consensus protocol name. Do not translate.
+
+  - id: Rare Network
+    source: "Rare Network"
+    keep: "Rare Network"
+    note: |
+      Organization name. Do not translate.
+
+  - id: Rare Evo
+    source: "Rare Evo"
+    keep: "Rare Evo"
+    note: |
+      Product name. Do not translate.
+
+  - id: Cardano Summit
+    source: "Cardano Summit"
+    keep: "Cardano Summit"
+    note: |
+      Event name. Do not translate.
+
+  - id: Smart Contracts
+    source: "Smart Contracts"
+    keep: "スマートコントラクト"
+    note: |
+      Blockchain-specific term. Must not be paraphrased.
+  
+  - id: MidnightZK
+    source: "MidnightZK"
+    keep: "MidnightZK"
+    note: |
+      Proper noun. Do not translate.
+  
+  - id: Ekklesia
+    source: "Ekklesia"
+    keep: "Ekklesia"
+    note: |
+      Proper noun. Do not translate.
+
+  - id: Bitcoin
+    source: "Bitcoin"
+    keep: "Bitcoin"
+    note: |
+      Proper noun. Do not translate.
+
+  - id: Ethereum
+    source: "Ethereum"
+    keep: "Ethereum"
+    note: |
+      Proper noun. Do not translate.
+
+  - id: Polkadot
+    source: "Polkadot"
+    keep: "Polkadot"
+    note: |
+      Proper noun. Do not translate.  
+  
+  - id: Solana
+    source: "Solana"
+    keep: "Solana"
+    note: |
+      Proper noun. Do not translate.
+
+  - id: Avalanche
+    source: "Avalanche"
+    keep: "Avalanche"
+    note: |
+      Proper noun. Do not translate.
+
+  - id: Ripple
+    source: "Ripple"
+    keep: "Ripple"
+    note: |
+      Proper noun. Do not translate.
+
+  - id: SanchoNet
+    source: "SanchoNet"
+    keep: "SanchoNet"
+    note: |
+      Proper noun. Do not translate.
+
+  - id: treasury
+    source: "treasury"
+    keep: "トレジャリー"
+    note: |
+      Use a consistent katakana term in Cardano governance context.
+
+  - id: faucet
+    source: "faucet"
+    keep: "faucet(テストトークン配布)"
+    note: |
+      Use a consistent katakana term for testnet faucets.
+
+  
