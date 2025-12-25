@@ -1,0 +1,46 @@
+version: sample-0.1
+terms:
+- id: staking
+  source: staking
+  keep: ステーキング
+  prefer: []
+  avoid: []
+  note: 'Blockchain-specific term. Must not be paraphrased.
+
+    '
+- id: insight
+  source: insight
+  keep: ''
+  prefer: []
+  avoid:
+  - 洞察
+  note: 'Translate naturally depending on context. Avoid overly academic wording.
+
+    '
+- id: leverage
+  source: leverage
+  keep: ''
+  prefer: []
+  avoid:
+  - レバレッジ
+  note: 'Use natural Japanese verbs like "活用する" if appropriate.
+
+    '
+- id: impact
+  source: impact
+  keep: ''
+  prefer: []
+  avoid:
+  - インパクト
+  note: 'Prefer neutral tone over marketing language.
+
+    '
+- id: governance
+  source: governance
+  keep: ''
+  prefer:
+  - ガバナンス
+  avoid: []
+  note: 'Use the preferred term when natural.
+
+    '

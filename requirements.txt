@@ -2,3 +2,5 @@ reflex==0.8.22
 mariadb
 openai
 requests
+playwright
+beautifulsoup4

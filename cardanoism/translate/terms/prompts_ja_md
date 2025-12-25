@@ -1,0 +1,209 @@
+# Prompt Profile スキーマ仕様
+
+## 概要
+
+本ドキュメントは、`prompts.yaml` に記述される  
+**Prompt Profile（プロンプトプロファイル）**の正式スキーマ仕様を定義します。
+
+Prompt Profile は以下を制御するためのものです。
+
+- 翻訳時の文体・トーン
+- タスクの目的（翻訳・要約など）
+- 厳守すべき制約条件
+- AI の振る舞い方（役割）
+
+Prompt Profile は、以下とは**明確に分離**されます。
+
+- 用語ポリシー（`terms.yaml`）
+- 翻訳・要約ロジック
+- AI モデルの選択
+
+本スキーマは以下を目的として設計されています。
+
+- GitHub 上でレビュー可能であること
+- gpt-5.x（Responses API）に最適化されていること
+- AI モデル更新に耐えること
+- 将来的に API 公開できること
+
+---
+
+## ファイル構造
+
+```yaml
+version: <integer>
+
+profiles:
+  <profile_id>:
+    description: <string>
+    system: <string>
+    task: <string>
+    rules:
+      - <string>
+    output:
+      format: <plain_text | markdown | json>
+      language: <string>
+```
+
+---
+
+## ルート要素
+
+### `version`（必須）
+
+```yaml
+version: 1
+```
+
+- `prompts.yaml` のスキーマバージョン
+- 破壊的変更が入る場合は必ず更新する
+
+---
+
+### `profiles`（必須）
+
+```yaml
+profiles:
+  technical_translation:
+    ...
+```
+
+- Prompt Profile のマップ
+- キー（`profile_id`）は一意であること
+- コードおよび将来の API から直接参照される
+
+---
+
+## Profile オブジェクト
+
+各 Profile は **1つの AI タスク定義**を表します。
+
+---
+
+### `description`（必須）
+
+```yaml
+description: 技術文書向けの逐語翻訳
+```
+
+- 人間向けの説明文
+- README や UI 表示用途
+
+---
+
+### `system`（必須）
+
+```yaml
+system: |
+  あなたはプロフェッショナルな技術翻訳者です。
+  このタスクはユーザー提供テキストの変換処理です。
+```
+
+- AI の役割・前提条件を定義する
+- **変換タスク（transformation task）であることを明示すること**
+- gpt-5.x の安定動作に非常に重要
+
+---
+
+### `task`（必須）
+
+```yaml
+task: |
+  以下の英語テキストを日本語に翻訳してください。
+```
+
+- 実行すべき作業内容を明示する
+- 簡潔かつ命令形で記述する
+- 曖昧な表現や依頼調は避ける
+
+---
+
+### `rules`（必須）
+
+```yaml
+rules:
+  - 内容を要約・省略・追加しないこと
+  - プレースホルダを完全に保持すること
+  - 翻訳文のみを出力すること
+```
+
+- 必ず守る制約条件のリスト
+- **順序付きのハードルール**として扱われる
+- 推奨数：3〜7項目
+
+---
+
+### `output`（任意・推奨）
+
+```yaml
+output:
+  format: plain_text
+  language: ja
+```
+
+#### `output.format`
+
+出力形式の指定。
+
+- `plain_text`：通常の翻訳出力
+- `markdown`：要約・説明文
+- `json`：構造化出力（将来用途）
+
+#### `output.language`
+
+- 出力言語のヒント（例：`ja`, `en`）
+- 厳密制御ではないが検証・UIに有用
+
+---
+
+## バリデーションルール
+
+実装側では以下を満たすべきです。
+
+### 構造ルール
+
+- `version` が存在すること
+- `profiles` がマップ型であること
+- 各 profile に以下が含まれること：
+  - `description`
+  - `system`
+  - `task`
+  - `rules`
+
+### 意味ルール
+
+- `rules` は空であってはならない
+- `system` には変換タスクである旨が含まれること
+- Prompt Profile から用語辞書を直接参照しないこと
+
+---
+
+## 設計思想
+
+- Prompt Profile は **AI の振る舞い方（どう言うか）**を定義する
+- 用語辞書は **意味・語彙（何を言うか）**を定義する
+- AI モデルは交換可能な実行エンジンである
+
+> 用語はポリシー  
+> プロンプトは意図
+
+---
+
+## 非目標
+
+- AI モデルの定義
+- 用語辞書の内包
+- 安全ポリシーそのものの実装
+
+---
+
+## 変更ポリシー
+
+- 後方互換性を壊す変更：
+  - `version` を更新
+  - 移行方針を明記する
+- 互換性のある追加：
+  - version 更新なしで許可
+
+---
+
+End of schema.
