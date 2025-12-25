@@ -147,6 +147,8 @@ def build_select_query(
         "solution",
         "solution_ja",
     ]
+    if "idea_raw_html" in columns:
+        base_cols.append("idea_raw_html")
     if "idea_semantic_blocks" in columns:
         base_cols.append("idea_semantic_blocks")
     if "idea_semantic_blocks_ja" in columns:
@@ -171,13 +173,25 @@ def build_select_query(
 
     where_clause = ""
     if where_parts:
-        where_clause = "WHERE " + " OR ".join(where_parts)
+        where_clause = "WHERE (" + " OR ".join(where_parts) + ")"
     if "idea_semantic_blocks" in columns:
-        semantic_clause = "idea_semantic_blocks IS NOT NULL AND idea_semantic_blocks <> ''"
+        semantic_clause = (
+            "idea_semantic_blocks IS NOT NULL AND idea_semantic_blocks <> '' "
+            "AND TRIM(idea_semantic_blocks) <> '[]'"
+        )
         if where_clause:
             where_clause = f"{where_clause} AND {semantic_clause}"
         else:
             where_clause = f"WHERE {semantic_clause}"
+    if "idea_raw_html" in columns:
+        raw_clause = (
+            "idea_raw_html IS NOT NULL AND TRIM(idea_raw_html) <> '' "
+            "AND LOWER(TRIM(idea_raw_html)) <> 'null'"
+        )
+        if where_clause:
+            where_clause = f"{where_clause} AND {raw_clause}"
+        else:
+            where_clause = f"WHERE {raw_clause}"
 
     if fund_uuid:
         fund_clause = "fund_uuid = ?"
@@ -195,18 +209,30 @@ def build_select_query(
     """.strip()
 
 
-def translate_semantic_blocks_with_ai(
-    translator: Translator, raw_json: Optional[str], debug: bool, uuid: str
-) -> tuple[Optional[str], Optional[str]]:
+def parse_semantic_blocks_json(
+    raw_json: Optional[str], debug: bool, uuid: str
+) -> Optional[List[Dict[str, Any]]]:
     if not raw_json:
-        return None, None
+        return None
     try:
         data = json.loads(raw_json)
     except json.JSONDecodeError:
-        logging.warning("Failed to decode semantic blocks JSON.")
-        return None, None
+        logging.warning("Failed to decode semantic blocks JSON for %s.", uuid)
+        return None
     if not isinstance(data, list):
-        logging.warning("Semantic blocks JSON is not a list.")
+        logging.warning("Semantic blocks JSON is not a list for %s.", uuid)
+        return None
+    if not data:
+        if debug:
+            logging.info("Skipping semantic_blocks for %s (empty list).", uuid)
+        return None
+    return data
+
+
+def translate_semantic_blocks_with_ai(
+    translator: Translator, data: List[Dict[str, Any]], debug: bool, uuid: str
+) -> tuple[Optional[str], Optional[str]]:
+    if not data:
         return None, None
     if debug:
         titles = [str(b.get("semantic_title") or b.get("title")) for b in data if b.get("semantic_title") or b.get("title")]
@@ -259,21 +285,35 @@ def build_updates(
     needs_ja = has_semantic_ja and (force or not row.get("idea_semantic_blocks_ja"))
     needs_ai = has_semantic_ai and (force or not row.get("idea_semantic_blocks_ai"))
     if has_semantic and (needs_ja or needs_ai):
-        if debug:
-            logging.info(
-                "Translating semantic_blocks for %s (needs_ja=%s needs_ai=%s)",
-                row.get("uuid"),
-                needs_ja,
-                needs_ai,
-            )
-        translated_blocks, ai_blocks = translate_semantic_blocks_with_ai(
-            translator, row.get("idea_semantic_blocks"), debug, row.get("uuid")
+        translated_blocks = None
+        ai_blocks = None
+        semantic_data = parse_semantic_blocks_json(
+            row.get("idea_semantic_blocks"), debug, row.get("uuid")
         )
+        if not semantic_data:
+            if debug:
+                logging.info(
+                    "Skipping semantic_blocks for %s (empty/invalid).",
+                    row.get("uuid"),
+                )
+        else:
+            if debug:
+                logging.info(
+                    "Translating semantic_blocks for %s (needs_ja=%s needs_ai=%s)",
+                    row.get("uuid"),
+                    needs_ja,
+                    needs_ai,
+                )
+            translated_blocks, ai_blocks = translate_semantic_blocks_with_ai(
+                translator, semantic_data, debug, row.get("uuid")
+            )
         if needs_ja and translated_blocks:
             updates["idea_semantic_blocks_ja"] = translated_blocks
         if needs_ai and ai_blocks:
             updates["idea_semantic_blocks_ai"] = ai_blocks
-        if debug and (needs_ja or needs_ai):
+        if debug and (needs_ja or needs_ai) and any(
+            k.startswith("idea_semantic_blocks") for k in updates.keys()
+        ):
             logging.info(
                 "semantic_blocks update keys for %s: %s",
                 row.get("uuid"),
@@ -302,12 +342,27 @@ def main() -> None:
         columns = fetch_columns(cursor, "proposals_new")
         fund_uuid = resolve_fund_uuid(cursor, args.fund)
         query = build_select_query(columns, args.limit, args.force, fund_uuid)
+        if args.debug:
+            logging.info("Select query: %s", query)
         if fund_uuid:
             cursor.execute(query, (fund_uuid,))
         else:
             cursor.execute(query)
         rows = cursor.fetchall()
         logging.info("Fetched %s records for translation.", len(rows))
+        if args.debug:
+            for row in rows:
+                logging.info(
+                    "Row uuid=%s raw_html=%s semantic_len=%s title_ja=%s problem_ja=%s solution_ja=%s semantic_ja=%s semantic_ai=%s",
+                    row.get("uuid"),
+                    bool(row.get("idea_raw_html")),
+                    len((row.get("idea_semantic_blocks") or "").strip()),
+                    bool(row.get("title_ja")),
+                    bool(row.get("problem_ja")),
+                    bool(row.get("solution_ja")),
+                    bool(row.get("idea_semantic_blocks_ja")),
+                    bool(row.get("idea_semantic_blocks_ai")),
+                )
 
         with ThreadPoolExecutor(max_workers=args.workers) as executor:
             futures = {

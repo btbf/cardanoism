@@ -1,6 +1,7 @@
 import reflex as rx
 from typing import Dict, Any
 from cardanoism.backend.db_connect import AppState
+from cardanoism import styles
 
 
 class ReactStarLib(rx.Component):
@@ -106,6 +107,21 @@ def status_badge(proposal: Dict[str, Any]) -> rx.Component:
     )
 
 
+def catalyst_id_badge(proposal: Dict[str, Any]) -> rx.Component:
+    """Catalyst ID badge (shown when available)."""
+    return rx.cond(
+        proposal.get("catalyst_id"),
+        rx.badge(
+            rx.text(f"ID {proposal.get('catalyst_id')}", size="1", color="var(--gray-12)"),
+            variant="surface",
+            radius="full",
+            size="2",
+            color_scheme="gray",
+        ),
+        rx.box(),
+    )
+
+
 def pill(text: str, icon: str, scheme: str) -> rx.Component:
     return rx.badge(
         rx.hstack(
@@ -150,6 +166,22 @@ def fund_progress_bar(proposal: Dict[str, Any]) -> rx.Component:
                 width="160px",
             ),
             rx.text(f"{proposal['fund_percent']}%", size="2", color="var(--indigo-11)", weight="bold"),
+            rx.cond(
+                proposal["milestones_link"],
+                rx.link(
+                        rx.hstack(
+                            rx.text("進捗状況を見る", size="2", weight="medium"),
+                            rx.icon("external-link", size=16),
+                            spacing="1",
+                            align="center",
+                        ),
+                    href=proposal["milestones_link"],
+                    is_external=True,
+                    underline="auto",
+                    color="var(--amber-11)",
+                ),
+                rx.box(),
+            ),
             rx.hstack(
                 rx.tooltip(
                     rx.hstack(
@@ -233,11 +265,21 @@ def score_panel(label: str, value: Any, color: str) -> rx.Component:
         width="100%",
     )
 
-def html_section(title: str, content: Any) -> rx.Component:
+def html_section(title: str | None, content: Any, *, show_title: bool = True) -> rx.Component:
     """Render stored HTML (already sanitized upstream) inside modal sections."""
     safe_content = rx.cond(content, content, "")
-    return rx.vstack(
-        rx.box(
+    content_box = rx.box(
+        rx.html(safe_content),
+        class_name=(
+            "text-[16px] leading-7 prose max-w-none prose-strong:text-[var(--gray-12)] dark:prose-strong:text-[var(--gray-12)] ",
+        ),
+        width="100%",
+        padding_x="8px",
+        color="var(--sand-a12)",
+    )
+    header = None
+    if show_title and title:
+        header = rx.box(
             rx.text(
                 title,
                 size="3",
@@ -251,19 +293,121 @@ def html_section(title: str, content: Any) -> rx.Component:
             background_color=rx.color_mode_cond(light="var(--blue-12)", dark="var(--gray-11)"),
             border_radius="6px",
             width="100%",
-        ),
-        rx.box(
-            rx.html(safe_content),
-            class_name=(
-                "text-[16px] leading-7 prose max-w-none prose-strong:text-[var(--gray-12)] dark:prose-strong:text-[var(--gray-12)] ",
-            ),
-            width="100%",
-            padding_x="8px",
-            color="var(--gray-11)",
-        ),
+        )
+    return rx.vstack(
+        *([header] if header else []),
+        content_box,
         spacing="1",
         width="100%",
     )
+
+
+def semantic_block_section(block: Dict[str, Any]) -> rx.Component:
+    title = block.get("semantic_title", "")
+    html = block.get("html", "")
+    return rx.vstack(
+        rx.el.h2(
+            title,
+            class_name=(
+                "text-[16px] md:text-[16px] font-semibold tracking-tight "
+                "text-[var(--gray-12)] pb-1 border-b border-[var(--gray-5)] "
+                "border-l-4 border-[var(--gray-6)] pl-3"
+            ),
+        ),
+        html_section(None, html, show_title=False),
+        spacing="2",
+        width="100%",
+    )
+
+
+def semantic_blocks_by_view(view: Any, raw: Any, ja: Any, ai: Any) -> rx.Var:
+    return rx.match(
+        view,
+        ("raw", raw),
+        ("ja", ja),
+        ("ai", ai),
+        ja,
+    )
+
+
+def semantic_toggle_button(label: str, value: str, current: Any, on_click) -> rx.Component:
+    is_active = current == value
+    bubble_button = rx.button(
+        label,
+        size="2",
+        radius="full",
+        variant=rx.cond(is_active, "solid", "soft"),
+        color_scheme=rx.cond(is_active, "blue", "gray"),
+        padding_x="14px",
+        padding_y="7px",
+        class_name=(
+            "transition-all duration-200 "
+            "shadow-[0_6px_16px_rgba(0,0,0,0.08)] hover:shadow-[0_8px_18px_rgba(0,0,0,0.12)] "
+            "text-[13px] "
+        ),
+        on_click=on_click,
+        cursor="pointer",
+    )
+    return bubble_button
+
+
+def semantic_toggle_group(*children: rx.Component) -> rx.Component:
+    return rx.hstack(
+        *children,
+        spacing="2",
+        align="end",
+        margin_y="6px",
+    )
+
+
+def semantic_toggle_bar(
+    *children: rx.Component,
+    top: str = "0px",
+    center: bool = True,
+    panel_background: str | None = None,
+    panel_padding: str = "0px 14px",
+    panel_radius: str = "9999px",
+    z_index: str = "10",
+) -> rx.Component:
+    inner = semantic_toggle_group(*children)
+    if panel_background:
+        inner = rx.box(
+            inner,
+            background_color=panel_background,
+            padding=panel_padding,
+            border_radius=panel_radius,
+        )
+    if center:
+        inner = rx.center(inner)
+    return rx.box(
+        inner,
+        position="sticky",
+        top=top,
+        z_index=z_index,
+        padding_y="6px",
+        width="100%",
+        background_color="transparent",
+    )
+
+
+def semantic_toggle_panel(
+    *children: rx.Component,
+    panel_background: str | None = "var(--gray-2)",
+    panel_padding: str = "8px 18px",
+    panel_radius: str = "9999px",
+    center: bool = True,
+) -> rx.Component:
+    inner = semantic_toggle_group(*children)
+    if panel_background:
+        inner = rx.box(
+            inner,
+            background_color=panel_background,
+            padding=panel_padding,
+            border_radius=panel_radius,
+        )
+    if center:
+        inner = rx.center(inner)
+    return inner
 
 
 def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
@@ -338,14 +482,14 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
         width="100%",
     )
 
-    page_icon = rx.box(
-        rx.icon("expand", size=20),
-        position="absolute",
-        right="0px",
-        bottom="0px",
-        border_radius="full",
-        pointer_events="none",
-    )
+    # page_icon = rx.box(
+    #     rx.icon("expand", size=20),
+    #     position="absolute",
+    #     right="0px",
+    #     bottom="0px",
+    #     border_radius="full",
+    #     pointer_events="none",
+    # )
 
     return rx.card(
         rx.box(
@@ -353,6 +497,7 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
                 rx.hstack(
                     rx.hstack(
                         status_badge(proposal),
+                        catalyst_id_badge(proposal),
                         pill(f"{fund_label(proposal)}", "layers", "yellow"),
                         pill(campaign_label(proposal), "flag", "gray"),
                         spacing="2",
@@ -376,14 +521,14 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
                 line_height="1.6",
                 text_wrap="wrap",
                 class_name="mt-2",
-                color="var(--gray-11)",
+                color="var(--gray-12)",
             ),
                 rx.mobile_and_tablet(mobile_footer),
                 rx.desktop_only(desktop_footer),
                 spacing="3",
                 width="100%",
             ),
-            page_icon,
+            #page_icon,
             position="relative",
             width="100%",
         ),
@@ -428,6 +573,7 @@ def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
     content_block = rx.vstack(
         rx.hstack(
             status_badge(proposal),
+            catalyst_id_badge(proposal),
             pill(f"{fund_label(proposal)}", "layers", "yellow"),
             pill(campaign_label(proposal), "flag", "gray"),
             spacing="2",
@@ -444,7 +590,7 @@ def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
         rx.text(
             description,
             size="2",
-            color="var(--gray-11)",
+            color="var(--gray-12)",
             line_height="1.6",
             text_wrap="wrap",
             class_name="line-clamp-3 mt-1",
@@ -579,6 +725,9 @@ def detail_modal() -> rx.Component:
                   border: 1px solid var(--slate-6);
                   scrollbar-color: var(--gray-5) var(--gray-3);
                   scrollbar-width: thin;
+                  font-family: """
+                + styles.font_family
+                + """;
                 }
                 @media (max-width: 768px) {
                   .rt-DialogContent.proposal-modal {
@@ -627,6 +776,7 @@ def detail_modal() -> rx.Component:
                 ),
                 rx.hstack(
                     status_badge(p),
+                    catalyst_id_badge(p),
                     pill(f"{fund_label(p)}", "layers", "yellow"),
                     pill(campaign_label(p), "flag", "gray"),
                     rx.hstack(
@@ -668,39 +818,120 @@ def detail_modal() -> rx.Component:
                         padding_y="20px",
                     ),
                     rx.flex(
-                        rx.tablet_and_desktop(
-                            rx.grid(
-                                score_panel("提案整合性", p.get("alignment_score"), "primary"),
-                                score_panel("実現可能性", p.get("feasibility_score"), "primary"),
-                                score_panel("監査可能性", p.get("auditability_score"), "primary"),
-                                columns={"base": "1", "md": "3"},
-                                spacing="4",
-                                width="100%",
-                            ),
-                        ),
-                        rx.divider(margin_y="6px"),
                         rx.box(
+                            rx.tablet_and_desktop(
+                                rx.grid(
+                                    score_panel("提案整合性", p.get("alignment_score"), "primary"),
+                                    score_panel("実現可能性", p.get("feasibility_score"), "primary"),
+                                    score_panel("監査可能性", p.get("auditability_score"), "primary"),
+                                    columns={"base": "1", "md": "3"},
+                                    spacing="4",
+                                    width="100%",
+                                ),
+                            ),
                             rx.vstack(
-                                rx.vstack(
-                                    rx.text("課題", size="2", color="var(--gray-12)" ,waight="bold"),
-                                    rx.text(p.get("problem_ja", ""), size="3", line_height="1.6", color="var(--gray-11)"),
-                                    spacing="1",
-                                    width="100%",
-                                    padding_top="8px",
+                                semantic_toggle_bar(
+                                    semantic_toggle_button(
+                                        "英語原文",
+                                        "raw",
+                                        AppState.modal_semantic_view,
+                                        lambda: AppState.set_modal_semantic_view("raw"),
+                                    ),
+                                    semantic_toggle_button(
+                                        "日本語翻訳",
+                                        "ja",
+                                        AppState.modal_semantic_view,
+                                        lambda: AppState.set_modal_semantic_view("ja"),
+                                    ),
+                                    semantic_toggle_button(
+                                        "AI要約",
+                                        "ai",
+                                        AppState.modal_semantic_view,
+                                        lambda: AppState.set_modal_semantic_view("ai"),
+                                    ),
+                                    top="0px",
+                                    panel_background="var(--gray-2)",
+                                    panel_padding="8px 18px",
+                                    panel_radius="9999px",
+                                    z_index="6",
                                 ),
-                                rx.vstack(
-                                    rx.text("解決策", size="2", color="var(--gray-12)" ,waight="bold"),
-                                    rx.text(p.get("solution_ja", ""), size="3", line_height="1.6", color="var(--gray-11)"),
-                                    spacing="1",
-                                    width="100%",
+                                rx.cond(
+                                    AppState.modal_semantic_view == "ai",
+                                    rx.box(),
+                                    rx.cond(
+                                        AppState.modal_semantic_view == "raw",
+                                        rx.vstack(
+                                            rx.el.h2(
+                                                "課題",
+                                                class_name=(
+                                                    "text-[16px] md:text-[16px] font-semibold tracking-tight "
+                                                    "text-[var(--gray-12)] pb-1 border-b border-[var(--gray-5)] "
+                                                    "border-l-4 border-[var(--gray-6)] pl-3"
+                                                ),
+                                            ),
+                                            rx.text(p.get("problem", ""), size="3", line_height="1.6", color="var(--sand-a12)", padding_x="8px"),
+                                            spacing="1",
+                                            width="100%",
+                                            padding_top="8px",
+                                        ),
+                                        rx.vstack(
+                                            rx.el.h2(
+                                                "課題",
+                                                class_name=(
+                                                    "text-[16px] md:text-[16px] font-semibold tracking-tight "
+                                                    "text-[var(--gray-12)] pb-1 border-b border-[var(--gray-5)] "
+                                                    "border-l-4 border-[var(--gray-6)] pl-3"
+                                                ),
+                                            ),
+                                            rx.text(p.get("problem_ja", ""), size="3", line_height="1.6", color="var(--sand-a12)", padding_x="8px"),
+                                            spacing="1",
+                                            width="100%",
+                                            padding_top="8px",
+                                        ),
+                                    ),
                                 ),
-                                html_section("解決策", p.get("detail_solution_ja", "")),
-                                html_section("エコシステムインパクト", p.get("impact_ja", "")),
-                                html_section("実現可能性", p.get("capability_feasibility_ja", "")),
-                                html_section("マイルストートン", p.get("project_milestones_ja", "")),
-                                html_section("リソース", p.get("resources_ja", "")),
-                                html_section("予算とコスト", p.get("budget_costs_ja", "")),
-                                html_section("コストパフォーマンス", p.get("value_for_money_ja", "")),
+                                rx.cond(
+                                    AppState.modal_semantic_view == "ai",
+                                    rx.box(),
+                                    rx.cond(
+                                        AppState.modal_semantic_view == "raw",
+                                        rx.vstack(
+                                            rx.el.h2(
+                                                "解決策",
+                                                class_name=(
+                                                    "text-[16px] md:text-[16px] font-semibold tracking-tight "
+                                                    "text-[var(--gray-12)] pb-1 border-b border-[var(--gray-5)] "
+                                                    "border-l-4 border-[var(--gray-6)] pl-3"
+                                                ),
+                                            ),
+                                            rx.text(p.get("solution", ""), size="3", line_height="1.6", color="var(--sand-a12)", padding_x="8px"),
+                                            spacing="1",
+                                            width="100%",
+                                        ),
+                                        rx.vstack(
+                                            rx.el.h2(
+                                                "解決策",
+                                                class_name=(
+                                                    "text-[16px] md:text-[16px] font-semibold tracking-tight "
+                                                    "text-[var(--gray-12)] pb-1 border-b border-[var(--gray-5)] "
+                                                    "border-l-4 border-[var(--gray-6)] pl-3"
+                                                ),
+                                            ),
+                                            rx.text(p.get("solution_ja", ""), size="3", line_height="1.6", color="var(--sand-a12)", padding_x="8px"),
+                                            spacing="1",
+                                            width="100%",
+                                        ),
+                                    ),
+                                ),
+                                rx.foreach(
+                                    semantic_blocks_by_view(
+                                        AppState.modal_semantic_view,
+                                        AppState.modal_semantic_blocks_raw,
+                                        AppState.modal_semantic_blocks_ja,
+                                        AppState.modal_semantic_blocks_ai,
+                                    ),
+                                    semantic_block_section,
+                                ),
                                 rx.mobile_only(
                                     rx.vstack(
                                         score_panel("提案整合性", p.get("alignment_score"), "primary"),

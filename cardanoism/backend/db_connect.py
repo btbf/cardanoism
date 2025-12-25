@@ -130,6 +130,123 @@ def format_count_display(value: Any) -> str:
     return f"{int(round(number)):,}"
 
 
+def parse_semantic_blocks(value: Any) -> List[Dict[str, Any]]:
+    """Parse idea_semantic_blocks_ja JSON into a list of dicts."""
+    if not value:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, (bytes, bytearray)):
+        try:
+            value = value.decode("utf-8")
+        except Exception:
+            return []
+    try:
+        parsed = json.loads(value)
+    except Exception:
+        logger.debug("Failed to parse idea_semantic_blocks_ja", exc_info=True)
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
+def build_detail_query(include_raw: bool, include_ja: bool, include_ai: bool) -> str:
+    """Build detail query with optional semantic block columns."""
+    semantic_select = ""
+    if include_raw:
+        semantic_select += ",\n            p.idea_semantic_blocks"
+    if include_ja:
+        semantic_select += ",\n            p.idea_semantic_blocks_ja"
+    if include_ai:
+        semantic_select += ",\n            p.idea_semantic_blocks_ai"
+    return f"""
+        SELECT
+            p.uuid,
+            p.catalyst_id,
+            p.fund_uuid,
+            p.campaign_uuid,
+            p.user_name,
+            p.projectcatalyst_link,
+            p.title,
+            p.title_ja,
+            p.problem,
+            p.problem_ja,
+            p.solution,
+            p.solution_ja,
+            p.milestones_link,
+            p.amount_requested,
+            p.amount_received,
+            p.yes_votes_count,
+            p.abstain_votes_count,
+            p.unique_wallets,
+            p.project_status,
+            p.funding_status,
+            p.currency_symbol,
+            p.currency,
+            p.tags,
+            p.slug,
+            p.alignment_score,
+            p.feasibility_score,
+            p.auditability_score,
+            c.title as campaign_title,
+            c.title_jp as campaign_title_ja,
+            f.title as fund_title,
+            pd.headline_problem_ja,
+            pd.headline_solution_ja,
+            pd.solution_ja as detail_solution_ja,
+            pd.impact_ja,
+            pd.capability_feasibility_ja,
+            pd.project_milestones_ja,
+            pd.resources_ja,
+            pd.budget_costs_ja,
+            pd.value_for_money_ja{semantic_select}
+        FROM proposals_new p
+        INNER JOIN campaigns_new c ON p.campaign_uuid = c.id
+        LEFT JOIN funds_new f ON p.fund_uuid = f.id
+        LEFT JOIN proposal_detail_new pd ON p.uuid = pd.uuid
+        WHERE p.uuid = ?
+        """
+
+
+def build_proposal_query(include_semantic: bool) -> str:
+    """Build proposal detail page query with optional idea_semantic_blocks_ja column."""
+    semantic_select = ""
+    return f"""
+            SELECT p.*,
+            c.title as campaign_title,
+            c.title_jp as campaign_title_ja,
+            f.title as fund_title,
+            pd.title as proposal_title,
+            pd.title_ja as proposal_title_ja,
+            pd.headline_problem_ja,
+            pd.applicant_name,
+            pd.project_duration,
+            pd.headline_solution_ja,
+            pd.open_source,
+            pd.tag,
+            pd.solution_ja as detail_solution_ja,
+            pd.impact,
+            pd.impact_ja,
+            pd.capability_feasibility,
+            pd.capability_feasibility_ja,
+            pd.project_milestones,
+            pd.project_milestones_ja,
+            pd.resources,
+            pd.resources_ja,
+            pd.budget_costs,
+            pd.budget_costs_ja,
+            pd.value_for_money,
+            pd.value_for_money_ja{semantic_select}
+            FROM proposals_new p
+            INNER JOIN campaigns_new c
+            ON p.campaign_uuid = c.id
+            LEFT JOIN funds_new f
+            ON p.fund_uuid = f.id
+            INNER JOIN proposal_detail_new pd
+            ON p.uuid = pd.uuid
+            WHERE p.uuid = ?
+            """
+
+
 def fetch_funds() -> List[Dict[str, Any]]:
     """Load fund records for list/detail views."""
     try:
@@ -283,6 +400,11 @@ class AppState(rx.State):
     search_query: str = ""
     modal_open: bool = False
     modal_proposal: Dict[str, Any] = {}
+    modal_semantic_blocks: List[Dict[str, Any]] = []
+    modal_semantic_blocks_raw: List[Dict[str, Any]] = []
+    modal_semantic_blocks_ja: List[Dict[str, Any]] = []
+    modal_semantic_blocks_ai: List[Dict[str, Any]] = []
+    modal_semantic_view: str = "ja"
     modal_loading: bool = False
     modal_pending_uuid: str = ""
     selected_proposal_uuid: str | None = None
@@ -466,6 +588,7 @@ class AppState(rx.State):
             data_query = """
         SELECT
             p.uuid,
+            p.catalyst_id,
             p.fund_uuid,
             p.campaign_uuid,
             p.user_name,
@@ -478,6 +601,7 @@ class AppState(rx.State):
             p.unique_wallets,
             p.project_status,
             p.funding_status,
+            p.milestones_link,
             p.problem_ja,
             p.solution_ja,
             p.currency_symbol,
@@ -622,11 +746,18 @@ class AppState(rx.State):
     def open_modal(self, proposal: Dict[str, Any]):
         """Open detail modal then fetch full detail in a follow-up event."""
         base_proposal = proposal or {}
+        base_proposal.setdefault("idea_semantic_blocks", [])
+        base_proposal.setdefault("idea_semantic_blocks_ja", [])
+        base_proposal.setdefault("idea_semantic_blocks_ai", [])
         self.modal_loading = True
         self.modal_open = True
         self.modal_pending_uuid = base_proposal.get("uuid", "")
         self.selected_proposal_uuid = self.modal_pending_uuid or None
         self.modal_proposal = base_proposal
+        self.modal_semantic_blocks_raw = base_proposal.get("idea_semantic_blocks") or []
+        self.modal_semantic_blocks_ja = base_proposal.get("idea_semantic_blocks_ja") or []
+        self.modal_semantic_blocks_ai = base_proposal.get("idea_semantic_blocks_ai") or []
+        self.modal_semantic_blocks = self.modal_semantic_blocks_ja
         self.last_list_path = self.router.url.path or ""
         return self._history_push_script(self.modal_pending_uuid)
 
@@ -637,56 +768,38 @@ class AppState(rx.State):
             self.modal_loading = False
             return
 
-        detail_query = """
-        SELECT
-            p.uuid,
-            p.fund_uuid,
-            p.campaign_uuid,
-            p.user_name,
-            p.projectcatalyst_link,
-            p.title,
-            p.title_ja,
-            p.problem_ja,
-            p.solution_ja,
-            p.amount_requested,
-            p.amount_received,
-            p.yes_votes_count,
-            p.abstain_votes_count,
-            p.unique_wallets,
-            p.project_status,
-            p.funding_status,
-            p.currency_symbol,
-            p.currency,
-            p.tags,
-            p.slug,
-            p.alignment_score,
-            p.feasibility_score,
-            p.auditability_score,
-            c.title as campaign_title,
-            c.title_jp as campaign_title_ja,
-            f.title as fund_title,
-            pd.headline_problem_ja,
-            pd.headline_solution_ja,
-            pd.solution_ja as detail_solution_ja,
-            pd.impact_ja,
-            pd.capability_feasibility_ja,
-            pd.project_milestones_ja,
-            pd.resources_ja,
-            pd.budget_costs_ja,
-            pd.value_for_money_ja
-        FROM proposals_new p
-        INNER JOIN campaigns_new c ON p.campaign_uuid = c.id
-        LEFT JOIN funds_new f ON p.fund_uuid = f.id
-        LEFT JOIN proposal_detail_new pd ON p.uuid = pd.uuid
-        WHERE p.uuid = ?
-        """
+        detail_query = build_detail_query(include_raw=True, include_ja=True, include_ai=True)
 
         try:
             with get_db() as (cursor, conn):
-                cursor.execute(detail_query, [target_uuid])
+                try:
+                    cursor.execute(detail_query, [target_uuid])
+                except mariadb.ProgrammingError as e:
+                    error_text = str(e)
+                    if "Unknown column" in error_text and "idea_semantic_blocks" in error_text:
+                        include_raw = "idea_semantic_blocks'" not in error_text
+                        include_ja = "idea_semantic_blocks_ja" not in error_text
+                        include_ai = "idea_semantic_blocks_ai" not in error_text
+                        cursor.execute(
+                            build_detail_query(
+                                include_raw=include_raw,
+                                include_ja=include_ja,
+                                include_ai=include_ai,
+                            ),
+                            [target_uuid],
+                        )
+                    else:
+                        raise
                 row = cursor.fetchone()
                 if row:
                     row = {**(self.modal_proposal or {}), **row}
+                    row["idea_semantic_blocks"] = parse_semantic_blocks(row.get("idea_semantic_blocks"))
+                    row["idea_semantic_blocks_ja"] = parse_semantic_blocks(row.get("idea_semantic_blocks_ja"))
+                    row["idea_semantic_blocks_ai"] = parse_semantic_blocks(row.get("idea_semantic_blocks_ai"))
+                    self.modal_semantic_blocks_raw = row.get("idea_semantic_blocks") or []
+                    self.modal_semantic_blocks_ja = row.get("idea_semantic_blocks_ja") or []
+                    self.modal_semantic_blocks_ai = row.get("idea_semantic_blocks_ai") or []
+                    self.modal_semantic_blocks = self.modal_semantic_blocks_ja
                     row["fund_title"] = row.get("fund_title") or row.get("fund_uuid") or ""
                     row["campaign_title_ja"] = row.get("campaign_title_ja") or row.get("campaign_title") or ""
                     row["amount_requested_comma"] = f"{int(row.get('amount_requested') or 0):,}"
@@ -712,6 +825,10 @@ class AppState(rx.State):
         """Close detail modal."""
         self.modal_open = False
         self.modal_proposal = {}
+        self.modal_semantic_blocks = []
+        self.modal_semantic_blocks_raw = []
+        self.modal_semantic_blocks_ja = []
+        self.modal_semantic_blocks_ai = []
         self.modal_loading = False
         self.modal_pending_uuid = ""
         self.selected_proposal_uuid = None
@@ -725,6 +842,15 @@ class AppState(rx.State):
             "  }"
             "}"
         )
+
+    def set_modal_semantic_view(self, view: str):
+        self.modal_semantic_view = view
+        if view == "raw":
+            self.modal_semantic_blocks = self.modal_semantic_blocks_raw
+        elif view == "ai":
+            self.modal_semantic_blocks = self.modal_semantic_blocks_ai
+        else:
+            self.modal_semantic_blocks = self.modal_semantic_blocks_ja
 
     def on_popstate(self, event_state: Dict[str, Any] | None):
         event_state = event_state or {}
@@ -871,6 +997,11 @@ class AppState(rx.State):
             
 class ProposalAppState(rx.State):
     proposal: List[Dict[str, Any]] = []
+    semantic_blocks: List[Dict[str, Any]] = []
+    semantic_blocks_raw: List[Dict[str, Any]] = []
+    semantic_blocks_ja: List[Dict[str, Any]] = []
+    semantic_blocks_ai: List[Dict[str, Any]] = []
+    semantic_view: str = "ja"
     ideascale_id: str
     load: bool = False
     
@@ -889,47 +1020,21 @@ class ProposalAppState(rx.State):
         with get_db() as (cursor, conn):
             logger.debug("DB connection opened: cursor=%s, conn=%s", cursor, conn)
             
-            proposal_query = """
-            SELECT p.*,
-            c.title as campaign_title,
-            c.title_jp as campaign_title_ja,
-            f.title as fund_title,
-            pd.title as proposal_title,
-            pd.title_ja as proposal_title_ja,
-            pd.headline_problem_ja,
-            pd.applicant_name,
-            pd.project_duration,
-            pd.headline_solution_ja,
-            pd.open_source,
-            pd.tag,
-            pd.solution,
-            pd.solution_ja as detail_solution_ja,
-            pd.impact,
-            pd.impact_ja,
-            pd.capability_feasibility,
-            pd.capability_feasibility_ja,
-            pd.project_milestones,
-            pd.project_milestones_ja,
-            pd.resources,
-            pd.resources_ja,
-            pd.budget_costs,
-            pd.budget_costs_ja,
-            pd.value_for_money,
-            pd.value_for_money_ja
-            FROM proposals_new p
-            INNER JOIN campaigns_new c
-            ON p.campaign_uuid = c.id
-            LEFT JOIN funds_new f
-            ON p.fund_uuid = f.id
-            INNER JOIN proposal_detail_new pd
-            ON p.uuid = pd.uuid
-            WHERE p.uuid = ?
-            """
+            proposal_query = build_proposal_query(include_semantic=True)
             
             logger.debug("Executing proposal query: %s | params=%s", proposal_query, [self.ideascale_id])
-            cursor.execute(proposal_query, [self.ideascale_id])
+            try:
+                cursor.execute(proposal_query, [self.ideascale_id])
+            except mariadb.ProgrammingError as e:
+                if "Unknown column" in str(e) and "idea_semantic_blocks_ja" in str(e):
+                    cursor.execute(build_proposal_query(include_semantic=False), [self.ideascale_id])
+                else:
+                    raise
             self.proposal = cursor.fetchall()
             for p in self.proposal:
+                p["idea_semantic_blocks"] = parse_semantic_blocks(p.get("idea_semantic_blocks"))
+                p["idea_semantic_blocks_ja"] = parse_semantic_blocks(p.get("idea_semantic_blocks_ja"))
+                p["idea_semantic_blocks_ai"] = parse_semantic_blocks(p.get("idea_semantic_blocks_ai"))
                 p["fund_title"] = p.get("fund_title") or p.get("fund_uuid") or ""
                 p["campaign_title_ja"] = p.get("campaign_title_ja") or p.get("campaign_title") or ""
                 p["amount_requested_comma"] = f"{int(p.get('amount_requested') or 0):,}"
@@ -945,8 +1050,27 @@ class ProposalAppState(rx.State):
                     p["fund_percent"] = round((amt_recv / amt_req) * 100, 1) if amt_req else 0.0
                 except Exception:
                     p["fund_percent"] = 0.0
+            if self.proposal:
+                self.semantic_blocks_raw = self.proposal[0].get("idea_semantic_blocks", [])
+                self.semantic_blocks_ja = self.proposal[0].get("idea_semantic_blocks_ja", [])
+                self.semantic_blocks_ai = self.proposal[0].get("idea_semantic_blocks_ai", [])
+                self.semantic_blocks = self.semantic_blocks_ja
+            else:
+                self.semantic_blocks_raw = []
+                self.semantic_blocks_ja = []
+                self.semantic_blocks_ai = []
+                self.semantic_blocks = []
             self.load = True
             logger.debug("Proposal detail loaded: %s", self.proposal)
+
+    def set_semantic_view(self, view: str):
+        self.semantic_view = view
+        if view == "raw":
+            self.semantic_blocks = self.semantic_blocks_raw
+        elif view == "ai":
+            self.semantic_blocks = self.semantic_blocks_ai
+        else:
+            self.semantic_blocks = self.semantic_blocks_ja
 
 
 class FundListState(rx.State):

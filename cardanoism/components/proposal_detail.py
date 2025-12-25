@@ -8,7 +8,12 @@ from cardanoism.components.proposal_card import (
     fund_label,
     campaign_label,
     score_panel,
-    html_section,
+    semantic_block_section,
+    semantic_blocks_by_view,
+    semantic_toggle_button,
+    semantic_toggle_group,
+    semantic_toggle_bar,
+    catalyst_id_badge,
 )
 
 
@@ -40,6 +45,7 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
             ),
             rx.hstack(
                 status_badge(proposal),
+                catalyst_id_badge(proposal),
                 pill(f"{fund_label(proposal)}", "layers", "yellow"),
                 pill(campaign_label(proposal), "flag", "gray"),
                 rx.hstack(
@@ -77,27 +83,107 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
                 spacing="4",
                 width="100%",
             ),
-            rx.divider(margin_y="6px"),
+            semantic_toggle_bar(
+                semantic_toggle_button(
+                    "英語原文",
+                    "raw",
+                    ProposalAppState.semantic_view,
+                    lambda: ProposalAppState.set_semantic_view("raw"),
+                ),
+                semantic_toggle_button(
+                    "日本語翻訳",
+                    "ja",
+                    ProposalAppState.semantic_view,
+                    lambda: ProposalAppState.set_semantic_view("ja"),
+                ),
+                semantic_toggle_button(
+                    "AI要約",
+                    "ai",
+                    ProposalAppState.semantic_view,
+                    lambda: ProposalAppState.set_semantic_view("ai"),
+                ),
+                top="5.5em",
+                panel_background="var(--gray-2)",
+                panel_padding="8px 18px",
+                panel_radius="9999px",
+                z_index="3",
+            ),
             rx.vstack(
-                rx.vstack(
-                    rx.text("課題", size="2", color="var(--gray-12)", weight="bold"),
-                    rx.text(proposal.get("problem_ja", ""), size="3", line_height="1.6", color="var(--gray-11)"),
-                    spacing="1",
-                    width="100%",
+                rx.cond(
+                    ProposalAppState.semantic_view == "ai",
+                    rx.box(),
+                    rx.cond(
+                        ProposalAppState.semantic_view == "raw",
+                        rx.vstack(
+                            rx.el.h2(
+                                "課題",
+                                class_name=(
+                                    "text-[16px] md:text-[16px] font-semibold tracking-tight "
+                                    "text-[var(--gray-12)] pb-1 border-b border-[var(--gray-5)] "
+                                    "border-l-4 border-[var(--gray-6)] pl-3"
+                                ),
+                            ),
+                            rx.text(proposal.get("problem", ""), size="3", line_height="1.6", color="var(--sand-a12)", padding_x="8px"),
+                            spacing="1",
+                            width="100%",
+                        ),
+                        rx.vstack(
+                            rx.el.h2(
+                                "課題",
+                                class_name=(
+                                    "text-[16px] md:text-[16px] font-semibold tracking-tight "
+                                    "text-[var(--gray-12)] pb-1 border-b border-[var(--gray-5)] "
+                                    "border-l-4 border-[var(--gray-6)] pl-3"
+                                ),
+                            ),
+                            rx.text(proposal.get("problem_ja", ""), size="3", line_height="1.6", color="var(--sand-a12)", padding_x="8px"),
+                            spacing="1",
+                            width="100%",
+                        ),
+                    ),
                 ),
-                rx.vstack(
-                    rx.text("解決策", size="2", color="var(--gray-12)", weight="bold"),
-                    rx.text(proposal.get("solution_ja", ""), size="3", line_height="1.6", color="var(--gray-11)"),
-                    spacing="1",
-                    width="100%",
+                rx.cond(
+                    ProposalAppState.semantic_view == "ai",
+                    rx.box(),
+                    rx.cond(
+                        ProposalAppState.semantic_view == "raw",
+                        rx.vstack(
+                            rx.el.h2(
+                                "解決策",
+                                class_name=(
+                                    "text-[16px] md:text-[16px] font-semibold tracking-tight "
+                                    "text-[var(--gray-12)] pb-1 border-b border-[var(--gray-5)] "
+                                    "border-l-4 border-[var(--gray-6)] pl-3"
+                                ),
+                            ),
+                            rx.text(proposal.get("solution", ""), size="3", line_height="1.6", color="var(--sand-a12)", padding_x="8px"),
+                            spacing="1",
+                            width="100%",
+                        ),
+                        rx.vstack(
+                            rx.el.h2(
+                                "解決策",
+                                class_name=(
+                                    "text-[16px] md:text-[16px] font-semibold tracking-tight "
+                                    "text-[var(--gray-12)] pb-1 border-b border-[var(--gray-5)] "
+                                    "border-l-4 border-[var(--gray-6)] pl-3"
+                                ),
+                            ),
+                            rx.text(proposal.get("solution_ja", ""), size="3", line_height="1.6", color="var(--sand-a12)", padding_x="8px"),
+                            spacing="1",
+                            width="100%",
+                        ),
+                    ),
                 ),
-                html_section("解決策", proposal.get("detail_solution_ja", "")),
-                html_section("エコシステムへの影響", proposal.get("impact_ja", "")),
-                html_section("実現可能性", proposal.get("capability_feasibility_ja", "")),
-                html_section("マイルストーン", proposal.get("project_milestones_ja", "")),
-                html_section("リソース", proposal.get("resources_ja", "")),
-                html_section("予算とコスト", proposal.get("budget_costs_ja", "")),
-                html_section("コストパフォーマンス", proposal.get("value_for_money_ja", "")),
+                rx.foreach(
+                    semantic_blocks_by_view(
+                        ProposalAppState.semantic_view,
+                        ProposalAppState.semantic_blocks_raw,
+                        ProposalAppState.semantic_blocks_ja,
+                        ProposalAppState.semantic_blocks_ai,
+                    ),
+                    semantic_block_section,
+                ),
                 spacing="3",
                 width="100%",
             ),
@@ -107,9 +193,10 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
         ),
         width="100%",
         padding="24px",
-        background_color="var(--gray-2)",
-        border=f"1px solid var(--slate-6)",
-        border_radius="16px",
+        background_color="var(--gray-3)",
+        #border=f"1px solid var(--slate-6)",
+        style={"overflow": "visible"},
+        #border_radius="16px",
     )
 
 
