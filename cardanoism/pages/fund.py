@@ -520,7 +520,6 @@ def fund_detail() -> rx.Component:
     ready = AppState.load & (AppState.fund_route_slug != "")
     filters = rx.vstack(
         rx.html(FILTER_THEME_CSS),
-
         rx.flex(
             rx.box(
                 rx.input(

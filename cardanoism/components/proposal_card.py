@@ -779,7 +779,10 @@ def detail_modal() -> rx.Component:
                     catalyst_id_badge(p),
                     pill(f"{fund_label(p)}", "layers", "yellow"),
                     pill(campaign_label(p), "flag", "gray"),
-                    rx.hstack(
+                    spacing="2",
+                    wrap="wrap",
+                ),
+                rx.hstack(
                     rx.text(p.get("user_name", ""), size="2", color="var(--gray-9)"),
                     rx.text(
                         f"{p.get('currency_symbol','')} {p.get('amount_requested_comma')}",
@@ -798,12 +801,10 @@ def detail_modal() -> rx.Component:
                             underline="auto",
                             is_external=True,
                             style={"text-decoration": "none !important"},
-                        ),
-                        spacing="3",
-                        align="center",
                     ),
                     spacing="2",
                     wrap="wrap",
+                    align="center",
                 ),
                 fund_progress_bar(p),
                 rx.divider(),

@@ -24,7 +24,7 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
                 rx.vstack(
                     rx.text(
                         rx.cond(proposal["title_ja"], proposal["title_ja"], "提案"),
-                        size="6",
+                        size={"base": "6", "md": "5"},
                         weight="bold",
                         width="100%",
                         style={"wordBreak": "break-word"},
@@ -48,31 +48,32 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
                 catalyst_id_badge(proposal),
                 pill(f"{fund_label(proposal)}", "layers", "yellow"),
                 pill(campaign_label(proposal), "flag", "gray"),
-                rx.hstack(
-                    rx.text(rx.cond(proposal["user_name"], proposal["user_name"], ""), size="2", color="var(--gray-9)"),
-                    rx.text(
-                        f"{proposal['currency_symbol']} {proposal['amount_requested_comma']}",
-                        size="3",
-                        weight="bold",
-                        color="var(--indigo-11)",
+                spacing="2",
+                wrap="wrap",
+            ),
+            rx.hstack(
+                rx.text(rx.cond(proposal["user_name"], proposal["user_name"], ""), size="2", color="var(--gray-9)"),
+                rx.text(
+                    f"{proposal['currency_symbol']} {proposal['amount_requested_comma']}",
+                    size="3",
+                    weight="bold",
+                    color="var(--indigo-11)",
+                ),
+                rx.link(
+                    rx.hstack(
+                        rx.text("Project Catalyst", size="2", weight="medium"),
+                        rx.icon("external-link", size=16),
+                        spacing="1",
+                        align="center",
                     ),
-                    rx.link(
-                        rx.hstack(
-                            rx.text("Project Catalyst", size="2", weight="medium"),
-                            rx.icon("external-link", size=16),
-                            spacing="1",
-                            align="center",
-                        ),
-                        href=proposal.get("projectcatalyst_link", ""),
-                        underline="auto",
-                        is_external=True,
-                        style={"text-decoration": "none !important"},
-                    ),
-                    spacing="3",
-                    align="center",
+                    href=proposal.get("projectcatalyst_link", ""),
+                    underline="auto",
+                    is_external=True,
+                    style={"text-decoration": "none !important"},
                 ),
                 spacing="2",
                 wrap="wrap",
+                align="center",
             ),
             rx.divider(),
             rx.grid(
