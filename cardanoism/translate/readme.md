@@ -1,9 +1,9 @@
-# Translation Control Rules for Cardano Catalyst (JA)
+# AdaLex Engine — English-to-Japanese Translation Control for Cardano
 
 ## 目的
 
-この翻訳システムは、カルダノカタリスト提案の日本語化で起きる
-誤訳と表現揺れを最小化するための **用語制御ルール** です。
+この翻訳システムは、カルダノエコシステム翻訳の日本語化で起きる
+誤訳と表現揺れを最小化するための **用語制御エンジン** です。
 
 対象は専門用語が多い領域です。
 
@@ -12,8 +12,7 @@
 - ガバナンス（Catalyst, DRep, treasury, proposals など）
 - クリプト/プロトコル設計
 
-AI翻訳だけでは、専門用語の誤解釈や不自然な日本語が起きやすいため、
-人間が定義した辞書で翻訳の振る舞いを制御します。
+AI翻訳だけでは、専門用語の誤解釈や不自然な日本語が起きやすいため人間が定義した辞書で翻訳の振る舞いを制御します。
 
 ## 基本方針
 
@@ -85,7 +84,6 @@ title のタグ（例: `[GENERAL]`）もこの辞書で日本語化します。
 
 - `keep_terms.yaml`: keep（固定）専用
 - `guidance_terms.yaml`: prefer / avoid / note 専用
-``terms.yaml`` は旧フォーマットのため使用しません。
 
 ## terms スキーマ（案）
 
@@ -125,11 +123,11 @@ terms:
 
 ---
 
-# Translation Control Rules for Cardano Catalyst (EN)
+# AdaLex Engine — English-to-Japanese Translation Control for Cardano
 
 ## Objective
 
-This translation system is a **terminology control ruleset** designed to
+This translation system is a **terminology control engine** designed to
 minimize mistranslations and wording drift in Japanese translations of
 Cardano Catalyst proposals.
 
