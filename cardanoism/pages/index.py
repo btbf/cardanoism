@@ -1,12 +1,20 @@
 import reflex as rx
 
 from cardanoism.templates import template
+from cardanoism import styles
 from cardanoism.backend.warmup import WarmupState
 
 
 ACCENT = "#ffcf00"
 ACCENT_DARK = "#c7a300"
 TEXT_MUTED = "var(--gray-9)"
+HEADINGS_FONT_CSS = f"""
+<style>
+h1, h2, h3, h4, h5, h6 {{
+  font-family: {styles.font_family};
+}}
+</style>
+"""
 
 
 def hero_section() -> rx.Component:
@@ -21,9 +29,9 @@ def hero_section() -> rx.Component:
 
     content = rx.vstack(
         rx.text("Project Catalyst / Governance / Staking", size="2", letter_spacing="0.08em", color="var(--gray-9)"),
-        rx.text("カルダノガバナンスを日本語でナビゲート", size="7", weight="bold", line_height="1.05"),
+        rx.heading("カルダノガバナンスを日本語でナビゲート", size="7", weight="bold", line_height="1.05", as_="h1"),
         rx.text(
-            "Catalystの提案検索からガバナンス・ステーキングの管理まで。Cardanoの意思決定を日本語でキャッチアップし、ワンストップで扱えるプラットフォームへ進化させます。",
+            "Catalyst提案検索からCardanoの意思決定を日本語でキャッチアップし、ガバナンス・ステーキングの管理をワンストップで扱えるプラットフォームへ進化させます。",
             size="4",
             color=rx.color_mode_cond("rgba(30,30,30,0.82)", "rgba(230,230,245,0.9)"),
             line_height="1.6",
@@ -66,7 +74,7 @@ def hero_section() -> rx.Component:
             margin_x="auto",
             max_width="1280px",
             padding_x=["16px", "5vw", "8vw"],
-            padding_y="56px",
+            padding_y="25px",
         ),
         background=rx.color_mode_cond(
             "linear-gradient(135deg, #fdfcf6 0%, #f8f6ff 45%, #eef2ff 100%)",
@@ -85,7 +93,17 @@ def hero_section() -> rx.Component:
     )
 
 
-def feature_card(title: str, desc: str, icon: str) -> rx.Component:
+def feature_card(title: str, desc: str, icon: str, note: str | None = None) -> rx.Component:
+    title_row = (
+        rx.vstack(
+            rx.heading(title, size="5", as_="h3"),
+            rx.text(note, size="1", color=TEXT_MUTED),
+            spacing="1",
+            align_items="start",
+        )
+        if note
+        else rx.heading(title, size="5")
+    )
     return rx.box(
         rx.hstack(
             rx.box(
@@ -95,7 +113,7 @@ def feature_card(title: str, desc: str, icon: str) -> rx.Component:
                 border_radius="14px",
             ),
             rx.vstack(
-                rx.heading(title, size="5"),
+                title_row,
                 rx.text(desc, size="3", color=TEXT_MUTED, line_height="1.6"),
                 spacing="2",
                 align_items="start",
@@ -116,16 +134,16 @@ def feature_card(title: str, desc: str, icon: str) -> rx.Component:
 
 def feature_section() -> rx.Component:
     items = [
-        ("カタリスト管理", "投票に必要なデータを集め、気になる提案をまとめて管理。", "search"),
-        ("ガバナンス管理", "カルダノガバナンスを日本語で見える化し、委任先DRepの投票状況も通知。", "layers"),
-        ("ステーキング管理", "委任先ステークプールの運用状況をモニタし、異変をすぐ把握。", "sparkles"),
+        ("カタリスト管理", "投票に必要なデータを集め、気になる提案をまとめて管理。", "search", "開発中"),
+        ("ガバナンス管理", "カルダノガバナンスを日本語で見える化し、委任先DRepの投票状況も通知。", "layers", "2026年実装"),
+        ("ステーキング管理", "委任先ステークプールの運用状況をモニタし、異変をすぐ把握。", "sparkles", "2026年実装"),
     ]
     return rx.container(
         rx.vstack(
-            rx.text("Cardanoismのコア機能", size="6", weight="bold"),
+            rx.heading("Cardanoismのコア機能", size="6", as_="h2", weight="bold"),
             rx.text("プロダクトの進化軸を3つの視点で整理しました", size="3", color=TEXT_MUTED),
             rx.hstack(
-                *[feature_card(title, desc, icon) for title, desc, icon in items],
+                *[feature_card(title, desc, icon, note) for title, desc, icon, note in items],
                 flex_direction=["column", "column", "row"],
                 spacing="4",
                 width="100%",
@@ -180,6 +198,7 @@ def roadmap_entry(quarter: str, items: list[str], align_left: bool) -> rx.Compon
         border_radius="9999px",
         border=f"2px solid {ACCENT_DARK}",
         box_shadow="0 0 0 10px rgba(255, 207, 0, 0.12)",
+        margin_top="15px",
     )
 
     return rx.vstack(
@@ -290,9 +309,10 @@ def updates_section() -> rx.Component:
     )
 
 
-@template(route="/", title="カルダノイズム | カルダノガバナンス日本語ポータル", on_load=WarmupState.warm_up_only)
+@template(route="/", title="カルダノガバナンス日本語ポータル | Cardanoism ", on_load=WarmupState.warm_up_only)
 def index() -> rx.Component:
     return rx.box(
+        rx.html(HEADINGS_FONT_CSS),
         hero_section(),
         feature_section(),
         roadmap_section(),

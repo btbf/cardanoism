@@ -52,7 +52,9 @@ FILTER_THEME_CSS = """
 :where(html, body) .filter__menu-list {
   background-color: var(--slate-1) !important;
   color: var(--slate-12) !important;
+  z-index: 1002 !important;
 }
+:where(html, body) .filter__menu-portal { z-index: 1002 !important; }
 :where(html, body) .filter__option { color: var(--slate-12) !important; }
 :where(html, body) .filter__option--is-focused {
   background-color: var(--amber-7) !important;
@@ -80,6 +82,52 @@ FILTER_THEME_CSS = """
   background-color: var(--slate-2) !important;
   border-color: var(--slate-7) !important;
   color: var(--slate-12) !important;
+}
+.mobile-filter-accordion {
+  border-top: 1px solid var(--gray-4);
+  border-bottom: 1px solid var(--gray-4);
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+}
+.mobile-filter-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 0;
+  color: var(--blue-10);
+  font-weight: 600;
+  background-color: var(--gray-1);
+  border: none;
+}
+.mobile-filter-trigger::after {
+  content: "+";
+  font-size: 16px;
+  line-height: 1;
+  color: var(--blue-10);
+}
+.AccordionItem { overflow: visible !important; }
+.AccordionTrigger {
+    padding: 3px 3px;
+    background-color: var(--gray-1);
+    }
+.AccordionTrigger:hover {
+    background-color: var(--gray-1);
+    }
+.AccordionChevron { display: none; }
+.AccordionContent { 
+    overflow: visible !important;
+    padding: 0px 0px;
+    }
+.AccordionContent::before { display: none; }
+.AccordionContent[data-state="open"] { height: auto !important; }
+.mobile-filter-trigger[data-state="open"]::after {
+  content: "-";
+}
+.mobile-filter-content {
+  padding: 5px 0;
 }
 </style>
 """
@@ -113,65 +161,138 @@ def catalyst() -> rx.Component:
             ),
             width="100%",
         ),
-        rx.flex(
-            challegeFilter(
-                classNamePrefix="filter",
-                options=FUND_SELECT_OPTIONS,
-                placeholder="対象ファンドを選択してください",
-                defaultValue=AppState.selected_fund_filters,
-                onChange=lambda value: AppState.set_selected_fund_value(value),
-                isMulti=True,
-                styles=None,
-                theme=None,
-                width=["100%", "100%", "49.5%", "49.5%", "49.5%"],
-            ),
-            challegeFilter(
-                options=AppState.challenge_options,
-                classNamePrefix="filter",
-                placeholder="チャレンジを選択",
-                defaultValue=AppState.selected_challenge_filters,
-                onChange=lambda value: AppState.set_selected_chllenge_value(value),
-                isMulti=True,
-                styles=None,
-                theme=None,
-                width=["100%", "100%", "49.5%", "49.5%", "49.5%"],
+        rx.mobile_only(
+            rx.accordion.root(
+                rx.accordion.item(
+                    header=rx.accordion.trigger(
+                        rx.text("さらに絞り込む", size="3"),
+                        class_name="mobile-filter-trigger",
+                    ),
+                    content=rx.accordion.content(
+                        rx.vstack(
+                            challegeFilter(
+                                classNamePrefix="filter",
+                                options=FUND_SELECT_OPTIONS,
+                                placeholder="対象ファンドを選択してください",
+                                defaultValue=AppState.selected_fund_filters,
+                                onChange=lambda value: AppState.set_selected_fund_value(value),
+                                isMulti=True,
+                                styles=None,
+                                theme=None,
+                                width="100%",
+                                position="relative",
+                            ),
+                            challegeFilter(
+                                options=AppState.challenge_options,
+                                classNamePrefix="filter",
+                                placeholder="チャレンジを選択",
+                                defaultValue=AppState.selected_challenge_filters,
+                                onChange=lambda value: AppState.set_selected_chllenge_value(value),
+                                isMulti=True,
+                                styles=None,
+                                theme=None,
+                                width="100%",
+                            ),
+                            challegeFilter(
+                                options=FUNDING_STATUS_OPTIONS,
+                                classNamePrefix="filter",
+                                placeholder="資金調達ステータス",
+                                defaultValue=AppState.selected_funding_status_filters,
+                                onChange=lambda value: AppState.set_selected_fundingStatus_value(value),
+                                isMulti=True,
+                                styles=None,
+                                theme=None,
+                                width="100%",
+                            ),
+                            challegeFilter(
+                                options=PROJECT_STATUS_OPTIONS,
+                                classNamePrefix="filter",
+                                placeholder="プロジェクト進捗",
+                                defaultValue=AppState.selected_project_status_filters,
+                                onChange=lambda value: AppState.set_selected_projectStatus_value(value),
+                                isMulti=True,
+                                styles=None,
+                                theme=None,
+                                width="100%",
+                                
+                            ),
+                            spacing="2",
+                            width="100%",
+                            padding_x="0px",
+                            padding_top="0px",
+                        ),
+                        
+                        class_name="mobile-filter-content",
+                        width="100%",
+                    ),
+                    value="mobile-filters",
+                    padding="0px",
+                ),
+                type="multiple",
+                collapsible=True,
+                width="100%",
+                radius="none",
+                variant="ghost",
+                class_name="mobile-filter-accordion",
+                padding_x="0px",
             ),
             width="100%",
-            spacing="2",
-            justify="between",
-            direction={"base": "column", "md": "row"},
-            flex_wrap="wrap",
-            row_gap="10px",
+            
         ),
-        rx.flex(
-            challegeFilter(
-                options=FUNDING_STATUS_OPTIONS,
-                classNamePrefix="filter",
-                placeholder="資金調達ステータス",
-                defaultValue=AppState.selected_funding_status_filters,
-                onChange=lambda value: AppState.set_selected_fundingStatus_value(value),
-                isMulti=True,
-                styles=None,
-                theme=None,
-                width=["100%", "100%", "49.5%", "49.5%", "49.5%"],
-            ),
-            challegeFilter(
-                options=PROJECT_STATUS_OPTIONS,
-                classNamePrefix="filter",
-                placeholder="プロジェクト進捗",
-                defaultValue=AppState.selected_project_status_filters,
-                onChange=lambda value: AppState.set_selected_projectStatus_value(value),
-                isMulti=True,
-                styles=None,
-                theme=None,
-                width=["100%", "100%", "49.5%", "49.5%", "49.5%"],
+        rx.tablet_and_desktop(
+            rx.flex(
+                challegeFilter(
+                    classNamePrefix="filter",
+                    options=FUND_SELECT_OPTIONS,
+                    placeholder="対象ファンドを選択してください",
+                    defaultValue=AppState.selected_fund_filters,
+                    onChange=lambda value: AppState.set_selected_fund_value(value),
+                    isMulti=True,
+                    styles=None,
+                    theme=None,
+                    width=["100%", "100%", "49.5%", "49.5%", "49.5%"],
+                ),
+                challegeFilter(
+                    options=AppState.challenge_options,
+                    classNamePrefix="filter",
+                    placeholder="チャレンジを選択",
+                    defaultValue=AppState.selected_challenge_filters,
+                    onChange=lambda value: AppState.set_selected_chllenge_value(value),
+                    isMulti=True,
+                    styles=None,
+                    theme=None,
+                    width=["100%", "100%", "49.5%", "49.5%", "49.5%"],
+                ),
+                challegeFilter(
+                    options=FUNDING_STATUS_OPTIONS,
+                    classNamePrefix="filter",
+                    placeholder="資金調達ステータス",
+                    defaultValue=AppState.selected_funding_status_filters,
+                    onChange=lambda value: AppState.set_selected_fundingStatus_value(value),
+                    isMulti=True,
+                    styles=None,
+                    theme=None,
+                    width=["100%", "100%", "49.5%", "49.5%", "49.5%"],
+                ),
+                challegeFilter(
+                    options=PROJECT_STATUS_OPTIONS,
+                    classNamePrefix="filter",
+                    placeholder="プロジェクト進捗",
+                    defaultValue=AppState.selected_project_status_filters,
+                    onChange=lambda value: AppState.set_selected_projectStatus_value(value),
+                    isMulti=True,
+                    styles=None,
+                    theme=None,
+                    width=["100%", "100%", "49.5%", "49.5%", "49.5%"],
+                ),
+                width="100%",
+                spacing="2",
+                justify="between",
+                direction={"base": "column", "md": "row"},
+                flex_wrap="wrap",
+                row_gap="10px",
             ),
             width="100%",
-            spacing="2",
-            justify="between",
-            direction={"base": "column", "md": "row"},
-            flex_wrap="wrap",
-            row_gap="10px",
         ),
         spacing="2",
         width="100%",
@@ -180,8 +301,23 @@ def catalyst() -> rx.Component:
 
     header = rx.flex(
         rx.flex(
+            rx.text("検索結果", size="4"),
             rx.text(AppState.total_items, size="6", weight="bold", color="var(--amber-11)"),
             rx.text("件", size="4"),
+            rx.cond(
+                AppState.selected_fund_filters,
+                rx.hstack(
+                    rx.text("｜Fund:", size="2", color="var(--gray-10)"),
+                    rx.foreach(
+                        AppState.selected_fund_filters,
+                        lambda fund: rx.badge(fund["label"], size="1", variant="soft", radius="full"),
+                    ),
+                    spacing="1",
+                    wrap="wrap",
+                    align="center",
+                ),
+                rx.text("｜Fund: 12 ～ 14", size="2", color="var(--gray-10)"),
+            ),
             align_items="baseline",
             margin_left="5px",
             spacing="2",

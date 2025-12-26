@@ -270,6 +270,11 @@ def fetch_funds() -> List[Dict[str, Any]]:
                     hero_img_url,
                     banner_img_url
                 FROM funds_new
+                WHERE id IN (
+                    SELECT DISTINCT fund_uuid
+                    FROM proposals_new
+                    WHERE fund_uuid IS NOT NULL
+                )
                 ORDER BY launched_at DESC
                 """
             )
