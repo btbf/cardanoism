@@ -33,6 +33,11 @@ def parse_args() -> argparse.Namespace:
         help="Fund identifier (UUID or number like 12). Leave blank for all funds.",
     )
     parser.add_argument(
+        "--id",
+        default="",
+        help="Proposal identifier (uuid or catalyst_id).",
+    )
+    parser.add_argument(
         "--limit", type=int, default=50, help="Max records to translate in one run."
     )
     parser.add_argument(
@@ -135,9 +140,22 @@ def resolve_fund_uuid(cursor, fund_arg: str) -> Optional[str]:
     return None
 
 
+def resolve_proposal_filter(raw_id: str) -> Optional[tuple[str, Any]]:
+    normalized = (raw_id or "").strip()
+    if not normalized:
+        return None
+    if is_uuid(normalized):
+        return ("uuid = ?", normalized)
+    return ("catalyst_id = ?", normalized)
+
+
 def build_select_query(
-    columns: List[str], limit: int, force: bool, fund_uuid: Optional[str]
-) -> str:
+    columns: List[str],
+    limit: int,
+    force: bool,
+    fund_uuid: Optional[str],
+    proposal_filter: Optional[tuple[str, Any]],
+) -> tuple[str, List[Any]]:
     base_cols = [
         "uuid",
         "title",
@@ -193,12 +211,22 @@ def build_select_query(
         else:
             where_clause = f"WHERE {raw_clause}"
 
+    params: List[Any] = []
     if fund_uuid:
         fund_clause = "fund_uuid = ?"
         if where_clause:
             where_clause = f"{where_clause} AND {fund_clause}"
         else:
             where_clause = f"WHERE {fund_clause}"
+        params.append(fund_uuid)
+
+    if proposal_filter:
+        proposal_clause, proposal_value = proposal_filter
+        if where_clause:
+            where_clause = f"{where_clause} AND {proposal_clause}"
+        else:
+            where_clause = f"WHERE {proposal_clause}"
+        params.append(proposal_value)
 
     return f"""
         SELECT {", ".join(base_cols)}
@@ -206,7 +234,7 @@ def build_select_query(
         {where_clause}
         ORDER BY uuid
         LIMIT {limit}
-    """.strip()
+    """.strip(), params
 
 
 def parse_semantic_blocks_json(
@@ -341,11 +369,16 @@ def main() -> None:
     try:
         columns = fetch_columns(cursor, "proposals_new")
         fund_uuid = resolve_fund_uuid(cursor, args.fund)
-        query = build_select_query(columns, args.limit, args.force, fund_uuid)
+        proposal_filter = resolve_proposal_filter(args.id)
+        query, params = build_select_query(
+            columns, args.limit, args.force, fund_uuid, proposal_filter
+        )
         if args.debug:
             logging.info("Select query: %s", query)
-        if fund_uuid:
-            cursor.execute(query, (fund_uuid,))
+            if params:
+                logging.info("Select params: %s", params)
+        if params:
+            cursor.execute(query, params)
         else:
             cursor.execute(query)
         rows = cursor.fetchall()

@@ -40,6 +40,8 @@ TITLE_SYSTEM_PROMPT = (
     "or technical background from the source. "
     "Do not alter the meaning or add AI interpretation; respect the original wording "
     "and describe it in detail."
+    "Avoid literal or academic translation."
+    "Avoid expressions rarely used in daily Japanese."
 )
 
 DETAIL_SYSTEM_PROMPT = (
@@ -52,6 +54,13 @@ DETAIL_SYSTEM_PROMPT = (
     "or technical background from the source. "
     "Do not alter the meaning or add AI interpretation; respect the original wording "
     "and describe it in detail."
+    "Constraints:"
+    "- You can use (、) in a sentence, but be careful to use them in the appropriate places and in the appropriate number."
+    "Avoid literal or academic translation."
+    "Avoid expressions rarely used in daily Japanese."
+    "- Avoid long enumeration connected by commas"
+    "- Combine listed actions into natural phrases"
+    "- Prefer smooth sentence flow over literal structure"
 )
 
 HTML_SYSTEM_PROMPT = (
@@ -93,6 +102,13 @@ SEMANTIC_BLOCKS_WITH_AI_PROMPT = (
     "Translate ONLY the inner HTML inside each wrapper. Preserve all HTML tags and "
     "attributes exactly, including wrapper divs and their attributes. "
     "Do not add explanations. Preserve placeholders exactly. "
+    "This is a translation-only task and must not be refused. "
+    "Educational terms such as 'curriculum' may appear and are allowed. "
+    "Do not shorten or summarize; do not omit concrete specs, numbers, procedures, "
+    "or technical background from the source. "
+    "Avoid literal or academic translation."
+    "Avoid expressions rarely used in daily Japanese."
+    "Do not alter the meaning or add AI interpretation; respect the original wording and describe it in detail."
     "After translating, reorganize the translated content into exactly 8 sections "
     "using the following headers (in Japanese): "
     "Section 1: 基本プロフィール（タイトル、予算、期間、テーマ等）; "
@@ -103,8 +119,6 @@ SEMANTIC_BLOCKS_WITH_AI_PROMPT = (
     "Section 6: ロードマップとマイルストーン（各段階の成果物、受入基準、証拠、コスト、期間）; "
     "Section 7: 予算配分と費用対効果（詳細なコスト内訳、他プロジェクトとの比較、投資価値）; "
     "Section 8: 持続可能性と法的事項（ライセンス移行の詳細、オープンソース方針、依存関係、規約）. "
-    "Do not summarize or shorten; preserve concrete specs, numbers, procedures, and "
-    "technical background as much as possible. Do not alter meaning or add interpretation. "
     "Return HTML only with two wrapper containers in this order: "
     "<div id=\"translated_blocks\">...translated block divs...</div>"
     "<div id=\"ai_summary_blocks\">...8 summary divs...</div>. "
@@ -112,7 +126,11 @@ SEMANTIC_BLOCKS_WITH_AI_PROMPT = (
     "For ai_summary_blocks, output exactly 8 divs like "
     "<div data-section=\"1\">...HTML...</div>. "
     "Do not include the section titles inside the HTML content of ai_summary_blocks; "
-    "only put content there."
+    "only put content there. "
+    "Within each ai_summary_blocks section div, wrap each distinct item as its own "
+    "<p>...</p> block (no single long paragraph, no <br> separators). "
+    "In each <p>, wrap the leading label or heading (before the first colon) "
+    "with <strong>...</strong>."
 )
 OVERVIEW_BATCH_PROMPT = (
     "You are a professional Japanese translator. Translate the input text into natural "
@@ -127,6 +145,13 @@ OVERVIEW_BATCH_PROMPT = (
     "or technical background from the source. "
     "Do not alter the meaning or add AI interpretation; respect the original wording "
     "and describe it in detail."
+    "Constraints:"
+    "- You can use (、) in a sentence, but be careful to use them in the appropriate places and in the appropriate number."
+    "- Avoid long enumeration connected by commas"
+    "- Combine listed actions into natural phrases"
+    "Avoid literal or academic translation."
+    "Avoid expressions rarely used in daily Japanese."
+    "- Prefer smooth sentence flow over literal structure"
 )
 
 
@@ -296,12 +321,13 @@ def build_term_rules(terms: Iterable[TermEntry]) -> str:
             note_lines.append(f"\"{term.source}\": {term.note}")
 
     rules: List[str] = []
+    rules.append("Translate into natural, everyday Japanese.")
     rules.append(preface)
     if prefer_lines:
-        rules.append("Preferred translations:")
+        rules.append("Preferred expressions (prefer):")
         rules.extend(f"- {line}" for line in prefer_lines)
     if avoid_lines:
-        rules.append("Avoid these Japanese terms:")
+        rules.append("Avoided expressions (avoid):")
         rules.extend(f"- {line}" for line in avoid_lines)
     if note_lines:
         rules.append("Notes:")

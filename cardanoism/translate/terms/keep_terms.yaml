@@ -367,4 +367,62 @@ terms:
     note: |
       Use a consistent katakana term for testnet faucets.
 
+  - id: solidity
+    source: "Solidity"
+    keep: "Solidity"
+    note: |
+      Programming language name. Do not translate.
+
+  - id: rust
+    source: "Rust"
+    keep: "Rust"
+    note: |
+      Programming language name. Do not translate.
+
+  - id: haskell
+    source: "Haskell"
+    keep: "Haskell"
+    note: |
+      Programming language name. Do not translate.
+
+  - id: javascript
+    source: "JavaScript"
+    keep: "JavaScript"
+    note: |
+      Programming language name. Do not translate.
   
+  - id: python
+    source: "Python"
+    keep: "Python"
+    note: |
+      Programming language name. Do not translate.
+
+  - id: golang
+    source: "GoLang"
+    keep: "GoLang"
+    note: |
+      Programming language name. Do not translate.
+
+  - id: typescript
+    source: "TypeScript"
+    keep: "TypeScript"
+    note: |
+      Programming language name. Do not translate.
+
+  - id : aiken
+    source: "Aiken"
+    keep: "Aiken"
+    note: |
+      Programming language name. Do not translate.
+
+  - id: lucid
+    source: "Lucid"
+    keep: "Lucid"
+    note: |
+      Library name. Do not translate.
+
+  - id: PlutusTx
+    source: "PlutusTx"
+    keep: "PlutusTx"
+    note: |
+      Library name. Do not translate.

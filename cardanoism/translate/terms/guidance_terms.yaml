@@ -5,23 +5,17 @@ terms:
     source: "insight"
     avoid: "洞察"
     note: |
-      Translate naturally depending on context. Avoid overly academic wording.
+      Translate into natural, everyday Japanese.
 
   - id: impact
     source: "impact"
     avoid: "インパクト"
     note: |
-      Prefer neutral tone over marketing language.
+      Translate into natural, everyday Japanese.
 
   - id: zero_knowledge_proof
     source: "zero-knowledge proof"
     prefer: "ゼロ知識証明"
-    note: |
-      Use the standard cryptography term.
-
-  - id: zero_knowledge_cryptography
-    source: "zero-knowledge cryptography"
-    prefer: "ゼロ知識暗号"
     note: |
       Use the standard cryptography term.
 
@@ -66,3 +60,23 @@ terms:
     prefer: "Cardano憲法"
     note: |
       Use a consistent Japanese term.
+
+  - id: Maintainer
+    source: "Maintainer"
+    prefer: "維持"
+    note: |
+      Use a simple and clear term.
+
+  - id: misinformation
+    source: "misinformation"
+    avoid: "誤情報"
+    note: |
+      Translate into natural, everyday Japanese.
+
+  - id: vulnerable
+    source: "vulnerable"
+    avoid: "脆弱"
+    note: |
+      Translate into natural, everyday Japanese.
+
+
