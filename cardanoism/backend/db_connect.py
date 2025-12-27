@@ -536,6 +536,7 @@ class AppState(rx.State):
     def on_load(self):
         # super().__init__()
         ensure_warm()
+        logger.debug("AppState on_load start")
         self._reset_query_state()
         # preload challenge options (all funds)
         self.load_challenge_options()
@@ -1039,6 +1040,7 @@ class ProposalAppState(rx.State):
         
     def data_fetch(self):
         with get_db() as (cursor, conn):
+            logger.debug("AppState data_fetch start")
             logger.debug("DB connection opened: cursor=%s, conn=%s", cursor, conn)
             
             proposal_query = build_proposal_query(include_semantic=True)
