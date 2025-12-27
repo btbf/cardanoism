@@ -204,7 +204,7 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
 def detail_foreach_dict() -> rx.Component:
     return rx.box(
         rx.cond(
-            AppState.modal_loading,
+            AppState.modal_loading | AppState.modal_pending_uuid,
             rx.spinner(size="3"),
             rx.cond(
                 AppState.modal_proposal,
