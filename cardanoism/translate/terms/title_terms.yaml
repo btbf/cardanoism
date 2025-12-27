@@ -176,3 +176,71 @@ titles:
   - id: section_8_sustainability
     source: "Section 8: 持続可能性と法的事項（ライセンス移行の詳細、オープンソース方針、依存関係、規約）"
     target_ja: "Section 8: 持続可能性と法的事項（ライセンス移行の詳細、オープンソース方針、依存関係、規約）"
+
+  - id: proposal_setup_title
+    source: "[Proposal setup] Proposal title"
+    target_ja: "[提案セットアップ] 提案タイトル"
+
+  - id: proposal_summary_budget
+    source: "[Proposal Summary] Budget Information"
+    target_ja: "[提案概要] 予算情報"
+
+  - id: proposal_summary_time
+    source: "[Proposal Summary] Time"
+    target_ja: "[提案概要] 期間"
+
+  - id: proposal_summary_translation
+    source: "[Proposal Summary] Translation Information"
+    target_ja: "[提案概要] 翻訳情報"
+
+  - id: proposal_summary_problem
+    source: "[Proposal Summary] Problem Statement"
+    target_ja: "[提案概要] 問題の定義"
+
+  - id: proposal_summary_dependencies
+    source: "[Proposal Summary] Project Dependencies"
+    target_ja: "[提案概要] プロジェクトの依存関係"
+
+  - id: proposal_summary_open_source
+    source: "[Proposal Summary] Project Open Source"
+    target_ja: "[提案概要] プロジェクトのオープンソース化"
+
+  - id: theme_selection
+    source: "[Theme Selection] Theme"
+    target_ja: "[テーマ選択] テーマ"
+
+  - id: campaign_category_questions
+    source: "[Campaign Category] Category Questions"
+    target_ja: "[キャンペーンカテゴリ] カテゴリ質問"
+
+  - id: your_project_solution
+    source: "[Your Project and Solution] Solution"
+    target_ja: "[あなたのプロジェクトと解決策] 解決策"
+
+  - id: your_project_impact
+    source: "[Your Project and Solution] Impact"
+    target_ja: "[あなたのプロジェクトと解決策] 影響"
+
+  - id: your_project_capabilities
+    source: "[Your Project and Solution] Capabilities & Feasibility"
+    target_ja: "[あなたのプロジェクトと解決策] 能力と実現性"
+
+  - id: milestones_project
+    source: "[Milestones] Project Milestones"
+    target_ja: "[マイルストーン] プロジェクトのマイルストーン"
+
+  - id: final_pitch_budget
+    source: "[Final Pitch] Budget & Costs"
+    target_ja: "[最終ピッチ] 予算と費用の内訳"
+
+  - id: final_pitch_value
+    source: "[Final Pitch] Value for Money"
+    target_ja: "[最終ピッチ] 費用対効果"
+
+  - id: self_assessment_checklist
+    source: "[Self-Assessment] Self-Assessment Checklist"
+    target_ja: "[自己評価] 自己評価チェックリスト"
+
+  - id: required_acknowledgements
+    source: "[Required Acknowledgements] Consent & Confirmation"
+    target_ja: "[必須確認] 同意と確認"
