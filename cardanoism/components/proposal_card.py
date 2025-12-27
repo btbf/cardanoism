@@ -434,7 +434,7 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
         ),
         rx.hstack(
             rx.text(
-                f"{proposal['currency_symbol']} {proposal['amount_requested_comma']}",
+                f"{proposal['currency_symbol']} {proposal['amount_requested_comma']} {proposal['currency']}",
                 size="3",
                 weight="bold",
                 color="var(--indigo-11)",
@@ -462,7 +462,7 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
         ),
         rx.hstack(
             rx.text(
-                f"{proposal['currency_symbol']} {proposal['amount_requested_comma']}",
+                f"{proposal['currency_symbol']} {proposal['amount_requested_comma']} {proposal['currency']}",
                 size="3",
                 weight="bold",
                 color="var(--indigo-11)",
@@ -609,7 +609,7 @@ def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
             ),
             rx.hstack(
                 rx.text(
-                    f"{proposal['currency_symbol']} {proposal['amount_requested_comma']}",
+                    f"{proposal['currency_symbol']} {proposal['amount_requested_comma']} {proposal['currency']}",
                     size="3",
                     weight="bold",
                     color="var(--indigo-11)",
@@ -785,7 +785,7 @@ def detail_modal() -> rx.Component:
                 rx.hstack(
                     rx.text(p.get("user_name", ""), size="2", color="var(--gray-9)"),
                     rx.text(
-                        f"{p.get('currency_symbol','')} {p.get('amount_requested_comma')}",
+                        f"{p.get('currency_symbol','')} {p.get('amount_requested_comma')} {p.get('currency','')}",
                         size="3",
                         weight="bold",
                         color="var(--indigo-11)",

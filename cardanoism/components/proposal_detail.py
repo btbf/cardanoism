@@ -1,7 +1,7 @@
 import reflex as rx
 from typing import List, Dict, Any
 
-from cardanoism.backend.db_connect import ProposalAppState
+from cardanoism.backend.db_connect import AppState
 from cardanoism.components.proposal_card import (
     status_badge,
     pill,
@@ -54,7 +54,7 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
             rx.hstack(
                 rx.text(rx.cond(proposal["user_name"], proposal["user_name"], ""), size="2", color="var(--gray-9)"),
                 rx.text(
-                    f"{proposal['currency_symbol']} {proposal['amount_requested_comma']}",
+                    f"{proposal['currency_symbol']} {proposal['amount_requested_comma']} {proposal['currency']}",
                     size="3",
                     weight="bold",
                     color="var(--indigo-11)",
@@ -88,20 +88,20 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
                 semantic_toggle_button(
                     "英語原文",
                     "raw",
-                    ProposalAppState.semantic_view,
-                    lambda: ProposalAppState.set_semantic_view("raw"),
+                    AppState.modal_semantic_view,
+                    lambda: AppState.set_modal_semantic_view("raw"),
                 ),
                 semantic_toggle_button(
                     "日本語翻訳",
                     "ja",
-                    ProposalAppState.semantic_view,
-                    lambda: ProposalAppState.set_semantic_view("ja"),
+                    AppState.modal_semantic_view,
+                    lambda: AppState.set_modal_semantic_view("ja"),
                 ),
                 semantic_toggle_button(
                     "AI要約",
                     "ai",
-                    ProposalAppState.semantic_view,
-                    lambda: ProposalAppState.set_semantic_view("ai"),
+                    AppState.modal_semantic_view,
+                    lambda: AppState.set_modal_semantic_view("ai"),
                 ),
                 top="5.5em",
                 panel_background="var(--gray-2)",
@@ -111,10 +111,10 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
             ),
             rx.vstack(
                 rx.cond(
-                    ProposalAppState.semantic_view == "ai",
+                    AppState.modal_semantic_view == "ai",
                     rx.box(),
                     rx.cond(
-                        ProposalAppState.semantic_view == "raw",
+                        AppState.modal_semantic_view == "raw",
                         rx.vstack(
                             rx.el.h2(
                                 "課題",
@@ -144,10 +144,10 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
                     ),
                 ),
                 rx.cond(
-                    ProposalAppState.semantic_view == "ai",
+                    AppState.modal_semantic_view == "ai",
                     rx.box(),
                     rx.cond(
-                        ProposalAppState.semantic_view == "raw",
+                        AppState.modal_semantic_view == "raw",
                         rx.vstack(
                             rx.el.h2(
                                 "解決策",
@@ -178,10 +178,10 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
                 ),
                 rx.foreach(
                     semantic_blocks_by_view(
-                        ProposalAppState.semantic_view,
-                        ProposalAppState.semantic_blocks_raw,
-                        ProposalAppState.semantic_blocks_ja,
-                        ProposalAppState.semantic_blocks_ai,
+                        AppState.modal_semantic_view,
+                        AppState.modal_semantic_blocks_raw,
+                        AppState.modal_semantic_blocks_ja,
+                        AppState.modal_semantic_blocks_ai,
                     ),
                     semantic_block_section,
                 ),
@@ -204,16 +204,16 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
 def detail_foreach_dict() -> rx.Component:
     return rx.box(
         rx.cond(
-            ProposalAppState.load,
+            AppState.modal_loading,
+            rx.spinner(size="3"),
             rx.cond(
-                ProposalAppState.proposal,
-                rx.foreach(ProposalAppState.proposal, proposal_detail),
+                AppState.modal_proposal,
+                proposal_detail(AppState.modal_proposal),
                 rx.callout(
                     "提案が見つかりませんでした",
                     icon="info",
                     color_scheme="blue",
                 ),
             ),
-            rx.spinner(size="3"),
         )
     )

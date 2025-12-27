@@ -316,7 +316,7 @@ def catalyst() -> rx.Component:
                     wrap="wrap",
                     align="center",
                 ),
-                rx.text("｜Fund: 12 ～ 14", size="2", color="var(--gray-10)"),
+                rx.text("｜Fund: 12 ～ 15", size="2", color="var(--gray-10)"),
             ),
             align_items="baseline",
             margin_left="5px",

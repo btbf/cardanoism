@@ -4,7 +4,7 @@ import logging
 import re
 import sys
 import unicodedata
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -50,18 +50,17 @@ COLUMN_ORDER = [
     "slug",
 ]
 
-EXCLUDE_UPDATE_FIELDS = {
-    "title",
-    "title_ja",
-    "problem",
-    "problem_ja",
-    "solution",
-    "solution_ja",
-    "ideascale_link",
-    "ideascale_user",
-    "ideascale_id",
-    "fund_id",
+ALLOWED_UPDATE_FIELDS = {
+    "amount_received",
+    "funding_status",
+    "yes_votes_count",
+    "abstain_votes_count",
+    "unique_wallets",
+    "alignment_score",
+    "feasibility_score",
+    "auditability_score",
 }
+
 
 
 
@@ -350,7 +349,7 @@ def build_insert_tuple(record: Dict[str, Any]) -> Tuple[Any, ...]:
 def diff_record(existing: Dict[str, Any], incoming: Dict[str, Any]) -> Dict[str, Any]:
     updates: Dict[str, Any] = {}
     for column, value in incoming.items():
-        if column in EXCLUDE_UPDATE_FIELDS:
+        if column not in ALLOWED_UPDATE_FIELDS:
             continue
         if column not in existing:
             continue

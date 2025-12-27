@@ -542,6 +542,22 @@ class AppState(rx.State):
         self.data_fetch()
         return self._history_replace_script()
 
+    def load_detail_page(self):
+        """Initialize state for proposal detail pages based on route param."""
+        self._reset_query_state()
+        self.modal_proposal = {}
+        self.modal_loading = True
+        path = self.router.url.path or ""
+        path_parts = [part for part in path.split("/") if part]
+        target_uuid = path_parts[-1] if path_parts else ""
+        self.modal_pending_uuid = target_uuid
+        self.selected_proposal_uuid = target_uuid or None
+        if not target_uuid:
+            self.modal_loading = False
+            return self._history_replace_script()
+        self.load_modal_detail(target_uuid)
+        return self._history_replace_script()
+
     def load_fund_page(self):
         """Initialize state for fund detail pages based on route param."""
         self._reset_query_state()
@@ -661,7 +677,7 @@ class AppState(rx.State):
                 data_query += f" AND ({search_clause})"
             data_params = params + search_params
                     
-            asc_query = " ORDER BY fund_title DESC,CASE WHEN p.funding_status LIKE 'funded' THEN 0 ELSE 1 END, p.campaign_uuid DESC, p.yes_votes_count DESC"
+            asc_query = " ORDER BY fund_title DESC,CASE WHEN p.funding_status LIKE 'funded' THEN 0 ELSE 1 END, campaign_title_ja ASC, p.yes_votes_count DESC"
             limit_query = f" LIMIT {self.items_per_page} OFFSET {(self.current_page - 1) * self.items_per_page}"
             
             #データ取得クエリ
