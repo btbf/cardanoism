@@ -515,14 +515,15 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
                     color="var(--gray-12)",
                 ),
                 rx.text(proposal["title"], size="2", color="var(--gray-9)", class_name="mt-0"),
-            rx.text(
-                description,
-                size="3",
-                line_height="1.6",
-                text_wrap="wrap",
-                class_name="mt-2",
-                color="var(--gray-12)",
-            ),
+                rx.text(
+                    description,
+                    size="3",
+                    line_height="1.6",
+                    text_wrap="wrap",
+                    class_name="mt-2 line-clamp-3",
+                    min_height="3.6em",
+                    color="var(--gray-12)",
+                ),
                 rx.mobile_and_tablet(mobile_footer),
                 rx.desktop_only(desktop_footer),
                 spacing="3",
@@ -536,6 +537,7 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
         margin_bottom="1.5em",
         padding="18px",
         background_color="var(--gray-3)",
+        min_height=["300px", "300px", "240px"],
         class_name=rx.color_mode_cond(
             light=(
             "transition-all duration-300 overflow-hidden "
