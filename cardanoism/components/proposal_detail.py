@@ -71,6 +71,50 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
                     is_external=True,
                     style={"text-decoration": "none !important"},
                 ),
+                rx.menu.root(
+                        rx.menu.trigger(
+                            rx.hstack(
+                                rx.text("シェア", size="2", weight="medium"),
+                                rx.icon("share", size=16),
+                                spacing="1",
+                                align="center",
+                                cursor="pointer",
+                            ),
+                            width="20%",
+                        ),
+                        rx.menu.content(
+                            rx.menu.item(
+                                "X(Twitter)",
+                                on_click=rx.call_script(
+                                    f"const shareText = {proposal.get('title_ja', '')};"
+                                    "window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(String(shareText))}&url=${encodeURIComponent(window.location.href)}`, '_blank', 'noopener,noreferrer');"
+                                ),
+                            ),
+                            rx.menu.item(
+                                "LINE",
+                                on_click=rx.call_script(
+                                    "window.open(`https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(window.location.href)}`, '_blank', 'noopener,noreferrer');"
+                                ),
+                            ),
+                            rx.menu.item(
+                                "URLコピー",
+                                on_click=[
+                                    rx.call_script(
+                                        "navigator.clipboard.writeText(window.location.href);"
+                                    ),
+                                    rx.toast(
+                                        "提案リンクをコピーしました",
+                                        position="top-center",
+                                        style={
+                                            "background-color": "var(--indigo-11)",
+                                            "color": "white",
+                                            "border-radius": "0.53m",
+                                        },
+                                    ),
+                                ],
+                            ),
+                        ),
+                ),
                 spacing="2",
                 wrap="wrap",
                 align="center",

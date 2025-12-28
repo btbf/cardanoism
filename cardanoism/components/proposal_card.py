@@ -118,7 +118,6 @@ def catalyst_id_badge(proposal: Dict[str, Any]) -> rx.Component:
             size="2",
             color_scheme="gray",
         ),
-        rx.box(),
     )
 
 
@@ -491,65 +490,75 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
     #     pointer_events="none",
     # )
 
-    return rx.card(
-        rx.box(
-            rx.vstack(
-                rx.hstack(
+    def render_card(on_click):
+        return rx.card(
+            rx.box(
+                rx.vstack(
                     rx.hstack(
-                        status_badge(proposal),
-                        catalyst_id_badge(proposal),
-                        pill(f"{fund_label(proposal)}", "layers", "yellow"),
-                        pill(campaign_label(proposal), "flag", "gray"),
-                        spacing="2",
-                        wrap="wrap",
-                        align="center",
+                        rx.hstack(
+                            status_badge(proposal),
+                            catalyst_id_badge(proposal),
+                            pill(f"{fund_label(proposal)}", "layers", "yellow"),
+                            pill(campaign_label(proposal), "flag", "gray"),
+                            spacing="2",
+                            wrap="wrap",
+                            align="center",
+                        ),
+                        justify="between",
+                        width="100%",
                     ),
-                    justify="between",
+                    rx.text(
+                        proposal["title_ja"],
+                        size="4",
+                        weight="bold",
+                        line_height="1.2",
+                        color="var(--gray-12)",
+                    ),
+                    rx.text(proposal["title"], size="2", color="var(--gray-9)", class_name="mt-0"),
+                    rx.text(
+                        description,
+                        size="3",
+                        line_height="1.6",
+                        text_wrap="wrap",
+                        class_name="mt-2 line-clamp-3",
+                        min_height="3.6em",
+                        color="var(--gray-12)",
+                    ),
+                    rx.mobile_and_tablet(mobile_footer),
+                    rx.desktop_only(desktop_footer),
+                    spacing="3",
                     width="100%",
                 ),
-                rx.text(
-                    proposal["title_ja"],
-                    size="4",
-                    weight="bold",
-                    line_height="1.2",
-                    color="var(--gray-12)",
-                ),
-                rx.text(proposal["title"], size="2", color="var(--gray-9)", class_name="mt-0"),
-                rx.text(
-                    description,
-                    size="3",
-                    line_height="1.6",
-                    text_wrap="wrap",
-                    class_name="mt-2 line-clamp-3",
-                    min_height="3.6em",
-                    color="var(--gray-12)",
-                ),
-                rx.mobile_and_tablet(mobile_footer),
-                rx.desktop_only(desktop_footer),
-                spacing="3",
+                #page_icon,
+                position="relative",
                 width="100%",
             ),
-            #page_icon,
-            position="relative",
             width="100%",
-        ),
-        width="100%",
-        margin_bottom="1.5em",
-        padding="18px",
-        background_color="var(--gray-3)",
-        min_height=["300px", "300px", "240px"],
-        class_name=rx.color_mode_cond(
-            light=(
-            "transition-all duration-300 overflow-hidden "
-            "hover:shadow-[0_0_8px_rgba(0,0,0,0.22)] "
+            margin_bottom="1.5em",
+            padding="18px",
+            background_color="var(--gray-3)",
+            min_height=["300px", "300px", "240px"],
+            class_name=rx.color_mode_cond(
+                light=(
+                "transition-all duration-300 overflow-hidden "
+                "hover:shadow-[0_0_8px_rgba(0,0,0,0.22)] "
+                ),
+                dark=(
+                "transition-all duration-300 overflow-hidden "
+                "hover:shadow-[0_0_6px_rgba(229,229,229,229.12)]"
+                ),
             ),
-            dark=(
-            "transition-all duration-300 overflow-hidden "
-            "hover:shadow-[0_0_6px_rgba(229,229,229,229.12)]"
-            ),
-        ),
-        on_click=lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"])],
-        cursor="pointer",
+            on_click=on_click,
+            cursor="pointer",
+        )
+
+    modal_click = lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"])]
+    proposal_path = "/catalyst/proposals/" + proposal["uuid"].to(str)
+    popup_click = rx.redirect(proposal_path, is_external=True, popup=True)
+
+    return rx.fragment(
+        rx.mobile_and_tablet(render_card(popup_click)),
+        rx.desktop_only(render_card(modal_click)),
     )
 
 
@@ -630,34 +639,44 @@ def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
         width="100%",
     )
 
-    return rx.card(
-        rx.box(
-            rx.vstack(
-                content_block,
-                footer_block,
-                spacing="3",
+    def render_card(on_click):
+        return rx.card(
+            rx.box(
+                rx.vstack(
+                    content_block,
+                    footer_block,
+                    spacing="3",
+                    width="100%",
+                    height="100%",
+                    justify="between",
+                ),
+                page_icon,
+                position="relative",
                 width="100%",
                 height="100%",
-                justify="between",
             ),
-            page_icon,
-            position="relative",
-            width="100%",
-            height="100%",
-        ),
-        background_color="var(--gray-3)",
-        class_name=rx.color_mode_cond(
-            light=(
-            "transition-all duration-300 overflow-hidden "
-            "hover:shadow-[0_0_8px_rgba(0,0,0,0.22)] "
+            background_color="var(--gray-3)",
+            class_name=rx.color_mode_cond(
+                light=(
+                "transition-all duration-300 overflow-hidden "
+                "hover:shadow-[0_0_8px_rgba(0,0,0,0.22)] "
+                ),
+                dark=(
+                "transition-all duration-300 overflow-hidden "
+                "hover:shadow-[0_0_6px_rgba(229,229,229,229.12)]"
+                ),
             ),
-            dark=(
-            "transition-all duration-300 overflow-hidden "
-            "hover:shadow-[0_0_6px_rgba(229,229,229,229.12)]"
-            ),
-        ),
-        on_click=lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"])],
-        cursor="pointer",
+            on_click=on_click,
+            cursor="pointer",
+        )
+
+    modal_click = lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"])]
+    proposal_path = "/catalyst/proposals/" + proposal["uuid"].to(str)
+    popup_click = rx.redirect(proposal_path, is_external=True, popup=True)
+
+    return rx.fragment(
+        rx.mobile_and_tablet(render_card(popup_click)),
+        rx.desktop_only(render_card(modal_click)),
     )
 
 
@@ -961,15 +980,56 @@ def detail_modal() -> rx.Component:
                         min_height="0",
                     ),
                 ),
-                rx.button(
-                    "閉じる",
-                    on_click=AppState.close_modal,
+                rx.hstack(
+                    rx.button(
+                        "閉じる",
+                        on_click=AppState.close_modal,
+                        width="80%",
+                        variant="soft",
+                        background_color="var(--amber-9)",
+                        color="var(--gray-12)",
+                        cursor="pointer",
+                        _hover={"background_color": "var(--amber-6)"},
+                    ),
+                    rx.menu.root(
+                        rx.menu.trigger(
+                            rx.button("シェア", variant="soft"),
+                            width="20%",
+                        ),
+                        rx.menu.content(
+                            rx.menu.item(
+                                "X(Twitter)",
+                                on_click=rx.call_script(
+                                    f"const shareText = {p.get('title_ja', '')};"
+                                    "window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(String(shareText))}&url=${encodeURIComponent(window.location.href)}`, '_blank', 'noopener,noreferrer');"
+                                ),
+                            ),
+                            rx.menu.item(
+                                "LINE",
+                                on_click=rx.call_script(
+                                    "window.open(`https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(window.location.href)}`, '_blank', 'noopener,noreferrer');"
+                                ),
+                            ),
+                            rx.menu.item(
+                                "URLコピー",
+                                on_click=[
+                                    rx.call_script(
+                                        "navigator.clipboard.writeText(window.location.href);"
+                                    ),
+                                    rx.toast(
+                                        "提案リンクをコピーしました",
+                                        position="top-center",
+                                        style={
+                                            "background-color": "var(--indigo-11)",
+                                            "color": "white",
+                                            "border-radius": "0.53m",
+                                        },
+                                    ),
+                                ],
+                            ),
+                        ),
+                    ),
                     width="100%",
-                    variant="soft",
-                    background_color="var(--amber-9)",
-                    color="var(--gray-12)",
-                    cursor="pointer",
-                    _hover={"background_color": "var(--amber-6)"},
                 ),
                 spacing="3",
                 width="100%",
@@ -1007,6 +1067,7 @@ def card_foreach_dict() -> rx.Component:
                         rx.foreach(AppState.proposals, proposal_grid),
                         columns={"base": "1"},
                         spacing="4",
+                        style={"userSelect": "none"},
                     )
                 ),
                 rx.tablet_and_desktop(
