@@ -663,6 +663,7 @@ class AppState(rx.State):
                 # LIKE検索対象をインデックス（FULLTEXT含む）設定済みカラムに限定
                 proposal_like_columns = [
                     "user_name",
+                    "catalyst_id",
                     "title",
                     "title_ja",
                     "problem",
