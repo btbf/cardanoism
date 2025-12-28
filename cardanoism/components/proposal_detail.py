@@ -120,30 +120,18 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
                             ),
                             rx.menu.item(
                                 "LINE",
-                                rx.desktop_only(
-                                    on_click=rx.call_script(
-                                        "const text = (document.querySelector('.proposal-modal .proposal-title') "
-                                        "  || document.querySelector('.proposal-detail .proposal-title'))"
-                                        "  ?.innerText ?? '';"
-                                        "const url = 'https://social-plugins.line.me/lineit/share'"
-                                        "  + '?url=' + encodeURIComponent(window.location.href)"
-                                        "  + '&text=' + encodeURIComponent(text);"
-                                        "window.open("
-                                        "  url,"
-                                        "  'line-share',"
-                                        "  'width=520,height=520,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes'"
-                                        ");"
-                                    ),
-                                ),
-                                rx.mobile_and_tablet(
-                                    on_click=rx.call_script(
-                                        "const text = (document.querySelector('.proposal-modal .proposal-title')"
-                                        "  || document.querySelector('.proposal-detail .proposal-title'))"
-                                        "  ?.innerText ?? '';"
-                                        "const shareText = text ? (text + '\\n' + window.location.href) : window.location.href;"
-                                        "const url = 'https://line.me/R/msg/text/?' + encodeURIComponent(shareText);"
-                                        "window.open(url, '_blank');"
-                                    ),
+                                on_click=rx.call_script(
+                                    "const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);"
+                                    "const text = (document.querySelector('.proposal-modal .proposal-title') "
+                                    "  || document.querySelector('.proposal-detail .proposal-title'))"
+                                    "  ?.innerText ?? '';"
+                                    "const shareText = text ? (text + '\\n' + window.location.href) : window.location.href;"
+                                    "const url = isMobile"
+                                    "  ? 'https://line.me/R/msg/text/?' + encodeURIComponent(shareText)"
+                                    "  : 'https://social-plugins.line.me/lineit/share'"
+                                    "    + '?url=' + encodeURIComponent(window.location.href)"
+                                    "    + '&text=' + encodeURIComponent(text);"
+                                    "window.open(url, '_blank');"
                                 ),
                             ),
                             rx.menu.item(
