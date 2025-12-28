@@ -12,22 +12,15 @@ import reflex as rx
 
 # Meta tags for the app.
 default_meta = [
-    {
-        "name": "viewport",
-        "content": "width=device-width, shrink-to-fit=no, initial-scale=1",
-    },
+    {"name": "viewport", "content": "width=device-width, shrink-to-fit=no, initial-scale=1"},
+    {"property": "og:url", "content": "https://cardanoism.com"},
+    {"property": "og:type", "content": "website"},
+    {"property": "og:title", "content": "カルダノガバナンスを日本語でナビゲート | Cardanoism "},
+    {"property": "og:description", "content": "Catalyst提案検索からCardanoの意思決定を日本語でキャッチアップし、ガバナンス・ステーキングの管理をワンストップで扱えるプラットフォームへ進化させます。"},
+    {"property": "og:site_name", "content": "Cardanoism カルダノイズム"},
+    {"property": "og:image", "content": "https://cardanoism.com/cardanoism-ogp.jpg"},
+    {"property": "twitter:card", "content": "summary_large_image"},
 ]
-
-google_tags =[rx.script("""
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-EEG3K7D578"></script>
-<script>
-window.dataLayer = window.dataLayer || [];
-function gtag(){dataLayer.push(arguments);}
-gtag('js', new Date());
-
-gtag('config', 'G-EEG3K7D578');
-</script>
-""")]
 
 
 def menu_item_link(text, href):
@@ -100,9 +93,7 @@ def template(
             title=title,
             description=description,
             meta=all_meta,
-            script_tags=script_tags,
             on_load=on_load,
-            
         )
         def theme_wrap():
             return rx.theme(

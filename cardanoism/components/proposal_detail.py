@@ -44,12 +44,14 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
                 align="start",
                 width="100%",
             ),
-            rx.script(
-                "setTimeout(() => {"
-                "  const t = (document.querySelector('.proposal-detail .proposal-title')?.textContent || '').trim();"
-                "  if (t) { document.title = `${t} | Cardanoism`; }"
-                "}, 0);"
-            ),
+            rx.script("""
+                    if (window.gtag) {
+                        gtag('event', 'page_view', {
+                        page_path: window.location.pathname,
+                        page_title: document.title,
+                        });
+                    }
+                    """),
             rx.hstack(
                 status_badge(proposal),
                 catalyst_id_badge(proposal),
