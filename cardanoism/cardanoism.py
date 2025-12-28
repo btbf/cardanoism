@@ -26,10 +26,15 @@ app.add_page(
         rx.call_script(
             "setTimeout(() => {"
             "  const url = window.location.href;"
+            "  const image = `${window.location.origin}/cardanoism-ogp.jpg`;"
             "  const ogUrl = document.querySelector('meta[property=\"og:url\"]');"
             "  if (ogUrl) { ogUrl.setAttribute('content', url); }"
             "  const twUrl = document.querySelector('meta[name=\"twitter:url\"]');"
             "  if (twUrl) { twUrl.setAttribute('content', url); }"
+            "  const ogImg = document.querySelector('meta[property=\"og:image\"]');"
+            "  if (ogImg) { ogImg.setAttribute('content', image); }"
+            "  const twImg = document.querySelector('meta[name=\"twitter:image\"]');"
+            "  if (twImg) { twImg.setAttribute('content', image); }"
             "}, 0);"
         ),
     ],

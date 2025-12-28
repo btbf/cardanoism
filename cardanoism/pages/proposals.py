@@ -5,7 +5,7 @@ from cardanoism.backend.db_connect import AppState
 from cardanoism.components.proposal_detail import detail_foreach_dict
 
 
-OGP_IMAGE_PATH = "/cardanoism-ogp.jpg"
+OGP_IMAGE_PATH = "./cardanoism-ogp.jpg"
 
 
 def _proposal_title() -> rx.Var:
