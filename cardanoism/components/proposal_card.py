@@ -787,7 +787,10 @@ def detail_modal() -> rx.Component:
                         rx.icon("x"),
                         variant="solid",
                         color_scheme=None,
-                        color="var(--gray-12)",
+                        color=rx.color_mode_cond(
+                            light="var(--gray-12)",
+                            dark="var(--gray-2)",
+                        ),
                         background_color="var(--amber-9)",
                         _hover={"background_color": "var(--amber-6)"},
                         size="2",
@@ -990,7 +993,10 @@ def detail_modal() -> rx.Component:
                         width="80%",
                         variant="soft",
                         background_color="var(--amber-9)",
-                        color="var(--gray-12)",
+                        color=rx.color_mode_cond(
+                            light="var(--gray-12)",
+                            dark="var(--gray-2)",
+                        ),
                         cursor="pointer",
                         _hover={"background_color": "var(--amber-6)"},
                     ),

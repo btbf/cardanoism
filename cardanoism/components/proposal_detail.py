@@ -19,6 +19,16 @@ from cardanoism.components.proposal_card import (
 
 def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
     return rx.card(
+        rx.html(
+                """
+                <style>
+                .proposal-detail a {
+                  color: var(--amber-11) !important;
+                  text-decoration: underline;
+                }
+                </style>
+                """
+            ),
         rx.vstack(
             rx.hstack(
                 rx.vstack(
@@ -130,9 +140,9 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
                                         "const text = (document.querySelector('.proposal-modal .proposal-title') "
                                         "  || document.querySelector('.proposal-detail .proposal-title'))"
                                         "  ?.innerText ?? '';"
-                                        "const url = 'https://line.me/R/share'"
-                                        "  + '?url=' + encodeURIComponent(window.location.href)"
-                                        "  + '&text=' + encodeURIComponent(text);"
+                                        "const url = 'https://line.me/R/msg/text/'"
+                                        "  + '?' + encodeURIComponent(window.location.href)"
+                                        "  + '%0' + encodeURIComponent(text);"
                                         "window.open("
                                         "  url,"
                                         "  'line-share',"

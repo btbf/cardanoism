@@ -264,11 +264,8 @@ def roadmap_section() -> rx.Component:
 
 def updates_section() -> rx.Component:
     updates = [
-        "2025/10/03　Fund14 提案データ反映",
-        "2025/02/10　フィルター追加とレイアウト微調整",
-        "2024/11/01　Fund13 提案データ反映",
-        "2024/10/28　採択・ロジスティクス進捗追跡",
-        "2024/07/18　Fund12 投票結果反映",
+        "2025/12/28　リニューアル！",
+        "2025/12/28　Fund15 提案データ反映",
     ]
     return rx.container(
         rx.accordion.root(
