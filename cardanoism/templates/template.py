@@ -40,6 +40,37 @@ def menu_item_link(text, href):
     )
 
 
+def render_page(content: rx.Component) -> rx.Component:
+    return rx.theme(
+        rx.vstack(
+            # sidebar(),
+            navbar_icons(),
+            rx.box(
+                rx.box(
+                    content,
+                    **styles.template_content_style,
+                    width="100%",
+                ),
+                **styles.template_page_style,
+            ),
+            footer_three_columns(),
+            align="start",
+            position="relative",
+            style={
+                "scrollbar_gutter": "stable",
+                "min-height": "100vh",
+                "display": "flex",
+                "flex_direction": "column",
+            },
+            background_color="var(--gray-1)",
+        ),
+        appearance="inherit",
+        has_background=True,
+        accent_color="amber",
+        gray_color="slate",
+    )
+
+
 def template(
     route: str | None = None,
     title: str | None = None,
@@ -77,23 +108,7 @@ def template(
         all_meta = [*default_meta, *(meta or [])]
         
         def templated_page():
-            return rx.vstack(
-                # sidebar(),
-                navbar_icons(),
-                rx.box(
-                    rx.box(
-                        page_content(),
-                        **styles.template_content_style,
-                        width="100%",
-                    ),
-                    **styles.template_page_style,
-                ),
-                footer_three_columns(),
-                align="start",
-                position="relative",
-                style={"scrollbar_gutter": "stable", "min-height": "100vh", "display": "flex", "flex_direction": "column"},
-                background_color="var(--gray-1)",
-            )
+            return render_page(page_content())
 
         @rx.page(
             route=route,

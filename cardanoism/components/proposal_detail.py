@@ -44,12 +44,6 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
                 align="start",
                 width="100%",
             ),
-            rx.script(
-                "setTimeout(() => {"
-                "  const t = (document.querySelector('[data-share-title]')?.textContent || '').trim();"
-                "  if (t) { document.title = `${t} | Cardanoism`; }"
-                "}, 0);"
-            ),
             rx.hstack(
                 status_badge(proposal),
                 catalyst_id_badge(proposal),
