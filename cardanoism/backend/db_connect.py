@@ -782,10 +782,7 @@ class AppState(rx.State):
         self.modal_semantic_blocks_ai = base_proposal.get("idea_semantic_blocks_ai") or []
         self.modal_semantic_blocks = self.modal_semantic_blocks_ja
         self.last_list_path = self.router.url.path or ""
-        return [
-            rx.call_script("document.documentElement.classList.remove('modal-quick-close');"),
-            self._history_push_script(self.modal_pending_uuid),
-        ]
+        return self._history_push_script(self.modal_pending_uuid)
 
     def load_modal_detail(self, uuid: str | None = None):
         """Requery full detail for modal after open."""
