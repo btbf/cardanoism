@@ -137,20 +137,14 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
                                 ),
                                 rx.mobile_and_tablet(
                                     on_click=rx.call_script(
-                                        "const text = (document.querySelector('.proposal-modal .proposal-title') "
+                                        "const text = (document.querySelector('.proposal-modal .proposal-title')"
                                         "  || document.querySelector('.proposal-detail .proposal-title'))"
                                         "  ?.innerText ?? '';"
-                                        "const url = 'https://line.me/R/msg/text/'"
-                                        "  + '?' + encodeURIComponent(window.location.href)"
-                                        "  + '%0' + encodeURIComponent(text);"
-                                        "window.open("
-                                        "  url,"
-                                        "  'line-share',"
-                                        "  'width=520,height=520,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes'"
-                                        ");"
+                                        "const shareText = text ? (text + '\\n' + window.location.href) : window.location.href;"
+                                        "const url = 'https://line.me/R/msg/text/?' + encodeURIComponent(shareText);"
+                                        "window.open(url, '_blank');"
                                     ),
-                                )
-
+                                ),
                             ),
                             rx.menu.item(
                                 "URLコピー",
