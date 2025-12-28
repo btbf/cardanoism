@@ -1003,7 +1003,9 @@ def detail_modal() -> rx.Component:
                             rx.menu.item(
                                 "X (Twitter)",
                                 on_click=rx.call_script(
-                                    "const text = document.querySelector('.proposal-title')?.innerText ?? '';"
+                                    "const text = (document.querySelector('.proposal-modal .proposal-title') "
+                                    "  || document.querySelector('.proposal-detail .proposal-title'))"
+                                    "  ?.innerText ?? '';"
                                     "const url = 'https://x.com/intent/tweet'"
                                     "  + '?text=' + encodeURIComponent(text)"
                                     "  + '&url=' + encodeURIComponent(window.location.href);"
@@ -1017,7 +1019,9 @@ def detail_modal() -> rx.Component:
                             rx.menu.item(
                                 "LINE",
                                 on_click=rx.call_script(
-                                    "const text = document.querySelector('.proposal-title')?.innerText ?? '';"
+                                    "const text = (document.querySelector('.proposal-modal .proposal-title') "
+                                    "  || document.querySelector('.proposal-detail .proposal-title'))"
+                                    "  ?.innerText ?? '';"
                                     "const url = 'https://social-plugins.line.me/lineit/share'"
                                     "  + '?url=' + encodeURIComponent(window.location.href)"
                                     "  + '&text=' + encodeURIComponent(text);"

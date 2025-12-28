@@ -46,7 +46,7 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
             ),
             rx.script(
                 "setTimeout(() => {"
-                "  const t = (document.querySelector('[data-share-title]')?.textContent || '').trim();"
+                "  const t = (document.querySelector('.proposal-detail .proposal-title')?.textContent || '').trim();"
                 "  if (t) { document.title = `${t} | Cardanoism`; }"
                 "}, 0);"
             ),
@@ -93,7 +93,9 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
                             rx.menu.item(
                                 "X (Twitter)",
                                 on_click=rx.call_script(
-                                    "const text = document.querySelector('.proposal-title')?.innerText ?? '';"
+                                    "const text = (document.querySelector('.proposal-modal .proposal-title') "
+                                    "  || document.querySelector('.proposal-detail .proposal-title'))"
+                                    "  ?.innerText ?? '';"
                                     "const url = 'https://x.com/intent/tweet'"
                                     "  + '?text=' + encodeURIComponent(text)"
                                     "  + '&url=' + encodeURIComponent(window.location.href);"
@@ -106,17 +108,37 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
                             ),
                             rx.menu.item(
                                 "LINE",
-                                on_click=rx.call_script(
-                                    "const text = document.querySelector('.proposal-title')?.innerText ?? '';"
-                                    "const url = 'https://social-plugins.line.me/lineit/share'"
-                                    "  + '?url=' + encodeURIComponent(window.location.href)"
-                                    "  + '&text=' + encodeURIComponent(text);"
-                                    "window.open("
-                                    "  url,"
-                                    "  'line-share',"
-                                    "  'width=520,height=520,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes'"
-                                    ");"
+                                rx.desktop_only(
+                                    on_click=rx.call_script(
+                                        "const text = (document.querySelector('.proposal-modal .proposal-title') "
+                                        "  || document.querySelector('.proposal-detail .proposal-title'))"
+                                        "  ?.innerText ?? '';"
+                                        "const url = 'https://social-plugins.line.me/lineit/share'"
+                                        "  + '?url=' + encodeURIComponent(window.location.href)"
+                                        "  + '&text=' + encodeURIComponent(text);"
+                                        "window.open("
+                                        "  url,"
+                                        "  'line-share',"
+                                        "  'width=520,height=520,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes'"
+                                        ");"
+                                    ),
                                 ),
+                                rx.mobile_and_tablet(
+                                    on_click=rx.call_script(
+                                        "const text = (document.querySelector('.proposal-modal .proposal-title') "
+                                        "  || document.querySelector('.proposal-detail .proposal-title'))"
+                                        "  ?.innerText ?? '';"
+                                        "const url = 'https://line.me/R/share'"
+                                        "  + '?url=' + encodeURIComponent(window.location.href)"
+                                        "  + '&text=' + encodeURIComponent(text);"
+                                        "window.open("
+                                        "  url,"
+                                        "  'line-share',"
+                                        "  'width=520,height=520,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes'"
+                                        ");"
+                                    ),
+                                )
+
                             ),
                             rx.menu.item(
                                 "URLコピー",
@@ -261,6 +283,7 @@ def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
         width="100%",
         padding="24px",
         background_color="var(--gray-3)",
+        class_name="proposal-detail",
         #border=f"1px solid var(--slate-6)",
         style={"overflow": "visible"},
         #border_radius="16px",
