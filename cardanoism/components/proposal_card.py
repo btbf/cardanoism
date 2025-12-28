@@ -752,6 +752,13 @@ def detail_modal() -> rx.Component:
                 + styles.font_family
                 + """;
                 }
+                html.modal-quick-close .rt-DialogContent.proposal-modal,
+                html.modal-quick-close .rt-DialogOverlay {
+                  opacity: 0 !important;
+                  pointer-events: none !important;
+                  transition: none !important;
+                  animation: none !important;
+                }
                 @media (max-width: 768px) {
                   .rt-DialogContent.proposal-modal {
                     position: fixed !important;
@@ -791,7 +798,12 @@ def detail_modal() -> rx.Component:
                         background_color="var(--amber-9)",
                         _hover={"background_color": "var(--amber-6)"},
                         size="2",
-                        on_click=AppState.close_modal,
+                        on_click=[
+                            rx.call_script(
+                                "document.documentElement.classList.add('modal-quick-close');"
+                            ),
+                            AppState.close_modal,
+                        ],
                         cursor="pointer",
                     ),
                     justify="between",
@@ -986,7 +998,12 @@ def detail_modal() -> rx.Component:
                 rx.hstack(
                     rx.button(
                         "閉じる",
-                        on_click=AppState.close_modal,
+                        on_click=[
+                            rx.call_script(
+                                "document.documentElement.classList.add('modal-quick-close');"
+                            ),
+                            AppState.close_modal,
+                        ],
                         width="80%",
                         variant="soft",
                         background_color="var(--amber-9)",
