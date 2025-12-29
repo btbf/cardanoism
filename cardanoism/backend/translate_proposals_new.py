@@ -8,6 +8,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, Optional
 
+import mariadb
 from openai import OpenAI, OpenAIError
 
 from db_connect import dbConnect
@@ -417,11 +418,38 @@ def main() -> None:
                     continue
                 set_clause = ", ".join(f"{col} = ?" for col in updates.keys())
                 params = list(updates.values()) + [uuid]
-                cursor.execute(
-                    f"UPDATE proposals_new SET {set_clause} WHERE uuid = ?",
-                    params,
-                )
-                conn.commit()
+                attempts = 0
+                while True:
+                    attempts += 1
+                    try:
+                        try:
+                            conn.ping()
+                        except mariadb.Error:
+                            try:
+                                cursor.close()
+                            finally:
+                                conn.close()
+                            cursor, conn = dbConnect()
+                        cursor.execute(
+                            f"UPDATE proposals_new SET {set_clause} WHERE uuid = ?",
+                            params,
+                        )
+                        conn.commit()
+                        break
+                    except mariadb.OperationalError as exc:
+                        if attempts < 2 and "broken pipe" in str(exc).lower():
+                            logging.warning(
+                                "DB write failed for %s (%s). Reconnecting and retrying.",
+                                uuid,
+                                exc,
+                            )
+                            try:
+                                cursor.close()
+                            finally:
+                                conn.close()
+                            cursor, conn = dbConnect()
+                            continue
+                        raise
                 logging.info("Updated %s with %s fields.", uuid, len(updates))
                 if args.sleep:
                     time.sleep(args.sleep)
