@@ -176,19 +176,18 @@ def build_select_query(
         base_cols.append("idea_semantic_blocks_ai")
 
     where_parts: List[str] = []
-    if not force:
-        where_parts.append("(title_ja IS NULL OR title_ja = '')")
-        where_parts.append("(problem_ja IS NULL OR problem_ja = '')")
-        where_parts.append("(solution_ja IS NULL OR solution_ja = '')")
-        if "idea_semantic_blocks" in columns:
-            if "idea_semantic_blocks_ja" in columns:
-                where_parts.append(
-                    "(idea_semantic_blocks_ja IS NULL OR idea_semantic_blocks_ja = '')"
-                )
-            if "idea_semantic_blocks_ai" in columns:
-                where_parts.append(
-                    "(idea_semantic_blocks_ai IS NULL OR idea_semantic_blocks_ai = '')"
-                )
+    where_parts.append("(title_ja IS NULL OR title_ja = '')")
+    where_parts.append("(problem_ja IS NULL OR problem_ja = '')")
+    where_parts.append("(solution_ja IS NULL OR solution_ja = '')")
+    if "idea_semantic_blocks" in columns:
+        if "idea_semantic_blocks_ja" in columns:
+            where_parts.append(
+                "(idea_semantic_blocks_ja IS NULL OR idea_semantic_blocks_ja = '')"
+            )
+        if "idea_semantic_blocks_ai" in columns:
+            where_parts.append(
+                "(idea_semantic_blocks_ai IS NULL OR idea_semantic_blocks_ai = '')"
+            )
 
     where_clause = ""
     if where_parts:
@@ -280,9 +279,23 @@ def build_updates(
     debug: bool,
 ) -> Optional[Dict[str, Any]]:
     updates: Dict[str, Any] = {}
+    has_semantic = "idea_semantic_blocks" in columns
+    has_semantic_ja = "idea_semantic_blocks_ja" in columns
+    has_semantic_ai = "idea_semantic_blocks_ai" in columns
+
+    any_missing = any(
+        (
+            not row.get("title_ja"),
+            not row.get("problem_ja"),
+            not row.get("solution_ja"),
+            has_semantic_ja and not row.get("idea_semantic_blocks_ja"),
+            has_semantic_ai and not row.get("idea_semantic_blocks_ai"),
+        )
+    )
 
     title = row.get("title") or ""
-    if title and (force or not row.get("title_ja")):
+    needs_title = bool(title) and ((not row.get("title_ja")) or (force and any_missing))
+    if needs_title:
         if debug:
             logging.info("Translating title for %s", row.get("uuid"))
         updates["title_ja"] = translator.translate_title(title)
@@ -291,8 +304,8 @@ def build_updates(
 
     problem = row.get("problem") or ""
     solution = row.get("solution") or ""
-    needs_problem = bool(problem) and (force or not row.get("problem_ja"))
-    needs_solution = bool(solution) and (force or not row.get("solution_ja"))
+    needs_problem = bool(problem) and ((not row.get("problem_ja")) or (force and any_missing))
+    needs_solution = bool(solution) and ((not row.get("solution_ja")) or (force and any_missing))
     if needs_problem or needs_solution:
         if debug:
             logging.info("Translating problem+solution for %s", row.get("uuid"))
@@ -308,11 +321,8 @@ def build_updates(
     elif debug:
         logging.info("Skipping problem/solution for %s (already translated or empty)", row.get("uuid"))
 
-    has_semantic = "idea_semantic_blocks" in columns
-    has_semantic_ja = "idea_semantic_blocks_ja" in columns
-    has_semantic_ai = "idea_semantic_blocks_ai" in columns
-    needs_ja = has_semantic_ja and (force or not row.get("idea_semantic_blocks_ja"))
-    needs_ai = has_semantic_ai and (force or not row.get("idea_semantic_blocks_ai"))
+    needs_ja = has_semantic_ja and ((not row.get("idea_semantic_blocks_ja")) or (force and any_missing))
+    needs_ai = has_semantic_ai and ((not row.get("idea_semantic_blocks_ai")) or (force and any_missing))
     if has_semantic and (needs_ja or needs_ai):
         translated_blocks = None
         ai_blocks = None
