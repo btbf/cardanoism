@@ -1,4 +1,4 @@
-import argparse
+﻿import argparse
 import json
 import logging
 import re
@@ -53,6 +53,7 @@ COLUMN_ORDER = [
 ALLOWED_UPDATE_FIELDS = {
     "amount_received",
     "funding_status",
+    "project_status",
     "yes_votes_count",
     "abstain_votes_count",
     "unique_wallets",
@@ -167,7 +168,7 @@ def slugify_url_limited(text: str, max_length: int = 200) -> str:
         "->": " to ",
         "|": "or",
         "/": "",
-        "：": "",
+        "・・": "",
         ":": "",
         ".": "",
         "_": "",
@@ -177,7 +178,7 @@ def slugify_url_limited(text: str, max_length: int = 200) -> str:
 
     text = re.sub(r"([a-zA-Z])\.(\d)", r"\1\2", text)
     text = re.sub(r"(\d)\.(\d)", r"\1\2", text)
-    text = re.sub(r"[’']", "", text)
+    text = re.sub(r"[窶・]", "", text)
 
     text = text.encode("ascii", "ignore").decode("ascii")
     text = re.sub(r"[^\w\s-]", " ", text)
@@ -229,7 +230,7 @@ def normalize_record(raw: Dict[str, Any]) -> Dict[str, Any]:
     meta = raw.get("meta_data") or {}
 
     record: Dict[str, Any] = {
-        # idはAUTO_INCREMENT想定のため明示セットしない
+        # id縺ｯAUTO_INCREMENT諠ｳ螳壹・縺溘ａ譏守､ｺ繧ｻ繝・ヨ縺励↑縺・
         "id": None,
         "uuid": raw.get("id"),
         "fund_uuid": fund.get("id"),
@@ -436,3 +437,5 @@ if __name__ == "__main__":
     except Exception as exc:  # pylint: disable=broad-except
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
+
+
