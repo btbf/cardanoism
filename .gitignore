@@ -1,8 +1,16 @@
+.states
+assets/external/
 *.db
 *.py[cod]
 .env
 .web
 .venv/
+venv/
+.venv_backup/
+python-version
 __pycache__/
-assets/
 requirements.txt
+cardanoism/backend/proposals_extract_csv.py
+cardanoism/backend/proposals_export.csv
+/node_modules/
+uv.lock

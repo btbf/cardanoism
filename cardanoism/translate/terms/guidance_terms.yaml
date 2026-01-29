@@ -1,0 +1,82 @@
+version: sample-0.1
+
+terms:
+  - id: insight
+    source: "insight"
+    avoid: "洞察"
+    note: |
+      Translate into natural, everyday Japanese.
+
+  - id: impact
+    source: "impact"
+    avoid: "インパクト"
+    note: |
+      Translate into natural, everyday Japanese.
+
+  - id: zero_knowledge_proof
+    source: "zero-knowledge proof"
+    prefer: "ゼロ知識証明"
+    note: |
+      Use the standard cryptography term.
+
+  - id: partner_chain
+    source: "partner chain"
+    prefer: "パートナーチェーン"
+    note: |
+      Use a consistent katakana term.
+
+  - id: governance_action
+    source: "governance action"
+    prefer: "ガバナンスアクション"
+    note: |
+      Use a consistent katakana term.
+
+  - id: proposal
+    source: "proposal"
+    prefer: "提案"
+    note: |
+      Use the standard governance term.
+
+  - id: voting
+    source: "voting"
+    prefer: "投票"
+    note: |
+      Use the standard governance term.
+
+  - id: delegation
+    source: "delegation"
+    prefer: "委任"
+    note: |
+      Use the standard governance term.
+
+  - id: constitutional_committee
+    source: "constitutional committee"
+    prefer: "憲法委員会"
+    note: |
+      Use the standard governance term.
+
+  - id: cardano_constitution
+    source: "Cardano constitution"
+    prefer: "Cardano憲法"
+    note: |
+      Use a consistent Japanese term.
+
+  - id: Maintainer
+    source: "Maintainer"
+    prefer: "維持"
+    note: |
+      Use a simple and clear term.
+
+  - id: misinformation
+    source: "misinformation"
+    avoid: "誤情報"
+    note: |
+      Translate into natural, everyday Japanese.
+
+  - id: vulnerable
+    source: "vulnerable"
+    avoid: "脆弱"
+    note: |
+      Translate into natural, everyday Japanese.
+
+

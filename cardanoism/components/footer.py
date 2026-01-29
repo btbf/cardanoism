@@ -1,4 +1,6 @@
 import reflex as rx
+from reflex.style import set_color_mode, color_mode
+
 
 
 def footer_item(text: str, href: str) -> rx.Component:
@@ -53,16 +55,32 @@ def footer_items_3() -> rx.Component:
     )
 
 
-def social_link(icon: str, href: str) -> rx.Component:
-    return rx.link(rx.icon(icon), href=href ,is_external=True)
-
+def dark_mode_toggle() -> rx.Component:
+    return rx.segmented_control.root(
+        rx.segmented_control.item(
+            rx.icon(tag="monitor", size=20),
+            value="system",
+            cursor="pointer",
+        ),
+        rx.segmented_control.item(
+            rx.icon(tag="sun", size=20),
+            value="light",
+            cursor="pointer",
+        ),
+        rx.segmented_control.item(
+            rx.icon(tag="moon", size=20),
+            value="dark",
+            cursor="pointer",
+        ),
+        on_change=set_color_mode,
+        variant="classic",
+        radius="large",
+        value=color_mode,
+    )
 
 def socials() -> rx.Component:
     return rx.flex(
-        # social_link("github", "/#"),
-        social_link("twitter", "https://x.com/cardanoism"),
-        # social_link("facebook", "/#"),
-        # social_link("linkedin", "/#"),
+        dark_mode_toggle(),
         spacing="3",
         justify_content=["center", "center", "end"],
         width="100%",
@@ -85,21 +103,38 @@ def footer_three_columns() -> rx.Component:
             rx.flex(
                 rx.hstack(
                     rx.image(
-                        src="/cardanoism-logo.png",
+                        src=rx.color_mode_cond(
+                            light="/cardanoism-new-logo-light.png",
+                            dark="/cardanoism-new-logo-dark.png",
+                        ),
                         width="8em",
                         height="auto",
                     ),
                     rx.text(
-                        "© 2024 Cardanoism by Everada Labs",
+                        "© 2025 Cardanoism All rights reserved.",
                         size="3",
                         white_space="nowrap",
                         weight="medium",
                     ),
+                    rx.link(
+                        rx.image(
+                        src=rx.color_mode_cond(
+                            light="/x-logo-black.png",
+                            dark="/x-logo-white.png",
+                            ),
+                        width="1.2em",
+                        height="auto",
+                        ),
+                        href="https://x.com/cardanoism",
+                        target="_blank",
+                        padding_x="5px",
+                        padding_y="5px",
+                    ),
                     spacing="2",
                     align="center",
                     justify_content=[
-                        "center",
-                        "center",
+                        "start",
+                        "start",
                         "start",
                     ],
                     flex_direction=["column","column","row","row","row"],
@@ -111,7 +146,7 @@ def footer_three_columns() -> rx.Component:
                 width="100%",
             ),
             spacing="5",
-            max_width="1200px",
+            max_width="1130px",
             margin_x="auto",
             margin_bottom="50px"
         ),

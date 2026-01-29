@@ -1,0 +1,246 @@
+version: title-0.1
+
+titles:
+  - id: general_name
+    source: "[GENERAL] Name and surname of main applicant"
+    target_ja: "[一般] 主申請者の氏名と姓"
+
+  - id: general_delivery_entity
+    source: "[GENERAL] Are you delivering this project as an individual or as an entity (whether formally incorporated or not)"
+    target_ja: "[一般] このプロジェクトは個人として実施しますか、組織として実施しますか"
+
+  - id: general_requested_funds
+    source: "[GENERAL] Requested funds in ada"
+    target_ja: "[一般] 必要な資金額をADAで記入してください"
+
+  - id: general_duration_months
+    source: "[GENERAL] Please specify how many months you expect your project to last (from 2-12 months)"
+    target_ja: "[一般] 想定するプロジェクト期間の月数を記入してください 2-12カ月"
+
+  - id: general_auto_translated
+    source: "[GENERAL] Please indicate if your proposal has been auto-translated into English from another language"
+    target_ja: "[一般] この提案は他言語から英語に自動翻訳されていますか"
+
+  - id: general_solution_summary
+    source: "[GENERAL] Summarize your solution to the problem (200-character limit including spaces)"
+    target_ja: "[一般] 問題に対する解決策の要約 200字以内"
+
+  - id: general_dependencies
+    source: "[GENERAL] Does your project have any dependencies on other organizations, technical or otherwise?"
+    target_ja: "[一般] このプロジェクトは他組織に依存していますか 技術面を含む"
+
+  - id: general_dependencies_detail
+    source: "[GENERAL] If YES, please describe what the dependency is and why you believe it is essential for your project’s delivery. If NO, please write “No dependencies.”"
+    target_ja: "[一般] 依存がある場合は内容と必要性 ない場合は No dependencies と記入してください"
+
+  - id: general_open_source
+    source: "[GENERAL] Will your project’s output/s be fully open source?"
+    target_ja: "[一般] このプロジェクトの成果物は完全にオープンソースですか"
+
+  - id: general_open_source_detail
+    source: "[GENERAL] Please provide here more information on the open source status of your project outputs"
+    target_ja: "[一般] オープンソース状況の詳細を記入してください"
+
+  - id: metadata_sdg
+    source: "[METADATA] SDG rating"
+    target_ja: "[メタデータ] SDG評価"
+
+  - id: solution_detail
+    source: "[SOLUTION] Please describe your proposed solution"
+    target_ja: "[解決策] 提案する解決策を説明してください"
+
+  - id: impact_detail
+    source: "[IMPACT] Please define the positive impact your project will have on the wider Cardano community"
+    target_ja: "[影響] Cardanoコミュニティに与える良い影響を説明してください"
+
+  - id: capability_feasibility
+    source: "[CAPABILITY & FEASIBILITY] What is your capability to deliver your project with high levels of trust and accountability? How do you intend to validate if your approach is feasible?"
+    target_ja: "[能力と実現性] 信頼性と説明責任のもとでの実行能力と実現性の検証方法を説明してください"
+
+  - id: project_milestones
+    source: "[PROJECT MILESTONES] What are the key milestones you need to achieve in order to complete your project successfully?"
+    target_ja: "[マイルストーン] 主要マイルストーンを教えてください"
+
+  - id: resources_team
+    source: "[RESOURCES] Who is in the project team and what are their roles?"
+    target_ja: "[リソース] チーム構成と各メンバーの役割を教えてください"
+
+  - id: budget_costs
+    source: "[BUDGET & COSTS] Please provide a cost breakdown of the proposed work and resources"
+    target_ja: "[予算と費用] コスト内訳を記入してください"
+
+  - id: value_for_money
+    source: "[VALUE FOR MONEY] How does the cost of the project represent value for money for the Cardano ecosystem?"
+    target_ja: "[費用対効果] このコストがCardanoエコシステムにとって妥当である理由を説明してください"
+
+  - id: team_section
+    source: "team"
+    target_ja: "チーム"
+
+  - id: proposal_setup_title
+    source: "[Proposal setup] Proposal title"
+    target_ja: "[提案セットアップ] 提案タイトル"
+
+  - id: proposal_summary_budget
+    source: "[Proposal Summary] Budget Information"
+    target_ja: "[提案概要] 予算情報"
+
+  - id: proposal_summary_time
+    source: "[Proposal Summary] Time"
+    target_ja: "[提案概要] 期間"
+
+  - id: proposal_summary_translation
+    source: "[Proposal Summary] Translation Information"
+    target_ja: "[提案概要] 翻訳情報"
+
+  - id: proposal_summary_problem
+    source: "[Proposal Summary] Problem Statement"
+    target_ja: "[提案概要] 問題点"
+
+  - id: proposal_summary_supporting_docs
+    source: "[Proposal Summary] Supporting Documentation"
+    target_ja: "[提案概要] 補足資料"
+
+  - id: proposal_summary_dependencies
+    source: "[Proposal Summary] Project Dependencies"
+    target_ja: "[提案概要] 依存関係"
+
+  - id: proposal_summary_open_source
+    source: "[Proposal Summary] Project Open Source"
+    target_ja: "[提案概要] オープンソース"
+
+  - id: theme_selection
+    source: "[Theme Selection] Theme"
+    target_ja: "[テーマ選択] テーマ"
+
+  - id: campaign_category_questions
+    source: "[Campaign Category] Category Questions"
+    target_ja: "[キャンペーンカテゴリ] カテゴリ質問"
+
+  - id: your_project_solution
+    source: "[Your Project and Solution] Solution"
+    target_ja: "[あなたのプロジェクトと解決策] 解決策"
+
+  - id: your_project_impact
+    source: "[Your Project and Solution] Impact"
+    target_ja: "[あなたのプロジェクトと解決策] 影響"
+
+  - id: your_project_capabilities
+    source: "[Your Project and Solution] Capabilities & Feasibility"
+    target_ja: "[あなたのプロジェクトと解決策] 能力と実現性"
+
+  - id: milestones_project
+    source: "[Milestones] Project Milestones"
+    target_ja: "[マイルストーン] プロジェクトのマイルストーン"
+
+  - id: final_pitch_budget
+    source: "[Final Pitch] Budget & Costs"
+    target_ja: "[最終ピッチ] 予算と費用の内訳"
+
+  - id: final_pitch_value
+    source: "[Final Pitch] Value for Money"
+    target_ja: "[最終ピッチ] 費用対効果"
+
+  - id: required_acknowledgements
+    source: "[Required Acknowledgements] Consent & Confirmation"
+    target_ja: "[必須確認] 同意と確認"
+
+  - id: section_1_profile
+    source: "Section 1: 基本プロフィール（タイトル、予算、期間、テーマ等）"
+    target_ja: "Section 1: 基本プロフィール（タイトル、予算、期間、テーマ等）"
+
+  - id: section_2_background
+    source: "Section 2: 背景と課題（具体的な課題定義、現状分析、参考資料）"
+    target_ja: "Section 2: 背景と課題（具体的な課題定義、現状分析、参考資料）"
+
+  - id: section_3_solution
+    source: "Section 3: 解決策と実施内容（プロジェクトの具体的な仕組み、活動、トラック構成、進行スケジュール）"
+    target_ja: "Section 3: 解決策と実施内容（プロジェクトの具体的な仕組み、活動、トラック構成、進行スケジュール）"
+
+  - id: section_4_impact
+    source: "Section 4: インパクトと成功指標（短期的・長期的メリット、定量的・定性的指標）"
+    target_ja: "Section 4: インパクトと成功指標（短期的・長期的メリット、定量的・定性的指標）"
+
+  - id: section_5_capability
+    source: "Section 5: 実行能力と実現可能性（チーム実績、技術的優位性、過去の成功例、教育能力）"
+    target_ja: "Section 5: 実行能力と実現可能性（チーム実績、技術的優位性、過去の成功例、教育能力）"
+
+  - id: section_6_milestones
+    source: "Section 6: ロードマップとマイルストーン（各段階の成果物、受入基準、証拠、コスト、期間）"
+    target_ja: "Section 6: ロードマップとマイルストーン（各段階の成果物、受入基準、証拠、コスト、期間）"
+
+  - id: section_7_budget
+    source: "Section 7: 予算配分と費用対効果（詳細なコスト内訳、他プロジェクトとの比較、投資価値）"
+    target_ja: "Section 7: 予算配分と費用対効果（詳細なコスト内訳、他プロジェクトとの比較、投資価値）"
+
+  - id: section_8_sustainability
+    source: "Section 8: 持続可能性と法的事項（ライセンス移行の詳細、オープンソース方針、依存関係、規約）"
+    target_ja: "Section 8: 持続可能性と法的事項（ライセンス移行の詳細、オープンソース方針、依存関係、規約）"
+
+  - id: proposal_setup_title
+    source: "[Proposal setup] Proposal title"
+    target_ja: "[提案セットアップ] 提案タイトル"
+
+  - id: proposal_summary_budget
+    source: "[Proposal Summary] Budget Information"
+    target_ja: "[提案概要] 予算情報"
+
+  - id: proposal_summary_time
+    source: "[Proposal Summary] Time"
+    target_ja: "[提案概要] 期間"
+
+  - id: proposal_summary_translation
+    source: "[Proposal Summary] Translation Information"
+    target_ja: "[提案概要] 翻訳情報"
+
+  - id: proposal_summary_problem
+    source: "[Proposal Summary] Problem Statement"
+    target_ja: "[提案概要] 問題の定義"
+
+  - id: proposal_summary_dependencies
+    source: "[Proposal Summary] Project Dependencies"
+    target_ja: "[提案概要] プロジェクトの依存関係"
+
+  - id: proposal_summary_open_source
+    source: "[Proposal Summary] Project Open Source"
+    target_ja: "[提案概要] プロジェクトのオープンソース化"
+
+  - id: theme_selection
+    source: "[Theme Selection] Theme"
+    target_ja: "[テーマ選択] テーマ"
+
+  - id: campaign_category_questions
+    source: "[Campaign Category] Category Questions"
+    target_ja: "[キャンペーンカテゴリ] カテゴリ質問"
+
+  - id: your_project_solution
+    source: "[Your Project and Solution] Solution"
+    target_ja: "[あなたのプロジェクトと解決策] 解決策"
+
+  - id: your_project_impact
+    source: "[Your Project and Solution] Impact"
+    target_ja: "[あなたのプロジェクトと解決策] 影響"
+
+  - id: your_project_capabilities
+    source: "[Your Project and Solution] Capabilities & Feasibility"
+    target_ja: "[あなたのプロジェクトと解決策] 能力と実現性"
+
+  - id: milestones_project
+    source: "[Milestones] Project Milestones"
+    target_ja: "[マイルストーン] プロジェクトのマイルストーン"
+
+  - id: final_pitch_budget
+    source: "[Final Pitch] Budget & Costs"
+    target_ja: "[最終ピッチ] 予算と費用の内訳"
+
+  - id: final_pitch_value
+    source: "[Final Pitch] Value for Money"
+    target_ja: "[最終ピッチ] 費用対効果"
+
+  - id: self_assessment_checklist
+    source: "[Self-Assessment] Self-Assessment Checklist"
+    target_ja: "[自己評価] 自己評価チェックリスト"
+
+  - id: required_acknowledgements
+    source: "[Required Acknowledgements] Consent & Confirmation"
+    target_ja: "[必須確認] 同意と確認"

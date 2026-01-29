@@ -1,3 +1,8 @@
-reflex==0.5.4
+reflex==0.8.22
 mariadb
 openai
+requests
+playwright
+beautifulsoup4
+lxml
+tiktoken

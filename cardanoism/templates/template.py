@@ -12,22 +12,15 @@ import reflex as rx
 
 # Meta tags for the app.
 default_meta = [
-    {
-        "name": "viewport",
-        "content": "width=device-width, shrink-to-fit=no, initial-scale=1",
-    },
+    {"name": "viewport", "content": "width=device-width, shrink-to-fit=no, initial-scale=1"},
+    {"property": "og:url", "content": "https://cardanoism.com"},
+    {"property": "og:type", "content": "website"},
+    {"property": "og:title", "content": "カルダノガバナンスを日本語でナビゲート | Cardanoism "},
+    {"property": "og:description", "content": "Catalyst提案検索からCardanoの意思決定を日本語でキャッチアップし、ガバナンス・ステーキングの管理をワンストップで扱えるプラットフォームへ進化させます。"},
+    {"property": "og:site_name", "content": "Cardanoism カルダノイズム"},
+    {"property": "og:image", "content": "https://cardanoism.com/cardanoism-ogp.jpg"},
+    {"property": "twitter:card", "content": "summary_large_image"},
 ]
-
-google_tags =[rx.script("""
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-EEG3K7D578"></script>
-<script>
-window.dataLayer = window.dataLayer || [];
-function gtag(){dataLayer.push(arguments);}
-gtag('js', new Date());
-
-gtag('config', 'G-EEG3K7D578');
-</script>
-""")]
 
 
 def menu_item_link(text, href):
@@ -36,54 +29,8 @@ def menu_item_link(text, href):
             text,
             href=href,
             width="100%",
-            color="inherit",
         ),
-        _hover={
-            "color": styles.accent_color,
-            "background_color": styles.accent_text_color,
-        },
     )
-
-
-def menu_button() -> rx.Component:
-    """The menu button on the top right of the page.
-
-    Returns:
-        The menu button component.
-    """
-    from reflex.page import get_decorated_pages
-
-    return rx.box(
-        rx.menu.root(
-            rx.menu.trigger(
-                rx.button(
-                    rx.icon("menu"),
-                    variant="soft",
-                )
-            ),
-            rx.menu.content(
-                *[
-                    menu_item_link(page["title"], page["route"])
-                    for page in get_decorated_pages()
-                ],
-                rx.menu.separator(),
-                menu_item_link("About", "https://github.com/reflex-dev"),
-                menu_item_link("Contact", "mailto:founders@=reflex.dev"),
-            ),
-        ),
-        position="fixed",
-        right="2em",
-        top="2em",
-        z_index="500",
-    )
-
-
-class ThemeState(rx.State):
-    """The state for the theme of the app."""
-
-    accent_color: str = "indigo"
-
-    gray_color: str = "gray"
 
 
 def template(
@@ -130,15 +77,15 @@ def template(
                     rx.box(
                         page_content(),
                         **styles.template_content_style,
+                        width="100%",
                     ),
                     **styles.template_page_style,
                 ),
                 footer_three_columns(),
-                #menu_button(),
                 align="start",
-                background=f"radial-gradient(circle at top right, {rx.color('accent', 2)}, {rx.color('mauve', 1)});",
-                #background=f"radial-gradient(circle at top right, {rx.color('white', 2)}, {rx.color('mauve', 1)});",
                 position="relative",
+                style={"scrollbar_gutter": "stable", "min-height": "100vh", "display": "flex", "flex_direction": "column"},
+                background_color="var(--gray-1)",
             )
 
         @rx.page(
@@ -146,17 +93,15 @@ def template(
             title=title,
             description=description,
             meta=all_meta,
-            script_tags=script_tags,
             on_load=on_load,
-            
         )
         def theme_wrap():
             return rx.theme(
                 templated_page(),
-                appearance="light",
+                appearance="inherit",
                 has_background=True,
-                accent_color=ThemeState.accent_color,
-                gray_color=ThemeState.gray_color,
+                accent_color="amber",
+                gray_color="slate",
             )
 
         return theme_wrap

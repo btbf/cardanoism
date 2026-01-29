@@ -1,350 +1,302 @@
 import reflex as rx
-from typing import List, Dict
+from typing import List, Dict, Any
 
-from cardanoism.backend.db_connect import ProposalAppState
-from cardanoism.components.proposal_card import ProjectRating
-from cardanoism import styles
+from cardanoism.backend.db_connect import AppState
+from cardanoism.components.proposal_card import (
+    status_badge,
+    pill,
+    fund_label,
+    campaign_label,
+    score_panel,
+    semantic_block_section,
+    semantic_blocks_by_view,
+    semantic_toggle_button,
+    semantic_toggle_group,
+    semantic_toggle_bar,
+    catalyst_id_badge,
+)
 
 
-def proposal_detail(proposal: Dict[str, int]):
+def proposal_detail(proposal: Dict[str, Any]) -> rx.Component:
     return rx.card(
-        rx.inset(
-            rx.box(
-                rx.flex(
-                    rx.flex(
-                        #rx.badge(f"""Ideascale-ID : {proposal["ideascale_id"]}""", variant="solid", size="2", color_scheme="indigo",),
-                        rx.match(
-                            proposal["funding_status"],
-                            ("funded", rx.badge("採択", variant="solid", size="2", color_scheme="green",)),
-                            ("not_approved", rx.badge("不採択", variant="solid", size="2", color_scheme="red",)),
-                            ("over_budget", rx.badge("申請不備", variant="solid", size="2", color_scheme="red",)),
-                            ("pending", rx.badge("投票期間中", variant="solid", size="2", color_scheme="iris",)),
-                        ),
-                        rx.tooltip(
-                            rx.text(f"""{proposal["challenge_title_ja"]}""", color_scheme="gray", size="3"),
-                            content=f"""{proposal["challenge_title"]}"""
-                        ),
-                        spacing="5",
-                        justify="center",
-                        display=["block","block","block","flex","flex"]
-                    ),
-                    # rx.link(
-                    #     rx.flex(
-                    #         rx.text(
-                    #             "Ideascaleを開く",
-                    #             size="3",
-                    #         ),
-                    #         rx.icon("square-arrow-out-up-right", size=15),
-                    #         direction="row",
-                    #         gap="1",
-                    #         align="center",
-                    #         spacing="1",
-                    #         #padding="8px",
-                    #         #color="gray",
-                    #     ),
-                    #     href=str(proposal["ideascale_link"]),
-                    #     target="blank",
-                    #     color_scheme="cyan",
-                    #     underline="none",
-                    #     high_contrast=True,
-                    # ),
-                    justify_content="space-between",
-                ),
-                #padding="8px",
+        rx.html(
+                """
+                <style>
+                .proposal-detail a {
+                  color: var(--amber-11) !important;
+                  text-decoration: underline;
+                }
+                </style>
+                """
             ),
-            rx.tablet_and_desktop(
-                    rx.heading(
-                        proposal["title_ja"],
-                        as_="h2",
-                        size="4",
-                        margin_top="8px",
-                        # margin_bottom="12px",
-                        weight="medium",
-                        text_wrap="wrap",
-                        font_family = "Noto Sans JP",
-                    ),
-            ),
-            rx.mobile_only(
-                    rx.heading(
-                        proposal["title_ja"],
-                        #as_="h2",
-                        size="4",
-                        margin_top="8px",
-                        # margin_bottom="12px",
-                        weight="medium",
-                        font_family = "Noto Sans JP",
-                    ),
-            ),
-            rx.blockquote(
-                proposal["title"],
-                size="1",
-                margin_top="8px",
-                # margin_bottom="12px",
-                weight="light",
-                text_wrap="wrap",
-            ),
-            side="top",
-            pb="current",
-            background_color="var(--accent-2)",
-            padding="12px",
-        ),
-        
-        rx.flex(
-            rx.box(
-                rx.flex(
-                    rx.box(
-                        rx.flex(
-                            rx.badge("提案者", variant="surface", size="2", color_scheme="gray", radius="full"),
-                            rx.tooltip(
-                                rx.text(proposal["applicant_name"]),
-                                content=str({proposal["ideascale_user"]}),
-                            ),
-                            spacing="3",
-                            padding="8px",
-                        ),
-                    ),
-                    rx.box(
-                        rx.flex(
-                            rx.badge("要求額", variant="surface", size="2", color_scheme="gray", radius="full"),
-                            rx.text(
-                                f"""{proposal["currency_symbol"]} {proposal["amount_requested"]}""",
-                                color_scheme="crimson",
-                                weight="medium",
-                                size="3",
-                            ),
-                            spacing="3",
-                            padding="8px",
-                        ),
-                    
-                    ),
-                display=["block","block","block","flex","flex"]
-                ),
-
-                rx.divider(size="4"),
-                rx.box(
-                    rx.flex(
-                        rx.callout("課題", icon="triangle_alert", color_scheme="red", size="1"),
-                        rx.text(
-                            proposal["problem_ja"],
-                            size="3", 
-                            padding="10px",
-                            text_wrap="wrap",
-                        ),
-                        #spacing="3",
-                        #margin_top="8px",
-                        direction="column",
-                        display=["block","block","block","flex","flex"]
-                    ),
-                    rx.flex(
-                        rx.callout("解決策", icon="info", color_scheme="green", size="1"),
-                        #rx.avatar(fallback="解決策", variant="soft", color_scheme="cyan"),
-                        #rx.badge("提案", variant="soft", size="3", color_scheme="cyan", radius="medium"),
-                        rx.text(
-                            proposal["solution_ja"],
-                            size="3",
-                            padding="10px",
-                            text_wrap="wrap",
-                        ),
-                        #spacing="3",
-                        margin_top="10px",
-                        direction="column",
-                        display=["block","block","block","flex","flex"]
-                    ),
-                    padding=["8px", "8px", "12px", "12px", "12px" ],
-                    width="100%"      
-                ),
-                width="100%"
-            ),
-            rx.box(
-                rx.stack(
-                    rx.box(
-                        rx.callout("レビュアー評価", icon="award", color_scheme="blue", size="1"),
+        rx.vstack(
+            rx.hstack(
+                rx.vstack(
+                    rx.text(
+                        rx.cond(proposal["title_ja"], proposal["title_ja"], "提案"),
+                        size={"base": "6", "md": "5"},
+                        weight="bold",
                         width="100%",
+                        style={"wordBreak": "break-word"},
+                        class_name="proposal-title",
                     ),
-                    
+                    rx.text(
+                        rx.cond(proposal["title"], proposal["title"], ""),
+                        size="2",
+                        width="100%",
+                        style={"wordBreak": "break-word"},
+                    ),
+                    spacing="1",
+                    align_items="start",
+                    width="100%",
+                ),
+                justify="between",
+                align="start",
+                width="100%",
+            ),
+            rx.script("""
+                    if (window.gtag) {
+                        gtag('event', 'page_view', {
+                        page_path: window.location.pathname,
+                        page_title: document.title,
+                        });
+                    }
+                    """),
+            rx.hstack(
+                status_badge(proposal),
+                catalyst_id_badge(proposal),
+                pill(f"{fund_label(proposal)}", "layers", "yellow"),
+                pill(campaign_label(proposal), "flag", "gray"),
+                spacing="2",
+                wrap="wrap",
+            ),
+            rx.hstack(
+                rx.text(rx.cond(proposal["user_name"], proposal["user_name"], ""), size="2", color="var(--gray-9)"),
+                rx.text(
+                    f"{proposal['currency_symbol']} {proposal['amount_requested_comma']} {proposal['currency']}",
+                    size="3",
+                    weight="bold",
+                    color="var(--indigo-11)",
+                ),
+                rx.link(
+                    rx.hstack(
+                        rx.text("Project Catalyst", size="2", weight="medium"),
+                        rx.icon("external-link", size=16),
+                        spacing="1",
+                        align="center",
+                    ),
+                    href=proposal.get("projectcatalyst_link", ""),
+                    underline="auto",
+                    is_external=True,
+                    style={"text-decoration": "none !important"},
+                ),
+                rx.menu.root(
+                        rx.menu.trigger(
+                            rx.hstack(
+                                rx.text("シェア", size="2", weight="medium"),
+                                rx.icon("share", size=16),
+                                spacing="1",
+                                align="center",
+                                cursor="pointer",
+                            ),
+                            width="20%",
+                        ),
+                        rx.menu.content(
+                            rx.menu.item(
+                                "X (Twitter)",
+                                on_click=rx.call_script(
+                                    "const text = (document.querySelector('.proposal-modal .proposal-title') "
+                                    "  || document.querySelector('.proposal-detail .proposal-title'))"
+                                    "  ?.innerText ?? '';"
+                                    "const url = 'https://x.com/intent/tweet'"
+                                    "  + '?text=' + encodeURIComponent(text)"
+                                    "  + '&url=' + encodeURIComponent(window.location.href);"
+                                    "window.open("
+                                    "  url,"
+                                    "  'x-share',"
+                                    "  'width=550,height=420,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes'"
+                                    ");"
+                                ),
+                            ),
+                            rx.menu.item(
+                                "LINE",
+                                on_click=rx.call_script(
+                                    "const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);"
+                                    "const text = (document.querySelector('.proposal-modal .proposal-title') "
+                                    "  || document.querySelector('.proposal-detail .proposal-title'))"
+                                    "  ?.innerText ?? '';"
+                                    "const shareText = text ? (text + '\\n' + window.location.href) : window.location.href;"
+                                    "const url = isMobile"
+                                    "  ? 'https://line.me/R/msg/text/?' + encodeURIComponent(shareText)"
+                                    "  : 'https://social-plugins.line.me/lineit/share'"
+                                    "    + '?url=' + encodeURIComponent(window.location.href)"
+                                    "    + '&text=' + encodeURIComponent(text);"
+                                    "window.open(url, '_blank');"
+                                ),
+                            ),
+                            rx.menu.item(
+                                "URLコピー",
+                                on_click=[
+                                    rx.call_script(
+                                        "navigator.clipboard.writeText(window.location.href);"
+                                    ),
+                                    rx.toast(
+                                        "提案リンクをコピーしました",
+                                        position="top-center",
+                                        style={
+                                            "background-color": "var(--indigo-11)",
+                                            "color": "white",
+                                            "border-radius": "0.53m",
+                                        },
+                                    ),
+                                ],
+                            ),
+                        ),
+                ),
+                spacing="2",
+                wrap="wrap",
+                align="center",
+            ),
+            rx.divider(),
+            rx.grid(
+                score_panel("アラインメント", proposal.get("alignment_score"), "primary"),
+                score_panel("実現可能性", proposal.get("feasibility_score"), "primary"),
+                score_panel("監査可能性", proposal.get("auditability_score"), "primary"),
+                columns={"base": "1", "md": "3"},
+                spacing="4",
+                width="100%",
+            ),
+            semantic_toggle_bar(
+                semantic_toggle_button(
+                    "英語原文",
+                    "raw",
+                    AppState.modal_semantic_view,
+                    lambda: AppState.set_modal_semantic_view("raw"),
+                ),
+                semantic_toggle_button(
+                    "日本語翻訳",
+                    "ja",
+                    AppState.modal_semantic_view,
+                    lambda: AppState.set_modal_semantic_view("ja"),
+                ),
+                semantic_toggle_button(
+                    "AI要約",
+                    "ai",
+                    AppState.modal_semantic_view,
+                    lambda: AppState.set_modal_semantic_view("ai"),
+                ),
+                top="5.5em",
+                panel_background="var(--gray-2)",
+                panel_padding="8px 18px",
+                panel_radius="9999px",
+                z_index="3",
+            ),
+            rx.vstack(
+                rx.cond(
+                    AppState.modal_semantic_view == "ai",
+                    rx.box(),
                     rx.cond(
-                        ~proposal["alignment_score"],
-                        rx.text(
-                            "コミュニティレビュー中",
-                            color_scheme="crimson",
+                        AppState.modal_semantic_view == "raw",
+                        rx.vstack(
+                            rx.el.h2(
+                                "課題",
+                                class_name=(
+                                    "text-[16px] md:text-[16px] font-semibold tracking-tight "
+                                    "text-[var(--gray-12)] pb-1 border-b border-[var(--gray-5)] "
+                                    "border-l-4 border-[var(--gray-6)] pl-3"
+                                ),
+                            ),
+                            rx.text(proposal.get("problem", ""), size="3", line_height="1.6", color="var(--sand-a12)", padding_x="8px"),
+                            spacing="1",
+                            width="100%",
                         ),
-                        rx.box(
-                            rx.text(
-                            "エコシステム影響度",
-                            weight="bold",
-                            size="3",
+                        rx.vstack(
+                            rx.el.h2(
+                                "課題",
+                                class_name=(
+                                    "text-[16px] md:text-[16px] font-semibold tracking-tight "
+                                    "text-[var(--gray-12)] pb-1 border-b border-[var(--gray-5)] "
+                                    "border-l-4 border-[var(--gray-6)] pl-3"
+                                ),
                             ),
-                            rx.flex(
-                                ProjectRating(proposal["alignment_score"]),
-                            ),
-                            rx.text(
-                                "実現可能性",
-                                weight="bold",
-                                size="3",
-                            ),
-                            rx.flex(
-                                ProjectRating(proposal["feasibility_score"]),
-                            ),
-                            rx.text(
-                                "コストパフォーマンス",
-                                weight="bold",
-                                size="3",
-                            ),     
-                            rx.flex(
-                                ProjectRating(proposal["auditability_score"]),
-                            ),
+                            rx.text(proposal.get("problem_ja", ""), size="3", line_height="1.6", color="var(--sand-a12)", padding_x="8px"),
+                            spacing="1",
+                            width="100%",
                         ),
                     ),
-                          
-                    columns="3",
-                    spacing="3",
-                    padding=[0,0,0,"8px","8px"],
-                    margin_top="10px",
-                    flex_direction="column",
-                    #display=["none", "none", "flex", "flex", "flex"],
                 ),
-                flex_direction=["column","column","row","row","row"],
-                width=["100%","100%","40%","40%","40%"],
-            ),
-        display=["block","block","block","flex","flex"]
-        ),
-        rx.divider(size="4", margin_bottom="10px"),
-        rx.box(
-            rx.section(
-                rx.heading(
-                    "解決策",
-                    as_="h2",
-                    padding_bottom="12px",
-                    color_scheme="indigo",
+                rx.cond(
+                    AppState.modal_semantic_view == "ai",
+                    rx.box(),
+                    rx.cond(
+                        AppState.modal_semantic_view == "raw",
+                        rx.vstack(
+                            rx.el.h2(
+                                "解決策",
+                                class_name=(
+                                    "text-[16px] md:text-[16px] font-semibold tracking-tight "
+                                    "text-[var(--gray-12)] pb-1 border-b border-[var(--gray-5)] "
+                                    "border-l-4 border-[var(--gray-6)] pl-3"
+                                ),
+                            ),
+                            rx.text(proposal.get("solution", ""), size="3", line_height="1.6", color="var(--sand-a12)", padding_x="8px"),
+                            spacing="1",
+                            width="100%",
+                        ),
+                        rx.vstack(
+                            rx.el.h2(
+                                "解決策",
+                                class_name=(
+                                    "text-[16px] md:text-[16px] font-semibold tracking-tight "
+                                    "text-[var(--gray-12)] pb-1 border-b border-[var(--gray-5)] "
+                                    "border-l-4 border-[var(--gray-6)] pl-3"
+                                ),
+                            ),
+                            rx.text(proposal.get("solution_ja", ""), size="3", line_height="1.6", color="var(--sand-a12)", padding_x="8px"),
+                            spacing="1",
+                            width="100%",
+                        ),
                     ),
-                rx.cond(
-                    proposal["detail_solution_ja"],
-                    rx.html(proposal["detail_solution_ja"]),
-                    rx.html(proposal["solution"]),
                 ),
-                style=styles.section_style,
-                size="1",
-            ),
-            rx.section(
-                rx.heading(
-                    "コミュニティへの影響度",
-                    as_="h2",
-                    padding_bottom="12px",
-                    color_scheme="indigo",
+                rx.foreach(
+                    semantic_blocks_by_view(
+                        AppState.modal_semantic_view,
+                        AppState.modal_semantic_blocks_raw,
+                        AppState.modal_semantic_blocks_ja,
+                        AppState.modal_semantic_blocks_ai,
                     ),
-                rx.cond(
-                    proposal["impact_ja"],
-                    rx.html(proposal["impact_ja"]),
-                    rx.html(proposal["impact"]),
+                    semantic_block_section,
                 ),
-                style=styles.section_style,
-                size="1",
+                spacing="3",
+                width="100%",
             ),
-            rx.section(
-                rx.heading(
-                    "実現性と実行力",
-                    as_="h2",
-                    padding_bottom="12px",
-                    color_scheme="indigo",
-                    ),
-                rx.cond(
-                    proposal["capability_feasibility_ja"],
-                    rx.html(proposal["capability_feasibility_ja"]),
-                    rx.html(proposal["capability_feasibility"]),
-                ),
-                style=styles.section_style,
-                size="1",
-            ),
-            rx.section(
-                rx.heading(
-                    "マイルストーン",
-                    as_="h2",
-                    padding_bottom="12px",
-                    color_scheme="indigo",
-                    ),
-                rx.cond(
-                    proposal["project_milestones_ja"],
-                    rx.html(proposal["project_milestones_ja"]),
-                    rx.html(proposal["project_milestones"]),
-                ),
-                style=styles.section_style,
-                size="1",
-            ),
-            rx.section(
-                rx.heading(
-                    "コスト",
-                    as_="h2",
-                    padding_bottom="12px",
-                    color_scheme="indigo",
-                    ),
-                rx.cond(
-                    proposal["budget_costs_ja"],
-                    rx.html(proposal["budget_costs_ja"]),
-                    rx.html(proposal["budget_costs"]),
-                ),
-                style=styles.section_style,
-                size="1",
-            ),
-            rx.section(
-                rx.heading(
-                    "プロジェクトリソース",
-                    as_="h2",
-                    padding_bottom="12px",
-                    color_scheme="indigo",
-                ),
-                rx.cond(
-                    proposal["resources_ja"],
-                    rx.html(proposal["resources_ja"]),
-                    rx.html(proposal["resources"]),
-                ),
-                style=styles.section_style,
-                size="1",
-            ),
-            rx.section(
-                rx.heading(
-                    "費用対効果",
-                    as_="h2",
-                    padding_bottom="12px",
-                    color_scheme="indigo"
-                ),
-                rx.cond(
-                    proposal["value_for_money_ja"],
-                    rx.html(proposal["value_for_money_ja"]),
-                    rx.html(proposal["value_for_money"]),
-                ),
-                style=styles.section_style,
-                size="1",
-            ),
+            spacing="4",
             width="100%",
-            background_color="var(--accent-2)",
+            align_items="stretch",
         ),
-        rx.inset(
-            rx.link(
-                rx.button("閉じる", width="100%", size="3", variant="soft", color_scheme="indigo", on_click=rx.call_script("""window.close()""")),
-            ),
-            side="bottom",
-            #background_color="var(--accent-3)",
-        ),
-        #margin_top="20px",
         width="100%",
-        font_family = "Noto Sans JP"
+        padding="24px",
+        background_color="var(--gray-3)",
+        class_name="proposal-detail",
+        #border=f"1px solid var(--slate-6)",
+        style={"overflow": "visible"},
+        #border_radius="16px",
     )
 
 
-
-def detail_foreach_dict():
+def detail_foreach_dict() -> rx.Component:
     return rx.box(
         rx.cond(
-            ProposalAppState.load,
+            AppState.modal_loading | AppState.modal_pending_uuid,
+            rx.spinner(size="3"),
             rx.cond(
-            ProposalAppState.proposal,
-            rx.foreach(ProposalAppState.proposal, proposal_detail),
+                AppState.modal_proposal,
+                proposal_detail(AppState.modal_proposal),
                 rx.callout(
-                    "提案書が見つかりません",
+                    "提案が見つかりませんでした",
                     icon="info",
                     color_scheme="blue",
                 ),
             ),
-            rx.spinner(size="3")
         )
     )

@@ -12,14 +12,15 @@ hover_accent_bg = {"_hover": {"background_color": accent_color}}
 content_width_vw = "90vw"
 sidebar_width = "20em"
 
+font_family = "'BIZ UDPGothic', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-serif"
+
 template_page_style = {
-    "padding_top": ["6em","6em","6em","5.5em","5.5em"], 
-    "margin_x":"auto", 
-    "padding_x": ["auto","auto","auto","5em", "5em"], 
-    "flex": "1", 
-    "max-width": "1380px", 
-    "font_family": "Noto Sans JP",
-    
+    "padding_top": ["5em","5em","5em","5.5em","5.5em"],
+    "margin_x":"auto",
+    #"padding_x": ["auto","auto","auto","5em", "5em"],
+    "flex": "1",
+    "max-width": "1130px",
+    "font_family": font_family,
     "width":"100%",
     "display":"flex",
     "flex_wrap":"wrap",
@@ -30,8 +31,8 @@ template_page_style = {
 template_content_style = {
     "border_radius": border_radius,
     "margin_bottom": "2em",
-    "min_height": "85vh",
-    "font_family": "Noto Sans JP",
+    # Fill most of the viewport while leaving space for header/footer.
+    "font_family": font_family,
 }
 
 link_style = {
