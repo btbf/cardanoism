@@ -1,23 +1,23 @@
-# ようこそ！カルダノイズムへ
+﻿# Welcome to Cardanoism
 
-このサイトはカルダノブロックチェーンの総合ガバナンス日本語ポータルサイトです。
+This site is a Japanese governance portal for the Cardano blockchain.
 
-## セットアップ手順
+## Setup steps
 
-このプロジェクトは `uv` を使った環境構築を前提にしています。
+This project assumes environment setup with `uv`.
 
-前提:
-- PowerShell（Windows）または bash（macOS / Linux）
-- MariaDB をローカルで起動できること
+Prerequisites:
+- PowerShell (Windows) or bash (macOS / Linux)
+- MariaDB can run locally
 
-### 1) uv のインストール
+### 1) Install uv
 
-Windows（winget）
+Windows (winget)
 ```powershell
 winget install --id AstralSoftware.UV -e
 ```
 
-macOS（Homebrew）
+macOS (Homebrew)
 ```bash
 brew install uv
 ```
@@ -27,113 +27,96 @@ Linux
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-確認:
+Verify:
 ```bash
 uv --version
 ```
 
-### 2) Python のインストール（uv経由）
+### 2) Install Python (via uv)
 
-`pyproject.toml` の指定に合わせて Python 3.11 を入れます。
+Install Python 3.11 per `pyproject.toml`.
 
 ```bash
 uv python install 3.11
 ```
 
-### 3) venv 環境構築（uv）
+### 3) Create venv (uv)
 
 ```bash
 uv venv .venv
 ```
 
-### 4) venv の有効化
+### 4) Activate venv
 
-Windows（PowerShell）
+Windows (PowerShell)
 ```powershell
 .\.venv\Scripts\Activate.ps1
 ```
 
-macOS / Linux（bash）
+macOS / Linux (bash)
 ```bash
 source .venv/bin/activate
 ```
 
-### 5) 依存関係インストール
+### 5) Install dependencies
 
-`pyproject.toml` ベース（推奨）:
-```bash
-uv sync
-```
-
-`requirements.txt` ベース:
+From `requirements.txt`:
 ```bash
 uv pip install -r requirements.txt
 ```
 
-Playwright のブラウザもインストール:
+Also install Playwright browsers:
 ```bash
 playwright install
 ```
 
-## cardanoism起動手順
 
-venv を有効化し、環境変数（DB_* など）を設定した状態で実行します。
+## MariaDB setup
 
-```bash
-uv run reflex run
-```
-
-開発モードを明示したい場合:
-```bash
-uv run reflex run --env dev
-```
-
-## MariaDB セットアップ
-
-このアプリは起動時に次の環境変数を参照します。
+This app reads the following environment variables at startup.
 - `DB_HOST`
 - `DB_PORT`
 - `DB_NAME`
 - `DB_USER`
 - `DB_PASS`
 
-### 1) MariaDB のインストール
+### 1) Install MariaDB
 
-Windows（winget）
+Windows (winget)
 ```powershell
 winget install --id MariaDB.Server -e
 ```
 
-macOS（Homebrew）
+macOS (Homebrew)
 ```bash
 brew install mariadb
 ```
 
-Linux（Ubuntu / Debian）
+Linux (Ubuntu / Debian)
 ```bash
 sudo apt-get update
 sudo apt-get install mariadb-server
 ```
 
-### 2) MariaDB の起動
+### 2) Start MariaDB
 
-Windows（サービス起動の例）
+Windows (service example)
 ```powershell
 net start MariaDB
 ```
 
-macOS（Homebrew services）
+macOS (Homebrew services)
 ```bash
 brew services start mariadb
 ```
 
-Linux（systemd）
+Linux (systemd)
 ```bash
 sudo systemctl enable mariadb
 sudo systemctl start mariadb
 ```
 
-### 3) データベース／ユーザー作成（例）
+### 3) Create database / user (example)
 
 ```sql
 CREATE DATABASE cardanoism CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -142,7 +125,7 @@ GRANT ALL PRIVILEGES ON cardanoism.* TO 'cardanoism'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-### 4) 環境変数の設定（PowerShell例）
+### 4) Set environment variables (PowerShell example)
 
 ```powershell
 $env:DB_HOST = "localhost"
@@ -152,7 +135,7 @@ $env:DB_USER = "cardanoism"
 $env:DB_PASS = "your_password"
 ```
 
-### 5) マイグレーション適用
+### 5) Apply migrations
 
 ```bash
 mariadb -u cardanoism -p cardanoism < migrations/funds_new.sql
@@ -162,13 +145,13 @@ mariadb -u cardanoism -p cardanoism < migrations/proposal_detail_new.sql
 ```
 
 
-## 4) カタリストデータ取得
+## 4) Catalyst data import
 
-以下は「Fundを指定して取り込む」前提の基本手順です。
+The following steps assume importing by specifying a Fund.
 
-### 1) Catalyst Explorer API インポート
+### 1) Catalyst Explorer API import
 
-Fund一覧:
+Fund list:
 ```bash
 uv run python cardanoism/backend/funds_update_new.py
 ```
@@ -178,38 +161,62 @@ Campaigns:
 uv run python cardanoism/backend/campaigns_new.py
 ```
 
-Proposals（Fund指定）:
+Proposals (by Fund):
 ```bash
 uv run python cardanoism/backend/proposals_update_new.py --fund 14
 ```
 
-### 2) Project Catalyst スクレイピング（Fund指定）
+### 2) Project Catalyst scraping (by Fund)
 
 ```bash
 uv run python cardanoism/backend/proposal_scraping.py --fund 14
 ```
 
-必要に応じて件数制限:
+Limit count as needed:
 ```bash
 uv run python cardanoism/backend/proposal_scraping.py --fund 14 --limit 300
 ```
 
-### 3) 翻訳（Fund指定、limit=300）
+### 3) Translation (by Fund, limit=300)
 
 ```bash
 uv run python cardanoism/backend/translate_proposals_new.py --fund 14 --limit 300
 ```
 
-### 4) 日次バッチ（例）
+### 4) Daily batch (example)
 
-Linux（cron登録例）:
+Linux (cron example):
 
-1) 実行権限を付与
+1) Grant execute permission
 ```bash
 chmod +x cardanoism/backend/daily_bat.sh
 ```
 
-2) cronに登録（毎日03:00に実行）※パスは環境に合わせて変更してください
+2) Register with cron (runs daily at 03:00). Adjust paths for your environment.
 ```bash
 (crontab -l 2>/dev/null; echo "0 3 * * * cd /path/to/cardanoism && ./cardanoism/backend/daily_bat.sh >> /path/to/cardanoism/cron.log 2>&1") | crontab -
 ```
+
+## 5) Run cardanoism
+
+Run with venv activated and environment variables (DB_* etc.) set.
+
+```bash
+uv run reflex run
+```
+
+If you want to explicitly use dev mode:
+```bash
+uv run reflex run --env dev
+```
+
+### Status check
+```
+https://yourdomain.com/_health
+```
+
+## Nginx reverse proxy assumed (health check)
+
+- Assumes Nginx reverse proxy forwards `/`, `/_event`, `/_next/webpack-hmr`, and `/_health` to the app.
+- Upstream port is assumed to be `3000` or `8000` (choose based on your environment).
+- Health check path: `/_health`.

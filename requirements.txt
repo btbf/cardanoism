@@ -4,3 +4,5 @@ openai
 requests
 playwright
 beautifulsoup4
+lxml
+tiktoken
