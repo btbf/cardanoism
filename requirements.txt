@@ -6,3 +6,7 @@ playwright
 beautifulsoup4
 lxml
 tiktoken
+authlib
+itsdangerous
+fastapi
+python-dotenv

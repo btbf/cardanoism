@@ -1,4 +1,5 @@
 import reflex as rx
+from cardanoism.backend.auth_state import AuthState
 
 
 UNDERLINE_STYLE = {
@@ -39,6 +40,39 @@ def navbar_icons() -> rx.Component:
         href="/",
     )
 
+    auth_area = rx.cond(
+        AuthState.is_logged_in,
+        rx.menu.root(
+            rx.menu.trigger(
+                rx.button(
+                    rx.cond(
+                        AuthState.avatar_url != "",
+                        rx.avatar(src=AuthState.avatar_url, size="2", radius="full"),
+                        rx.avatar(fallback=AuthState.username[:1], size="2", radius="full"),
+                    ),
+                    variant="ghost",
+                    cursor="pointer",
+                    padding="0",
+                ),
+            ),
+            rx.menu.content(
+                rx.menu.item(rx.link("マイページ", href="/mypage", width="100%", underline="none")),
+                rx.menu.separator(),
+                rx.menu.item(rx.text("ログアウト", color="var(--red-9)", on_click=AuthState.logout, cursor="pointer", width="100%")),
+            ),
+        ),
+        rx.link(
+            rx.button(
+                "ログイン",
+                size="2",
+                variant="soft",
+                cursor="pointer",
+            ),
+            href="/login",
+            underline="none",
+        ),
+    )
+
     desktop_nav = rx.desktop_only(
         rx.hstack(
             logo,
@@ -77,6 +111,7 @@ def navbar_icons() -> rx.Component:
                     ),
                 ),
                 navbar_icons_item("ガバナンス", "/#", True),
+                auth_area,
                 spacing="6",
                 padding_right="5px",
             ),
@@ -90,41 +125,56 @@ def navbar_icons() -> rx.Component:
     mobile_nav = rx.mobile_and_tablet(
         rx.hstack(
             logo,
-            rx.menu.root(
-                rx.menu.trigger(rx.icon("menu", size=30)),
-                rx.menu.content(
-                    navbar_icons_item("ホーム", "/", False),
-                    rx.menu.root(
-                        rx.menu.trigger(
-                            rx.button(
-                                rx.text("カタリスト", size="4", weight="medium", color="var(--gray-12)"),
-                                rx.icon("chevron-down"),
-                                weight="medium",
-                                variant="ghost",
-                                size="3",
+            rx.hstack(
+                auth_area,
+                rx.menu.root(
+                    rx.menu.trigger(rx.icon("menu", size=30)),
+                    rx.menu.content(
+                        navbar_icons_item("ホーム", "/", False),
+                        rx.menu.root(
+                            rx.menu.trigger(
+                                rx.button(
+                                    rx.text("カタリスト", size="4", weight="medium", color="var(--gray-12)"),
+                                    rx.icon("chevron-down"),
+                                    weight="medium",
+                                    variant="ghost",
+                                    size="3",
+                                ),
+                            ),
+                            rx.menu.content(
+                                rx.menu.item(
+                                    rx.link(
+                                        rx.text("提案一覧", size="3", weight="medium", color="var(--gray-12)"),
+                                        href="/catalyst",
+                                        width="100%",
+                                    ),
+                                ),
+                                rx.menu.item(
+                                    rx.link(
+                                        rx.text("ファンド一覧", size="3", weight="medium", color="var(--gray-12)"),
+                                        href="/catalyst/funds",
+                                        width="100%",
+                                    ),
+                                ),
                             ),
                         ),
-                        rx.menu.content(
-                            rx.menu.item(
-                                rx.link(
-                                    rx.text("提案一覧", size="3", weight="medium", color="var(--gray-12)"),
-                                    href="/catalyst",
-                                    width="100%",
-                                ),
+                        navbar_icons_item("ガバナンス", "/#", True),
+                        rx.cond(
+                            AuthState.is_logged_in,
+                            rx.fragment(
+                                rx.menu.separator(),
+                                rx.menu.item(rx.link("マイページ", href="/mypage", width="100%", underline="none")),
+                                rx.menu.item(rx.text("ログアウト", color="var(--red-9)", on_click=AuthState.logout, cursor="pointer", width="100%")),
                             ),
-                            rx.menu.item(
-                                rx.link(
-                                    rx.text("ファンド一覧", size="3", weight="medium", color="var(--gray-12)"),
-                                    href="/catalyst/funds",
-                                    width="100%",
-                                ),
-                            ),
+                            rx.menu.item(rx.link("ログイン", href="/login", width="100%", underline="none")),
                         ),
                     ),
-                    navbar_icons_item("ガバナンス", "/#", True),
                 ),
+                spacing="3",
+                align="center",
             ),
             justify_content="space-between",
+            align="center",
         ),
     )
 
