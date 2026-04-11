@@ -13,6 +13,7 @@ from urllib.parse import urlparse, parse_qs
 
 import reflex as rx
 
+from cardanoism.backend.koios import detect_stake_role, get_stake_address_from_addr
 from cardanoism.backend.auth_db import (
     get_user_by_session,
     get_or_create_user_by_line,
@@ -21,6 +22,7 @@ from cardanoism.backend.auth_db import (
     update_user_profile,
     get_stake_addresses,
     add_stake_address,
+    update_stake_address_role,
     delete_stake_address,
     get_favorite_ids,
     get_favorites,
@@ -300,6 +302,7 @@ class AuthState(rx.State):
 
     def set_new_stake_address(self, value: str):
         self.new_stake_address = value
+        self.stake_error = ""
 
     def set_new_stake_nickname(self, value: str):
         self.new_stake_nickname = value
@@ -307,19 +310,42 @@ class AuthState(rx.State):
     def add_stake_address_handler(self):
         if not self.is_logged_in:
             return
-        address = self.new_stake_address.strip()
+        input_addr = self.new_stake_address.strip()
         nickname = self.new_stake_nickname.strip()
-        if not address or not nickname:
+        if not input_addr or not nickname:
             self.stake_error = "アドレスとニックネームを入力してください"
             return
-        if not _is_valid_stake_address(address):
-            self.stake_error = "無効なステークアドレスです（例: stake1u...）"
+        # 受信アドレス（addr1...）からステークアドレスを取得
+        wallet_address = None
+        if input_addr.startswith("addr"):
+            address = get_stake_address_from_addr(input_addr)
+            if not address:
+                self.stake_error = "ステークアドレスを取得できませんでした（エンタープライズアドレスは非対応）"
+                return
+            wallet_address = input_addr
+        elif _is_valid_stake_address(input_addr):
+            address = input_addr
+        else:
+            self.stake_error = "有効な受信アドレス（addr1...）を入力してください"
             return
-        result = add_stake_address(self.user_id, address, nickname)
+        result = add_stake_address(self.user_id, address, nickname, wallet_address)
         if result == "ok":
             self.new_stake_address = ""
             self.new_stake_nickname = ""
             self.stake_error = ""
+            # DBに登録されたばかりのアドレスのIDを取得してroleを更新
+            addresses = get_stake_addresses(self.user_id)
+            new_entry = next((a for a in addresses if a["address"] == address), None)
+            if new_entry:
+                info = detect_stake_role(address)
+                update_stake_address_role(
+                    new_entry["id"],
+                    info["role"],
+                    info.get("drep_id"),
+                    info.get("drep_name"),
+                    info.get("pool_id"),
+                    info.get("pool_name"),
+                )
             self.stake_addresses = get_stake_addresses(self.user_id)
             self._load_stake_notification_settings()
         elif result == "duplicate":

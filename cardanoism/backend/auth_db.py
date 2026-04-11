@@ -26,13 +26,13 @@ POOL_NOTIFICATION_EVENT_TYPES = [
     "pool_fee_change",
     "pool_saturation",
     "pool_pledge_shortage",
-    "pool_reward_estimate",
     "pool_reward_received",
     "pool_delegation_reminder",
 ]
 
 # DRep委任者のみ
 DELEGATOR_NOTIFICATION_EVENT_TYPES = [
+    "drep_new_governance_action",
     "drep_vote",
     "drep_status_change",
     "drep_delegation_reminder",
@@ -46,11 +46,11 @@ DREP_ONLY_NOTIFICATION_EVENT_TYPES = [
 ]
 
 # ステークアドレス単位の全イベント（stake_notification_settingsに保存）
-STAKE_NOTIFICATION_EVENT_TYPES = (
+STAKE_NOTIFICATION_EVENT_TYPES = list(dict.fromkeys(
     POOL_NOTIFICATION_EVENT_TYPES
     + DELEGATOR_NOTIFICATION_EVENT_TYPES
     + DREP_ONLY_NOTIFICATION_EVENT_TYPES
-)
+))
 
 # ============================================================
 # ユーザー
@@ -182,13 +182,13 @@ def delete_session(session_token: str) -> None:
 def get_stake_addresses(user_id: int) -> list:
     with get_db() as (cursor, _):
         cursor.execute(
-            "SELECT id, address, nickname, role, created_at FROM stake_addresses WHERE user_id = ? ORDER BY created_at ASC",
+            "SELECT id, address, wallet_address, nickname, role, delegated_drep_id, delegated_drep_name, delegated_pool_id, delegated_pool_name, created_at FROM stake_addresses WHERE user_id = ? ORDER BY created_at ASC",
             (user_id,),
         )
         return [dict(row) for row in cursor.fetchall() if row is not None]
 
 
-def add_stake_address(user_id: int, address: str, nickname: str) -> str:
+def add_stake_address(user_id: int, address: str, nickname: str, wallet_address: str | None = None) -> str:
     """追加する。成功時は "ok"、エラー時はエラー種別文字列を返す。"""
     with get_db() as (cursor, conn):
         cursor.execute(
@@ -206,8 +206,8 @@ def add_stake_address(user_id: int, address: str, nickname: str) -> str:
             return "duplicate"
 
         cursor.execute(
-            "INSERT INTO stake_addresses (user_id, address, nickname) VALUES (?, ?, ?)",
-            (user_id, address, nickname),
+            "INSERT INTO stake_addresses (user_id, address, wallet_address, nickname) VALUES (?, ?, ?, ?)",
+            (user_id, address, wallet_address, nickname),
         )
         stake_address_id = cursor.lastrowid
 
@@ -218,6 +218,29 @@ def add_stake_address(user_id: int, address: str, nickname: str) -> str:
             )
         conn.commit()
         return "ok"
+
+
+def update_stake_address_role(
+    address_id: int,
+    role: str,
+    drep_id: str | None = None,
+    drep_name: str | None = None,
+    pool_id: str | None = None,
+    pool_name: str | None = None,
+) -> None:
+    """ステークアドレスのroleと委任先DRep・プール情報を更新する。"""
+    with get_db() as (cursor, conn):
+        cursor.execute(
+            """
+            UPDATE stake_addresses
+            SET role = ?, role_checked_at = NOW(),
+                delegated_drep_id = ?, delegated_drep_name = ?,
+                delegated_pool_id = ?, delegated_pool_name = ?
+            WHERE id = ?
+            """,
+            (role, drep_id, drep_name, pool_id, pool_name, address_id),
+        )
+        conn.commit()
 
 
 def delete_stake_address(address_id: int, user_id: int) -> None:
