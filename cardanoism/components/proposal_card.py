@@ -1,6 +1,7 @@
 import reflex as rx
 from typing import Dict, Any
 from cardanoism.backend.db_connect import AppState
+from cardanoism.backend.auth_state import AuthState
 from cardanoism import styles
 
 
@@ -411,6 +412,23 @@ def semantic_toggle_panel(
     return inner
 
 
+def favorite_button(proposal) -> rx.Component:
+    """お気に入りトグルボタン（コンテンツと横並びで独立したクリック領域）。"""
+    proposal_uuid = proposal["uuid"].to(str)
+    is_fav = AuthState.favorite_ids.contains(proposal_uuid)
+    return rx.box(
+        rx.cond(
+            is_fav,
+            rx.icon("heart", size=26, color="var(--red-9)", style={"fill": "var(--red-9)"}),
+            rx.icon("heart", size=26, color="var(--gray-8)"),
+        ),
+        on_click=AuthState.toggle_favorite(proposal_uuid),
+        cursor="pointer",
+        padding="6px",
+        flex_shrink="0",
+    )
+
+
 def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
     description = rx.cond(
         proposal["solution_ja"],
@@ -494,20 +512,16 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
 
     def render_card(on_click):
         return rx.card(
-            rx.box(
+            rx.hstack(
                 rx.vstack(
                     rx.hstack(
-                        rx.hstack(
-                            status_badge(proposal),
-                            catalyst_id_badge(proposal),
-                            pill(f"{fund_label(proposal)}", "layers", "yellow"),
-                            pill(campaign_label(proposal), "flag", "gray"),
-                            spacing="2",
-                            wrap="wrap",
-                            align="center",
-                        ),
-                        justify="between",
-                        width="100%",
+                        status_badge(proposal),
+                        catalyst_id_badge(proposal),
+                        pill(f"{fund_label(proposal)}", "layers", "yellow"),
+                        pill(campaign_label(proposal), "flag", "gray"),
+                        spacing="2",
+                        wrap="wrap",
+                        align="center",
                     ),
                     rx.text(
                         proposal["title_ja"],
@@ -530,10 +544,14 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
                     rx.mobile_and_tablet(mobile_footer),
                     rx.desktop_only(desktop_footer),
                     spacing="3",
-                    width="100%",
+                    flex="1",
+                    min_width="0",
+                    on_click=on_click,
+                    cursor="pointer",
                 ),
-                #page_icon,
-                position="relative",
+                favorite_button(proposal),
+                align="start",
+                spacing="2",
                 width="100%",
             ),
             width="100%",
@@ -551,8 +569,6 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
                 "hover:shadow-[0_0_6px_rgba(229,229,229,229.12)]"
                 ),
             ),
-            on_click=on_click,
-            cursor="pointer",
         )
 
     modal_click = lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"])]
@@ -645,17 +661,27 @@ def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
 
     def render_card(on_click):
         return rx.card(
-            rx.box(
-                rx.vstack(
-                    content_block,
-                    footer_block,
-                    spacing="3",
-                    width="100%",
+            rx.hstack(
+                rx.box(
+                    rx.vstack(
+                        content_block,
+                        footer_block,
+                        spacing="3",
+                        width="100%",
+                        height="100%",
+                        justify="between",
+                        on_click=on_click,
+                        cursor="pointer",
+                    ),
+                    page_icon,
+                    position="relative",
+                    flex="1",
+                    min_width="0",
                     height="100%",
-                    justify="between",
                 ),
-                page_icon,
-                position="relative",
+                favorite_button(proposal),
+                align="start",
+                spacing="2",
                 width="100%",
                 height="100%",
             ),
@@ -670,8 +696,6 @@ def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
                 "hover:shadow-[0_0_6px_rgba(229,229,229,229.12)]"
                 ),
             ),
-            on_click=on_click,
-            cursor="pointer",
         )
 
     modal_click = lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"])]
@@ -992,20 +1016,13 @@ def detail_modal() -> rx.Component:
                     rx.button(
                         "閉じる",
                         on_click=AppState.close_modal,
-                        width="80%",
+                        width="90%",
                         variant="soft",
-                        background_color="var(--amber-9)",
-                        color=rx.color_mode_cond(
-                            light="var(--gray-12)",
-                            dark="var(--gray-2)",
-                        ),
                         cursor="pointer",
-                        _hover={"background_color": "var(--amber-6)"},
                     ),
                     rx.menu.root(
                         rx.menu.trigger(
-                            rx.button("シェア", variant="soft"),
-                            width="20%",
+                            rx.icon("share-2", size=20, variant="soft", color="var(--gray-8)", cursor="pointer"),
                         ),
                         rx.menu.content(
                             rx.menu.item(
@@ -1059,7 +1076,20 @@ def detail_modal() -> rx.Component:
                             ),
                         ),
                     ),
+                    rx.box(
+                        rx.cond(
+                            AuthState.favorite_ids.contains(AppState.modal_proposal["uuid"].to(str)),
+                            rx.icon("heart", size=26, color="var(--red-9)", style={"fill": "var(--red-9)"}),
+                            rx.icon("heart", size=26, color="var(--gray-8)"),
+                        ),
+                        on_click=AuthState.toggle_favorite(AppState.modal_proposal["uuid"].to(str)),
+                        cursor="pointer",
+                        padding="6px",
+                        display="flex",
+                        align_items="center",
+                    ),
                     width="100%",
+                    align="center",
                 ),
                 spacing="3",
                 width="100%",

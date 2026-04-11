@@ -185,7 +185,7 @@ def get_stake_addresses(user_id: int) -> list:
             "SELECT id, address, nickname, role, created_at FROM stake_addresses WHERE user_id = ? ORDER BY created_at ASC",
             (user_id,),
         )
-        return [dict(row) for row in cursor.fetchall()]
+        return [dict(row) for row in cursor.fetchall() if row is not None]
 
 
 def add_stake_address(user_id: int, address: str, nickname: str) -> str:
@@ -199,8 +199,8 @@ def add_stake_address(user_id: int, address: str, nickname: str) -> str:
             return "limit"
 
         cursor.execute(
-            "SELECT 1 FROM stake_addresses WHERE address = ?",
-            (address,),
+            "SELECT 1 FROM stake_addresses WHERE user_id = ? AND address = ?",
+            (user_id, address),
         )
         if cursor.fetchone():
             return "duplicate"
@@ -234,16 +234,30 @@ def delete_stake_address(address_id: int, user_id: int) -> None:
 # お気に入り
 # ============================================================
 
+def get_favorite_ids(user_id: int, type: str = "catalyst") -> list:
+    """お気に入りのproposal_uuidリストのみを返す（カード表示用）。"""
+    with get_db() as (cursor, _):
+        cursor.execute(
+            "SELECT proposal_uuid FROM favorites WHERE user_id = ? AND type = ?",
+            (user_id, type),
+        )
+        return [
+            row["proposal_uuid"]
+            for row in cursor.fetchall()
+            if row is not None and row["proposal_uuid"]
+        ]
+
+
 def get_favorites(user_id: int, type: str = "catalyst") -> list:
     with get_db() as (cursor, _):
         cursor.execute(
             """
-            SELECT f.id, f.proposal_id, f.created_at,
-                   p.title, p.funding_status, p.amount_requested, p.currency_symbol,
+            SELECT f.id, f.proposal_uuid, f.created_at,
+                   p.title, p.title_ja, p.funding_status, p.amount_requested, p.currency_symbol,
                    fn.label as fund_label
             FROM favorites f
-            JOIN proposals_new p ON f.proposal_id = p.id
-            LEFT JOIN funds_new fn ON p.fund_id = fn.id
+            JOIN proposals_new p ON f.proposal_uuid = p.uuid COLLATE utf8mb4_unicode_ci
+            LEFT JOIN funds_new fn ON p.fund_uuid = fn.id
             WHERE f.user_id = ? AND f.type = ?
             ORDER BY f.created_at DESC
             """,
@@ -252,29 +266,29 @@ def get_favorites(user_id: int, type: str = "catalyst") -> list:
         return [dict(row) for row in cursor.fetchall()]
 
 
-def add_favorite(user_id: int, proposal_id: int, type: str = "catalyst") -> None:
+def add_favorite(user_id: int, proposal_uuid: str, type: str = "catalyst") -> None:
     with get_db() as (cursor, conn):
         cursor.execute(
-            "INSERT IGNORE INTO favorites (user_id, proposal_id, type) VALUES (?, ?, ?)",
-            (user_id, proposal_id, type),
+            "INSERT IGNORE INTO favorites (user_id, proposal_uuid, type) VALUES (?, ?, ?)",
+            (user_id, proposal_uuid, type),
         )
         conn.commit()
 
 
-def remove_favorite(user_id: int, proposal_id: int, type: str = "catalyst") -> None:
+def remove_favorite(user_id: int, proposal_uuid: str, type: str = "catalyst") -> None:
     with get_db() as (cursor, conn):
         cursor.execute(
-            "DELETE FROM favorites WHERE user_id = ? AND proposal_id = ? AND type = ?",
-            (user_id, proposal_id, type),
+            "DELETE FROM favorites WHERE user_id = ? AND proposal_uuid = ? AND type = ?",
+            (user_id, proposal_uuid, type),
         )
         conn.commit()
 
 
-def is_favorite(user_id: int, proposal_id: int, type: str = "catalyst") -> bool:
+def is_favorite(user_id: int, proposal_uuid: str, type: str = "catalyst") -> bool:
     with get_db() as (cursor, _):
         cursor.execute(
-            "SELECT 1 FROM favorites WHERE user_id = ? AND proposal_id = ? AND type = ?",
-            (user_id, proposal_id, type),
+            "SELECT 1 FROM favorites WHERE user_id = ? AND proposal_uuid = ? AND type = ?",
+            (user_id, proposal_uuid, type),
         )
         return cursor.fetchone() is not None
 
@@ -291,7 +305,7 @@ def get_notification_settings(user_id: int) -> dict:
             (user_id,),
         )
         rows = cursor.fetchall()
-        settings = {row["event_type"]: bool(row["enabled"]) for row in rows}
+        settings = {row["event_type"]: bool(row["enabled"]) for row in rows if row is not None}
 
         # DBにない項目はデフォルトTrue
         for event_type in NOTIFICATION_EVENT_TYPES:
@@ -308,7 +322,7 @@ def get_stake_notification_settings(stake_address_id: int) -> dict:
             (stake_address_id,),
         )
         rows = cursor.fetchall()
-        settings = {row["event_type"]: bool(row["enabled"]) for row in rows}
+        settings = {row["event_type"]: bool(row["enabled"]) for row in rows if row is not None}
         for event_type in STAKE_NOTIFICATION_EVENT_TYPES:
             if event_type not in settings:
                 settings[event_type] = True

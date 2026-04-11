@@ -609,6 +609,7 @@ class AppState(rx.State):
 
             data_query = """
         SELECT
+            p.id,
             p.uuid,
             p.catalyst_id,
             p.fund_uuid,

@@ -22,6 +22,7 @@ from cardanoism.backend.auth_db import (
     get_stake_addresses,
     add_stake_address,
     delete_stake_address,
+    get_favorite_ids,
     get_favorites,
     add_favorite,
     remove_favorite,
@@ -69,9 +70,11 @@ class AuthState(rx.State):
 
     # お気に入り（catalyst）
     favorites: list[dict] = []
+    favorite_ids: list[str] = []  # カード表示用のUUIDリスト
     favorites_fund_filter: str = "all"
     favorites_status_filter: str = "all"
     favorites_sort: str = "amount_desc"
+    favorites_page: int = 1
 
     # ユーザー全体の通知設定（epoch_start など）
     notification_settings: dict[str, bool] = {}
@@ -105,6 +108,7 @@ class AuthState(rx.State):
             self.email = user.get("email") or ""
             self.notification_frequency = user.get("notification_frequency") or "instant"
             self.is_logged_in = True
+            self.favorite_ids = [s for s in get_favorite_ids(self.user_id) if isinstance(s, str) and s]
         else:
             # 期限切れ or 無効
             self.session_token = ""
@@ -358,27 +362,60 @@ class AuthState(rx.State):
     # お気に入り
     # ============================================================
 
+    def toggle_favorite(self, proposal_uuid: str):
+        """カード上のハートボタンからお気に入りをトグルする。"""
+        if not self.is_logged_in:
+            self.show_login_modal = True
+            return
+        if not proposal_uuid:
+            return
+        if proposal_uuid in self.favorite_ids:
+            # UIを先に更新してからDB操作
+            self.favorite_ids = [uid for uid in self.favorite_ids if uid != proposal_uuid]
+            yield
+            remove_favorite(self.user_id, proposal_uuid, "catalyst")
+        else:
+            self.favorite_ids = self.favorite_ids + [proposal_uuid]
+            yield
+            add_favorite(self.user_id, proposal_uuid, "catalyst")
+        # マイページ表示中のみ同期
+        if self.favorites:
+            self.favorites = get_favorites(self.user_id, "catalyst")
+
     def load_favorites(self):
         if self.is_logged_in:
             self.favorites = get_favorites(self.user_id, "catalyst")
 
     def set_favorites_fund_filter(self, value: str):
         self.favorites_fund_filter = value
+        self.favorites_page = 1
 
     def set_favorites_status_filter(self, value: str):
         self.favorites_status_filter = value
+        self.favorites_page = 1
 
     def set_favorites_sort(self, value: str):
         self.favorites_sort = value
+        self.favorites_page = 1
 
-    def remove_favorite_handler(self, proposal_id: int):
+    def favorites_prev_page(self):
+        if self.favorites_page > 1:
+            self.favorites_page -= 1
+
+    def favorites_next_page(self):
+        if self.favorites_page < self.favorites_total_pages:
+            self.favorites_page += 1
+
+    def remove_favorite_handler(self, proposal_uuid: str):
         if not self.is_logged_in:
             return
-        remove_favorite(self.user_id, proposal_id, "catalyst")
+        remove_favorite(self.user_id, proposal_uuid, "catalyst")
+        self.favorite_ids = [uid for uid in self.favorite_ids if uid != proposal_uuid]
         self.load_favorites()
 
     @rx.var
-    def filtered_favorites(self) -> list[dict]:
+    def filtered_favorites_all(self) -> list[dict]:
+        """フィルター・ソート済みの全件リスト（ページネーション前）。"""
         items = list(self.favorites)
         if self.favorites_fund_filter and self.favorites_fund_filter != "all":
             items = [f for f in items if str(f.get("fund_label", "")) == self.favorites_fund_filter]
@@ -391,8 +428,18 @@ class AuthState(rx.State):
         return items
 
     @rx.var
+    def filtered_favorites(self) -> list[dict]:
+        """現在ページ分のみ返す。"""
+        start = (self.favorites_page - 1) * 10
+        return self.filtered_favorites_all[start:start + 10]
+
+    @rx.var
+    def favorites_total_pages(self) -> int:
+        return max(1, (len(self.filtered_favorites_all) + 9) // 10)
+
+    @rx.var
     def is_favorites_empty(self) -> bool:
-        return len(self.filtered_favorites) == 0
+        return len(self.filtered_favorites_all) == 0
 
     @rx.var
     def is_stake_addresses_empty(self) -> bool:

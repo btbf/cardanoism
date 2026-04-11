@@ -56,8 +56,13 @@ def favorite_card(fav: rx.Var[dict]) -> rx.Component:
         rx.hstack(
             rx.vstack(
                 rx.link(
-                    rx.text(fav["title"], size="3", weight="medium", line_height="1.4"),
-                    href="/catalyst/proposals/" + fav["proposal_id"].to(str),
+                    rx.text(
+                        rx.cond(fav["title_ja"], fav["title_ja"], fav["title"]),
+                        size="3",
+                        weight="medium",
+                        line_height="1.4",
+                    ),
+                    href="/catalyst/proposals/" + fav["proposal_uuid"].to(str),
                     underline="hover",
                 ),
                 rx.hstack(
@@ -82,7 +87,7 @@ def favorite_card(fav: rx.Var[dict]) -> rx.Component:
                 color_scheme="red",
                 size="1",
                 cursor="pointer",
-                on_click=AuthState.remove_favorite_handler(fav["proposal_id"].to(int)),
+                on_click=AuthState.remove_favorite_handler(fav["proposal_uuid"].to(str)),
             ),
             align="start",
             width="100%",
@@ -151,6 +156,35 @@ def favorites_tab() -> rx.Component:
             ),
             rx.vstack(
                 rx.foreach(AuthState.filtered_favorites, favorite_card),
+                # ページネーション
+                rx.hstack(
+                    rx.icon_button(
+                        rx.icon("chevron-left", size=16),
+                        variant="soft",
+                        disabled=AuthState.favorites_page <= 1,
+                        on_click=AuthState.favorites_prev_page,
+                        cursor="pointer",
+                    ),
+                    rx.text(
+                        AuthState.favorites_page.to(str),
+                        " / ",
+                        AuthState.favorites_total_pages.to(str),
+                        size="2",
+                        color="var(--gray-10)",
+                    ),
+                    rx.icon_button(
+                        rx.icon("chevron-right", size=16),
+                        variant="soft",
+                        disabled=AuthState.favorites_page >= AuthState.favorites_total_pages,
+                        on_click=AuthState.favorites_next_page,
+                        cursor="pointer",
+                    ),
+                    justify="center",
+                    align="center",
+                    spacing="3",
+                    width="100%",
+                    padding_top="8px",
+                ),
                 spacing="2",
                 width="100%",
             ),
