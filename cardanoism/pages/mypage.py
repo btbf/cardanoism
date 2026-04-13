@@ -191,7 +191,16 @@ def profile_tab() -> rx.Component:
             align_items="start",
         ),
         rx.vstack(
-            rx.text(AuthState.t["email_address"], size="3", weight="medium"),
+            rx.hstack(
+                rx.text(AuthState.t["email_address"], size="3", weight="medium"),
+                rx.cond(
+                    AuthState.auth_providers.contains("google"),
+                    rx.badge("Google連携", color_scheme="blue", size="1", variant="soft"),
+                    rx.box(),
+                ),
+                spacing="2",
+                align="center",
+            ),
             rx.input(
                 value=AuthState.edit_email,
                 on_change=AuthState.set_edit_email,
@@ -199,6 +208,21 @@ def profile_tab() -> rx.Component:
                 type="email",
                 size="3",
                 width="100%",
+                disabled=AuthState.auth_providers.contains("google"),
+                style=rx.cond(
+                    AuthState.auth_providers.contains("google"),
+                    {"opacity": "0.6", "cursor": "not-allowed"},
+                    {},
+                ),
+            ),
+            rx.cond(
+                AuthState.auth_providers.contains("google"),
+                rx.text(
+                    "Googleアカウントのメールアドレスは変更できません。",
+                    size="1",
+                    color="var(--gray-8)",
+                ),
+                rx.box(),
             ),
             spacing="1",
             width="100%",
@@ -398,6 +422,79 @@ def stake_tab() -> rx.Component:
 # ============================================================
 # タブ4: 通知管理
 # ============================================================
+
+def _disabled_toggle_rows(event_types: list) -> list:
+    """グレーアウト表示用の無効トグル行（ステークアドレス未登録時）。"""
+    return [
+        rx.hstack(
+            rx.text(AuthState.notification_labels[et], size="3", color="var(--gray-8)"),
+            rx.switch(checked=False, disabled=True, color_scheme="gray", size="1"),
+            justify="between",
+            width="100%",
+            padding_y="3px",
+        )
+        for et in event_types
+    ]
+
+
+def stake_notification_empty_preview() -> rx.Component:
+    """ステークアドレス未登録時のグレーアウトプレビュー表示。"""
+    return rx.box(
+        rx.vstack(
+            rx.hstack(
+                rx.icon("info", size=16, color="var(--amber-9)"),
+                rx.text(
+                    AuthState.t["notification_tab_no_stake"],
+                    size="2",
+                    color="var(--amber-11)",
+                ),
+                spacing="2",
+                align="center",
+                padding="10px 12px",
+                border_radius="8px",
+                background="var(--amber-2)",
+                border=f"1px solid var(--amber-6)",
+                width="100%",
+            ),
+            # グレーアウトコンテンツ
+            rx.box(
+                rx.vstack(
+                    rx.text(AuthState.t["notification_tab_per_addr_title"], size="4", weight="bold", color="var(--gray-7)"),
+                    rx.box(
+                        rx.vstack(
+                            rx.text(AuthState.t["notification_pool_section"], size="3", weight="bold", color="var(--gray-7)"),
+                            *_disabled_toggle_rows(POOL_NOTIFICATION_EVENT_TYPES),
+                            rx.divider(margin_y="6px"),
+                            rx.text(AuthState.t["notification_governance_section"], size="3", weight="bold", color="var(--gray-7)"),
+                            *_disabled_toggle_rows(DELEGATOR_NOTIFICATION_EVENT_TYPES),
+                            spacing="1",
+                            width="100%",
+                            align_items="start",
+                        ),
+                        padding="12px",
+                        border_radius="8px",
+                        border=f"1px solid {rx.color('gray', 4)}",
+                        background=rx.color_mode_cond("var(--gray-2)", "rgba(15,15,25,0.4)"),
+                        width="100%",
+                    ),
+                    spacing="3",
+                    width="100%",
+                    align_items="start",
+                ),
+                opacity="0.6",
+                pointer_events="none",
+                width="100%",
+            ),
+            spacing="3",
+            width="100%",
+            align_items="start",
+        ),
+        padding="16px",
+        border_radius="10px",
+        border=f"1px solid {rx.color('gray', 4)}",
+        width="100%",
+    )
+
 
 def general_notification_toggle_row(event_type: str) -> rx.Component:
     """ユーザー全体の通知設定トグル行。"""
@@ -641,8 +738,100 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
     )
 
 
+def notification_channel_section() -> rx.Component:
+    """通知チャンネル選択セクション（メール・LINE連携済みの場合のみ表示）。"""
+    has_email = AuthState.email_notify_channel != ""
+    has_line = AuthState.line_notify_channel != ""
+    # どちらか1つでもある場合に表示
+    return rx.cond(
+        has_email | has_line,
+        rx.box(
+            rx.vstack(
+                rx.hstack(
+                    rx.icon("send", size=18, color="var(--gray-10)"),
+                    rx.text(AuthState.t["notification_channel_title"], size="4", weight="bold"),
+                    spacing="2",
+                    align="center",
+                ),
+                rx.text(
+                    AuthState.t["notification_channel_desc"],
+                    size="2",
+                    color="var(--gray-9)",
+                ),
+                rx.vstack(
+                    # メール通知チャンネル
+                    rx.cond(
+                        has_email,
+                        rx.hstack(
+                            rx.hstack(
+                                rx.icon("mail", size=16, color="var(--gray-9)"),
+                                rx.vstack(
+                                    rx.text(AuthState.t["notification_channel_email"], size="3", weight="medium"),
+                                    rx.text(AuthState.email, size="2", color="var(--gray-8)"),
+                                    spacing="0",
+                                    align_items="start",
+                                ),
+                                spacing="2",
+                                align="center",
+                            ),
+                            rx.switch(
+                                checked=AuthState.email_notify_enabled,
+                                on_change=AuthState.set_email_notify_enabled,
+                                color_scheme="amber",
+                            ),
+                            justify="between",
+                            align="center",
+                            width="100%",
+                        ),
+                        rx.box(),
+                    ),
+                    # 両方ある場合の区切り線
+                    rx.cond(
+                        has_email & has_line,
+                        rx.divider(),
+                        rx.box(),
+                    ),
+                    # LINE通知チャンネル
+                    rx.cond(
+                        has_line,
+                        rx.hstack(
+                            rx.hstack(
+                                rx.icon("message-circle", size=16, color="#06C755"),
+                                rx.text(AuthState.t["notification_channel_line"], size="3", weight="medium"),
+                                spacing="2",
+                                align="center",
+                            ),
+                            rx.switch(
+                                checked=AuthState.line_notify_enabled,
+                                on_change=AuthState.set_line_notify_enabled,
+                                color_scheme="amber",
+                            ),
+                            justify="between",
+                            align="center",
+                            width="100%",
+                        ),
+                        rx.box(),
+                    ),
+                    spacing="3",
+                    width="100%",
+                ),
+                spacing="3",
+                align_items="start",
+                width="100%",
+            ),
+            padding="16px",
+            border_radius="10px",
+            border=f"1px solid {rx.color('gray', 4)}",
+            width="100%",
+        ),
+        rx.box(),
+    )
+
+
 def notification_tab() -> rx.Component:
     return rx.vstack(
+        # 通知チャンネル選択
+        notification_channel_section(),
         # LINE連携セクション
         rx.box(
             rx.vstack(
@@ -653,9 +842,9 @@ def notification_tab() -> rx.Component:
                     align="center",
                 ),
                 rx.hstack(
-                    # 連携状態に応じた表示
+                    # 連携状態に応じた表示（line_notify_channel で判定）
                     rx.cond(
-                        AuthState.line_id != "",
+                        AuthState.line_notify_channel != "",
                         # 連携済み
                         rx.vstack(
                             rx.hstack(
@@ -679,15 +868,44 @@ def notification_tab() -> rx.Component:
                         # 未連携
                         rx.vstack(
                             rx.text(AuthState.t["notification_tab_line_not_connected"], size="3", color="var(--gray-9)"),
-                            rx.link(
-                                rx.button(
-                                    rx.icon("link", size=14),
+                            rx.el.a(
+                                rx.el.span(
+                                    rx.el.img(src="/line-icon.png", alt="LINE", style={"width": "28px", "height": "28px", "object-fit": "contain"}),
+                                    style={
+                                        "display": "flex",
+                                        "align-items": "center",
+                                        "justify-content": "center",
+                                        "padding": "0 10px",
+                                        "border-right": "1px solid rgba(255,255,255,0.3)",
+                                        "height": "100%",
+                                        "flex-shrink": "0",
+                                    },
+                                ),
+                                rx.el.span(
                                     AuthState.t["notification_tab_line_connect_button"],
-                                    size="2",
-                                    style={"background": "#06C755", "color": "white", "cursor": "pointer"},
+                                    style={
+                                        "flex": "1",
+                                        "text-align": "center",
+                                        "font-size": "14px",
+                                        "font-weight": "700",
+                                        "color": "white",
+                                        "padding": "0 12px",
+                                    },
                                 ),
                                 href="/auth/line/connect",
-                                underline="none",
+                                style={
+                                    "display": "flex",
+                                    "align-items": "center",
+                                    "height": "38px",
+                                    "background": "#06C755",
+                                    "border-radius": "5px",
+                                    "text-decoration": "none",
+                                    "overflow": "hidden",
+                                    "cursor": "pointer",
+                                    "transition": "filter 0.15s ease",
+                                    "_hover": {"filter": "brightness(0.9)"},
+                                    "_active": {"filter": "brightness(0.7)"},
+                                },
                             ),
                             spacing="2",
                             align_items="start",
@@ -720,17 +938,7 @@ def notification_tab() -> rx.Component:
         # ステークアドレスごとの通知設定
         rx.cond(
             AuthState.is_stake_addresses_empty,
-            rx.box(
-                rx.text(
-                    AuthState.t["notification_tab_no_stake"],
-                    size="3",
-                    color="var(--gray-8)",
-                ),
-                padding="16px",
-                border_radius="10px",
-                border=f"1px solid {rx.color('gray', 4)}",
-                width="100%",
-            ),
+            stake_notification_empty_preview(),
             rx.box(
                 rx.vstack(
                     rx.text(AuthState.t["notification_tab_per_addr_title"], size="4", weight="bold"),

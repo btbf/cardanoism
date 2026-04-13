@@ -112,14 +112,16 @@ def flex_and_log(line_id: str, user_id: int, event_type: str, dedup_key: str, al
 # ============================================================
 
 def get_users_with_event(event_type: str) -> list[dict]:
-    """指定イベントが有効でLINE IDを持つユーザー一覧。"""
+    """指定イベントが有効でLINE通知チャンネルを持つユーザー一覧。"""
     with get_db() as (cursor, _):
         cursor.execute(
             """
-            SELECT u.id, u.line_id, COALESCE(u.language, 'ja') AS language
+            SELECT u.id, nc.channel_value AS line_notify_id, COALESCE(u.language, 'ja') AS language
             FROM users u
             JOIN notification_settings ns ON u.id = ns.user_id
-            WHERE ns.event_type = ? AND ns.enabled = 1 AND u.line_id IS NOT NULL
+            JOIN notification_channels nc ON u.id = nc.user_id
+              AND nc.channel_type = 'line' AND nc.enabled = 1
+            WHERE ns.event_type = ? AND ns.enabled = 1
             """,
             (event_type,),
         )
@@ -135,11 +137,14 @@ def get_stake_addrs_with_event(event_type: str) -> list[dict]:
                    sa.role, sa.created_at,
                    sa.delegated_pool_id, sa.delegated_pool_name,
                    sa.delegated_drep_id, sa.delegated_drep_name,
-                   u.id AS user_id, u.line_id, COALESCE(u.language, 'ja') AS language
+                   u.id AS user_id, nc.channel_value AS line_notify_id,
+                   COALESCE(u.language, 'ja') AS language
             FROM stake_addresses sa
             JOIN users u ON sa.user_id = u.id
+            JOIN notification_channels nc ON u.id = nc.user_id
+              AND nc.channel_type = 'line' AND nc.enabled = 1
             JOIN stake_notification_settings sns ON sa.id = sns.stake_address_id
-            WHERE sns.event_type = ? AND sns.enabled = 1 AND u.line_id IS NOT NULL
+            WHERE sns.event_type = ? AND sns.enabled = 1
             """,
             (event_type,),
         )
@@ -180,7 +185,7 @@ def check_epoch_start():
         lang = user.get("language", "ja")
         alt_text = f"【Cardanoism】新しいエポック（Epoch {epoch}）が始まりました" if lang == "ja" else f"[Cardanoism] New epoch started (Epoch {epoch})"
         contents = line_flex.epoch_start(epoch, CARDANOISM_URL, lang=lang)
-        flex_and_log(user["line_id"], user["id"], "epoch_start", dedup_key, alt_text, contents)
+        flex_and_log(user["line_notify_id"], user["id"], "epoch_start", dedup_key, alt_text, contents)
 
 
 # ============================================================
@@ -237,7 +242,7 @@ def _apy_line(apy: float | None) -> str:
 def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float | None = None):
     stake_id = addr["stake_id"]
     user_id = addr["user_id"]
-    line_id = addr["line_id"]
+    line_id = addr["line_notify_id"]
     lang = addr.get("language", "ja")
     pool_name = addr.get("delegated_pool_name") or (addr.get("delegated_pool_id") or "")[:12]
     nickname = addr["nickname"]
@@ -336,7 +341,7 @@ def _check_pool_reward_received(addr: dict):
     """
     stake_id = addr["stake_id"]
     user_id = addr["user_id"]
-    line_id = addr["line_id"]
+    line_id = addr["line_notify_id"]
     lang = addr.get("language", "ja")
     pool_name = addr.get("delegated_pool_name") or (addr.get("delegated_pool_id") or "")[:12]
     nickname = addr["nickname"]
@@ -439,7 +444,7 @@ def _check_pool_delegation_reminder():
                 continue
             alt_text = f"【Cardanoism】委任から{milestone}日が経過しました。委任先プールを確認しましょう" if lang == "ja" else f"[Cardanoism] {milestone} days since delegation. Please check your pool."
             contents = line_flex.pool_delegation_reminder(pool_name, milestone, apy, addr["nickname"], CARDANOISM_URL, lang=lang)
-            flex_and_log(addr["line_id"], addr["user_id"], "pool_delegation_reminder", dedup_key, alt_text, contents)
+            flex_and_log(addr["line_notify_id"], addr["user_id"], "pool_delegation_reminder", dedup_key, alt_text, contents)
 
 
 def _check_drep_delegation_reminder():
@@ -467,7 +472,7 @@ def _check_drep_delegation_reminder():
                 continue
             alt_text = f"【Cardanoism】委任から{milestone}日が経過しました。委任先DRepを確認しましょう" if lang == "ja" else f"[Cardanoism] {milestone} days since delegation. Please check your DRep."
             contents = line_flex.drep_delegation_reminder(drep_name, milestone, addr["nickname"], f"{CARDANOISM_URL}/governance", lang=lang)
-            flex_and_log(addr["line_id"], addr["user_id"], "drep_delegation_reminder", dedup_key, alt_text, contents)
+            flex_and_log(addr["line_notify_id"], addr["user_id"], "drep_delegation_reminder", dedup_key, alt_text, contents)
 
 
 def check_drep_events():
@@ -499,7 +504,7 @@ def _check_drep_new_governance_action():
 
     for addr in get_stake_addrs_with_event("drep_new_governance_action"):
         user_id = addr["user_id"]
-        line_id = addr["line_id"]
+        line_id = addr["line_notify_id"]
         lang = addr.get("language", "ja")
         dedup_key = f"new_gov_{latest_key}_{addr['stake_id']}"
         if already_sent(user_id, "drep_new_governance_action", dedup_key):
@@ -516,7 +521,7 @@ def _check_drep_vote():
             continue
         stake_id = addr["stake_id"]
         user_id = addr["user_id"]
-        line_id = addr["line_id"]
+        line_id = addr["line_notify_id"]
         lang = addr.get("language", "ja")
         drep_name = addr.get("delegated_drep_name") or drep_id[:12]
 
@@ -559,7 +564,7 @@ def _check_drep_status_change():
             continue
         stake_id = addr["stake_id"]
         user_id = addr["user_id"]
-        line_id = addr["line_id"]
+        line_id = addr["line_notify_id"]
         lang = addr.get("language", "ja")
         drep_name = addr.get("delegated_drep_name") or drep_id[:12]
 
@@ -591,32 +596,45 @@ def _check_drep_status_change():
 # ============================================================
 
 def list_users():
-    """LINE ID が設定されているユーザー一覧を表示する。"""
+    """LINE 通知チャンネルが設定されているユーザー一覧を表示する。"""
     with get_db() as (cursor, _):
         cursor.execute(
-            "SELECT id, username, email, line_id FROM users WHERE line_id IS NOT NULL ORDER BY id"
+            """
+            SELECT u.id, u.username, u.email, nc.channel_value AS line_notify_id
+            FROM users u
+            JOIN notification_channels nc ON u.id = nc.user_id AND nc.channel_type = 'line'
+            ORDER BY u.id
+            """
         )
         rows = cursor.fetchall()
     if not rows:
-        print("LINE ID が設定されているユーザーはいません")
+        print("LINE 通知チャンネルが設定されているユーザーはいません")
         return
     print(f"{'ID':>4}  {'ユーザー名':<20}  {'メール':<30}  LINE ID")
     print("-" * 80)
     for row in rows:
-        line_id_masked = row["line_id"][:6] + "..." if row["line_id"] else "-"
+        line_id_masked = row["line_notify_id"][:6] + "..." if row["line_notify_id"] else "-"
         print(f"{row['id']:>4}  {(row['username'] or ''):<20}  {(row['email'] or ''):<30}  {line_id_masked}")
 
 
 def _get_user_info(user_id: int) -> dict | None:
     with get_db() as (cursor, _):
-        cursor.execute("SELECT line_id, COALESCE(language, 'ja') AS language FROM users WHERE id = ?", (user_id,))
+        cursor.execute(
+            """
+            SELECT nc.channel_value AS line_notify_id, COALESCE(u.language, 'ja') AS language
+            FROM users u
+            LEFT JOIN notification_channels nc ON u.id = nc.user_id AND nc.channel_type = 'line' AND nc.enabled = 1
+            WHERE u.id = ?
+            """,
+            (user_id,),
+        )
         row = cursor.fetchone()
         return dict(row) if row else None
 
 
 def _get_line_id_for_user(user_id: int) -> str | None:
     info = _get_user_info(user_id)
-    return info["line_id"] if info else None
+    return info["line_notify_id"] if info else None
 
 
 def _get_user_enabled_events(user_id: int) -> dict[str, list]:
@@ -667,10 +685,10 @@ def _get_user_enabled_events(user_id: int) -> dict[str, list]:
 def send_test_enabled(user_id: int):
     """ユーザーの ON イベントをすべてダミーデータでテスト送信する。"""
     user_info = _get_user_info(user_id)
-    if not user_info or not user_info.get("line_id"):
-        logger.error("ユーザー %d が見つからないか LINE ID が未設定です", user_id)
+    if not user_info or not user_info.get("line_notify_id"):
+        logger.error("ユーザー %d が見つからないか LINE 通知チャンネルが未設定です", user_id)
         return
-    line_id = user_info["line_id"]
+    line_id = user_info["line_notify_id"]
     _DUMMY["_lang"] = user_info.get("language", "ja")
 
     enabled = _get_user_enabled_events(user_id)
@@ -833,10 +851,10 @@ def _build_dummy_flex(ev: str) -> tuple[str, dict] | None:
 def send_test_event(user_id: int, event: str):
     """指定イベントのダミー通知を Flex で送信する。"""
     user_info = _get_user_info(user_id)
-    if not user_info or not user_info.get("line_id"):
-        logger.error("ユーザー %d が見つからないか LINE ID が未設定です", user_id)
+    if not user_info or not user_info.get("line_notify_id"):
+        logger.error("ユーザー %d が見つからないか LINE 通知チャンネルが未設定です", user_id)
         return
-    line_id = user_info["line_id"]
+    line_id = user_info["line_notify_id"]
     _DUMMY["_lang"] = user_info.get("language", "ja")
 
     targets = _ALL_TEST_EVENTS if event == "all" else [event]

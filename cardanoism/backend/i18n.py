@@ -93,6 +93,12 @@ UI_JA: dict[str, str] = {
     "err_duplicate": "このステークアドレスはすでに登録されています",
     "err_limit": "登録できるステークアドレスは最大3件です",
 
+    # 通知チャンネル選択
+    "notification_channel_title": "通知チャンネル",
+    "notification_channel_desc": "通知を受け取るチャンネルをON/OFFで選択してください。",
+    "notification_channel_email": "メール通知",
+    "notification_channel_line": "LINE通知",
+
     # 通知管理タブ
     "notification_tab_line_title": "LINE通知連携",
     "notification_tab_line_connected": "LINE通知連携済みです。",
@@ -165,6 +171,12 @@ UI_EN: dict[str, str] = {
     "err_stake_not_found": "Could not retrieve stake address (enterprise addresses are not supported)",
     "err_duplicate": "This stake address is already registered",
     "err_limit": "You can register up to 3 stake addresses",
+
+    # Notification channels
+    "notification_channel_title": "Notification Channels",
+    "notification_channel_desc": "Select which channels you want to receive notifications through.",
+    "notification_channel_email": "Email Notifications",
+    "notification_channel_line": "LINE Notifications",
 
     # Notification tab
     "notification_tab_line_title": "LINE Notifications",

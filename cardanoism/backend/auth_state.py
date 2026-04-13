@@ -1,9 +1,6 @@
 """
 auth_state.py
-LINE OAuthフロー・セッション管理・マイページデータを一元管理するReflex State
-
-セッショントークンは rx.LocalStorage で永続化する。
-（FastAPIルート不要・Reflexページだけで完結）
+ログイン状態・ユーザー情報・OAuthフロー・マイページデータを管理するReflex State
 """
 import os
 import re
@@ -16,7 +13,8 @@ import reflex as rx
 from cardanoism.backend.koios import detect_stake_role, get_stake_address_from_addr
 from cardanoism.backend.auth_db import (
     get_user_by_session,
-    get_or_create_user_by_line,
+    get_or_create_user_by_provider,
+    get_user_providers,
     create_session,
     delete_session,
     update_user_profile,
@@ -34,8 +32,10 @@ from cardanoism.backend.auth_db import (
     get_stake_notification_settings,
     update_stake_notification_setting,
     update_language,
-    update_line_id,
-    get_user_by_line_id,
+    get_notification_channels,
+    upsert_notification_channel,
+    set_channel_enabled,
+    remove_notification_channel,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,11 @@ logger = logging.getLogger(__name__)
 LINE_CLIENT_ID = os.getenv("LINE_CLIENT_ID", "")
 LINE_CLIENT_SECRET = os.getenv("LINE_CLIENT_SECRET", "")
 LINE_REDIRECT_URI = os.getenv("LINE_REDIRECT_URI", "")
+
+
+def _env(key: str) -> str:
+    """環境変数を呼び出し時に取得する。"""
+    return os.getenv(key, "")
 
 
 class AuthState(rx.State):
@@ -56,12 +61,20 @@ class AuthState(rx.State):
     username: str = ""
     avatar_url: str = ""
     email: str = ""
-    line_id: str = ""
     is_logged_in: bool = False
 
-    # LINE OAuth CSRF用 state
+    # 認証プロバイダ（どのSNSでログインしているか）
+    auth_providers: list[str] = []  # ["line", "google", "twitter"]
+
+    # 通知チャンネル
+    line_notify_channel: str = ""    # LINE通知送信先 (LINE user ID)
+    email_notify_channel: str = ""   # メール通知送信先
+    line_notify_enabled: bool = True
+    email_notify_enabled: bool = True
+
+    # OAuth CSRF用 state（全プロバイダ共通）
     oauth_state: str = ""
-    oauth_mode: str = "login"  # "login" | "connect"
+    _twitter_code_verifier: str = ""  # Twitter PKCE用（バックエンド専用）
 
     # プロフィール編集用
     edit_username: str = ""
@@ -80,33 +93,28 @@ class AuthState(rx.State):
 
     # お気に入り（catalyst）
     favorites: list[dict] = []
-    favorite_ids: list[str] = []  # カード表示用のUUIDリスト
+    favorite_ids: list[str] = []
     favorites_fund_filter: str = "all"
     favorites_status_filter: str = "all"
     favorites_sort: str = "amount_desc"
     favorites_page: int = 1
 
-    # ユーザー全体の通知設定（epoch_start など）
+    # 通知設定（イベントON/OFF）
     notification_settings: dict[str, bool] = {}
     notification_frequency: str = "instant"
 
     # ステークアドレスごとの通知設定
-    # key: "{stake_address_id}:{event_type}", value: bool
     stake_notification_settings: dict[str, bool] = {}
 
     # 言語設定
     language: str = "ja"
-    _lang_manually_set: bool = False  # ユーザーが手動切替したか（自動検出を上書きしない）
+    _lang_manually_set: bool = False
 
-    # ログインモーダル表示フラグ
+    # ログインモーダル
     show_login_modal: bool = False
 
-    # コールバック処理中のエラー
+    # コールバックエラー
     auth_error: str = ""
-
-    # ============================================================
-    # 認証チェック
-    # ============================================================
 
     # ============================================================
     # 多言語対応
@@ -114,18 +122,15 @@ class AuthState(rx.State):
 
     @rx.var
     def t(self) -> dict[str, str]:
-        """UI テキスト辞書（言語に応じて切り替わる）。"""
         from cardanoism.backend.i18n import UI_EN, UI_JA
         return UI_EN if self.language == "en" else UI_JA
 
     @rx.var
     def notification_labels(self) -> dict[str, str]:
-        """通知イベントラベル辞書（言語に応じて切り替わる）。"""
         from cardanoism.backend.i18n import NOTIFICATION_LABELS_EN, NOTIFICATION_LABELS_JA
         return NOTIFICATION_LABELS_EN if self.language == "en" else NOTIFICATION_LABELS_JA
 
     def set_language(self, lang: str):
-        """ユーザーが手動で言語を切り替える（自動検出より優先）。"""
         if lang not in ("ja", "en"):
             return
         self.language = lang
@@ -134,14 +139,12 @@ class AuthState(rx.State):
             update_language(self.user_id, lang)
 
     def on_browser_language_detected(self, browser_lang: str):
-        """rx.call_script のコールバック。手動切替済みなら無視。"""
         if self._lang_manually_set or self.is_logged_in:
             return
         detected = "ja" if (browser_lang or "").lower().startswith("ja") else "en"
         self.language = detected
 
     def detect_browser_language(self):
-        """ブラウザの優先言語を取得して言語設定に反映する。"""
         if self._lang_manually_set or self.is_logged_in:
             return
         return rx.call_script(
@@ -154,7 +157,7 @@ class AuthState(rx.State):
     # ============================================================
 
     def check_auth(self):
-        """session_token（LocalStorage）からユーザー情報をStateに反映する。"""
+        """session_token からユーザー情報を復元する。"""
         if not self.session_token:
             self.is_logged_in = False
             return
@@ -165,15 +168,45 @@ class AuthState(rx.State):
             self.username = user["username"]
             self.avatar_url = user.get("avatar_url") or ""
             self.email = user.get("email") or ""
-            self.line_id = user.get("line_id") or ""
             self.notification_frequency = user.get("notification_frequency") or "instant"
             self.language = user.get("language") or "ja"
             self.is_logged_in = True
             self.favorite_ids = [s for s in get_favorite_ids(self.user_id) if isinstance(s, str) and s]
+            self._load_providers_and_channels()
         else:
-            # 期限切れ or 無効
             self.session_token = ""
             self.is_logged_in = False
+
+    def _load_providers_and_channels(self):
+        """プロバイダ一覧と通知チャンネルを state に反映する。"""
+        providers = get_user_providers(self.user_id)
+        self.auth_providers = [p["provider"] for p in providers]
+
+        self.line_notify_channel = ""
+        self.email_notify_channel = ""
+        self.line_notify_enabled = True
+        self.email_notify_enabled = True
+
+        for ch in get_notification_channels(self.user_id):
+            if ch["channel_type"] == "line":
+                self.line_notify_channel = ch["channel_value"]
+                self.line_notify_enabled = bool(ch["enabled"])
+            elif ch["channel_type"] == "email":
+                self.email_notify_channel = ch["channel_value"]
+                self.email_notify_enabled = bool(ch["enabled"])
+
+    def _apply_login(self, user: dict, session_token: str):
+        """ログイン後の state をまとめてセットする。"""
+        self.session_token = session_token
+        self.user_id = user["id"]
+        self.username = user["username"]
+        self.avatar_url = user.get("avatar_url") or ""
+        self.email = user.get("email") or ""
+        self.notification_frequency = user.get("notification_frequency") or "instant"
+        self.language = user.get("language") or "ja"
+        self.is_logged_in = True
+        self.oauth_state = ""
+        self._load_providers_and_channels()
 
     def open_login_modal(self):
         self.show_login_modal = True
@@ -187,47 +220,45 @@ class AuthState(rx.State):
 
     def start_line_login(self):
         """LINE認証ページへリダイレクトする。"""
-        state = secrets.token_urlsafe(16)
-        self.oauth_state = state
-        self.oauth_mode = "login"
+        csrf = secrets.token_urlsafe(16)
+        self.oauth_state = csrf
+        state_param = f"login.{csrf}"
 
         auth_url = (
             "https://access.line.me/oauth2/v2.1/authorize"
             f"?response_type=code"
             f"&client_id={LINE_CLIENT_ID}"
             f"&redirect_uri={LINE_REDIRECT_URI}"
-            f"&state={state}"
+            f"&state={state_param}"
             f"&scope=profile%20openid%20email"
         )
         return rx.redirect(auth_url)
 
     def start_line_connect(self):
         """LINE通知連携用OAuth（ログイン済みユーザー専用）。"""
+        if not self.is_logged_in and self.session_token:
+            self.check_auth()
         if not self.is_logged_in:
             self.show_login_modal = True
             return
-        state = secrets.token_urlsafe(16)
-        self.oauth_state = state
-        self.oauth_mode = "connect"
+        csrf = secrets.token_urlsafe(16)
+        self.oauth_state = csrf
+        state_param = f"connect.{csrf}"
 
         auth_url = (
             "https://access.line.me/oauth2/v2.1/authorize"
             f"?response_type=code"
             f"&client_id={LINE_CLIENT_ID}"
             f"&redirect_uri={LINE_REDIRECT_URI}"
-            f"&state={state}"
+            f"&state={state_param}"
             f"&scope=profile"
         )
         return rx.redirect(auth_url)
 
     def handle_line_callback(self):
-        """
-        /auth/line/callback の on_load で呼ばれる。
-        URLのクエリパラメータからcode・stateを取得してOAuth処理を行う。
-        """
+        """LINE OAuth コールバック処理。state パラメータに mode を埋め込む。"""
         import requests as http_requests
 
-        # クエリパラメータを解析
         raw_path = self.router.page.raw_path
         parsed = urlparse(raw_path)
         params = parse_qs(parsed.query)
@@ -240,14 +271,20 @@ class AuthState(rx.State):
             self.auth_error = "LINEログインがキャンセルされました"
             return rx.redirect("/login?error=line_denied")
 
-        # state検証（CSRF対策）
-        if not state or state != self.oauth_state:
-            logger.warning("OAuth state mismatch: got=%s expected=%s", state, self.oauth_state)
-            self.auth_error = "セキュリティエラーが発生しました"
-            return rx.redirect("/login?error=state_mismatch")
+        # state から mode と csrf を分離
+        oauth_mode = "login"
+        csrf_token = state
+        if state and "." in state:
+            parts = state.split(".", 1)
+            oauth_mode = parts[0] if parts[0] in ("login", "connect") else "login"
+            csrf_token = parts[1]
+
+        if not csrf_token or csrf_token != self.oauth_state:
+            logger.warning("LINE OAuth state mismatch: got=%s expected=%s", csrf_token, self.oauth_state)
+            dest = "/mypage?tab=notification&error=state_mismatch" if oauth_mode == "connect" else "/login?error=state_mismatch"
+            return rx.redirect(dest)
 
         if not code:
-            self.auth_error = "認証コードが取得できませんでした"
             return rx.redirect("/login?error=no_code")
 
         # アクセストークン取得
@@ -266,13 +303,11 @@ class AuthState(rx.State):
             token_resp.raise_for_status()
             token_data = token_resp.json()
         except Exception as e:
-            logger.error("Token exchange failed: %s", e)
-            self.auth_error = "LINEとの認証に失敗しました"
+            logger.error("LINE token exchange failed: %s", e)
             return rx.redirect("/login?error=token_error")
 
         access_token = token_data.get("access_token")
         if not access_token:
-            self.auth_error = "アクセストークンが取得できませんでした"
             return rx.redirect("/login?error=token_error")
 
         # プロフィール取得
@@ -285,8 +320,7 @@ class AuthState(rx.State):
             profile_resp.raise_for_status()
             profile = profile_resp.json()
         except Exception as e:
-            logger.error("Profile fetch failed: %s", e)
-            self.auth_error = "LINEプロフィールの取得に失敗しました"
+            logger.error("LINE profile fetch failed: %s", e)
             return rx.redirect("/login?error=profile_error")
 
         line_id = profile.get("userId", "")
@@ -294,30 +328,145 @@ class AuthState(rx.State):
         picture_url = profile.get("pictureUrl", "")
 
         if not line_id:
-            dest = "/mypage?tab=notification&error=no_user_id" if self.oauth_mode == "connect" else "/login?error=no_user_id"
+            dest = "/mypage?tab=notification&error=no_user_id" if oauth_mode == "connect" else "/login?error=no_user_id"
             self.oauth_state = ""
             return rx.redirect(dest)
 
-        # ── connect モード: 現在のユーザーに line_id を紐付ける ──
-        if self.oauth_mode == "connect":
+        # ── connect モード: 通知チャンネルのみ更新 ──
+        if oauth_mode == "connect":
             self.oauth_state = ""
-            self.oauth_mode = "login"
-            if not self.is_logged_in:
-                return rx.redirect("/login")
-            existing = get_user_by_line_id(line_id)
-            if existing and existing["id"] != self.user_id:
-                return rx.redirect("/mypage?tab=notification&error=line_already_linked")
+            user_id = self.user_id
+            if not user_id and self.session_token:
+                db_user = get_user_by_session(self.session_token)
+                if db_user:
+                    user_id = db_user["id"]
+                    self.user_id = user_id
+                    self.is_logged_in = True
+            if not user_id:
+                return rx.redirect("/login?error=session_expired")
             try:
-                update_line_id(self.user_id, line_id)
-                self.line_id = line_id
+                upsert_notification_channel(user_id, "line", line_id)
+                self.line_notify_channel = line_id
+                self.line_notify_enabled = True
             except Exception as e:
-                logger.error("update_line_id failed: %s", e)
+                logger.error("upsert_notification_channel failed: %s", e)
                 return rx.redirect("/mypage?tab=notification&error=db_error")
             return rx.redirect("/mypage?tab=notification&connected=line")
 
         # ── login モード: ユーザー取得 or 作成 ──
         try:
-            user = get_or_create_user_by_line(line_id, display_name, picture_url)
+            user = get_or_create_user_by_provider("line", line_id, display_name, picture_url)
+        except Exception as e:
+            logger.error("DB error: %s", e)
+            return rx.redirect("/login?error=db_error")
+
+        # 既存ユーザーでも LINE 通知チャンネルを確実に登録する
+        try:
+            upsert_notification_channel(user["id"], "line", line_id)
+        except Exception as e:
+            logger.warning("LINE notification channel upsert failed: %s", e)
+
+        try:
+            token = create_session(user["id"])
+        except Exception as e:
+            logger.error("Session creation failed: %s", e)
+            return rx.redirect("/login?error=session_error")
+
+        self._apply_login(user, token)
+        return rx.redirect("/mypage")
+
+    def disconnect_line(self):
+        """LINE通知チャンネルを解除する。"""
+        if not self.is_logged_in:
+            return
+        remove_notification_channel(self.user_id, "line")
+        self.line_notify_channel = ""
+
+    # ============================================================
+    # Google OAuth フロー
+    # ============================================================
+
+    def start_google_login(self):
+        """Google認証ページへリダイレクトする。"""
+        csrf = secrets.token_urlsafe(16)
+        self.oauth_state = csrf
+
+        auth_url = (
+            "https://accounts.google.com/o/oauth2/v2/auth"
+            f"?response_type=code"
+            f"&client_id={_env('GOOGLE_CLIENT_ID')}"
+            f"&redirect_uri={_env('GOOGLE_REDIRECT_URI')}"
+            f"&state={csrf}"
+            f"&scope=openid%20email%20profile"
+        )
+        return rx.redirect(auth_url)
+
+    def handle_google_callback(self):
+        """Google OAuth コールバック処理。"""
+        import requests as http_requests
+
+        raw_path = self.router.page.raw_path
+        parsed = urlparse(raw_path)
+        params = parse_qs(parsed.query)
+
+        code = params.get("code", [""])[0]
+        state = params.get("state", [""])[0]
+        error = params.get("error", [""])[0]
+
+        if error:
+            return rx.redirect("/login?error=google_denied")
+
+        if not state or state != self.oauth_state:
+            logger.warning("Google OAuth state mismatch")
+            return rx.redirect("/login?error=state_mismatch")
+
+        if not code:
+            return rx.redirect("/login?error=no_code")
+
+        try:
+            token_resp = http_requests.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": _env("GOOGLE_REDIRECT_URI"),
+                    "client_id": _env("GOOGLE_CLIENT_ID"),
+                    "client_secret": _env("GOOGLE_CLIENT_SECRET"),
+                },
+                timeout=10,
+            )
+            token_resp.raise_for_status()
+            token_data = token_resp.json()
+        except Exception as e:
+            logger.error("Google token exchange failed: %s", e)
+            return rx.redirect("/login?error=token_error")
+
+        access_token = token_data.get("access_token")
+        if not access_token:
+            return rx.redirect("/login?error=token_error")
+
+        try:
+            profile_resp = http_requests.get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=10,
+            )
+            profile_resp.raise_for_status()
+            profile = profile_resp.json()
+        except Exception as e:
+            logger.error("Google profile fetch failed: %s", e)
+            return rx.redirect("/login?error=profile_error")
+
+        google_id = profile.get("sub", "")
+        display_name = profile.get("name", "Googleユーザー")
+        picture_url = profile.get("picture", "")
+        email = profile.get("email", "")
+
+        if not google_id:
+            return rx.redirect("/login?error=no_user_id")
+
+        try:
+            user = get_or_create_user_by_provider("google", google_id, display_name, picture_url, email)
         except Exception as e:
             logger.error("DB error: %s", e)
             return rx.redirect("/login?error=db_error")
@@ -328,21 +477,131 @@ class AuthState(rx.State):
             logger.error("Session creation failed: %s", e)
             return rx.redirect("/login?error=session_error")
 
-        self.session_token = token
-        self.user_id = user["id"]
-        self.username = user["username"]
-        self.avatar_url = user.get("avatar_url") or ""
-        self.email = user.get("email") or ""
-        self.line_id = user.get("line_id") or line_id
-        self.language = user.get("language") or "ja"
-        self.is_logged_in = True
-        self.oauth_state = ""
-        self.oauth_mode = "login"
-
+        self._apply_login(user, token)
         return rx.redirect("/mypage")
 
+    # ============================================================
+    # X (Twitter) OAuth 2.0 + PKCE フロー
+    # ============================================================
+
+    def start_twitter_login(self):
+        """X(Twitter)認証ページへリダイレクトする（PKCE）。"""
+        import hashlib
+        import base64
+
+        csrf = secrets.token_urlsafe(16)
+        code_verifier = secrets.token_urlsafe(64)
+        code_challenge = base64.urlsafe_b64encode(
+            hashlib.sha256(code_verifier.encode()).digest()
+        ).rstrip(b"=").decode()
+
+        self.oauth_state = csrf
+        self._twitter_code_verifier = code_verifier
+
+        auth_url = (
+            "https://twitter.com/i/oauth2/authorize"
+            f"?response_type=code"
+            f"&client_id={_env('TWITTER_CLIENT_ID')}"
+            f"&redirect_uri={_env('TWITTER_REDIRECT_URI')}"
+            f"&state={csrf}"
+            f"&scope=tweet.read%20users.read"
+            f"&code_challenge={code_challenge}"
+            f"&code_challenge_method=S256"
+        )
+        return rx.redirect(auth_url)
+
+    def handle_twitter_callback(self):
+        """X(Twitter) OAuth コールバック処理。"""
+        import base64
+        import requests as http_requests
+
+        raw_path = self.router.page.raw_path
+        parsed = urlparse(raw_path)
+        params = parse_qs(parsed.query)
+
+        code = params.get("code", [""])[0]
+        state = params.get("state", [""])[0]
+        error = params.get("error", [""])[0]
+
+        if error:
+            return rx.redirect("/login?error=twitter_denied")
+
+        if not state or state != self.oauth_state:
+            logger.warning("Twitter OAuth state mismatch")
+            return rx.redirect("/login?error=state_mismatch")
+
+        if not code:
+            return rx.redirect("/login?error=no_code")
+
+        try:
+            credentials = base64.b64encode(
+                f"{_env('TWITTER_CLIENT_ID')}:{_env('TWITTER_CLIENT_SECRET')}".encode()
+            ).decode()
+            token_resp = http_requests.post(
+                "https://api.twitter.com/2/oauth2/token",
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Authorization": f"Basic {credentials}",
+                },
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": _env("TWITTER_REDIRECT_URI"),
+                    "code_verifier": self._twitter_code_verifier,
+                },
+                timeout=10,
+            )
+            token_resp.raise_for_status()
+            token_data = token_resp.json()
+        except Exception as e:
+            logger.error("Twitter token exchange failed: %s", e)
+            return rx.redirect("/login?error=token_error")
+
+        access_token = token_data.get("access_token")
+        if not access_token:
+            return rx.redirect("/login?error=token_error")
+
+        try:
+            profile_resp = http_requests.get(
+                "https://api.twitter.com/2/users/me",
+                params={"user.fields": "name,profile_image_url"},
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=10,
+            )
+            profile_resp.raise_for_status()
+            profile_data = profile_resp.json().get("data", {})
+        except Exception as e:
+            logger.error("Twitter profile fetch failed: %s", e)
+            return rx.redirect("/login?error=profile_error")
+
+        twitter_id = profile_data.get("id", "")
+        display_name = profile_data.get("name", "Xユーザー")
+        picture_url = (profile_data.get("profile_image_url") or "").replace("_normal", "")
+
+        if not twitter_id:
+            return rx.redirect("/login?error=no_user_id")
+
+        try:
+            user = get_or_create_user_by_provider("twitter", twitter_id, display_name, picture_url)
+        except Exception as e:
+            logger.error("DB error: %s", e)
+            return rx.redirect("/login?error=db_error")
+
+        try:
+            token = create_session(user["id"])
+        except Exception as e:
+            logger.error("Session creation failed: %s", e)
+            return rx.redirect("/login?error=session_error")
+
+        self._apply_login(user, token)
+        self._twitter_code_verifier = ""
+        return rx.redirect("/mypage")
+
+    # ============================================================
+    # ログアウト
+    # ============================================================
+
     def logout(self):
-        """ログアウト処理。"""
         if self.session_token:
             try:
                 delete_session(self.session_token)
@@ -355,7 +614,9 @@ class AuthState(rx.State):
         self.username = ""
         self.avatar_url = ""
         self.email = ""
-        self.line_id = ""
+        self.auth_providers = []
+        self.line_notify_channel = ""
+        self.email_notify_channel = ""
         return rx.redirect("/")
 
     # ============================================================
@@ -380,14 +641,16 @@ class AuthState(rx.State):
     def save_profile(self):
         if not self.is_logged_in:
             return
+        # Googleログインユーザーはメール変更不可
+        email_to_save = self.email if "google" in self.auth_providers else (self.edit_email or None)
         update_user_profile(
             self.user_id,
             self.edit_username,
-            self.edit_email or None,
+            email_to_save,
             self.edit_avatar_url or None,
         )
         self.username = self.edit_username
-        self.email = self.edit_email
+        self.email = email_to_save or ""
         self.avatar_url = self.edit_avatar_url
         self.profile_saved = True
 
@@ -412,7 +675,6 @@ class AuthState(rx.State):
             return
         input_addr = self.new_stake_address.strip()
         nickname = self.new_stake_nickname.strip()
-        # フォーマットのみ即時バリデーション（API不要）
         from cardanoism.backend.i18n import get_ui as _get_ui
         _t = _get_ui(self.language)
         if not input_addr or not nickname:
@@ -421,11 +683,9 @@ class AuthState(rx.State):
         if not input_addr.startswith("addr") and not _is_valid_stake_address(input_addr):
             self.stake_error = _t["err_invalid_addr"]
             return
-        # ここで即時 yield → ボタンがローディング状態になる
         self.stake_error = ""
         self.stake_adding = True
         yield
-        # --- 以降は UI 更新後に実行 ---
         wallet_address = None
         if input_addr.startswith("addr"):
             address = get_stake_address_from_addr(input_addr)
@@ -444,8 +704,7 @@ class AuthState(rx.State):
             self.stake_addresses = get_stake_addresses(self.user_id)
             self._load_stake_notification_settings()
             self.stake_role_loading = True
-            yield  # アドレスを即時表示
-            # Koios API でロール・プール・DRep情報を取得
+            yield
             new_entry = next((a for a in self.stake_addresses if a["address"] == address), None)
             if new_entry:
                 info = detect_stake_role(address)
@@ -472,7 +731,6 @@ class AuthState(rx.State):
         self._load_stake_notification_settings()
 
     def _load_stake_notification_settings(self):
-        """全ステークアドレスの通知設定をフラットなdictに展開する。"""
         flat: dict[str, bool] = {}
         for addr in self.stake_addresses:
             addr_id = addr["id"]
@@ -482,7 +740,6 @@ class AuthState(rx.State):
         self.stake_notification_settings = flat
 
     def toggle_stake_notification(self, key: str):
-        """key = "{stake_address_id}:{event_type}" でON/OFFを切り替える。"""
         if not self.is_logged_in:
             return
         parts = key.split(":", 1)
@@ -500,14 +757,12 @@ class AuthState(rx.State):
     # ============================================================
 
     def toggle_favorite(self, proposal_uuid: str):
-        """カード上のハートボタンからお気に入りをトグルする。"""
         if not self.is_logged_in:
             self.show_login_modal = True
             return
         if not proposal_uuid:
             return
         if proposal_uuid in self.favorite_ids:
-            # UIを先に更新してからDB操作
             self.favorite_ids = [uid for uid in self.favorite_ids if uid != proposal_uuid]
             yield
             remove_favorite(self.user_id, proposal_uuid, "catalyst")
@@ -515,7 +770,6 @@ class AuthState(rx.State):
             self.favorite_ids = self.favorite_ids + [proposal_uuid]
             yield
             add_favorite(self.user_id, proposal_uuid, "catalyst")
-        # マイページ表示中のみ同期
         if self.favorites:
             self.favorites = get_favorites(self.user_id, "catalyst")
 
@@ -552,7 +806,6 @@ class AuthState(rx.State):
 
     @rx.var
     def filtered_favorites_all(self) -> list[dict]:
-        """フィルター・ソート済みの全件リスト（ページネーション前）。"""
         items = list(self.favorites)
         if self.favorites_fund_filter and self.favorites_fund_filter != "all":
             items = [f for f in items if str(f.get("fund_label", "")) == self.favorites_fund_filter]
@@ -566,7 +819,6 @@ class AuthState(rx.State):
 
     @rx.var
     def filtered_favorites(self) -> list[dict]:
-        """現在ページ分のみ返す。"""
         start = (self.favorites_page - 1) * 10
         return self.filtered_favorites_all[start:start + 10]
 
@@ -587,15 +839,24 @@ class AuthState(rx.State):
         return len(self.stake_addresses)
 
     # ============================================================
-    # 通知設定
+    # 通知チャンネル設定
     # ============================================================
 
-    def disconnect_line(self):
-        """LINE通知連携を解除する。"""
-        if not self.is_logged_in:
+    def set_line_notify_enabled(self, value: bool):
+        if not self.is_logged_in or not self.line_notify_channel:
             return
-        update_line_id(self.user_id, None)
-        self.line_id = ""
+        self.line_notify_enabled = value
+        set_channel_enabled(self.user_id, "line", value)
+
+    def set_email_notify_enabled(self, value: bool):
+        if not self.is_logged_in or not self.email_notify_channel:
+            return
+        self.email_notify_enabled = value
+        set_channel_enabled(self.user_id, "email", value)
+
+    # ============================================================
+    # 通知設定（イベントON/OFF）
+    # ============================================================
 
     def load_notification_settings(self):
         if self.is_logged_in:
@@ -620,7 +881,6 @@ class AuthState(rx.State):
     # ============================================================
 
     def load_mypage(self):
-        """マイページ on_load: 認証確認 + 全データ読み込み。"""
         self.check_auth()
         if not self.is_logged_in:
             self.show_login_modal = True
@@ -630,27 +890,25 @@ class AuthState(rx.State):
         self.favorites = get_favorites(self.user_id, "catalyst")
         self.notification_settings = get_notification_settings(self.user_id)
         self._load_stake_notification_settings()
-        # ?tab= クエリパラメータでタブを指定できる
         valid_tabs = {"favorites", "profile", "stake", "notification"}
         tab = self.router.page.params.get("tab", "favorites")
         self.active_tab = tab if tab in valid_tabs else "favorites"
 
 
-# bech32のデータ部で使用できる文字（小文字のみ）
+# ============================================================
+# バリデーション
+# ============================================================
+
 _BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
-# stake1  + 53文字 = 59文字（メインネット）
-# stake_test1 + 53文字 = 64文字（テストネット）
 _STAKE_ADDR_RE = re.compile(
     r"^stake(?:_test)?1[" + _BECH32_CHARSET + r"]{6,}$"
 )
 
 
 def _is_valid_stake_address(address: str) -> bool:
-    """Cardano ステークアドレスの簡易バリデーション（bech32形式チェック）。"""
     addr = address.strip().lower()
     if not _STAKE_ADDR_RE.match(addr):
         return False
-    # メインネット: 59文字、テストネット: 64文字
     if addr.startswith("stake_test1"):
         return len(addr) == 64
     return len(addr) == 59

@@ -6,7 +6,14 @@
       "WebFetch(domain:github.com)",
       "WebSearch",
       "WebFetch(domain:blockfrost.dev)",
-      "WebFetch(domain:www.postman.com)"
+      "WebFetch(domain:www.postman.com)",
+      "Bash(cp \"c:/Users/btbfc/Downloads/LINE_Login_Button_Image/Line_Login_Button_Image/images/DeskTop/2x/44dp/line_88.png\" \"c:/Users/btbfc/Documents/GitHub/cardanoism/assets/line-icon.png\")",
+      "Bash(cp \"c:/Users/btbfc/Downloads/LINE_Login_Button_Image/Line_Login_Button_Image/images/DeskTop/2x/44dp/btn_login_base.png\" \"c:/Users/btbfc/Documents/GitHub/cardanoism/assets/line-btn-base.png\")",
+      "Bash(cp \"c:/Users/btbfc/Downloads/LINE_Login_Button_Image/Line_Login_Button_Image/images/DeskTop/2x/44dp/btn_login_hover.png\" \"c:/Users/btbfc/Documents/GitHub/cardanoism/assets/line-btn-hover.png\")",
+      "Bash(cp \"c:/Users/btbfc/Downloads/LINE_Login_Button_Image/Line_Login_Button_Image/images/DeskTop/2x/44dp/btn_login_press.png\" \"c:/Users/btbfc/Documents/GitHub/cardanoism/assets/line-btn-press.png\")",
+      "Bash(python3 -c \"from PIL import Image; img=Image.open\\('c:/Users/btbfc/Documents/GitHub/cardanoism/assets/line-btn-base.png'\\); print\\('btn_login_base:', img.size\\)\")",
+      "Bash(python3 -c \"import struct,zlib; data=open\\('c:/Users/btbfc/Documents/GitHub/cardanoism/assets/line-btn-base.png','rb'\\).read\\(\\); w=struct.unpack\\('>I',data[16:20]\\)[0]; h=struct.unpack\\('>I',data[20:24]\\)[0]; print\\('btn_login_base size:', w, 'x', h\\)\")",
+      "Bash(python3 -c \"import struct; data=open\\('c:/Users/btbfc/Documents/GitHub/cardanoism/assets/line-icon.png','rb'\\).read\\(\\); w=struct.unpack\\('>I',data[16:20]\\)[0]; h=struct.unpack\\('>I',data[20:24]\\)[0]; print\\('line_88 size:', w, 'x', h\\)\")"
     ]
   }
 }

@@ -52,57 +52,15 @@ STAKE_NOTIFICATION_EVENT_TYPES = list(dict.fromkeys(
     + DREP_ONLY_NOTIFICATION_EVENT_TYPES
 ))
 
+_USER_SELECT = "SELECT id, username, email, avatar_url, notification_frequency, language FROM users"
+
 # ============================================================
-# ユーザー
+# ユーザー基本操作
 # ============================================================
-
-def get_or_create_user_by_line(
-    line_id: str,
-    username: str,
-    avatar_url: str = "",
-    email: str = "",
-) -> dict:
-    """LINE IDでユーザーを取得または新規作成する。"""
-    with get_db() as (cursor, conn):
-        cursor.execute(
-            "SELECT id, username, email, avatar_url, notification_frequency, language FROM users WHERE line_id = ?",
-            (line_id,),
-        )
-        row = cursor.fetchone()
-        if row:
-            return dict(row)
-
-        cursor.execute(
-            """
-            INSERT INTO users (username, email, avatar_url, line_id)
-            VALUES (?, ?, ?, ?)
-            """,
-            (username, email or None, avatar_url or None, line_id),
-        )
-        conn.commit()
-        user_id = cursor.lastrowid
-
-        # デフォルト通知設定を全イベント分作成（有効）
-        for event_type in NOTIFICATION_EVENT_TYPES:
-            cursor.execute(
-                "INSERT IGNORE INTO notification_settings (user_id, event_type, enabled) VALUES (?, ?, 1)",
-                (user_id, event_type),
-            )
-        conn.commit()
-
-        cursor.execute(
-            "SELECT id, username, email, avatar_url, notification_frequency, language FROM users WHERE id = ?",
-            (user_id,),
-        )
-        return dict(cursor.fetchone())
-
 
 def get_user_by_id(user_id: int) -> Optional[dict]:
     with get_db() as (cursor, _):
-        cursor.execute(
-            "SELECT id, username, email, avatar_url, notification_frequency, language FROM users WHERE id = ?",
-            (user_id,),
-        )
+        cursor.execute(f"{_USER_SELECT} WHERE id = ?", (user_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
 
@@ -115,13 +73,95 @@ def update_user_profile(
 ) -> None:
     with get_db() as (cursor, conn):
         cursor.execute(
-            """
-            UPDATE users SET username = ?, email = ?, avatar_url = ?
-            WHERE id = ?
-            """,
+            "UPDATE users SET username = ?, email = ?, avatar_url = ? WHERE id = ?",
             (username, email, avatar_url, user_id),
         )
         conn.commit()
+
+
+def _create_user(cursor, conn, username: str, avatar_url: str, email: str) -> int:
+    """users テーブルに新規ユーザーを作成して user_id を返す内部ヘルパー。"""
+    cursor.execute(
+        "INSERT INTO users (username, email, avatar_url) VALUES (?, ?, ?)",
+        (username, email or None, avatar_url or None),
+    )
+    conn.commit()
+    user_id = cursor.lastrowid
+    for event_type in NOTIFICATION_EVENT_TYPES:
+        cursor.execute(
+            "INSERT IGNORE INTO notification_settings (user_id, event_type, enabled) VALUES (?, ?, 1)",
+            (user_id, event_type),
+        )
+    conn.commit()
+    return user_id
+
+
+# ============================================================
+# プロバイダ管理（認証）
+# ============================================================
+
+def get_or_create_user_by_provider(
+    provider: str,
+    provider_id: str,
+    username: str,
+    avatar_url: str = "",
+    email: str = "",
+) -> dict:
+    """
+    provider/provider_id でユーザーを取得または新規作成する。
+    LINE ログイン時は LINE 通知チャンネルも自動作成する。
+    Google ログイン時はメール通知チャンネルも自動作成する。
+    """
+    with get_db() as (cursor, conn):
+        # 既存プロバイダ検索
+        cursor.execute(
+            f"""
+            {_USER_SELECT}
+            WHERE id = (
+              SELECT user_id FROM user_providers
+              WHERE provider = ? AND provider_id = ?
+            )
+            """,
+            (provider, provider_id),
+        )
+        row = cursor.fetchone()
+        if row:
+            return dict(row)
+
+        # 新規ユーザー作成
+        user_id = _create_user(cursor, conn, username, avatar_url, email)
+
+        # プロバイダ紐付け
+        cursor.execute(
+            "INSERT IGNORE INTO user_providers (user_id, provider, provider_id) VALUES (?, ?, ?)",
+            (user_id, provider, provider_id),
+        )
+
+        # 通知チャンネル自動作成
+        if provider == "line":
+            cursor.execute(
+                "INSERT IGNORE INTO notification_channels (user_id, channel_type, channel_value) VALUES (?, 'line', ?)",
+                (user_id, provider_id),
+            )
+        elif provider == "google" and email:
+            cursor.execute(
+                "INSERT IGNORE INTO notification_channels (user_id, channel_type, channel_value) VALUES (?, 'email', ?)",
+                (user_id, email),
+            )
+
+        conn.commit()
+        cursor.execute(f"{_USER_SELECT} WHERE id = ?", (user_id,))
+        return dict(cursor.fetchone())
+
+
+def get_user_providers(user_id: int) -> list[dict]:
+    """ユーザーに紐付いたプロバイダ一覧を返す。"""
+    with get_db() as (cursor, _):
+        cursor.execute(
+            "SELECT provider, provider_id FROM user_providers WHERE user_id = ?",
+            (user_id,),
+        )
+        return [dict(row) for row in cursor.fetchall()]
 
 
 # ============================================================
@@ -145,11 +185,12 @@ def get_user_by_session(session_token: str) -> Optional[dict]:
     """有効なセッショントークンからユーザー情報を返す。期限切れは削除する。"""
     with get_db() as (cursor, conn):
         cursor.execute(
-            """
-            SELECT u.id, u.username, u.email, u.avatar_url, u.notification_frequency, u.language, u.line_id
-            FROM user_sessions s
-            JOIN users u ON s.user_id = u.id
-            WHERE s.session_token = ? AND s.expires_at > NOW()
+            f"""
+            {_USER_SELECT}
+            WHERE id = (
+              SELECT user_id FROM user_sessions
+              WHERE session_token = ? AND expires_at > NOW()
+            )
             """,
             (session_token,),
         )
@@ -157,7 +198,6 @@ def get_user_by_session(session_token: str) -> Optional[dict]:
         if row:
             return dict(row)
 
-        # 期限切れセッションを削除
         cursor.execute(
             "DELETE FROM user_sessions WHERE session_token = ?",
             (session_token,),
@@ -171,6 +211,60 @@ def delete_session(session_token: str) -> None:
         cursor.execute(
             "DELETE FROM user_sessions WHERE session_token = ?",
             (session_token,),
+        )
+        conn.commit()
+
+
+# ============================================================
+# 通知チャンネル管理
+# ============================================================
+
+def get_notification_channels(user_id: int) -> list[dict]:
+    """ユーザーの通知チャンネル一覧を返す。"""
+    with get_db() as (cursor, _):
+        cursor.execute(
+            "SELECT channel_type, channel_value, enabled FROM notification_channels WHERE user_id = ?",
+            (user_id,),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def upsert_notification_channel(
+    user_id: int,
+    channel_type: str,
+    channel_value: str,
+    enabled: bool = True,
+) -> None:
+    """通知チャンネルを追加または更新する。"""
+    with get_db() as (cursor, conn):
+        cursor.execute(
+            """
+            INSERT INTO notification_channels (user_id, channel_type, channel_value, enabled)
+            VALUES (?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE channel_value = ?, enabled = ?
+            """,
+            (user_id, channel_type, channel_value, int(enabled),
+             channel_value, int(enabled)),
+        )
+        conn.commit()
+
+
+def set_channel_enabled(user_id: int, channel_type: str, enabled: bool) -> None:
+    """通知チャンネルの有効/無効を切り替える。"""
+    with get_db() as (cursor, conn):
+        cursor.execute(
+            "UPDATE notification_channels SET enabled = ? WHERE user_id = ? AND channel_type = ?",
+            (int(enabled), user_id, channel_type),
+        )
+        conn.commit()
+
+
+def remove_notification_channel(user_id: int, channel_type: str) -> None:
+    """通知チャンネルを削除する（LINE連携解除など）。"""
+    with get_db() as (cursor, conn):
+        cursor.execute(
+            "DELETE FROM notification_channels WHERE user_id = ? AND channel_type = ?",
+            (user_id, channel_type),
         )
         conn.commit()
 
@@ -228,7 +322,6 @@ def update_stake_address_role(
     pool_id: str | None = None,
     pool_name: str | None = None,
 ) -> None:
-    """ステークアドレスのroleと委任先DRep・プール情報を更新する。"""
     with get_db() as (cursor, conn):
         cursor.execute(
             """
@@ -244,7 +337,6 @@ def update_stake_address_role(
 
 
 def delete_stake_address(address_id: int, user_id: int) -> None:
-    """指定IDのステークアドレスを削除（user_idで所有確認）。"""
     with get_db() as (cursor, conn):
         cursor.execute(
             "DELETE FROM stake_addresses WHERE id = ? AND user_id = ?",
@@ -258,7 +350,6 @@ def delete_stake_address(address_id: int, user_id: int) -> None:
 # ============================================================
 
 def get_favorite_ids(user_id: int, type: str = "catalyst") -> list:
-    """お気に入りのproposal_uuidリストのみを返す（カード表示用）。"""
     with get_db() as (cursor, _):
         cursor.execute(
             "SELECT proposal_uuid FROM favorites WHERE user_id = ? AND type = ?",
@@ -317,11 +408,10 @@ def is_favorite(user_id: int, proposal_uuid: str, type: str = "catalyst") -> boo
 
 
 # ============================================================
-# 通知設定
+# 通知設定（イベントON/OFF）
 # ============================================================
 
 def get_notification_settings(user_id: int) -> dict:
-    """全イベントの通知ON/OFF設定を {event_type: enabled} の辞書で返す。"""
     with get_db() as (cursor, _):
         cursor.execute(
             "SELECT event_type, enabled FROM notification_settings WHERE user_id = ?",
@@ -329,8 +419,6 @@ def get_notification_settings(user_id: int) -> dict:
         )
         rows = cursor.fetchall()
         settings = {row["event_type"]: bool(row["enabled"]) for row in rows if row is not None}
-
-        # DBにない項目はデフォルトTrue
         for event_type in NOTIFICATION_EVENT_TYPES:
             if event_type not in settings:
                 settings[event_type] = True
@@ -338,7 +426,6 @@ def get_notification_settings(user_id: int) -> dict:
 
 
 def get_stake_notification_settings(stake_address_id: int) -> dict:
-    """ステークアドレスの通知設定を {event_type: enabled} の辞書で返す。"""
     with get_db() as (cursor, _):
         cursor.execute(
             "SELECT event_type, enabled FROM stake_notification_settings WHERE stake_address_id = ?",
@@ -391,36 +478,6 @@ def update_notification_frequency(user_id: int, frequency: str) -> None:
         cursor.execute(
             "UPDATE users SET notification_frequency = ? WHERE id = ?",
             (frequency, user_id),
-        )
-        conn.commit()
-
-
-def update_line_id(user_id: int, line_id: Optional[str]) -> None:
-    """line_id を更新する（None で切断）。"""
-    with get_db() as (cursor, conn):
-        cursor.execute(
-            "UPDATE users SET line_id = ? WHERE id = ?",
-            (line_id, user_id),
-        )
-        conn.commit()
-
-
-def get_user_by_line_id(line_id: str) -> Optional[dict]:
-    """line_id でユーザーを検索する（連携済み確認・重複チェック用）。"""
-    with get_db() as (cursor, _):
-        cursor.execute(
-            "SELECT id, username FROM users WHERE line_id = ?",
-            (line_id,),
-        )
-        row = cursor.fetchone()
-        return dict(row) if row else None
-
-
-def update_telegram_chat_id(user_id: int, telegram_chat_id: Optional[str]) -> None:
-    with get_db() as (cursor, conn):
-        cursor.execute(
-            "UPDATE users SET telegram_chat_id = ? WHERE id = ?",
-            (telegram_chat_id, user_id),
         )
         conn.commit()
 
