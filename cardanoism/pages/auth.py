@@ -43,6 +43,20 @@ def line_callback() -> rx.Component:
     )
 
 
+@rx.page(route="/auth/line/connect", on_load=AuthState.start_line_connect)
+def line_connect_redirect() -> rx.Component:
+    """LINE通知連携用OAuthへのリダイレクト画面。"""
+    return rx.center(
+        rx.vstack(
+            rx.spinner(size="3"),
+            rx.text("LINEへ接続中...", size="3", color="var(--gray-9)"),
+            spacing="3",
+            align="center",
+        ),
+        min_height="100vh",
+    )
+
+
 @rx.page(route="/auth/logout", on_load=AuthState.logout)
 def logout_page() -> rx.Component:
     """ログアウト処理中のローディング画面。"""

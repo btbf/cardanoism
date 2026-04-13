@@ -2,6 +2,8 @@ import reflex as rx
 from cardanoism.backend.auth_state import AuthState
 
 
+ACCENT = "#ffcf00"
+
 UNDERLINE_STYLE = {
     "textDecoration": "none",
     "display": "inline-block",
@@ -14,6 +16,19 @@ UNDERLINE_STYLE = {
 }
 
 HOVER_UNDERLINE = {"backgroundSize": "100% 2px", "backgroundColor": "unset"}
+
+
+def lang_toggle() -> rx.Component:
+    """言語切り替えプルダウン（グローバル）。"""
+    return rx.select.root(
+        rx.select.trigger(size="1"),
+        rx.select.content(
+            rx.select.item("日本語", value="ja"),
+            rx.select.item("English", value="en"),
+        ),
+        value=AuthState.language,
+        on_change=AuthState.set_language,
+    )
 
 
 def navbar_icons_item(text: str, url: str, disabled: bool) -> rx.Component:
@@ -111,6 +126,7 @@ def navbar_icons() -> rx.Component:
                     ),
                 ),
                 navbar_icons_item("ガバナンス", "/#", True),
+                lang_toggle(),
                 auth_area,
                 spacing="6",
                 padding_right="5px",
@@ -159,6 +175,8 @@ def navbar_icons() -> rx.Component:
                             ),
                         ),
                         navbar_icons_item("ガバナンス", "/#", True),
+                        rx.menu.separator(),
+                        rx.menu.item(lang_toggle()),
                         rx.cond(
                             AuthState.is_logged_in,
                             rx.fragment(

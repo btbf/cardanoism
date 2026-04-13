@@ -116,7 +116,7 @@ def get_users_with_event(event_type: str) -> list[dict]:
     with get_db() as (cursor, _):
         cursor.execute(
             """
-            SELECT u.id, u.line_id
+            SELECT u.id, u.line_id, COALESCE(u.language, 'ja') AS language
             FROM users u
             JOIN notification_settings ns ON u.id = ns.user_id
             WHERE ns.event_type = ? AND ns.enabled = 1 AND u.line_id IS NOT NULL
@@ -135,7 +135,7 @@ def get_stake_addrs_with_event(event_type: str) -> list[dict]:
                    sa.role, sa.created_at,
                    sa.delegated_pool_id, sa.delegated_pool_name,
                    sa.delegated_drep_id, sa.delegated_drep_name,
-                   u.id AS user_id, u.line_id
+                   u.id AS user_id, u.line_id, COALESCE(u.language, 'ja') AS language
             FROM stake_addresses sa
             JOIN users u ON sa.user_id = u.id
             JOIN stake_notification_settings sns ON sa.id = sns.stake_address_id
@@ -177,8 +177,9 @@ def check_epoch_start():
         dedup_key = f"epoch_{epoch}"
         if already_sent(user["id"], "epoch_start", dedup_key):
             continue
-        alt_text = f"【Cardanoism】新しいエポック（Epoch {epoch}）が始まりました"
-        contents = line_flex.epoch_start(epoch, CARDANOISM_URL)
+        lang = user.get("language", "ja")
+        alt_text = f"【Cardanoism】新しいエポック（Epoch {epoch}）が始まりました" if lang == "ja" else f"[Cardanoism] New epoch started (Epoch {epoch})"
+        contents = line_flex.epoch_start(epoch, CARDANOISM_URL, lang=lang)
         flex_and_log(user["line_id"], user["id"], "epoch_start", dedup_key, alt_text, contents)
 
 
@@ -237,6 +238,7 @@ def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float |
     stake_id = addr["stake_id"]
     user_id = addr["user_id"]
     line_id = addr["line_id"]
+    lang = addr.get("language", "ja")
     pool_name = addr.get("delegated_pool_name") or (addr.get("delegated_pool_id") or "")[:12]
     nickname = addr["nickname"]
 
@@ -247,8 +249,8 @@ def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float |
         dedup_key = f"pool_retire_{stake_id}_{retiring_epoch}"
         if already_sent(user_id, event_type, dedup_key):
             return
-        alt_text = f"【Cardanoism】委任先プール「{pool_name}」が Epoch {retiring_epoch} にリタイアします"
-        contents = line_flex.pool_retire(pool_name, retiring_epoch, nickname, CARDANOISM_URL)
+        alt_text = f"【Cardanoism】委任先プール「{pool_name}」が Epoch {retiring_epoch} にリタイアします" if lang == "ja" else f"[Cardanoism] Pool '{pool_name}' will retire at Epoch {retiring_epoch}"
+        contents = line_flex.pool_retire(pool_name, retiring_epoch, nickname, CARDANOISM_URL, lang=lang)
         flex_and_log(line_id, user_id, event_type, dedup_key, alt_text, contents)
 
     elif event_type == "pool_fee_change":
@@ -270,7 +272,7 @@ def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float |
         old_margin_pct = float(old_margin) * 100 if old_margin else 0
         fixed_ada = int(fixed) / 1_000_000 if fixed else 0
         old_fixed_ada = int(old_fixed) / 1_000_000 if old_fixed else 0
-        alt_text = f"【Cardanoism】委任先プール「{pool_name}」の手数料が変更されました"
+        alt_text = f"【Cardanoism】委任先プール「{pool_name}」の手数料が変更されました" if lang == "ja" else f"[Cardanoism] Pool '{pool_name}' fee has changed"
         contents = line_flex.pool_fee_change(
             pool_name=pool_name,
             old_margin_pct=old_margin_pct,
@@ -280,6 +282,7 @@ def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float |
             apy=apy,
             nickname=nickname,
             url=CARDANOISM_URL,
+            lang=lang,
         )
         ok = send_line_flex(line_id, alt_text, contents)
         if ok:
@@ -297,8 +300,8 @@ def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float |
             dedup_key = f"pool_saturation_{stake_id}_{int(sat_pct)}"
             if already_sent(user_id, event_type, dedup_key):
                 return
-            alt_text = f"【Cardanoism】委任先プール「{pool_name}」が飽和ラインを超えました（{sat_pct:.1f}%）"
-            contents = line_flex.pool_saturation(pool_name, sat_pct, apy, nickname, CARDANOISM_URL)
+            alt_text = f"【Cardanoism】委任先プール「{pool_name}」が飽和ラインを超えました（{sat_pct:.1f}%）" if lang == "ja" else f"[Cardanoism] Pool '{pool_name}' exceeded saturation ({sat_pct:.1f}%)"
+            contents = line_flex.pool_saturation(pool_name, sat_pct, apy, nickname, CARDANOISM_URL, lang=lang)
             flex_and_log(line_id, user_id, event_type, dedup_key, alt_text, contents)
         elif not is_saturated and was_saturated == "1":
             set_state("stake_address", stake_id, "pool_saturated", "0")
@@ -315,8 +318,8 @@ def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float |
                 return
             live_ada = live_pledge / 1_000_000
             pledged_ada = pledge / 1_000_000
-            alt_text = f"【Cardanoism】委任先プール「{pool_name}」の誓約が不足しています"
-            contents = line_flex.pool_pledge_shortage(pool_name, pledged_ada, live_ada, apy, nickname, CARDANOISM_URL)
+            alt_text = f"【Cardanoism】委任先プール「{pool_name}」の誓約が不足しています" if lang == "ja" else f"[Cardanoism] Pool '{pool_name}' has insufficient pledge"
+            contents = line_flex.pool_pledge_shortage(pool_name, pledged_ada, live_ada, apy, nickname, CARDANOISM_URL, lang=lang)
             flex_and_log(line_id, user_id, event_type, dedup_key, alt_text, contents)
         elif not is_short and was_short == "1":
             set_state("stake_address", stake_id, "pool_pledge_short", "0")
@@ -334,6 +337,7 @@ def _check_pool_reward_received(addr: dict):
     stake_id = addr["stake_id"]
     user_id = addr["user_id"]
     line_id = addr["line_id"]
+    lang = addr.get("language", "ja")
     pool_name = addr.get("delegated_pool_name") or (addr.get("delegated_pool_id") or "")[:12]
     nickname = addr["nickname"]
 
@@ -359,8 +363,8 @@ def _check_pool_reward_received(addr: dict):
         return
 
     apy = get_pool_apy(addr.get("delegated_pool_id") or "", reward_epoch)
-    alt_text = f"【Cardanoism】Epoch {reward_epoch} 分の報酬が入金されました"
-    contents = line_flex.pool_reward_received(reward_epoch, amount_ada, apy, nickname, CARDANOISM_URL)
+    alt_text = f"【Cardanoism】Epoch {reward_epoch} 分の報酬が入金されました" if lang == "ja" else f"[Cardanoism] Rewards for Epoch {reward_epoch} have arrived"
+    contents = line_flex.pool_reward_received(reward_epoch, amount_ada, apy, nickname, CARDANOISM_URL, lang=lang)
     flex_and_log(line_id, user_id, "pool_reward_received", dedup_key, alt_text, contents)
 
 
@@ -426,14 +430,15 @@ def _check_pool_delegation_reminder():
 
         pool_name = addr.get("delegated_pool_name") or pool_id[:12]
         apy = get_pool_apy(pool_id)
+        lang = addr.get("language", "ja")
         for milestone in REMINDER_MILESTONES:
             if days < milestone:
                 continue
             dedup_key = f"pool_remind_{addr['stake_id']}_{milestone}d"
             if already_sent(addr["user_id"], "pool_delegation_reminder", dedup_key):
                 continue
-            alt_text = f"【Cardanoism】委任から{milestone}日が経過しました。委任先プールを確認しましょう"
-            contents = line_flex.pool_delegation_reminder(pool_name, milestone, apy, addr["nickname"], CARDANOISM_URL)
+            alt_text = f"【Cardanoism】委任から{milestone}日が経過しました。委任先プールを確認しましょう" if lang == "ja" else f"[Cardanoism] {milestone} days since delegation. Please check your pool."
+            contents = line_flex.pool_delegation_reminder(pool_name, milestone, apy, addr["nickname"], CARDANOISM_URL, lang=lang)
             flex_and_log(addr["line_id"], addr["user_id"], "pool_delegation_reminder", dedup_key, alt_text, contents)
 
 
@@ -453,14 +458,15 @@ def _check_drep_delegation_reminder():
             continue
 
         drep_name = addr.get("delegated_drep_name") or drep_id[:12]
+        lang = addr.get("language", "ja")
         for milestone in REMINDER_MILESTONES:
             if days < milestone:
                 continue
             dedup_key = f"drep_remind_{addr['stake_id']}_{milestone}d"
             if already_sent(addr["user_id"], "drep_delegation_reminder", dedup_key):
                 continue
-            alt_text = f"【Cardanoism】委任から{milestone}日が経過しました。委任先DRepを確認しましょう"
-            contents = line_flex.drep_delegation_reminder(drep_name, milestone, addr["nickname"], CARDANOISM_URL)
+            alt_text = f"【Cardanoism】委任から{milestone}日が経過しました。委任先DRepを確認しましょう" if lang == "ja" else f"[Cardanoism] {milestone} days since delegation. Please check your DRep."
+            contents = line_flex.drep_delegation_reminder(drep_name, milestone, addr["nickname"], f"{CARDANOISM_URL}/governance", lang=lang)
             flex_and_log(addr["line_id"], addr["user_id"], "drep_delegation_reminder", dedup_key, alt_text, contents)
 
 
@@ -494,11 +500,12 @@ def _check_drep_new_governance_action():
     for addr in get_stake_addrs_with_event("drep_new_governance_action"):
         user_id = addr["user_id"]
         line_id = addr["line_id"]
+        lang = addr.get("language", "ja")
         dedup_key = f"new_gov_{latest_key}_{addr['stake_id']}"
         if already_sent(user_id, "drep_new_governance_action", dedup_key):
             continue
-        alt_text = f"【Cardanoism】新しいガバナンスアクションが提出されました: {proposal_type}"
-        contents = line_flex.drep_new_governance_action(proposal_type, f"{CARDANOISM_URL}/governance")
+        alt_text = f"【Cardanoism】新しいガバナンスアクションが提出されました: {proposal_type}" if lang == "ja" else f"[Cardanoism] New governance action submitted: {proposal_type}"
+        contents = line_flex.drep_new_governance_action(proposal_type, f"{CARDANOISM_URL}/governance", lang=lang)
         flex_and_log(line_id, user_id, "drep_new_governance_action", dedup_key, alt_text, contents)
 
 
@@ -510,6 +517,7 @@ def _check_drep_vote():
         stake_id = addr["stake_id"]
         user_id = addr["user_id"]
         line_id = addr["line_id"]
+        lang = addr.get("language", "ja")
         drep_name = addr.get("delegated_drep_name") or drep_id[:12]
 
         data = _post("/drep_votes", {"_drep_id": drep_id})
@@ -534,12 +542,13 @@ def _check_drep_vote():
             continue
 
         vote = (latest.get("vote") or "").lower()
-        vote_label = {"yes": "賛成", "no": "反対", "abstain": "棄権"}.get(vote, vote)
         proposal_tx_hash = latest.get("proposal_tx_hash") or ""
         proposal_index = latest.get("proposal_index") or 0
         proposal_title = get_proposal_title(proposal_tx_hash, proposal_index) if proposal_tx_hash else None
-        alt_text = f"【Cardanoism】委任先DRep「{drep_name}」が投票しました（{vote_label}）"
-        contents = line_flex.drep_vote(drep_name, vote_label, proposal_title, addr["nickname"], f"{CARDANOISM_URL}/governance")
+        vote_label_ja = {"yes": "賛成", "no": "反対", "abstain": "棄権"}.get(vote, vote)
+        vote_label_en = {"yes": "Yes", "no": "No", "abstain": "Abstain"}.get(vote, vote)
+        alt_text = f"【Cardanoism】委任先DRep「{drep_name}」が投票しました（{vote_label_ja}）" if lang == "ja" else f"[Cardanoism] Delegated DRep '{drep_name}' voted ({vote_label_en})"
+        contents = line_flex.drep_vote(drep_name, vote, proposal_title, addr["nickname"], f"{CARDANOISM_URL}/governance", lang=lang)
         flex_and_log(line_id, user_id, "drep_vote", dedup_key, alt_text, contents)
 
 
@@ -551,6 +560,7 @@ def _check_drep_status_change():
         stake_id = addr["stake_id"]
         user_id = addr["user_id"]
         line_id = addr["line_id"]
+        lang = addr.get("language", "ja")
         drep_name = addr.get("delegated_drep_name") or drep_id[:12]
 
         data = _post("/drep_info", {"_drep_ids": [drep_id]})
@@ -571,8 +581,8 @@ def _check_drep_status_change():
         if already_sent(user_id, "drep_status_change", dedup_key):
             continue
 
-        alt_text = f"【Cardanoism】委任先DRep「{drep_name}」のステータスが変わりました"
-        contents = line_flex.drep_status_change(drep_name, last_status, status, addr["nickname"], CARDANOISM_URL)
+        alt_text = f"【Cardanoism】委任先DRep「{drep_name}」のステータスが変わりました" if lang == "ja" else f"[Cardanoism] Delegated DRep '{drep_name}' status changed"
+        contents = line_flex.drep_status_change(drep_name, last_status, status, addr["nickname"], CARDANOISM_URL, lang=lang)
         flex_and_log(line_id, user_id, "drep_status_change", dedup_key, alt_text, contents)
 
 
@@ -597,11 +607,16 @@ def list_users():
         print(f"{row['id']:>4}  {(row['username'] or ''):<20}  {(row['email'] or ''):<30}  {line_id_masked}")
 
 
-def _get_line_id_for_user(user_id: int) -> str | None:
+def _get_user_info(user_id: int) -> dict | None:
     with get_db() as (cursor, _):
-        cursor.execute("SELECT line_id FROM users WHERE id = ?", (user_id,))
+        cursor.execute("SELECT line_id, COALESCE(language, 'ja') AS language FROM users WHERE id = ?", (user_id,))
         row = cursor.fetchone()
-        return row["line_id"] if row else None
+        return dict(row) if row else None
+
+
+def _get_line_id_for_user(user_id: int) -> str | None:
+    info = _get_user_info(user_id)
+    return info["line_id"] if info else None
 
 
 def _get_user_enabled_events(user_id: int) -> dict[str, list]:
@@ -651,10 +666,12 @@ def _get_user_enabled_events(user_id: int) -> dict[str, list]:
 
 def send_test_enabled(user_id: int):
     """ユーザーの ON イベントをすべてダミーデータでテスト送信する。"""
-    line_id = _get_line_id_for_user(user_id)
-    if not line_id:
+    user_info = _get_user_info(user_id)
+    if not user_info or not user_info.get("line_id"):
         logger.error("ユーザー %d が見つからないか LINE ID が未設定です", user_id)
         return
+    line_id = user_info["line_id"]
+    _DUMMY["_lang"] = user_info.get("language", "ja")
 
     enabled = _get_user_enabled_events(user_id)
 
@@ -732,6 +749,7 @@ _DUMMY = {
     "reward_epoch": 622,
     "amount_ada": 12.345678,
     "apy": 3.45,
+    "_lang": "ja",  # テスト送信時の言語（_get_user_info で上書きされる）
 }
 
 _ALL_TEST_EVENTS = [
@@ -752,70 +770,74 @@ _ALL_TEST_EVENTS = [
 def _build_dummy_flex(ev: str) -> tuple[str, dict] | None:
     """ダミーデータで (alt_text, contents) を返す。不明なイベントは None。"""
     d = _DUMMY
+    lang = d.get("_lang", "ja")
+    ja = lang == "ja"
     if ev == "epoch_start":
         return (
-            f"【Cardanoism】新しいエポック（Epoch {d['epoch']}）が始まりました",
-            line_flex.epoch_start(d["epoch"], CARDANOISM_URL),
+            f"【Cardanoism】新しいエポック（Epoch {d['epoch']}）が始まりました" if ja else f"[Cardanoism] New epoch started (Epoch {d['epoch']})",
+            line_flex.epoch_start(d["epoch"], CARDANOISM_URL, lang=lang),
         )
     if ev == "pool_retire":
         return (
-            f"【Cardanoism】委任先プール「{d['pool_name']}」が Epoch {d['epoch'] + 10} にリタイアします",
-            line_flex.pool_retire(d["pool_name"], d["epoch"] + 10, d["nickname"], CARDANOISM_URL),
+            f"【Cardanoism】委任先プール「{d['pool_name']}」が Epoch {d['epoch'] + 10} にリタイアします" if ja else f"[Cardanoism] Pool '{d['pool_name']}' will retire at Epoch {d['epoch'] + 10}",
+            line_flex.pool_retire(d["pool_name"], d["epoch"] + 10, d["nickname"], CARDANOISM_URL, lang=lang),
         )
     if ev == "pool_fee_change":
         return (
-            f"【Cardanoism】委任先プール「{d['pool_name']}」の手数料が変更されました",
-            line_flex.pool_fee_change(d["pool_name"], 1.0, 2.0, 340, 400, d["apy"], d["nickname"], CARDANOISM_URL),
+            f"【Cardanoism】委任先プール「{d['pool_name']}」の手数料が変更されました" if ja else f"[Cardanoism] Pool '{d['pool_name']}' fee has changed",
+            line_flex.pool_fee_change(d["pool_name"], 1.0, 2.0, 340, 400, d["apy"], d["nickname"], CARDANOISM_URL, lang=lang),
         )
     if ev == "pool_saturation":
         return (
-            f"【Cardanoism】委任先プール「{d['pool_name']}」が飽和ラインを超えました（108.3%）",
-            line_flex.pool_saturation(d["pool_name"], 108.3, d["apy"], d["nickname"], CARDANOISM_URL),
+            f"【Cardanoism】委任先プール「{d['pool_name']}」が飽和ラインを超えました（108.3%）" if ja else f"[Cardanoism] Pool '{d['pool_name']}' exceeded saturation (108.3%)",
+            line_flex.pool_saturation(d["pool_name"], 108.3, d["apy"], d["nickname"], CARDANOISM_URL, lang=lang),
         )
     if ev == "pool_pledge_shortage":
         return (
-            f"【Cardanoism】委任先プール「{d['pool_name']}」の誓約が不足しています",
-            line_flex.pool_pledge_shortage(d["pool_name"], 500_000, 480_000, d["apy"], d["nickname"], CARDANOISM_URL),
+            f"【Cardanoism】委任先プール「{d['pool_name']}」の誓約が不足しています" if ja else f"[Cardanoism] Pool '{d['pool_name']}' has insufficient pledge",
+            line_flex.pool_pledge_shortage(d["pool_name"], 500_000, 480_000, d["apy"], d["nickname"], CARDANOISM_URL, lang=lang),
         )
     if ev == "pool_reward_received":
         return (
-            f"【Cardanoism】Epoch {d['reward_epoch']} 分の報酬が入金されました",
-            line_flex.pool_reward_received(d["reward_epoch"], d["amount_ada"], d["apy"], d["nickname"], CARDANOISM_URL),
+            f"【Cardanoism】Epoch {d['reward_epoch']} 分の報酬が入金されました" if ja else f"[Cardanoism] Rewards for Epoch {d['reward_epoch']} have arrived",
+            line_flex.pool_reward_received(d["reward_epoch"], d["amount_ada"], d["apy"], d["nickname"], CARDANOISM_URL, lang=lang),
         )
     if ev == "pool_delegation_reminder":
         return (
-            f"【Cardanoism】委任から90日が経過しました。委任先プールを確認しましょう",
-            line_flex.pool_delegation_reminder(d["pool_name"], 90, d["apy"], d["nickname"], CARDANOISM_URL),
+            "【Cardanoism】委任から90日が経過しました。委任先プールを確認しましょう" if ja else "[Cardanoism] 90 days since delegation. Please check your pool.",
+            line_flex.pool_delegation_reminder(d["pool_name"], 90, d["apy"], d["nickname"], CARDANOISM_URL, lang=lang),
         )
     if ev == "drep_new_governance_action":
         return (
-            f"【Cardanoism】新しいガバナンスアクションが提出されました: TreasuryWithdrawals",
-            line_flex.drep_new_governance_action("TreasuryWithdrawals", f"{CARDANOISM_URL}/governance"),
+            "【Cardanoism】新しいガバナンスアクションが提出されました: TreasuryWithdrawals" if ja else "[Cardanoism] New governance action submitted: TreasuryWithdrawals",
+            line_flex.drep_new_governance_action("TreasuryWithdrawals", f"{CARDANOISM_URL}/governance", lang=lang),
         )
     if ev == "drep_vote":
         return (
-            f"【Cardanoism】委任先DRep「{d['drep_name']}」が投票しました（賛成）",
-            line_flex.drep_vote(d["drep_name"], "賛成", "Treasury Withdrawal Test", d["nickname"], f"{CARDANOISM_URL}/governance"),
+            f"【Cardanoism】委任先DRep「{d['drep_name']}」が投票しました（賛成）" if ja else f"[Cardanoism] Delegated DRep '{d['drep_name']}' voted (Yes)",
+            line_flex.drep_vote(d["drep_name"], "yes", "Treasury Withdrawal Test", d["nickname"], f"{CARDANOISM_URL}/governance", lang=lang),
         )
     if ev == "drep_status_change":
         return (
-            f"【Cardanoism】委任先DRep「{d['drep_name']}」のステータスが変わりました",
-            line_flex.drep_status_change(d["drep_name"], "active", "inactive", d["nickname"], CARDANOISM_URL),
+            f"【Cardanoism】委任先DRep「{d['drep_name']}」のステータスが変わりました" if ja else f"[Cardanoism] Delegated DRep '{d['drep_name']}' status changed",
+            line_flex.drep_status_change(d["drep_name"], "active", "inactive", d["nickname"], CARDANOISM_URL, lang=lang),
         )
     if ev == "drep_delegation_reminder":
         return (
-            f"【Cardanoism】委任から90日が経過しました。委任先DRepを確認しましょう",
-            line_flex.drep_delegation_reminder(d["drep_name"], 90, d["nickname"], f"{CARDANOISM_URL}/governance"),
+            "【Cardanoism】委任から90日が経過しました。委任先DRepを確認しましょう" if ja else "[Cardanoism] 90 days since delegation. Please check your DRep.",
+            line_flex.drep_delegation_reminder(d["drep_name"], 90, d["nickname"], f"{CARDANOISM_URL}/governance", lang=lang),
         )
     return None
 
 
 def send_test_event(user_id: int, event: str):
     """指定イベントのダミー通知を Flex で送信する。"""
-    line_id = _get_line_id_for_user(user_id)
-    if not line_id:
+    user_info = _get_user_info(user_id)
+    if not user_info or not user_info.get("line_id"):
         logger.error("ユーザー %d が見つからないか LINE ID が未設定です", user_id)
         return
+    line_id = user_info["line_id"]
+    _DUMMY["_lang"] = user_info.get("language", "ja")
 
     targets = _ALL_TEST_EVENTS if event == "all" else [event]
     for ev in targets:

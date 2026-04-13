@@ -6,5 +6,5 @@ from .test import foreach_example
 from .proposals import proposal_detail_page
 from .login import login_page
 from .mypage import mypage
-from .auth import line_login_redirect, line_callback, logout_page
+from .auth import line_login_redirect, line_callback, line_connect_redirect, logout_page
 #from .catalyst import dbtest, proposal_detail_page

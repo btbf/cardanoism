@@ -33,6 +33,9 @@ from cardanoism.backend.auth_db import (
     update_notification_frequency,
     get_stake_notification_settings,
     update_stake_notification_setting,
+    update_language,
+    update_line_id,
+    get_user_by_line_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,10 +56,12 @@ class AuthState(rx.State):
     username: str = ""
     avatar_url: str = ""
     email: str = ""
+    line_id: str = ""
     is_logged_in: bool = False
 
     # LINE OAuth CSRF用 state
     oauth_state: str = ""
+    oauth_mode: str = "login"  # "login" | "connect"
 
     # プロフィール編集用
     edit_username: str = ""
@@ -89,11 +94,60 @@ class AuthState(rx.State):
     # key: "{stake_address_id}:{event_type}", value: bool
     stake_notification_settings: dict[str, bool] = {}
 
+    # 言語設定
+    language: str = "ja"
+    _lang_manually_set: bool = False  # ユーザーが手動切替したか（自動検出を上書きしない）
+
     # ログインモーダル表示フラグ
     show_login_modal: bool = False
 
     # コールバック処理中のエラー
     auth_error: str = ""
+
+    # ============================================================
+    # 認証チェック
+    # ============================================================
+
+    # ============================================================
+    # 多言語対応
+    # ============================================================
+
+    @rx.var
+    def t(self) -> dict[str, str]:
+        """UI テキスト辞書（言語に応じて切り替わる）。"""
+        from cardanoism.backend.i18n import UI_EN, UI_JA
+        return UI_EN if self.language == "en" else UI_JA
+
+    @rx.var
+    def notification_labels(self) -> dict[str, str]:
+        """通知イベントラベル辞書（言語に応じて切り替わる）。"""
+        from cardanoism.backend.i18n import NOTIFICATION_LABELS_EN, NOTIFICATION_LABELS_JA
+        return NOTIFICATION_LABELS_EN if self.language == "en" else NOTIFICATION_LABELS_JA
+
+    def set_language(self, lang: str):
+        """ユーザーが手動で言語を切り替える（自動検出より優先）。"""
+        if lang not in ("ja", "en"):
+            return
+        self.language = lang
+        self._lang_manually_set = True
+        if self.is_logged_in:
+            update_language(self.user_id, lang)
+
+    def on_browser_language_detected(self, browser_lang: str):
+        """rx.call_script のコールバック。手動切替済みなら無視。"""
+        if self._lang_manually_set or self.is_logged_in:
+            return
+        detected = "ja" if (browser_lang or "").lower().startswith("ja") else "en"
+        self.language = detected
+
+    def detect_browser_language(self):
+        """ブラウザの優先言語を取得して言語設定に反映する。"""
+        if self._lang_manually_set or self.is_logged_in:
+            return
+        return rx.call_script(
+            "navigator.language || navigator.languages?.[0] || 'ja'",
+            callback=AuthState.on_browser_language_detected,
+        )
 
     # ============================================================
     # 認証チェック
@@ -111,7 +165,9 @@ class AuthState(rx.State):
             self.username = user["username"]
             self.avatar_url = user.get("avatar_url") or ""
             self.email = user.get("email") or ""
+            self.line_id = user.get("line_id") or ""
             self.notification_frequency = user.get("notification_frequency") or "instant"
+            self.language = user.get("language") or "ja"
             self.is_logged_in = True
             self.favorite_ids = [s for s in get_favorite_ids(self.user_id) if isinstance(s, str) and s]
         else:
@@ -133,6 +189,7 @@ class AuthState(rx.State):
         """LINE認証ページへリダイレクトする。"""
         state = secrets.token_urlsafe(16)
         self.oauth_state = state
+        self.oauth_mode = "login"
 
         auth_url = (
             "https://access.line.me/oauth2/v2.1/authorize"
@@ -141,6 +198,25 @@ class AuthState(rx.State):
             f"&redirect_uri={LINE_REDIRECT_URI}"
             f"&state={state}"
             f"&scope=profile%20openid%20email"
+        )
+        return rx.redirect(auth_url)
+
+    def start_line_connect(self):
+        """LINE通知連携用OAuth（ログイン済みユーザー専用）。"""
+        if not self.is_logged_in:
+            self.show_login_modal = True
+            return
+        state = secrets.token_urlsafe(16)
+        self.oauth_state = state
+        self.oauth_mode = "connect"
+
+        auth_url = (
+            "https://access.line.me/oauth2/v2.1/authorize"
+            f"?response_type=code"
+            f"&client_id={LINE_CLIENT_ID}"
+            f"&redirect_uri={LINE_REDIRECT_URI}"
+            f"&state={state}"
+            f"&scope=profile"
         )
         return rx.redirect(auth_url)
 
@@ -218,30 +294,50 @@ class AuthState(rx.State):
         picture_url = profile.get("pictureUrl", "")
 
         if not line_id:
-            return rx.redirect("/login?error=no_user_id")
+            dest = "/mypage?tab=notification&error=no_user_id" if self.oauth_mode == "connect" else "/login?error=no_user_id"
+            self.oauth_state = ""
+            return rx.redirect(dest)
 
-        # ユーザー取得 or 作成
+        # ── connect モード: 現在のユーザーに line_id を紐付ける ──
+        if self.oauth_mode == "connect":
+            self.oauth_state = ""
+            self.oauth_mode = "login"
+            if not self.is_logged_in:
+                return rx.redirect("/login")
+            existing = get_user_by_line_id(line_id)
+            if existing and existing["id"] != self.user_id:
+                return rx.redirect("/mypage?tab=notification&error=line_already_linked")
+            try:
+                update_line_id(self.user_id, line_id)
+                self.line_id = line_id
+            except Exception as e:
+                logger.error("update_line_id failed: %s", e)
+                return rx.redirect("/mypage?tab=notification&error=db_error")
+            return rx.redirect("/mypage?tab=notification&connected=line")
+
+        # ── login モード: ユーザー取得 or 作成 ──
         try:
             user = get_or_create_user_by_line(line_id, display_name, picture_url)
         except Exception as e:
             logger.error("DB error: %s", e)
             return rx.redirect("/login?error=db_error")
 
-        # セッション発行
         try:
             token = create_session(user["id"])
         except Exception as e:
             logger.error("Session creation failed: %s", e)
             return rx.redirect("/login?error=session_error")
 
-        # Stateに反映（LocalStorageに自動保存）
         self.session_token = token
         self.user_id = user["id"]
         self.username = user["username"]
         self.avatar_url = user.get("avatar_url") or ""
         self.email = user.get("email") or ""
+        self.line_id = user.get("line_id") or line_id
+        self.language = user.get("language") or "ja"
         self.is_logged_in = True
-        self.oauth_state = ""  # stateをクリア
+        self.oauth_state = ""
+        self.oauth_mode = "login"
 
         return rx.redirect("/mypage")
 
@@ -259,6 +355,7 @@ class AuthState(rx.State):
         self.username = ""
         self.avatar_url = ""
         self.email = ""
+        self.line_id = ""
         return rx.redirect("/")
 
     # ============================================================
@@ -316,11 +413,13 @@ class AuthState(rx.State):
         input_addr = self.new_stake_address.strip()
         nickname = self.new_stake_nickname.strip()
         # フォーマットのみ即時バリデーション（API不要）
+        from cardanoism.backend.i18n import get_ui as _get_ui
+        _t = _get_ui(self.language)
         if not input_addr or not nickname:
-            self.stake_error = "アドレスとニックネームを入力してください"
+            self.stake_error = _t["err_addr_required"]
             return
         if not input_addr.startswith("addr") and not _is_valid_stake_address(input_addr):
-            self.stake_error = "有効な受信アドレス（addr1...）を入力してください"
+            self.stake_error = _t["err_invalid_addr"]
             return
         # ここで即時 yield → ボタンがローディング状態になる
         self.stake_error = ""
@@ -331,7 +430,7 @@ class AuthState(rx.State):
         if input_addr.startswith("addr"):
             address = get_stake_address_from_addr(input_addr)
             if not address:
-                self.stake_error = "ステークアドレスを取得できませんでした（エンタープライズアドレスは非対応）"
+                self.stake_error = _t["err_stake_not_found"]
                 self.stake_adding = False
                 return
             wallet_address = input_addr
@@ -361,9 +460,9 @@ class AuthState(rx.State):
                 self.stake_addresses = get_stake_addresses(self.user_id)
             self.stake_role_loading = False
         elif result == "duplicate":
-            self.stake_error = "このステークアドレスはすでに登録されています"
+            self.stake_error = _t["err_duplicate"]
         else:
-            self.stake_error = "登録できるステークアドレスは最大3件です"
+            self.stake_error = _t["err_limit"]
 
     def delete_stake_address_handler(self, address_id: int):
         if not self.is_logged_in:
@@ -490,6 +589,13 @@ class AuthState(rx.State):
     # ============================================================
     # 通知設定
     # ============================================================
+
+    def disconnect_line(self):
+        """LINE通知連携を解除する。"""
+        if not self.is_logged_in:
+            return
+        update_line_id(self.user_id, None)
+        self.line_id = ""
 
     def load_notification_settings(self):
         if self.is_logged_in:

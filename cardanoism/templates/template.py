@@ -70,13 +70,13 @@ def template(
         # Get the meta tags for the page.
         all_meta = [*default_meta, *(meta or [])]
 
-        # on_load にAuthState.check_auth を必ず含める
+        # on_load にAuthState.check_auth と言語検出を必ず含める
         if on_load is None:
-            combined_on_load = AuthState.check_auth
+            combined_on_load = [AuthState.check_auth, AuthState.detect_browser_language]
         elif isinstance(on_load, list):
-            combined_on_load = [AuthState.check_auth, *on_load]
+            combined_on_load = [AuthState.check_auth, AuthState.detect_browser_language, *on_load]
         else:
-            combined_on_load = [AuthState.check_auth, on_load]
+            combined_on_load = [AuthState.check_auth, AuthState.detect_browser_language, on_load]
         
         def templated_page():
             return rx.vstack(

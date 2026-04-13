@@ -11,7 +11,6 @@ from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.components.login_modal import login_modal
 from cardanoism.backend.auth_db import (
-    NOTIFICATION_EVENT_TYPES,
     POOL_NOTIFICATION_EVENT_TYPES,
     DELEGATOR_NOTIFICATION_EVENT_TYPES,
     DREP_ONLY_NOTIFICATION_EVENT_TYPES,
@@ -19,27 +18,6 @@ from cardanoism.backend.auth_db import (
 
 ACCENT = "#ffcf00"
 ACCENT_DARK = "#c7a300"
-
-# 通知イベントの日本語ラベル
-NOTIFICATION_LABELS = {
-    # プール共通
-    "pool_retire": "プールリタイア",
-    "pool_fee_change": "手数料変更",
-    "pool_saturation": "飽和ライン超過",
-    "pool_pledge_shortage": "誓約不足",
-    "pool_reward_received": "報酬受取",
-    "pool_delegation_reminder": "長期委任リマインダー（90/120/365日）",
-    # DRep委任者
-    "drep_vote": "委任先DRepの投票通知",
-    "drep_status_change": "委任先DRepのステータス変化",
-    "drep_delegation_reminder": "長期委任リマインダー（90/120/365日）",
-    # DRep本人
-    "drep_new_governance_action": "新しいガバナンスアクション",
-    "drep_unvoted_1week": "未投票リマインダー（1週間経過）",
-    "drep_unvoted_2weeks": "未投票リマインダー（2週間経過）",
-    # ユーザー全体
-    "epoch_start": "エポックスタート",
-}
 
 GENERAL_EVENTS = [
     "epoch_start",
@@ -104,9 +82,9 @@ def favorites_tab() -> rx.Component:
         # フィルター・並び替え
         rx.hstack(
             rx.select.root(
-                rx.select.trigger(placeholder="Fund で絞り込み"),
+                rx.select.trigger(placeholder=AuthState.t["filter_fund_placeholder"]),
                 rx.select.content(
-                    rx.select.item("すべて", value="all"),
+                    rx.select.item(AuthState.t["filter_all"], value="all"),
                     rx.select.item("Fund 12", value="Fund 12"),
                     rx.select.item("Fund 13", value="Fund 13"),
                     rx.select.item("Fund 14", value="Fund 14"),
@@ -117,12 +95,12 @@ def favorites_tab() -> rx.Component:
                 on_change=AuthState.set_favorites_fund_filter,
             ),
             rx.select.root(
-                rx.select.trigger(placeholder="ステータスで絞り込み"),
+                rx.select.trigger(placeholder=AuthState.t["filter_status_placeholder"]),
                 rx.select.content(
-                    rx.select.item("すべて", value="all"),
-                    rx.select.item("採択", value="funded"),
-                    rx.select.item("未採択", value="not_funded"),
-                    rx.select.item("予算超過", value="over_budget"),
+                    rx.select.item(AuthState.t["filter_all"], value="all"),
+                    rx.select.item(AuthState.t["status_funded"], value="funded"),
+                    rx.select.item(AuthState.t["status_not_funded"], value="not_funded"),
+                    rx.select.item(AuthState.t["status_over_budget"], value="over_budget"),
                 ),
                 size="2",
                 value=AuthState.favorites_status_filter,
@@ -131,8 +109,8 @@ def favorites_tab() -> rx.Component:
             rx.select.root(
                 rx.select.trigger(),
                 rx.select.content(
-                    rx.select.item("要求金額（高い順）", value="amount_desc"),
-                    rx.select.item("要求金額（低い順）", value="amount_asc"),
+                    rx.select.item(AuthState.t["sort_amount_desc"], value="amount_desc"),
+                    rx.select.item(AuthState.t["sort_amount_asc"], value="amount_asc"),
                 ),
                 size="2",
                 value=AuthState.favorites_sort,
@@ -147,7 +125,7 @@ def favorites_tab() -> rx.Component:
             rx.center(
                 rx.vstack(
                     rx.icon("bookmark", size=36, color="var(--gray-6)"),
-                    rx.text("お気に入りはありません", size="4", color="var(--gray-8)"),
+                    rx.text(AuthState.t["favorites_empty"], size="4", color="var(--gray-8)"),
                     spacing="3",
                     align="center",
                 ),
@@ -200,11 +178,11 @@ def favorites_tab() -> rx.Component:
 def profile_tab() -> rx.Component:
     return rx.vstack(
         rx.vstack(
-            rx.text("表示名", size="3", weight="medium"),
+            rx.text(AuthState.t["display_name"], size="3", weight="medium"),
             rx.input(
                 value=AuthState.edit_username,
                 on_change=AuthState.set_edit_username,
-                placeholder="表示名",
+                placeholder=AuthState.t["display_name"],
                 size="3",
                 width="100%",
             ),
@@ -213,7 +191,7 @@ def profile_tab() -> rx.Component:
             align_items="start",
         ),
         rx.vstack(
-            rx.text("メールアドレス", size="3", weight="medium"),
+            rx.text(AuthState.t["email_address"], size="3", weight="medium"),
             rx.input(
                 value=AuthState.edit_email,
                 on_change=AuthState.set_edit_email,
@@ -228,7 +206,7 @@ def profile_tab() -> rx.Component:
         ),
         rx.hstack(
             rx.button(
-                "保存",
+                AuthState.t["save"],
                 on_click=AuthState.save_profile,
                 size="3",
                 style={
@@ -241,7 +219,7 @@ def profile_tab() -> rx.Component:
                 AuthState.profile_saved,
                 rx.hstack(
                     rx.icon("check", size=16, color="var(--green-9)"),
-                    rx.text("保存しました", size="3", color="var(--green-9)"),
+                    rx.text(AuthState.t["saved"], size="3", color="var(--green-9)"),
                     spacing="1",
                     align="center",
                 ),
@@ -317,7 +295,7 @@ def stake_address_card(addr: rx.Var[dict]) -> rx.Component:
 def stake_tab() -> rx.Component:
     return rx.vstack(
         rx.text(
-            "登録したアドレスのイベントを通知します。最大3件まで登録できます。",
+            AuthState.t["stake_tab_desc"],
             size="3",
             color="var(--gray-9)",
         ),
@@ -325,7 +303,7 @@ def stake_tab() -> rx.Component:
         rx.cond(
             AuthState.is_stake_addresses_empty,
             rx.center(
-                rx.text("登録されたステークアドレスはありません", size="3", color="var(--gray-8)"),
+                rx.text(AuthState.t["stake_empty"], size="3", color="var(--gray-8)"),
                 padding_y="20px",
             ),
             rx.vstack(
@@ -338,7 +316,7 @@ def stake_tab() -> rx.Component:
             AuthState.stake_role_loading,
             rx.hstack(
                 rx.spinner(size="1"),
-                rx.text("委任先情報を確認中...", size="2", color="var(--gray-8)"),
+                rx.text(AuthState.t["stake_role_loading"], size="2", color="var(--gray-8)"),
                 spacing="2",
                 align="center",
             ),
@@ -349,13 +327,13 @@ def stake_tab() -> rx.Component:
             AuthState.stake_addresses_count < 3,
             rx.box(
                 rx.vstack(
-                    rx.text("新規登録", size="4", weight="medium"),
+                    rx.text(AuthState.t["stake_new_title"], size="4", weight="medium"),
                     rx.vstack(
-                        rx.text("ニックネーム", size="3"),
+                        rx.text(AuthState.t["stake_nickname_label"], size="3"),
                         rx.input(
                             value=AuthState.new_stake_nickname,
                             on_change=AuthState.set_new_stake_nickname,
-                            placeholder="メインウォレット",
+                            placeholder=AuthState.t["stake_nickname_placeholder"],
                             size="3",
                             width="100%",
                         ),
@@ -364,7 +342,7 @@ def stake_tab() -> rx.Component:
                         align_items="start",
                     ),
                     rx.vstack(
-                        rx.text("受信アドレス", size="3"),
+                        rx.text(AuthState.t["stake_address_label"], size="3"),
                         rx.input(
                             value=AuthState.new_stake_address,
                             on_change=AuthState.set_new_stake_address,
@@ -374,7 +352,7 @@ def stake_tab() -> rx.Component:
                             font_family="monospace",
                         ),
                         rx.text(
-                            "ウォレットの受信アドレスを入力するとステークアドレスを自動取得します",
+                            AuthState.t["stake_address_hint"],
                             size="2",
                             color="var(--gray-8)",
                         ),
@@ -389,7 +367,7 @@ def stake_tab() -> rx.Component:
                     ),
                     rx.button(
                         rx.icon("plus", size=14),
-                        "追加",
+                        AuthState.t["stake_add_button"],
                         on_click=AuthState.add_stake_address_handler,
                         size="2",
                         cursor="pointer",
@@ -407,7 +385,7 @@ def stake_tab() -> rx.Component:
                 width="100%",
             ),
             rx.text(
-                "ステークアドレスの登録上限（3件）に達しています。",
+                AuthState.t["stake_limit_message"],
                 size="3",
                 color="var(--gray-8)",
             ),
@@ -421,10 +399,10 @@ def stake_tab() -> rx.Component:
 # タブ4: 通知管理
 # ============================================================
 
-def general_notification_toggle_row(event_type: str, label: str) -> rx.Component:
+def general_notification_toggle_row(event_type: str) -> rx.Component:
     """ユーザー全体の通知設定トグル行。"""
     return rx.hstack(
-        rx.text(label, size="4"),
+        rx.text(AuthState.notification_labels[event_type], size="4"),
         rx.switch(
             checked=AuthState.notification_settings[event_type],
             on_change=lambda _: AuthState.toggle_notification(event_type),
@@ -439,7 +417,7 @@ def general_notification_toggle_row(event_type: str, label: str) -> rx.Component
 def _toggle_rows(addr_id_str: rx.Var, event_types: list) -> list:
     return [
         rx.hstack(
-            rx.text(NOTIFICATION_LABELS[et], size="3"),
+            rx.text(AuthState.notification_labels[et], size="3"),
             rx.switch(
                 checked=AuthState.stake_notification_settings[addr_id_str + ":" + et],
                 on_change=AuthState.toggle_stake_notification(addr_id_str + ":" + et),
@@ -472,7 +450,7 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
                 rx.cond(
                     addr["delegated_pool_name"],
                     rx.hstack(
-                        rx.text("委任プール", size="2", color="var(--gray-9)"),
+                        rx.text(AuthState.t["notification_pool_label"], size="2", color="var(--gray-9)"),
                         rx.badge(addr["delegated_pool_name"], variant="soft", color_scheme="blue", size="1"),
                         spacing="1",
                         align="center",
@@ -480,7 +458,7 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
                     rx.cond(
                         addr["delegated_pool_id"],
                         rx.hstack(
-                            rx.text("委任プール", size="2", color="var(--gray-9)"),
+                            rx.text(AuthState.t["notification_pool_label"], size="2", color="var(--gray-9)"),
                             rx.badge(addr["delegated_pool_id"], variant="outline", color_scheme="blue", size="1", font_family="monospace"),
                             spacing="1",
                             align="center",
@@ -491,7 +469,7 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
                 rx.cond(
                     (addr["role"] == "delegator") & addr["delegated_drep_name"],
                     rx.hstack(
-                        rx.text("委任DRep", size="2", color="var(--gray-9)"),
+                        rx.text(AuthState.t["notification_drep_label"], size="2", color="var(--gray-9)"),
                         rx.badge(addr["delegated_drep_name"], variant="soft", color_scheme="amber", size="1"),
                         spacing="1",
                         align="center",
@@ -499,7 +477,7 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
                     rx.cond(
                         (addr["role"] == "delegator") & addr["delegated_drep_id"],
                         rx.hstack(
-                            rx.text("委任DRep", size="2", color="var(--gray-9)"),
+                            rx.text(AuthState.t["notification_drep_label"], size="2", color="var(--gray-9)"),
                             rx.badge(addr["delegated_drep_id"], variant="outline", color_scheme="amber", size="1", font_family="monospace"),
                             spacing="1",
                             align="center",
@@ -519,7 +497,7 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
             rx.cond(
                 addr["delegated_pool_name"],
                 rx.hstack(
-                    rx.text("委任プール", size="2", color="var(--gray-9)"),
+                    rx.text(AuthState.t["notification_pool_label"], size="2", color="var(--gray-9)"),
                     rx.badge(addr["delegated_pool_name"], variant="soft", color_scheme="blue", size="1"),
                     spacing="1",
                     align="center",
@@ -527,7 +505,7 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
                 rx.cond(
                     addr["delegated_pool_id"],
                     rx.hstack(
-                        rx.text("委任プール", size="2", color="var(--gray-9)"),
+                        rx.text(AuthState.t["notification_pool_label"], size="2", color="var(--gray-9)"),
                         rx.badge(addr["delegated_pool_id"], variant="outline", color_scheme="blue", size="1", font_family="monospace"),
                         spacing="1",
                         align="center",
@@ -536,7 +514,7 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
                 ),
             ),
             # プール通知
-            rx.text("ステークプール通知", size="3", weight="bold", color="var(--gray-10)"),
+            rx.text(AuthState.t["notification_pool_section"], size="3", weight="bold", color="var(--gray-10)"),
             rx.cond(
                 addr["delegated_pool_id"],
                 rx.vstack(
@@ -546,7 +524,7 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
                     align_items="start",
                 ),
                 rx.text(
-                    "ステークプールに委任していないため、プール関連の通知はありません",
+                    AuthState.t["notification_pool_undelegated"],
                     size="3",
                     color="var(--gray-8)",
                 ),
@@ -554,14 +532,14 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
             rx.divider(margin_y="8px"),
             # ガバナンス通知（ロール別）
             rx.hstack(
-                rx.text("ガバナンス通知", size="3", weight="bold", color="var(--gray-10)"),
+                rx.text(AuthState.t["notification_governance_section"], size="3", weight="bold", color="var(--gray-10)"),
                 rx.cond(
                     addr["role"] == "drep",
-                    rx.badge("DRep", color_scheme="amber", size="1"),
+                    rx.badge(AuthState.t["badge_drep"], color_scheme="amber", size="1"),
                     rx.cond(
                         addr["role"] == "abstain",
-                        rx.badge("棄権", color_scheme="red", size="1"),
-                        rx.badge("委任者", color_scheme="gray", size="1"),
+                        rx.badge(AuthState.t["badge_abstain"], color_scheme="red", size="1"),
+                        rx.badge(AuthState.t["badge_delegator"], color_scheme="gray", size="1"),
                     ),
                 ),
                 spacing="2",
@@ -571,7 +549,7 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
             rx.cond(
                 (addr["role"] == "delegator") & addr["delegated_drep_name"],
                 rx.hstack(
-                    rx.text("委任DRep", size="2", color="var(--gray-9)"),
+                    rx.text(AuthState.t["notification_drep_label"], size="2", color="var(--gray-9)"),
                     rx.badge(addr["delegated_drep_name"], variant="soft", color_scheme="amber", size="1"),
                     spacing="1",
                     align="center",
@@ -579,7 +557,7 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
                 rx.cond(
                     (addr["role"] == "delegator") & addr["delegated_drep_id"],
                     rx.hstack(
-                        rx.text("委任DRep", size="2", color="var(--gray-9)"),
+                        rx.text(AuthState.t["notification_drep_label"], size="2", color="var(--gray-9)"),
                         rx.badge(addr["delegated_drep_id"], variant="outline", color_scheme="amber", size="1", font_family="monospace"),
                         spacing="1",
                         align="center",
@@ -601,12 +579,12 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
                     # 棄権（ガバナンス通知なし）
                     rx.vstack(
                         rx.text(
-                            "ガバナンス投票を棄権中のため、DRep関連の通知はありません",
+                            AuthState.t["drep_abstain_notice"],
                             size="3",
                             color="var(--gray-8)",
                         ),
                         rx.text(
-                            "Cardanoは分散型ガバナンスへ移行しており、トレジャリーの使途や各種提案はDRepの投票によって決まります。あなたのADAも、1ADA＝1票としてその意思決定に活かすことができます。まだ委任していない方は、ぜひDRepへの委任をご検討ください。",
+                            AuthState.t["drep_abstain_explanation"],
                             size="3",
                             color="var(--gray-9)",
                         ),
@@ -627,12 +605,12 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
                         # 未委任 → 案内メッセージ
                         rx.vstack(
                             rx.text(
-                                "DRepに委任していないため、DRep関連の通知はありません",
+                                AuthState.t["drep_undelegated_notice"],
                                 size="3",
                                 color="var(--gray-8)",
                             ),
                             rx.text(
-                                "Cardanoは分散型ガバナンスへ移行しており、トレジャリーの使途や各種提案はDRepの投票によって決まります。あなたのADAも、1ADA＝1票としてその意思決定に活かすことができます。まだ委任していない方は、ぜひDRepへの委任をご検討ください。",
+                                AuthState.t["drep_abstain_explanation"],
                                 size="3",
                                 color="var(--gray-9)",
                             ),
@@ -670,18 +648,66 @@ def notification_tab() -> rx.Component:
             rx.vstack(
                 rx.hstack(
                     rx.icon("message-circle", size=18, color="#06C755"),
-                    rx.text("LINE通知連携", size="4", weight="bold"),
+                    rx.text(AuthState.t["notification_tab_line_title"], size="4", weight="bold"),
                     spacing="2",
                     align="center",
                 ),
-                rx.cond(
-                    AuthState.is_logged_in,
-                    rx.text("LINEログインで連携済みです。通知を受け取るには、Cardanoism公式LINEアカウントを友だち追加してください。", size="3", color="var(--gray-9)"),
-                    rx.link(
-                        rx.button("LINEと連携する", size="3", cursor="pointer"),
-                        href="/auth/line/login",
-                        underline="none",
+                rx.hstack(
+                    # 連携状態に応じた表示
+                    rx.cond(
+                        AuthState.line_id != "",
+                        # 連携済み
+                        rx.vstack(
+                            rx.hstack(
+                                rx.icon("check-circle", size=16, color="var(--green-9)"),
+                                rx.text(AuthState.t["notification_tab_line_connected"], size="3", color="var(--green-9)", weight="medium"),
+                                spacing="1",
+                                align="center",
+                            ),
+                            rx.text(AuthState.t["notification_tab_line_friend_hint"], size="2", color="var(--gray-9)"),
+                            rx.button(
+                                AuthState.t["notification_tab_line_disconnect_button"],
+                                on_click=AuthState.disconnect_line,
+                                size="2",
+                                variant="soft",
+                                color_scheme="red",
+                                cursor="pointer",
+                            ),
+                            spacing="2",
+                            align_items="start",
+                        ),
+                        # 未連携
+                        rx.vstack(
+                            rx.text(AuthState.t["notification_tab_line_not_connected"], size="3", color="var(--gray-9)"),
+                            rx.link(
+                                rx.button(
+                                    rx.icon("link", size=14),
+                                    AuthState.t["notification_tab_line_connect_button"],
+                                    size="2",
+                                    style={"background": "#06C755", "color": "white", "cursor": "pointer"},
+                                ),
+                                href="/auth/line/connect",
+                                underline="none",
+                            ),
+                            spacing="2",
+                            align_items="start",
+                        ),
                     ),
+                    # QRコード（常に表示）
+                    rx.link(
+                        rx.image(
+                            src="/line-qr.png",
+                            width="90px",
+                            height="90px",
+                            alt="Cardanoism LINE公式QRコード",
+                            border_radius="8px",
+                        ),
+                        href="https://line.me/R/ti/p/@022cmuds",
+                        is_external=True,
+                    ),
+                    justify="between",
+                    align="center",
+                    width="100%",
                 ),
                 spacing="3",
                 align_items="start",
@@ -696,7 +722,7 @@ def notification_tab() -> rx.Component:
             AuthState.is_stake_addresses_empty,
             rx.box(
                 rx.text(
-                    "ステークアドレスを登録すると、アドレスごとに通知を設定できます。",
+                    AuthState.t["notification_tab_no_stake"],
                     size="3",
                     color="var(--gray-8)",
                 ),
@@ -707,7 +733,7 @@ def notification_tab() -> rx.Component:
             ),
             rx.box(
                 rx.vstack(
-                    rx.text("アドレスごとの通知設定", size="4", weight="bold"),
+                    rx.text(AuthState.t["notification_tab_per_addr_title"], size="4", weight="bold"),
                     rx.vstack(
                         rx.foreach(AuthState.stake_addresses, stake_notification_section),
                         spacing="3",
@@ -726,11 +752,8 @@ def notification_tab() -> rx.Component:
         # 一般通知
         rx.box(
             rx.vstack(
-                rx.text("一般通知", size="4", weight="bold"),
-                *[
-                    general_notification_toggle_row(event_type, NOTIFICATION_LABELS[event_type])
-                    for event_type in GENERAL_EVENTS
-                ],
+                rx.text(AuthState.t["notification_general_title"], size="4", weight="bold"),
+                *[general_notification_toggle_row(et) for et in GENERAL_EVENTS],
                 spacing="2",
                 width="100%",
                 align_items="start",
@@ -778,19 +801,19 @@ def mypage() -> rx.Component:
                 rx.tabs.root(
                     rx.tabs.list(
                         rx.tabs.trigger(
-                            rx.hstack(rx.icon("bookmark", size=14), rx.text("お気に入り"), spacing="1"),
+                            rx.hstack(rx.icon("bookmark", size=14), rx.text(AuthState.t["tab_favorites"]), spacing="1"),
                             value="favorites",
                         ),
                         rx.tabs.trigger(
-                            rx.hstack(rx.icon("user", size=14), rx.text("プロフィール"), spacing="1"),
+                            rx.hstack(rx.icon("user", size=14), rx.text(AuthState.t["tab_profile"]), spacing="1"),
                             value="profile",
                         ),
                         rx.tabs.trigger(
-                            rx.hstack(rx.icon("wallet", size=14), rx.text("アドレス"), spacing="1"),
+                            rx.hstack(rx.icon("wallet", size=14), rx.text(AuthState.t["tab_stake"]), spacing="1"),
                             value="stake",
                         ),
                         rx.tabs.trigger(
-                            rx.hstack(rx.icon("bell", size=14), rx.text("通知管理"), spacing="1"),
+                            rx.hstack(rx.icon("bell", size=14), rx.text(AuthState.t["tab_notification"]), spacing="1"),
                             value="notification",
                         ),
                         wrap="wrap",
@@ -811,9 +834,9 @@ def mypage() -> rx.Component:
             rx.center(
                 rx.vstack(
                     rx.icon("lock", size=40, color="var(--gray-6)"),
-                    rx.text("マイページを利用するにはログインが必要です", size="4", color="var(--gray-8)"),
+                    rx.text(AuthState.t["login_required"], size="4", color="var(--gray-8)"),
                     rx.link(
-                        rx.button("ログインする", size="3", cursor="pointer"),
+                        rx.button(AuthState.t["login_button"], size="3", cursor="pointer"),
                         href="/login",
                         underline="none",
                     ),

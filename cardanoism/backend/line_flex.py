@@ -3,7 +3,9 @@ line_flex.py
 LINE Flex Message コンテンツビルダー
 
 各通知イベントの Flex Message contents（bubble）を生成する。
+lang="ja"（デフォルト）または lang="en" で言語切り替え。
 """
+from cardanoism.backend.i18n import get_flex
 
 ACCENT = "#ffcf00"
 HEADER_BG = "#1a1a2e"
@@ -76,19 +78,20 @@ def _row(label: str, value: str, value_color: str = TEXT_PRIMARY) -> dict:
     }
 
 
-def _wallet_row(nickname: str) -> dict:
+def _wallet_row(nickname: str, lang: str = "ja") -> dict:
+    t = get_flex(lang)
     return {
         "type": "box",
         "layout": "horizontal",
         "margin": "md",
         "contents": [
-            {"type": "text", "text": "ウォレット", "size": "xs", "color": TEXT_SECONDARY, "flex": 3},
+            {"type": "text", "text": t["wallet"], "size": "xs", "color": TEXT_SECONDARY, "flex": 3},
             {"type": "text", "text": nickname, "size": "xs", "color": TEXT_SECONDARY, "align": "end", "flex": 4},
         ],
     }
 
 
-def _footer(url: str, label: str = "Cardanoism を開く") -> dict:
+def _footer(url: str, label: str) -> dict:
     return {
         "type": "box",
         "layout": "vertical",
@@ -119,7 +122,7 @@ def _footer(url: str, label: str = "Cardanoism を開く") -> dict:
     }
 
 
-def _bubble(header: dict, body_contents: list, url: str, footer_label: str = "Cardanoism を開く") -> dict:
+def _bubble(header: dict, body_contents: list, url: str, footer_label: str) -> dict:
     return {
         "type": "bubble",
         "header": header,
@@ -137,9 +140,10 @@ def _bubble(header: dict, body_contents: list, url: str, footer_label: str = "Ca
 # epoch_start
 # ============================================================
 
-def epoch_start(epoch: int, url: str) -> dict:
+def epoch_start(epoch: int, url: str, lang: str = "ja") -> dict:
+    t = get_flex(lang)
     return _bubble(
-        _header("新エポック開始", f"Epoch {epoch} が始まりました"),
+        _header(t["epoch_start_title"], t["epoch_start_subtitle"].format(epoch=epoch)),
         [
             {
                 "type": "text",
@@ -152,7 +156,7 @@ def epoch_start(epoch: int, url: str) -> dict:
             },
             {
                 "type": "text",
-                "text": "新しいエポックが始まりました",
+                "text": t["epoch_start_body"],
                 "size": "sm",
                 "align": "center",
                 "color": TEXT_SECONDARY,
@@ -160,6 +164,7 @@ def epoch_start(epoch: int, url: str) -> dict:
             },
         ],
         url,
+        t["footer_open"],
     )
 
 
@@ -172,9 +177,11 @@ def pool_retire(
     retiring_epoch: int,
     nickname: str,
     url: str,
+    lang: str = "ja",
 ) -> dict:
+    t = get_flex(lang)
     return _bubble(
-        _header("プールリタイア通知", "委任先プールが引退予告を出しました"),
+        _header(t["pool_retire_title"], t["pool_retire_subtitle"]),
         [
             {
                 "type": "text",
@@ -191,20 +198,21 @@ def pool_retire(
                 "margin": "md",
                 "spacing": "sm",
                 "contents": [
-                    _row("リタイア予定エポック", f"Epoch {retiring_epoch}", TEXT_UP),
+                    _row(t["pool_retire_epoch_label"], f"Epoch {retiring_epoch}", TEXT_UP),
                 ],
             },
             {
                 "type": "text",
-                "text": "新しいプールへの委任をご検討ください",
+                "text": t["pool_retire_hint"],
                 "size": "xs",
                 "color": TEXT_SECONDARY,
                 "wrap": True,
                 "margin": "md",
             },
-            _wallet_row(nickname),
+            _wallet_row(nickname, lang),
         ],
         url,
+        t["footer_open"],
     )
 
 
@@ -221,19 +229,21 @@ def pool_fee_change(
     apy: float | None,
     nickname: str,
     url: str,
+    lang: str = "ja",
 ) -> dict:
+    t = get_flex(lang)
     margin_color = TEXT_UP if new_margin_pct > old_margin_pct else TEXT_DOWN
     fixed_color = TEXT_UP if new_fixed_ada > old_fixed_ada else TEXT_DOWN
 
     rows = [
-        _row("変動手数料", f"{old_margin_pct:.1f}% → {new_margin_pct:.1f}%", margin_color),
-        _row("固定費", f"{old_fixed_ada:.0f} → {new_fixed_ada:.0f} ADA", fixed_color),
+        _row(t["pool_fee_variable_label"], f"{old_margin_pct:.1f}% → {new_margin_pct:.1f}%", margin_color),
+        _row(t["pool_fee_fixed_label"], f"{old_fixed_ada:.0f} → {new_fixed_ada:.0f} {t['pool_fee_fixed_unit']}", fixed_color),
     ]
     if apy is not None:
-        rows.append(_row("APY", f"{apy:.2f}%", TEXT_APY))
+        rows.append(_row(t["apy_label"], f"{apy:.2f}%", TEXT_APY))
 
     return _bubble(
-        _header("手数料変更通知", "委任先プールの手数料が変更されました"),
+        _header(t["pool_fee_change_title"], t["pool_fee_change_subtitle"]),
         [
             {
                 "type": "text",
@@ -251,9 +261,10 @@ def pool_fee_change(
                 "spacing": "sm",
                 "contents": rows,
             },
-            _wallet_row(nickname),
+            _wallet_row(nickname, lang),
         ],
         url,
+        t["footer_open"],
     )
 
 
@@ -267,15 +278,17 @@ def pool_saturation(
     apy: float | None,
     nickname: str,
     url: str,
+    lang: str = "ja",
 ) -> dict:
+    t = get_flex(lang)
     rows = [
-        _row("飽和度", f"{sat_pct:.1f}%", TEXT_UP),
+        _row(t["pool_saturation_label"], f"{sat_pct:.1f}%", TEXT_UP),
     ]
     if apy is not None:
-        rows.append(_row("APY", f"{apy:.2f}%", TEXT_APY))
+        rows.append(_row(t["apy_label"], f"{apy:.2f}%", TEXT_APY))
 
     return _bubble(
-        _header("飽和ライン超過", "委任先プールが飽和ラインを超えました"),
+        _header(t["pool_saturation_title"], t["pool_saturation_subtitle"]),
         [
             {
                 "type": "text",
@@ -295,15 +308,16 @@ def pool_saturation(
             },
             {
                 "type": "text",
-                "text": "報酬効率が下がる可能性があります",
+                "text": t["pool_saturation_hint"],
                 "size": "xs",
                 "color": TEXT_SECONDARY,
                 "wrap": True,
                 "margin": "md",
             },
-            _wallet_row(nickname),
+            _wallet_row(nickname, lang),
         ],
         url,
+        t["footer_open"],
     )
 
 
@@ -318,16 +332,18 @@ def pool_pledge_shortage(
     apy: float | None,
     nickname: str,
     url: str,
+    lang: str = "ja",
 ) -> dict:
+    t = get_flex(lang)
     rows = [
-        _row("誓約額", f"{pledged_ada:,.0f} ADA", TEXT_PRIMARY),
-        _row("実績", f"{live_ada:,.0f} ADA", TEXT_UP),
+        _row(t["pool_pledge_label"], f"{pledged_ada:,.0f} {t['pool_pledge_unit']}", TEXT_PRIMARY),
+        _row(t["pool_pledge_live_label"], f"{live_ada:,.0f} {t['pool_pledge_unit']}", TEXT_UP),
     ]
     if apy is not None:
-        rows.append(_row("APY", f"{apy:.2f}%", TEXT_APY))
+        rows.append(_row(t["apy_label"], f"{apy:.2f}%", TEXT_APY))
 
     return _bubble(
-        _header("誓約不足", "委任先プールの誓約が不足しています"),
+        _header(t["pool_pledge_shortage_title"], t["pool_pledge_shortage_subtitle"]),
         [
             {
                 "type": "text",
@@ -345,9 +361,10 @@ def pool_pledge_shortage(
                 "spacing": "sm",
                 "contents": rows,
             },
-            _wallet_row(nickname),
+            _wallet_row(nickname, lang),
         ],
         url,
+        t["footer_open"],
     )
 
 
@@ -361,16 +378,18 @@ def pool_reward_received(
     apy: float | None,
     nickname: str,
     url: str,
+    lang: str = "ja",
 ) -> dict:
+    t = get_flex(lang)
     rows = [
-        _row("対象エポック", f"Epoch {reward_epoch}", TEXT_PRIMARY),
-        _row("報酬額", f"{amount_ada:,.4f} ADA", TEXT_DOWN),
+        _row(t["pool_reward_epoch_label"], f"Epoch {reward_epoch}", TEXT_PRIMARY),
+        _row(t["pool_reward_amount_label"], f"{amount_ada:,.4f} ADA", TEXT_DOWN),
     ]
     if apy is not None:
-        rows.append(_row("APY", f"{apy:.2f}%", TEXT_APY))
+        rows.append(_row(t["apy_label"], f"{apy:.2f}%", TEXT_APY))
 
     return _bubble(
-        _header("報酬受取", f"Epoch {reward_epoch} 分の報酬が入金されました"),
+        _header(t["pool_reward_title"], t["pool_reward_subtitle"].format(epoch=reward_epoch)),
         [
             {
                 "type": "box",
@@ -378,9 +397,10 @@ def pool_reward_received(
                 "spacing": "sm",
                 "contents": rows,
             },
-            _wallet_row(nickname),
+            _wallet_row(nickname, lang),
         ],
         url,
+        t["footer_open"],
     )
 
 
@@ -394,16 +414,18 @@ def pool_delegation_reminder(
     apy: float | None,
     nickname: str,
     url: str,
+    lang: str = "ja",
 ) -> dict:
+    t = get_flex(lang)
     rows = [
-        _row("委任先プール", pool_name, TEXT_PRIMARY),
-        _row("委任からの経過", f"{days}日", TEXT_WARN),
+        _row(t["pool_remind_pool_label"], pool_name, TEXT_PRIMARY),
+        _row(t["pool_remind_days_label"], t["pool_remind_days_value"].format(days=days), TEXT_WARN),
     ]
     if apy is not None:
-        rows.append(_row("APY", f"{apy:.2f}%", TEXT_APY))
+        rows.append(_row(t["apy_label"], f"{apy:.2f}%", TEXT_APY))
 
     return _bubble(
-        _header("委任先リマインダー", "委任先プールを確認しましょう"),
+        _header(t["pool_remind_title"], t["pool_remind_subtitle"]),
         [
             {
                 "type": "box",
@@ -411,9 +433,10 @@ def pool_delegation_reminder(
                 "spacing": "sm",
                 "contents": rows,
             },
-            _wallet_row(nickname),
+            _wallet_row(nickname, lang),
         ],
         url,
+        t["footer_open"],
     )
 
 
@@ -424,21 +447,23 @@ def pool_delegation_reminder(
 def drep_new_governance_action(
     proposal_type: str,
     url: str,
+    lang: str = "ja",
 ) -> dict:
+    t = get_flex(lang)
     return _bubble(
-        _header("新しいガバナンスアクション", "新しい提案が提出されました"),
+        _header(t["drep_new_gov_title"], t["drep_new_gov_subtitle"]),
         [
             {
                 "type": "box",
                 "layout": "vertical",
                 "spacing": "sm",
                 "contents": [
-                    _row("種類", proposal_type, TEXT_PRIMARY),
+                    _row(t["drep_new_gov_type_label"], proposal_type, TEXT_PRIMARY),
                 ],
             },
             {
                 "type": "text",
-                "text": "ガバナンスページで詳細を確認できます",
+                "text": t["drep_new_gov_hint"],
                 "size": "xs",
                 "color": TEXT_SECONDARY,
                 "wrap": True,
@@ -446,7 +471,7 @@ def drep_new_governance_action(
             },
         ],
         url,
-        "ガバナンスを確認する",
+        t["footer_governance"],
     )
 
 
@@ -456,21 +481,39 @@ def drep_new_governance_action(
 
 def drep_vote(
     drep_name: str,
-    vote_label: str,
+    vote: str,
     proposal_title: str | None,
     nickname: str,
     url: str,
+    lang: str = "ja",
 ) -> dict:
-    vote_colors = {"賛成": TEXT_DOWN, "反対": TEXT_UP, "棄権": TEXT_SECONDARY}
+    """
+    vote: "yes" / "no" / "abstain"（Koios からの raw 値）
+    または後方互換のため "賛成" / "反対" / "棄権" も受け付ける。
+    """
+    t = get_flex(lang)
+
+    # raw vote key → 言語別ラベルに変換
+    vote_key_map = {
+        "yes": "vote_yes", "no": "vote_no", "abstain": "vote_abstain",
+        # 後方互換（日本語で渡された場合）
+        "賛成": "vote_yes", "反対": "vote_no", "棄権": "vote_abstain",
+    }
+    vote_label = t.get(vote_key_map.get(vote.lower(), ""), vote)
+    vote_colors = {
+        t.get("vote_yes", "賛成"): TEXT_DOWN,
+        t.get("vote_no", "反対"): TEXT_UP,
+        t.get("vote_abstain", "棄権"): TEXT_SECONDARY,
+    }
     vote_color = vote_colors.get(vote_label, TEXT_PRIMARY)
 
     rows = []
     if proposal_title:
-        rows.append(_row("ガバナンスアクション", proposal_title, TEXT_PRIMARY))
-    rows.append(_row("投票", vote_label, vote_color))
+        rows.append(_row(t["drep_vote_action_label"], proposal_title, TEXT_PRIMARY))
+    rows.append(_row(t["drep_vote_label"], vote_label, vote_color))
 
     return _bubble(
-        _header("DRep投票通知", "委任先DRepが投票しました"),
+        _header(t["drep_vote_title"], t["drep_vote_subtitle"]),
         [
             {
                 "type": "text",
@@ -488,10 +531,10 @@ def drep_vote(
                 "spacing": "sm",
                 "contents": rows,
             },
-            _wallet_row(nickname),
+            _wallet_row(nickname, lang),
         ],
         url,
-        "ガバナンスを確認する",
+        t["footer_governance"],
     )
 
 
@@ -505,9 +548,11 @@ def drep_status_change(
     new_status: str,
     nickname: str,
     url: str,
+    lang: str = "ja",
 ) -> dict:
+    t = get_flex(lang)
     return _bubble(
-        _header("DRepステータス変更", "委任先DRepのステータスが変わりました"),
+        _header(t["drep_status_title"], t["drep_status_subtitle"]),
         [
             {
                 "type": "text",
@@ -524,12 +569,13 @@ def drep_status_change(
                 "margin": "md",
                 "spacing": "sm",
                 "contents": [
-                    _row("ステータス", f"{old_status} → {new_status}", TEXT_WARN),
+                    _row(t["drep_status_label"], f"{old_status} → {new_status}", TEXT_WARN),
                 ],
             },
-            _wallet_row(nickname),
+            _wallet_row(nickname, lang),
         ],
         url,
+        t["footer_open"],
     )
 
 
@@ -542,21 +588,23 @@ def drep_delegation_reminder(
     days: int,
     nickname: str,
     url: str,
+    lang: str = "ja",
 ) -> dict:
+    t = get_flex(lang)
     return _bubble(
-        _header("DRep委任リマインダー", "委任先DRepを確認しましょう"),
+        _header(t["drep_remind_title"], t["drep_remind_subtitle"]),
         [
             {
                 "type": "box",
                 "layout": "vertical",
                 "spacing": "sm",
                 "contents": [
-                    _row("委任先DRep", drep_name, TEXT_PRIMARY),
-                    _row("委任からの経過", f"{days}日", TEXT_WARN),
+                    _row(t["drep_remind_drep_label"], drep_name, TEXT_PRIMARY),
+                    _row(t["drep_remind_days_label"], t["drep_remind_days_value"].format(days=days), TEXT_WARN),
                 ],
             },
-            _wallet_row(nickname),
+            _wallet_row(nickname, lang),
         ],
         url,
-        "ガバナンスを確認する",
+        t["footer_governance"],
     )

@@ -65,7 +65,7 @@ def get_or_create_user_by_line(
     """LINE IDでユーザーを取得または新規作成する。"""
     with get_db() as (cursor, conn):
         cursor.execute(
-            "SELECT id, username, email, avatar_url, notification_frequency FROM users WHERE line_id = ?",
+            "SELECT id, username, email, avatar_url, notification_frequency, language FROM users WHERE line_id = ?",
             (line_id,),
         )
         row = cursor.fetchone()
@@ -91,7 +91,7 @@ def get_or_create_user_by_line(
         conn.commit()
 
         cursor.execute(
-            "SELECT id, username, email, avatar_url, notification_frequency FROM users WHERE id = ?",
+            "SELECT id, username, email, avatar_url, notification_frequency, language FROM users WHERE id = ?",
             (user_id,),
         )
         return dict(cursor.fetchone())
@@ -100,7 +100,7 @@ def get_or_create_user_by_line(
 def get_user_by_id(user_id: int) -> Optional[dict]:
     with get_db() as (cursor, _):
         cursor.execute(
-            "SELECT id, username, email, avatar_url, notification_frequency FROM users WHERE id = ?",
+            "SELECT id, username, email, avatar_url, notification_frequency, language FROM users WHERE id = ?",
             (user_id,),
         )
         row = cursor.fetchone()
@@ -146,7 +146,7 @@ def get_user_by_session(session_token: str) -> Optional[dict]:
     with get_db() as (cursor, conn):
         cursor.execute(
             """
-            SELECT u.id, u.username, u.email, u.avatar_url, u.notification_frequency
+            SELECT u.id, u.username, u.email, u.avatar_url, u.notification_frequency, u.language, u.line_id
             FROM user_sessions s
             JOIN users u ON s.user_id = u.id
             WHERE s.session_token = ? AND s.expires_at > NOW()
@@ -395,10 +395,42 @@ def update_notification_frequency(user_id: int, frequency: str) -> None:
         conn.commit()
 
 
+def update_line_id(user_id: int, line_id: Optional[str]) -> None:
+    """line_id を更新する（None で切断）。"""
+    with get_db() as (cursor, conn):
+        cursor.execute(
+            "UPDATE users SET line_id = ? WHERE id = ?",
+            (line_id, user_id),
+        )
+        conn.commit()
+
+
+def get_user_by_line_id(line_id: str) -> Optional[dict]:
+    """line_id でユーザーを検索する（連携済み確認・重複チェック用）。"""
+    with get_db() as (cursor, _):
+        cursor.execute(
+            "SELECT id, username FROM users WHERE line_id = ?",
+            (line_id,),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
 def update_telegram_chat_id(user_id: int, telegram_chat_id: Optional[str]) -> None:
     with get_db() as (cursor, conn):
         cursor.execute(
             "UPDATE users SET telegram_chat_id = ? WHERE id = ?",
             (telegram_chat_id, user_id),
+        )
+        conn.commit()
+
+
+def update_language(user_id: int, language: str) -> None:
+    if language not in ("ja", "en"):
+        return
+    with get_db() as (cursor, conn):
+        cursor.execute(
+            "UPDATE users SET language = ? WHERE id = ?",
+            (language, user_id),
         )
         conn.commit()
