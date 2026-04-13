@@ -334,6 +334,16 @@ def stake_tab() -> rx.Component:
                 width="100%",
             ),
         ),
+        rx.cond(
+            AuthState.stake_role_loading,
+            rx.hstack(
+                rx.spinner(size="1"),
+                rx.text("委任先情報を確認中...", size="2", color="var(--gray-8)"),
+                spacing="2",
+                align="center",
+            ),
+            rx.fragment(),
+        ),
         # 新規登録フォーム
         rx.cond(
             AuthState.stake_addresses_count < 3,
@@ -383,6 +393,8 @@ def stake_tab() -> rx.Component:
                         on_click=AuthState.add_stake_address_handler,
                         size="2",
                         cursor="pointer",
+                        loading=AuthState.stake_adding | AuthState.stake_role_loading,
+                        disabled=AuthState.stake_adding | AuthState.stake_role_loading,
                     ),
                     spacing="3",
                     width="100%",
@@ -523,9 +535,22 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
                     rx.fragment(),
                 ),
             ),
-            # プール通知（全ロール共通）
+            # プール通知
             rx.text("ステークプール通知", size="3", weight="bold", color="var(--gray-10)"),
-            *_toggle_rows(addr_id_str, POOL_NOTIFICATION_EVENT_TYPES),
+            rx.cond(
+                addr["delegated_pool_id"],
+                rx.vstack(
+                    *_toggle_rows(addr_id_str, POOL_NOTIFICATION_EVENT_TYPES),
+                    spacing="1",
+                    width="100%",
+                    align_items="start",
+                ),
+                rx.text(
+                    "ステークプールに委任していないため、プール関連の通知はありません",
+                    size="3",
+                    color="var(--gray-8)",
+                ),
+            ),
             rx.divider(margin_y="8px"),
             # ガバナンス通知（ロール別）
             rx.hstack(
@@ -589,12 +614,32 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
                         width="100%",
                         align_items="start",
                     ),
-                    # DRep委任者
-                    rx.vstack(
-                        *_toggle_rows(addr_id_str, DELEGATOR_NOTIFICATION_EVENT_TYPES),
-                        spacing="1",
-                        width="100%",
-                        align_items="start",
+                    # DRep委任者 or 未委任
+                    rx.cond(
+                        addr["delegated_drep_id"],
+                        # 委任済み → 通知設定を表示
+                        rx.vstack(
+                            *_toggle_rows(addr_id_str, DELEGATOR_NOTIFICATION_EVENT_TYPES),
+                            spacing="1",
+                            width="100%",
+                            align_items="start",
+                        ),
+                        # 未委任 → 案内メッセージ
+                        rx.vstack(
+                            rx.text(
+                                "DRepに委任していないため、DRep関連の通知はありません",
+                                size="3",
+                                color="var(--gray-8)",
+                            ),
+                            rx.text(
+                                "Cardanoは分散型ガバナンスへ移行しており、トレジャリーの使途や各種提案はDRepの投票によって決まります。あなたのADAも、1ADA＝1票としてその意思決定に活かすことができます。まだ委任していない方は、ぜひDRepへの委任をご検討ください。",
+                                size="3",
+                                color="var(--gray-9)",
+                            ),
+                            spacing="2",
+                            width="100%",
+                            align_items="start",
+                        ),
                     ),
                 ),
             ),
@@ -754,7 +799,8 @@ def mypage() -> rx.Component:
                     rx.tabs.content(profile_tab(), value="profile", padding_top="20px"),
                     rx.tabs.content(stake_tab(), value="stake", padding_top="20px"),
                     rx.tabs.content(notification_tab(), value="notification", padding_top="20px"),
-                    default_value="favorites",
+                    value=AuthState.active_tab,
+                    on_change=AuthState.set_active_tab,
                     width="100%",
                 ),
                 spacing="5",

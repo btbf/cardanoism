@@ -69,6 +69,9 @@ class AuthState(rx.State):
     new_stake_address: str = ""
     new_stake_nickname: str = ""
     stake_error: str = ""
+    stake_adding: bool = False
+    stake_role_loading: bool = False
+    active_tab: str = "favorites"
 
     # お気に入り（catalyst）
     favorites: list[dict] = []
@@ -307,35 +310,44 @@ class AuthState(rx.State):
     def set_new_stake_nickname(self, value: str):
         self.new_stake_nickname = value
 
-    def add_stake_address_handler(self):
+    async def add_stake_address_handler(self):
         if not self.is_logged_in:
             return
         input_addr = self.new_stake_address.strip()
         nickname = self.new_stake_nickname.strip()
+        # フォーマットのみ即時バリデーション（API不要）
         if not input_addr or not nickname:
             self.stake_error = "アドレスとニックネームを入力してください"
             return
-        # 受信アドレス（addr1...）からステークアドレスを取得
+        if not input_addr.startswith("addr") and not _is_valid_stake_address(input_addr):
+            self.stake_error = "有効な受信アドレス（addr1...）を入力してください"
+            return
+        # ここで即時 yield → ボタンがローディング状態になる
+        self.stake_error = ""
+        self.stake_adding = True
+        yield
+        # --- 以降は UI 更新後に実行 ---
         wallet_address = None
         if input_addr.startswith("addr"):
             address = get_stake_address_from_addr(input_addr)
             if not address:
                 self.stake_error = "ステークアドレスを取得できませんでした（エンタープライズアドレスは非対応）"
+                self.stake_adding = False
                 return
             wallet_address = input_addr
-        elif _is_valid_stake_address(input_addr):
-            address = input_addr
         else:
-            self.stake_error = "有効な受信アドレス（addr1...）を入力してください"
-            return
+            address = input_addr
         result = add_stake_address(self.user_id, address, nickname, wallet_address)
+        self.stake_adding = False
         if result == "ok":
             self.new_stake_address = ""
             self.new_stake_nickname = ""
-            self.stake_error = ""
-            # DBに登録されたばかりのアドレスのIDを取得してroleを更新
-            addresses = get_stake_addresses(self.user_id)
-            new_entry = next((a for a in addresses if a["address"] == address), None)
+            self.stake_addresses = get_stake_addresses(self.user_id)
+            self._load_stake_notification_settings()
+            self.stake_role_loading = True
+            yield  # アドレスを即時表示
+            # Koios API でロール・プール・DRep情報を取得
+            new_entry = next((a for a in self.stake_addresses if a["address"] == address), None)
             if new_entry:
                 info = detect_stake_role(address)
                 update_stake_address_role(
@@ -346,8 +358,8 @@ class AuthState(rx.State):
                     info.get("pool_id"),
                     info.get("pool_name"),
                 )
-            self.stake_addresses = get_stake_addresses(self.user_id)
-            self._load_stake_notification_settings()
+                self.stake_addresses = get_stake_addresses(self.user_id)
+            self.stake_role_loading = False
         elif result == "duplicate":
             self.stake_error = "このステークアドレスはすでに登録されています"
         else:
@@ -512,6 +524,10 @@ class AuthState(rx.State):
         self.favorites = get_favorites(self.user_id, "catalyst")
         self.notification_settings = get_notification_settings(self.user_id)
         self._load_stake_notification_settings()
+        # ?tab= クエリパラメータでタブを指定できる
+        valid_tabs = {"favorites", "profile", "stake", "notification"}
+        tab = self.router.page.params.get("tab", "favorites")
+        self.active_tab = tab if tab in valid_tabs else "favorites"
 
 
 # bech32のデータ部で使用できる文字（小文字のみ）
