@@ -28,6 +28,61 @@ GENERAL_EVENTS = [
 # タブ1: お気に入り
 # ============================================================
 
+_GA_TYPE_LABELS = {
+    "ParameterChange":    "プロトコル変更",
+    "TreasuryWithdrawals": "国庫引き出し",
+    "HardForkInitiation": "ハードフォーク",
+    "InfoAction":         "情報提案",
+    "NewCommittee":       "委員会変更",
+    "NewConstitution":    "新憲法",
+    "NoConfidence":       "不信任",
+}
+
+
+def ga_favorite_card(fav: rx.Var[dict]) -> rx.Component:
+    """ガバナンスお気に入りカード。"""
+    return rx.box(
+        rx.hstack(
+            rx.vstack(
+                rx.link(
+                    rx.text(
+                        rx.cond(fav["title_ja"], fav["title_ja"], rx.cond(fav["title"], fav["title"], "（タイトルなし）")),
+                        size="4",
+                        weight="medium",
+                        line_height="1.4",
+                    ),
+                    href="/governance/" + fav["proposal_uuid"].to(str),
+                    underline="hover",
+                ),
+                rx.hstack(
+                    rx.badge(fav["proposal_type"], variant="soft", color_scheme="amber", size="1"),
+                    rx.text("Ep.", fav["proposed_epoch"].to(str), size="2", color="var(--gray-9)"),
+                    spacing="2",
+                    wrap="wrap",
+                ),
+                spacing="1",
+                align_items="start",
+                width="100%",
+            ),
+            rx.icon_button(
+                rx.icon("trash-2", size=14),
+                variant="ghost",
+                color_scheme="red",
+                size="1",
+                cursor="pointer",
+                on_click=AuthState.remove_ga_favorite_handler(fav["proposal_uuid"].to(str)),
+            ),
+            align="start",
+            width="100%",
+        ),
+        padding="14px 16px",
+        border_radius="10px",
+        border=f"1px solid {rx.color('gray', 4)}",
+        background=rx.color_mode_cond("white", "rgba(15,15,25,0.85)"),
+        width="100%",
+    )
+
+
 def favorite_card(fav: rx.Var[dict]) -> rx.Component:
     return rx.box(
         rx.hstack(
@@ -77,9 +132,33 @@ def favorite_card(fav: rx.Var[dict]) -> rx.Component:
     )
 
 
-def favorites_tab() -> rx.Component:
+def _fav_pagination(page_var, total_var, prev_handler, next_handler) -> rx.Component:
+    return rx.hstack(
+        rx.icon_button(
+            rx.icon("chevron-left", size=16),
+            variant="soft",
+            disabled=page_var <= 1,
+            on_click=prev_handler,
+            cursor="pointer",
+        ),
+        rx.text(page_var.to(str), " / ", total_var.to(str), size="3", color="var(--gray-10)"),
+        rx.icon_button(
+            rx.icon("chevron-right", size=16),
+            variant="soft",
+            disabled=page_var >= total_var,
+            on_click=next_handler,
+            cursor="pointer",
+        ),
+        justify="center",
+        align="center",
+        spacing="3",
+        width="100%",
+        padding_top="8px",
+    )
+
+
+def _catalyst_list() -> rx.Component:
     return rx.vstack(
-        # フィルター・並び替え
         rx.hstack(
             rx.select.root(
                 rx.select.trigger(placeholder=AuthState.t["filter_fund_placeholder"]),
@@ -119,7 +198,6 @@ def favorites_tab() -> rx.Component:
             wrap="wrap",
             spacing="2",
         ),
-        # お気に入りリスト
         rx.cond(
             AuthState.is_favorites_empty,
             rx.center(
@@ -133,38 +211,70 @@ def favorites_tab() -> rx.Component:
             ),
             rx.vstack(
                 rx.foreach(AuthState.filtered_favorites, favorite_card),
-                # ページネーション
-                rx.hstack(
-                    rx.icon_button(
-                        rx.icon("chevron-left", size=16),
-                        variant="soft",
-                        disabled=AuthState.favorites_page <= 1,
-                        on_click=AuthState.favorites_prev_page,
-                        cursor="pointer",
-                    ),
-                    rx.text(
-                        AuthState.favorites_page.to(str),
-                        " / ",
-                        AuthState.favorites_total_pages.to(str),
-                        size="3",
-                        color="var(--gray-10)",
-                    ),
-                    rx.icon_button(
-                        rx.icon("chevron-right", size=16),
-                        variant="soft",
-                        disabled=AuthState.favorites_page >= AuthState.favorites_total_pages,
-                        on_click=AuthState.favorites_next_page,
-                        cursor="pointer",
-                    ),
-                    justify="center",
-                    align="center",
-                    spacing="3",
-                    width="100%",
-                    padding_top="8px",
+                _fav_pagination(
+                    AuthState.favorites_page,
+                    AuthState.favorites_total_pages,
+                    AuthState.favorites_prev_page,
+                    AuthState.favorites_next_page,
                 ),
                 spacing="2",
                 width="100%",
             ),
+        ),
+        spacing="3",
+        width="100%",
+    )
+
+
+def _governance_list() -> rx.Component:
+    return rx.cond(
+        AuthState.is_ga_favorites_empty,
+        rx.center(
+            rx.vstack(
+                rx.icon("bookmark", size=36, color="var(--gray-6)"),
+                rx.text("ガバナンスのお気に入りはまだありません", size="4", color="var(--gray-8)"),
+                spacing="3",
+                align="center",
+            ),
+            padding_y="40px",
+        ),
+        rx.vstack(
+            rx.foreach(AuthState.filtered_ga_favorites, ga_favorite_card),
+            _fav_pagination(
+                AuthState.ga_favorites_page,
+                AuthState.ga_favorites_total_pages,
+                AuthState.ga_favorites_prev_page,
+                AuthState.ga_favorites_next_page,
+            ),
+            spacing="2",
+            width="100%",
+        ),
+    )
+
+
+def favorites_tab() -> rx.Component:
+    # カテゴリ切り替えボタン
+    def _cat_btn(label: str, value: str, icon_name: str) -> rx.Component:
+        is_active = AuthState.favorites_category == value
+        return rx.button(
+            rx.hstack(rx.icon(icon_name, size=14), rx.text(label, size="2"), spacing="1", align="center"),
+            variant=rx.cond(is_active, "solid", "soft"),
+            color_scheme=rx.cond(is_active, "amber", "gray"),
+            size="2",
+            cursor="pointer",
+            on_click=AuthState.set_favorites_category(value),
+        )
+
+    return rx.vstack(
+        rx.hstack(
+            _cat_btn("Catalyst", "catalyst", "flask-conical"),
+            _cat_btn("ガバナンス", "governance", "landmark"),
+            spacing="2",
+        ),
+        rx.cond(
+            AuthState.favorites_category == "catalyst",
+            _catalyst_list(),
+            _governance_list(),
         ),
         spacing="4",
         width="100%",

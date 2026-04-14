@@ -1274,14 +1274,14 @@ class GovernanceState(rx.State):
         self.middle_page = list(range(self.start_page, self.end_page + 1))
         self.load = True
 
-    def _load_full_action(self, action_id: str) -> None:
-        """ID を指定して governance_actions の全カラムを modal_action に読み込む。"""
+    def _load_full_action(self, proposal_tx_hash: str) -> None:
+        """proposal_tx_hash を指定して governance_actions の全カラムを modal_action に読み込む。"""
         try:
             with get_db() as (cursor, _):
                 cursor.execute(
                     f"SELECT *, {_GA_STATUS_SQL} AS ga_status"
-                    " FROM governance_actions WHERE id = ?",
-                    (action_id,),
+                    " FROM governance_actions WHERE proposal_tx_hash = ?",
+                    (proposal_tx_hash,),
                 )
                 row = cursor.fetchone()
                 if row:
@@ -1289,7 +1289,7 @@ class GovernanceState(rx.State):
                     self.modal_action_refs = formatted.get("references_list", [])
                     self.modal_action = formatted
         except Exception as e:
-            logger.exception("GovernanceState._load_full_action(id=%s): %s", action_id, e)
+            logger.exception("GovernanceState._load_full_action(tx=%s): %s", proposal_tx_hash, e)
 
     # ── ページロード ──────────────────────────────────────────────────────────
 
@@ -1316,15 +1316,15 @@ class GovernanceState(rx.State):
         self.data_fetch()
 
     def load_detail_page(self):
-        """個別ページ /governance/[id] のロード処理。"""
+        """個別ページ /governance/[proposal_tx_hash] のロード処理。"""
         self.load = False
         self.modal_action = {}
         self.modal_action_refs = []
         path = self.router.url.path or ""
         parts = [p for p in path.split("/") if p]
-        action_id = parts[-1] if parts else ""
-        if action_id:
-            self._load_full_action(action_id)
+        proposal_tx_hash = parts[-1] if parts else ""
+        if proposal_tx_hash:
+            self._load_full_action(proposal_tx_hash)
         self.load = True
 
     # ── モーダル ──────────────────────────────────────────────────────────────
@@ -1336,11 +1336,11 @@ class GovernanceState(rx.State):
         self.modal_action_refs = []
         self.modal_lang = "ja"
         self.last_list_path = self.router.url.path or ""
-        action_id = str(action.get("id", ""))
-        self._load_full_action(action_id)
+        tx_hash = str(action.get("proposal_tx_hash", ""))
+        self._load_full_action(tx_hash)
         self.modal_loading = False
         return rx.call_script(
-            f"history.pushState(null, '', '/governance/{action_id}');"
+            f"history.pushState(null, '', '/governance/{tx_hash}');"
         )
 
     def handle_modal_change(self, open: bool):

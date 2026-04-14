@@ -7,6 +7,7 @@ import reflex as rx
 from typing import Dict, Any
 
 from cardanoism.backend.db_connect import GovernanceState
+from cardanoism.backend.auth_state import AuthState
 from cardanoism.components.proposal_card import badge_with_dot
 
 
@@ -227,33 +228,70 @@ def governance_detail_content(action: Dict[str, Any]) -> rx.Component:
     )
 
     # リンク行
+    _btn_style = {
+        "display": "inline-flex",
+        "align_items": "center",
+        "gap": "4px",
+        "padding": "4px 10px",
+        "border_radius": "6px",
+        "font_size": "13px",
+        "font_weight": "500",
+        "cursor": "pointer",
+        "border": "1px solid var(--gray-5)",
+        "background": "var(--gray-2)",
+        "color": "var(--gray-11)",
+        "text_decoration": "none",
+        "_hover": {"background": "var(--gray-4)"},
+    }
+
+    favorite_btn = rx.cond(
+        AuthState.ga_favorite_ids.contains(action["proposal_tx_hash"]),
+        rx.icon_button(
+            rx.icon("bookmark", size=16),
+            variant="soft",
+            color_scheme="amber",
+            size="2",
+            cursor="pointer",
+            on_click=AuthState.toggle_ga_favorite(action["proposal_tx_hash"]),
+        ),
+        rx.icon_button(
+            rx.icon("bookmark", size=16),
+            variant="ghost",
+            color_scheme="gray",
+            size="2",
+            cursor="pointer",
+            on_click=AuthState.toggle_ga_favorite(action["proposal_tx_hash"]),
+        ),
+    )
+
     links_row = rx.hstack(
         rx.cond(
             action["govtool_url"],
             rx.link(
                 rx.hstack(
-                    rx.text("Gov Tool", size="2", weight="medium"),
-                    rx.icon("external-link", size=16),
+                    rx.text("Gov Tool", size="1"),
+                    rx.icon("external-link", size=12),
                     spacing="1",
                     align="center",
                 ),
                 href=action["govtool_url"],
                 is_external=True,
-                underline="auto",
-                style={"text-decoration": "none !important"},
+                underline="none",
+                style=_btn_style,
             ),
             rx.fragment(),
         ),
         rx.menu.root(
             rx.menu.trigger(
-                rx.hstack(
-                    rx.text("シェア", size="2", weight="medium"),
-                    rx.icon("share", size=16),
-                    spacing="1",
-                    align="center",
-                    cursor="pointer",
+                rx.box(
+                    rx.hstack(
+                        rx.text("シェア", size="1"),
+                        rx.icon("share-2", size=12),
+                        spacing="1",
+                        align="center",
+                    ),
+                    style=_btn_style,
                 ),
-                width="20%",
             ),
             rx.menu.content(
                 rx.menu.item(
@@ -284,6 +322,7 @@ def governance_detail_content(action: Dict[str, Any]) -> rx.Component:
                 ),
             ),
         ),
+        favorite_btn,
         spacing="2",
         wrap="wrap",
         align="center",
@@ -460,42 +499,74 @@ _CARD_CLASS_DARK = (
 )
 
 
+def _ga_fav_btn_list(action: Dict[str, Any]) -> rx.Component:
+    return rx.cond(
+        AuthState.ga_favorite_ids.contains(action["proposal_tx_hash"]),
+        rx.icon_button(
+            rx.icon("bookmark", size=15),
+            variant="soft",
+            color_scheme="amber",
+            size="1",
+            cursor="pointer",
+            on_click=AuthState.toggle_ga_favorite(action["proposal_tx_hash"]),
+        ),
+        rx.icon_button(
+            rx.icon("bookmark", size=15),
+            variant="ghost",
+            color_scheme="gray",
+            size="1",
+            cursor="pointer",
+            on_click=AuthState.toggle_ga_favorite(action["proposal_tx_hash"]),
+        ),
+    )
+
+
 def ga_list_card(action: Dict[str, Any]) -> rx.Component:
-    content = rx.vstack(
-        rx.hstack(
-            ga_type_badge(action),
-            ga_status_badge(action),
-            spacing="2",
-            wrap="wrap",
-            align="center",
-        ),
-        rx.text(
-            action["title_display"],
-            size="4",
-            weight="bold",
-            line_height="1.2",
-            color="var(--gray-12)",
-            class_name="ga-title proposal-title",
-        ),
-        rx.cond(
-            action["abstract_display"],
-            rx.text(
-                action["abstract_display"],
-                size="3",
-                line_height="1.6",
-                text_wrap="wrap",
-                class_name="mt-2 line-clamp-3",
-                min_height="3.6em",
-                color="var(--gray-12)",
+    content = rx.hstack(
+        rx.vstack(
+            rx.hstack(
+                ga_type_badge(action),
+                ga_status_badge(action),
+                spacing="2",
+                wrap="wrap",
+                align="center",
             ),
-            rx.fragment(),
+            rx.text(
+                action["title_display"],
+                size="4",
+                weight="bold",
+                line_height="1.2",
+                color="var(--gray-12)",
+                class_name="ga-title proposal-title",
+            ),
+            rx.cond(
+                action["abstract_display"],
+                rx.text(
+                    action["abstract_display"],
+                    size="3",
+                    line_height="1.6",
+                    text_wrap="wrap",
+                    class_name="mt-2 line-clamp-3",
+                    min_height="3.6em",
+                    color="var(--gray-12)",
+                ),
+                rx.fragment(),
+            ),
+            _card_footer(action),
+            spacing="3",
+            flex="1",
+            min_width="0",
+            on_click=GovernanceState.open_modal(action),
+            cursor="pointer",
         ),
-        _card_footer(action),
-        spacing="3",
-        flex="1",
-        min_width="0",
-        on_click=GovernanceState.open_modal(action),
-        cursor="pointer",
+        rx.box(
+            _ga_fav_btn_list(action),
+            flex_shrink="0",
+            padding_top="2px",
+        ),
+        align="start",
+        spacing="2",
+        width="100%",
     )
 
     return rx.card(
@@ -512,11 +583,19 @@ def ga_list_card(action: Dict[str, Any]) -> rx.Component:
 def ga_grid_card(action: Dict[str, Any]) -> rx.Component:
     content_block = rx.vstack(
         rx.hstack(
-            ga_type_badge(action),
-            ga_status_badge(action),
+            rx.hstack(
+                ga_type_badge(action),
+                ga_status_badge(action),
+                spacing="2",
+                wrap="wrap",
+                align="center",
+                flex="1",
+                min_width="0",
+            ),
+            _ga_fav_btn_list(action),
+            align="start",
             spacing="2",
-            wrap="wrap",
-            align="center",
+            width="100%",
         ),
         rx.text(
             action["title_display"],
@@ -542,29 +621,15 @@ def ga_grid_card(action: Dict[str, Any]) -> rx.Component:
     )
 
     return rx.card(
-        rx.box(
-            rx.vstack(
-                content_block,
-                _card_footer(action),
-                spacing="3",
-                width="100%",
-                height="100%",
-                justify="between",
-                on_click=GovernanceState.open_modal(action),
-                cursor="pointer",
-            ),
-            rx.box(
-                rx.icon("expand", size=16),
-                position="absolute",
-                right="0px",
-                bottom="0px",
-                border_radius="full",
-                pointer_events="none",
-            ),
-            position="relative",
-            flex="1",
-            min_width="0",
+        rx.vstack(
+            content_block,
+            _card_footer(action),
+            spacing="3",
             width="100%",
+            height="100%",
+            justify="between",
+            on_click=GovernanceState.open_modal(action),
+            cursor="pointer",
         ),
         width="100%",
         padding="18px",

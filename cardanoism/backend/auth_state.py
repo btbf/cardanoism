@@ -26,6 +26,7 @@ from cardanoism.backend.auth_db import (
     get_favorites,
     add_favorite,
     remove_favorite,
+    get_ga_favorites,
     get_notification_settings,
     update_notification_setting,
     update_notification_frequency,
@@ -99,6 +100,12 @@ class AuthState(rx.State):
     favorites_status_filter: str = "all"
     favorites_sort: str = "amount_desc"
     favorites_page: int = 1
+    favorites_category: str = "catalyst"  # "catalyst" | "governance"
+
+    # お気に入り（governance）
+    ga_favorites: list[dict] = []
+    ga_favorite_ids: list[str] = []
+    ga_favorites_page: int = 1
 
     # 通知設定（イベントON/OFF）
     notification_settings: dict[str, bool] = {}
@@ -173,6 +180,7 @@ class AuthState(rx.State):
             self.language = user.get("language") or "ja"
             self.is_logged_in = True
             self.favorite_ids = [s for s in get_favorite_ids(self.user_id) if isinstance(s, str) and s]
+            self.ga_favorite_ids = [s for s in get_favorite_ids(self.user_id, "governance") if isinstance(s, str) and s]
             self._load_providers_and_channels()
         else:
             self.session_token = ""
@@ -844,6 +852,64 @@ class AuthState(rx.State):
     def is_favorites_empty(self) -> bool:
         return len(self.filtered_favorites_all) == 0
 
+    # ============================================================
+    # GAお気に入り
+    # ============================================================
+
+    def toggle_ga_favorite(self, proposal_tx_hash: str):
+        if not self.is_logged_in:
+            self.show_login_modal = True
+            return
+        if not proposal_tx_hash:
+            return
+        if proposal_tx_hash in self.ga_favorite_ids:
+            self.ga_favorite_ids = [uid for uid in self.ga_favorite_ids if uid != proposal_tx_hash]
+            yield
+            remove_favorite(self.user_id, proposal_tx_hash, "governance")
+        else:
+            self.ga_favorite_ids = self.ga_favorite_ids + [proposal_tx_hash]
+            yield
+            add_favorite(self.user_id, proposal_tx_hash, "governance")
+        if self.ga_favorites:
+            self.ga_favorites = get_ga_favorites(self.user_id)
+
+    def load_ga_favorites(self):
+        if self.is_logged_in:
+            self.ga_favorites = get_ga_favorites(self.user_id)
+
+    def remove_ga_favorite_handler(self, proposal_tx_hash: str):
+        if not self.is_logged_in:
+            return
+        remove_favorite(self.user_id, proposal_tx_hash, "governance")
+        self.ga_favorite_ids = [uid for uid in self.ga_favorite_ids if uid != proposal_tx_hash]
+        self.load_ga_favorites()
+
+    def ga_favorites_prev_page(self):
+        if self.ga_favorites_page > 1:
+            self.ga_favorites_page -= 1
+
+    def ga_favorites_next_page(self):
+        if self.ga_favorites_page < self.ga_favorites_total_pages:
+            self.ga_favorites_page += 1
+
+    def set_favorites_category(self, category: str):
+        self.favorites_category = category
+        if category == "governance" and not self.ga_favorites:
+            self.load_ga_favorites()
+
+    @rx.var
+    def filtered_ga_favorites(self) -> list[dict]:
+        start = (self.ga_favorites_page - 1) * 10
+        return self.ga_favorites[start:start + 10]
+
+    @rx.var
+    def ga_favorites_total_pages(self) -> int:
+        return max(1, (len(self.ga_favorites) + 9) // 10)
+
+    @rx.var
+    def is_ga_favorites_empty(self) -> bool:
+        return len(self.ga_favorites) == 0
+
     @rx.var
     def is_stake_addresses_empty(self) -> bool:
         return len(self.stake_addresses) == 0
@@ -902,6 +968,7 @@ class AuthState(rx.State):
         self.load_profile()
         self.stake_addresses = get_stake_addresses(self.user_id)
         self.favorites = get_favorites(self.user_id, "catalyst")
+        self.ga_favorites = get_ga_favorites(self.user_id)
         self.notification_settings = get_notification_settings(self.user_id)
         self._load_stake_notification_settings()
         valid_tabs = {"favorites", "profile", "stake", "notification"}

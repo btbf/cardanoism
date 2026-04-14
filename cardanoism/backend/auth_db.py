@@ -407,6 +407,26 @@ def is_favorite(user_id: int, proposal_uuid: str, type: str = "catalyst") -> boo
         return cursor.fetchone() is not None
 
 
+def get_ga_favorites(user_id: int) -> list:
+    """ガバナンスお気に入り一覧を取得（governance_actions JOIN）。"""
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT f.id, f.proposal_uuid, f.created_at,
+                   g.title, g.title_ja, g.proposal_type,
+                   g.proposed_epoch,
+                   g.ratified_epoch, g.enacted_epoch,
+                   g.dropped_epoch, g.expired_epoch
+            FROM favorites f
+            JOIN governance_actions g ON f.proposal_uuid = g.proposal_tx_hash
+            WHERE f.user_id = ? AND f.type = 'governance'
+            ORDER BY f.created_at DESC
+            """,
+            (user_id,),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+
 # ============================================================
 # 通知設定（イベントON/OFF）
 # ============================================================
