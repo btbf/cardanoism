@@ -227,7 +227,7 @@ def governance_detail_content(action: Dict[str, Any]) -> rx.Component:
         align="center",
     )
 
-    # リンク行
+    # リンク行（Gov Tool のみ。シェア・ハートはモーダルのボトムバーに移動）
     _btn_style = {
         "display": "inline-flex",
         "align_items": "center",
@@ -244,88 +244,21 @@ def governance_detail_content(action: Dict[str, Any]) -> rx.Component:
         "_hover": {"background": "var(--gray-4)"},
     }
 
-    favorite_btn = rx.cond(
-        AuthState.ga_favorite_ids.contains(action["proposal_tx_hash"]),
-        rx.icon_button(
-            rx.icon("heart", size=16),
-            variant="soft",
-            color_scheme="red",
-            size="2",
-            cursor="pointer",
-            on_click=AuthState.toggle_ga_favorite(action["proposal_tx_hash"]),
-        ),
-        rx.icon_button(
-            rx.icon("heart", size=16),
-            variant="ghost",
-            color_scheme="gray",
-            size="2",
-            cursor="pointer",
-            on_click=AuthState.toggle_ga_favorite(action["proposal_tx_hash"]),
-        ),
-    )
-
-    links_row = rx.hstack(
-        rx.cond(
-            action["govtool_url"],
-            rx.link(
-                rx.hstack(
-                    rx.text("Gov Tool", size="1"),
-                    rx.icon("external-link", size=12),
-                    spacing="1",
-                    align="center",
-                ),
-                href=action["govtool_url"],
-                is_external=True,
-                underline="none",
-                style=_btn_style,
+    links_row = rx.cond(
+        action["govtool_url"],
+        rx.link(
+            rx.hstack(
+                rx.text("Gov Tool", size="1"),
+                rx.icon("external-link", size=12),
+                spacing="1",
+                align="center",
             ),
-            rx.fragment(),
+            href=action["govtool_url"],
+            is_external=True,
+            underline="none",
+            style=_btn_style,
         ),
-        rx.menu.root(
-            rx.menu.trigger(
-                rx.box(
-                    rx.hstack(
-                        rx.text("シェア", size="1"),
-                        rx.icon("share-2", size=12),
-                        spacing="1",
-                        align="center",
-                    ),
-                    style=_btn_style,
-                ),
-            ),
-            rx.menu.content(
-                rx.menu.item(
-                    "X (Twitter)",
-                    on_click=rx.call_script(
-                        "const t = document.querySelector('.ga-title')?.innerText ?? '';"
-                        "const url = 'https://x.com/intent/tweet'"
-                        "  + '?text=' + encodeURIComponent(t)"
-                        "  + '&url=' + encodeURIComponent(window.location.href);"
-                        "window.open(url,'x-share','width=550,height=420,menubar=no,toolbar=no,"
-                        "location=no,status=no,resizable=yes,scrollbars=yes');"
-                    ),
-                ),
-                rx.menu.item(
-                    "URLコピー",
-                    on_click=[
-                        rx.call_script("navigator.clipboard.writeText(window.location.href);"),
-                        rx.toast(
-                            "リンクをコピーしました",
-                            position="top-center",
-                            style={
-                                "background-color": "var(--indigo-11)",
-                                "color": "white",
-                                "border-radius": "0.5rem",
-                            },
-                        ),
-                    ],
-                ),
-            ),
-        ),
-        favorite_btn,
-        spacing="2",
-        wrap="wrap",
-        align="center",
+        rx.fragment(),
     )
 
     # 本文（言語切り替え対応）
@@ -433,17 +366,78 @@ def governance_modal() -> rx.Component:
                 ),
             ),
             rx.hstack(
-                rx.dialog.close(
-                    rx.button(
-                        "閉じる",
-                        on_click=lambda: GovernanceState.handle_modal_change(False),
-                        width="100%",
-                        variant="soft",
-                        cursor="pointer",
+                rx.button(
+                    "閉じる",
+                    on_click=GovernanceState.handle_modal_change(False),
+                    width="90%",
+                    variant="soft",
+                    cursor="pointer",
+                ),
+                rx.menu.root(
+                    rx.menu.trigger(
+                        rx.icon("share-2", size=20, color="var(--gray-8)", cursor="pointer"),
+                    ),
+                    rx.menu.content(
+                        rx.menu.item(
+                            "X (Twitter)",
+                            on_click=rx.call_script(
+                                "const t = document.querySelector('.ga-title')?.innerText ?? '';"
+                                "const url = 'https://x.com/intent/tweet'"
+                                "  + '?text=' + encodeURIComponent(t)"
+                                "  + '&url=' + encodeURIComponent(window.location.href);"
+                                "window.open(url,'x-share',"
+                                "'width=550,height=420,menubar=no,toolbar=no,"
+                                "location=no,status=no,resizable=yes,scrollbars=yes');"
+                            ),
+                        ),
+                        rx.menu.item(
+                            "LINE",
+                            on_click=rx.call_script(
+                                "const t = document.querySelector('.ga-title')?.innerText ?? '';"
+                                "const url = 'https://social-plugins.line.me/lineit/share'"
+                                "  + '?url=' + encodeURIComponent(window.location.href)"
+                                "  + '&text=' + encodeURIComponent(t);"
+                                "window.open(url,'line-share',"
+                                "'width=520,height=520,menubar=no,toolbar=no,"
+                                "location=no,status=no,resizable=yes,scrollbars=yes');"
+                            ),
+                        ),
+                        rx.menu.item(
+                            "URLコピー",
+                            on_click=[
+                                rx.call_script("navigator.clipboard.writeText(window.location.href);"),
+                                rx.toast(
+                                    "リンクをコピーしました",
+                                    position="top-center",
+                                    style={
+                                        "background-color": "var(--indigo-11)",
+                                        "color": "white",
+                                        "border-radius": "0.5rem",
+                                    },
+                                ),
+                            ],
+                        ),
                     ),
                 ),
+                rx.box(
+                    rx.cond(
+                        AuthState.ga_favorite_ids.contains(
+                            GovernanceState.modal_action["proposal_tx_hash"]
+                        ),
+                        rx.icon("heart", size=26, color="var(--red-9)", style={"fill": "var(--red-9)"}),
+                        rx.icon("heart", size=26, color="var(--gray-8)"),
+                    ),
+                    on_click=AuthState.toggle_ga_favorite(
+                        GovernanceState.modal_action["proposal_tx_hash"]
+                    ),
+                    cursor="pointer",
+                    padding="6px",
+                    display="flex",
+                    align_items="center",
+                ),
                 width="100%",
-                padding_top="16px",
+                align="center",
+                padding_top="12px",
             ),
             max_width="780px",
             width="95vw",
@@ -513,24 +507,16 @@ _CARD_CLASS_DARK = (
 
 
 def _ga_fav_btn_list(action: Dict[str, Any]) -> rx.Component:
-    return rx.cond(
-        AuthState.ga_favorite_ids.contains(action["proposal_tx_hash"]),
-        rx.icon_button(
-            rx.icon("heart", size=15),
-            variant="soft",
-            color_scheme="red",
-            size="1",
-            cursor="pointer",
-            on_click=AuthState.toggle_ga_favorite(action["proposal_tx_hash"]),
+    return rx.box(
+        rx.cond(
+            AuthState.ga_favorite_ids.contains(action["proposal_tx_hash"]),
+            rx.icon("heart", size=22, color="var(--red-9)", style={"fill": "var(--red-9)"}),
+            rx.icon("heart", size=22, color="var(--gray-8)"),
         ),
-        rx.icon_button(
-            rx.icon("heart", size=15),
-            variant="ghost",
-            color_scheme="gray",
-            size="1",
-            cursor="pointer",
-            on_click=AuthState.toggle_ga_favorite(action["proposal_tx_hash"]),
-        ),
+        on_click=AuthState.toggle_ga_favorite(action["proposal_tx_hash"]),
+        cursor="pointer",
+        padding="4px",
+        flex_shrink="0",
     )
 
 
