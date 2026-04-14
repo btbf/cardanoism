@@ -34,8 +34,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from dotenv import load_dotenv
+load_dotenv(PROJECT_ROOT / "cardanoism" / ".env", override=True)
+
 from cardanoism.backend.db_connect import get_db
-from cardanoism.backend.koios import _post
+from cardanoism.backend.koios import _get
 from cardanoism.translate import TranslateConfig, Translator
 
 logger = logging.getLogger(__name__)
@@ -96,7 +99,7 @@ def fetch_all_proposals() -> list[dict]:
     offset = 0
     limit = 1000
     while True:
-        data = _post("/proposal_list", {"offset": offset, "limit": limit})
+        data = _get("/proposal_list", params={"offset": offset, "limit": limit})
         if not data or not isinstance(data, list):
             break
         all_records.extend(data)
@@ -174,7 +177,7 @@ def upsert_proposal(fields: dict):
                 proposed_epoch, ratified_epoch, enacted_epoch,
                 dropped_epoch, expired_epoch, expiration,
                 block_time, meta_url, meta_hash, meta_is_valid,
-                title, abstract, motivation, rationale, references_json
+                title, `abstract`, motivation, rationale, references_json
             ) VALUES (
                 ?, ?, ?, ?,
                 ?, ?,
@@ -212,7 +215,7 @@ def fetch_translation_targets(
     force: bool = False,
 ) -> list[dict]:
     """翻訳が必要なレコードを DB から取得する。"""
-    cols = ("id", "proposal_tx_hash", "title", "abstract", "motivation", "rationale",
+    cols = ("id", "proposal_tx_hash", "title", "`abstract`", "motivation", "rationale",
             "title_ja", "abstract_ja", "motivation_ja", "rationale_ja")
     select = f"SELECT {', '.join(cols)} FROM governance_actions"
 
