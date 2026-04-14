@@ -2,10 +2,16 @@
 notify_worker.py
 通知バッチワーカー - cron で定期実行する独立スクリプト
 
-推奨実行間隔:
-  */60 * * * *  python notify_worker.py --event epoch_start
-  */30 * * * *  python notify_worker.py --event pool
-  */30 * * * *  python notify_worker.py --event drep
+推奨 cron 設定:
+  # エポック切り替わりは常に 21:44:51 UTC。ウィンドウを設定して1日1回だけ実行。
+  # (5日に1回だけ実際に処理が走る)
+  44 21 * * *  EPOCH_CHECK_WINDOW_MIN=60 python /path/to/notify_worker.py --event epoch_start
+
+  # 切り替わり時刻を確認する場合:
+  python notify_worker.py --epoch-schedule
+
+  */30 * * * *  python /path/to/notify_worker.py --event pool
+  */30 * * * *  python /path/to/notify_worker.py --event drep
 
 全イベント一括実行:
   python notify_worker.py
@@ -14,6 +20,7 @@ import os
 import sys
 import argparse
 import logging
+from datetime import datetime, timezone, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -25,6 +32,7 @@ from cardanoism.backend.koios import (
 )
 from cardanoism.backend.line_notify import send_line_push, send_line_flex
 from cardanoism.backend import line_flex
+from cardanoism.backend.mail_notify import send_email, build_html, build_text
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,6 +41,115 @@ logging.basicConfig(
 logger = logging.getLogger("notify_worker")
 
 CARDANOISM_URL = os.getenv("CARDANOISM_URL", "https://cardanoism.app")
+
+# ============================================================
+# Cardano エポック時刻計算
+# ============================================================
+
+# ネットワーク別エポック長（秒）
+# mainnet / preprod : 5日 = 432,000秒
+# preview           : 1日 =  86,400秒
+_CARDANO_EPOCH_SECONDS: dict[str, int] = {
+    "mainnet": 432_000,
+    "preprod": 432_000,
+    "preview":  86_400,
+}
+
+# エポック切り替わり時刻付近のみ処理するウィンドウ（分）。0 = 常に実行。
+# 環境変数 EPOCH_CHECK_WINDOW_MIN で設定する。
+EPOCH_CHECK_WINDOW_MIN = int(os.getenv("EPOCH_CHECK_WINDOW_MIN", "0"))
+
+
+def _koios_network() -> str:
+    return os.getenv("KOIOS_NETWORK", "mainnet").lower()
+
+
+def _epoch_duration() -> timedelta:
+    secs = _CARDANO_EPOCH_SECONDS.get(_koios_network(), 432_000)
+    return timedelta(seconds=secs)
+
+
+def _get_tip_epoch_info() -> dict | None:
+    """
+    Koios /tip からエポック情報を取得する。
+    戻り値: {"epoch_no": int, "epoch_slot": int, "block_time": datetime} | None
+    epoch_slot はエポック開始からの経過秒数（Shelley 以降 1 slot = 1 秒）。
+    """
+    from cardanoism.backend.koios import _get
+    data = _get("/tip")
+    if not data or not isinstance(data, list) or not data[0]:
+        return None
+    tip = data[0]
+    bt = tip.get("block_time", "")
+    # Koios は "2024-04-14T21:44:51" 形式（UTC・タイムゾーン表記なし）で返す場合がある
+    if bt:
+        if bt.endswith("Z"):
+            bt = bt[:-1] + "+00:00"
+        elif "+" not in bt and len(bt) == 19:
+            bt += "+00:00"
+        try:
+            block_time = datetime.fromisoformat(bt)
+        except ValueError:
+            block_time = None
+    else:
+        block_time = None
+    return {
+        "epoch_no":   tip.get("epoch_no"),
+        "epoch_slot": int(tip.get("epoch_slot") or 0),
+        "block_time": block_time,
+    }
+
+
+def is_near_epoch_boundary(window_minutes: int) -> bool:
+    """
+    現在がエポック開始から window_minutes 分以内かどうかを Koios API で判定する。
+    epoch_slot（エポック内の経過スロット秒数）が window 秒未満なら True。
+    API 取得失敗時はフォールセーフとして True（実行する）を返す。
+    """
+    tip = _get_tip_epoch_info()
+    if tip is None:
+        return True
+    return tip["epoch_slot"] < window_minutes * 60
+
+
+def print_epoch_schedule(count: int = 10):
+    """直近のエポック切り替わり時刻（UTC）を表示する。"""
+    tip = _get_tip_epoch_info()
+    if tip is None:
+        print("Koios API からデータを取得できませんでした")
+        return
+
+    epoch_no   = tip["epoch_no"]
+    epoch_slot = tip["epoch_slot"]
+    block_time = tip["block_time"]
+    network    = _koios_network()
+    ep_dur     = _epoch_duration()
+    ep_secs    = int(ep_dur.total_seconds())
+
+    if block_time:
+        current_epoch_start = block_time - timedelta(seconds=epoch_slot)
+    else:
+        print("block_time が取得できませんでした")
+        return
+
+    days_str = f"{ep_secs // 86400}日" if ep_secs % 86400 == 0 else f"{ep_secs // 3600}時間"
+    print(f"ネットワーク   : {network}")
+    print(f"エポック長     : {ep_secs:,}秒 ({days_str})")
+    print(f"現在のエポック : {epoch_no}  (開始: {current_epoch_start.strftime('%Y-%m-%d %H:%M:%S UTC')})")
+    print()
+    print(f"  {'エポック':>8}  切り替わり時刻 (UTC)")
+    print("  " + "-" * 42)
+    for i in range(count + 1):
+        ep = epoch_no + i
+        t  = current_epoch_start + i * ep_dur
+        marker = "  ← 現在進行中" if i == 0 else ""
+        print(f"  {ep:>8}  {t.strftime('%Y-%m-%d %H:%M:%S UTC')}{marker}")
+
+    next_start = current_epoch_start + ep_dur
+    print()
+    print("推奨 cron 設定 (EPOCH_CHECK_WINDOW_MIN=60):")
+    print(f"  {next_start.minute} {next_start.hour} * * *  EPOCH_CHECK_WINDOW_MIN=60 python notify_worker.py --event epoch_start")
+
 
 POOL_EVENT_TYPES = [
     "pool_retire",
@@ -99,6 +216,73 @@ def push_and_log(line_id: str, user_id: int, event_type: str, dedup_key: str, me
     return ok
 
 
+def email_and_log(email: str, user_id: int, event_type: str, dedup_key: str,
+                  subject: str, html: str, text: str = "") -> bool:
+    """メール送信 + ログ記録。成功時 True。"""
+    ok = send_email(email, subject, html, text)
+    if ok:
+        log_sent(user_id, event_type, dedup_key, "email", subject[:500])
+    return ok
+
+
+def get_users_with_email_event(event_type: str) -> list[dict]:
+    """指定イベントが有効でメール通知チャンネルを持つユーザー一覧。"""
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT u.id, nc.channel_value AS email_addr, COALESCE(u.language, 'ja') AS language
+            FROM users u
+            JOIN notification_settings ns ON u.id = ns.user_id
+            JOIN notification_channels nc ON u.id = nc.user_id
+              AND nc.channel_type = 'email' AND nc.enabled = 1
+            WHERE ns.event_type = ? AND ns.enabled = 1
+            """,
+            (event_type,),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def get_stake_addrs_with_email_event(event_type: str) -> list[dict]:
+    """指定イベントが有効なステークアドレスとユーザー情報一覧（メールチャンネル）。"""
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT sa.id AS stake_id, sa.address, sa.nickname,
+                   sa.role, sa.created_at,
+                   sa.delegated_pool_id, sa.delegated_pool_name,
+                   sa.delegated_drep_id, sa.delegated_drep_name,
+                   u.id AS user_id, nc.channel_value AS email_addr,
+                   COALESCE(u.language, 'ja') AS language
+            FROM stake_addresses sa
+            JOIN users u ON sa.user_id = u.id
+            JOIN notification_channels nc ON u.id = nc.user_id
+              AND nc.channel_type = 'email' AND nc.enabled = 1
+            JOIN stake_notification_settings sns ON sa.id = sns.stake_address_id
+            WHERE sns.event_type = ? AND sns.enabled = 1
+            """,
+            (event_type,),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def _merge_stake_channels(line_addrs: list[dict], email_addrs: list[dict]) -> list[dict]:
+    """
+    LINE と email のアドレスリストを stake_id をキーにマージして返す。
+    どちらか一方のチャンネルしか持たない場合も含む。
+    """
+    merged: dict[int, dict] = {}
+    for addr in line_addrs:
+        sid = addr["stake_id"]
+        merged[sid] = {**addr, "email_addr": None}
+    for addr in email_addrs:
+        sid = addr["stake_id"]
+        if sid not in merged:
+            merged[sid] = {**addr, "line_notify_id": None}
+        else:
+            merged[sid]["email_addr"] = addr["email_addr"]
+    return list(merged.values())
+
+
 def flex_and_log(line_id: str, user_id: int, event_type: str, dedup_key: str, alt_text: str, contents: dict) -> bool:
     """LINE Flex 送信 + ログ記録。成功時 True。"""
     ok = send_line_flex(line_id, alt_text, contents)
@@ -156,6 +340,18 @@ def get_stake_addrs_with_event(event_type: str) -> list[dict]:
 # ============================================================
 
 def check_epoch_start():
+    if EPOCH_CHECK_WINDOW_MIN > 0 and not is_near_epoch_boundary(EPOCH_CHECK_WINDOW_MIN):
+        tip = _get_tip_epoch_info()
+        remaining = (
+            (_epoch_duration().total_seconds() - tip["epoch_slot"]) / 3600
+            if tip else 0.0
+        )
+        logger.info(
+            "epoch_start: エポック切り替わり時間外のためスキップ "
+            "(window=%d分, 次の切り替わりまで約%.1f時間)",
+            EPOCH_CHECK_WINDOW_MIN, remaining,
+        )
+        return
     logger.info("epoch_start チェック開始")
     epoch = get_current_epoch()
     if epoch is None:
@@ -187,6 +383,22 @@ def check_epoch_start():
         contents = line_flex.epoch_start(epoch, CARDANOISM_URL, lang=lang)
         flex_and_log(user["line_notify_id"], user["id"], "epoch_start", dedup_key, alt_text, contents)
 
+    # メール送信
+    for user in get_users_with_email_event("epoch_start"):
+        dedup_key = f"epoch_{epoch}_email"
+        if already_sent(user["id"], "epoch_start", dedup_key):
+            continue
+        lang = user.get("language", "ja")
+        subject = f"新しいエポック（Epoch {epoch}）が始まりました" if lang == "ja" else f"New epoch started (Epoch {epoch})"
+        lines = (
+            [f"Epoch {epoch} が始まりました。", "Cardanoism でガバナンス情報や委任状況をご確認ください。"]
+            if lang == "ja" else
+            [f"Epoch {epoch} has started.", "Check governance info and delegation status on Cardanoism."]
+        )
+        html = build_html(subject, lines, CARDANOISM_URL, "Cardanoismを開く" if lang == "ja" else "Open Cardanoism", lang)
+        text = build_text(subject, lines, CARDANOISM_URL, lang)
+        email_and_log(user["email_addr"], user["id"], "epoch_start", dedup_key, subject, html, text)
+
 
 # ============================================================
 # イベント: プール系
@@ -202,13 +414,21 @@ def _fetch_pool_info(pool_id: str) -> dict | None:
 def check_pool_events():
     logger.info("プールイベント チェック開始")
 
-    # 全プールイベントに対して有効なアドレスを収集
+    # LINE と email チャンネルを持つアドレスをまとめて収集
     all_addrs: dict[int, dict] = {}
     enabled_events: dict[int, set] = {}
+
     for event_type in POOL_EVENT_TYPES:
         for addr in get_stake_addrs_with_event(event_type):
             sid = addr["stake_id"]
-            all_addrs[sid] = addr
+            if sid not in all_addrs:
+                all_addrs[sid] = {**addr, "email_addr": None}
+            enabled_events.setdefault(sid, set()).add(event_type)
+        for addr in get_stake_addrs_with_email_event(event_type):
+            sid = addr["stake_id"]
+            if sid not in all_addrs:
+                all_addrs[sid] = {**addr, "line_notify_id": None}
+            all_addrs[sid]["email_addr"] = addr["email_addr"]
             enabled_events.setdefault(sid, set()).add(event_type)
 
     # pool_id ごとに pool_info と APY を一括取得
@@ -257,6 +477,15 @@ def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float |
         alt_text = f"【Cardanoism】委任先プール「{pool_name}」が Epoch {retiring_epoch} にリタイアします" if lang == "ja" else f"[Cardanoism] Pool '{pool_name}' will retire at Epoch {retiring_epoch}"
         contents = line_flex.pool_retire(pool_name, retiring_epoch, nickname, CARDANOISM_URL, lang=lang)
         flex_and_log(line_id, user_id, event_type, dedup_key, alt_text, contents)
+        if addr.get("email_addr"):
+            dk = dedup_key + "_email"
+            if not already_sent(user_id, event_type, dk):
+                subj = f"委任先プール「{pool_name}」が Epoch {retiring_epoch} にリタイアします" if lang == "ja" else f"Pool '{pool_name}' will retire at Epoch {retiring_epoch}"
+                ls = ([f"ウォレット: {nickname}", f"プール「{pool_name}」は Epoch {retiring_epoch} にリタイアする予定です。", "委任先の変更をご検討ください。"] if lang == "ja"
+                      else [f"Wallet: {nickname}", f"Pool '{pool_name}' is scheduled to retire at Epoch {retiring_epoch}.", "Please consider changing your delegation."])
+                email_and_log(addr["email_addr"], user_id, event_type, dk, subj,
+                              build_html(subj, ls, CARDANOISM_URL, "マイページを開く" if lang == "ja" else "Open MyPage", lang),
+                              build_text(subj, ls, CARDANOISM_URL, lang))
 
     elif event_type == "pool_fee_change":
         margin = str(pool_info.get("margin") or "")
@@ -292,6 +521,16 @@ def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float |
         ok = send_line_flex(line_id, alt_text, contents)
         if ok:
             log_sent(user_id, event_type, dedup_key, "line", alt_text)
+        if addr.get("email_addr"):
+            dk = dedup_key + "_email"
+            if not already_sent(user_id, event_type, dk):
+                subj = f"委任先プール「{pool_name}」の手数料が変更されました" if lang == "ja" else f"Pool '{pool_name}' fee has changed"
+                ls = ([f"ウォレット: {nickname}", f"変動手数料: {old_margin_pct:.2f}% → {margin_pct:.2f}%", f"固定手数料: {old_fixed_ada:.0f} ADA → {fixed_ada:.0f} ADA"]
+                      if lang == "ja" else
+                      [f"Wallet: {nickname}", f"Margin: {old_margin_pct:.2f}% → {margin_pct:.2f}%", f"Fixed cost: {old_fixed_ada:.0f} ADA → {fixed_ada:.0f} ADA"])
+                email_and_log(addr["email_addr"], user_id, event_type, dk, subj,
+                              build_html(subj, ls, CARDANOISM_URL, "マイページを開く" if lang == "ja" else "Open MyPage", lang),
+                              build_text(subj, ls, CARDANOISM_URL, lang))
 
     elif event_type == "pool_saturation":
         saturation = pool_info.get("live_saturation")
@@ -308,6 +547,16 @@ def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float |
             alt_text = f"【Cardanoism】委任先プール「{pool_name}」が飽和ラインを超えました（{sat_pct:.1f}%）" if lang == "ja" else f"[Cardanoism] Pool '{pool_name}' exceeded saturation ({sat_pct:.1f}%)"
             contents = line_flex.pool_saturation(pool_name, sat_pct, apy, nickname, CARDANOISM_URL, lang=lang)
             flex_and_log(line_id, user_id, event_type, dedup_key, alt_text, contents)
+            if addr.get("email_addr"):
+                dk = dedup_key + "_email"
+                if not already_sent(user_id, event_type, dk):
+                    subj = f"委任先プール「{pool_name}」が飽和ラインを超えました（{sat_pct:.1f}%）" if lang == "ja" else f"Pool '{pool_name}' exceeded saturation ({sat_pct:.1f}%)"
+                    ls = ([f"ウォレット: {nickname}", f"プール「{pool_name}」の飽和度が {sat_pct:.1f}% になっています。", "委任先の変更をご検討ください。"]
+                          if lang == "ja" else
+                          [f"Wallet: {nickname}", f"Pool '{pool_name}' saturation is {sat_pct:.1f}%.", "Please consider changing your delegation."])
+                    email_and_log(addr["email_addr"], user_id, event_type, dk, subj,
+                                  build_html(subj, ls, CARDANOISM_URL, "マイページを開く" if lang == "ja" else "Open MyPage", lang),
+                                  build_text(subj, ls, CARDANOISM_URL, lang))
         elif not is_saturated and was_saturated == "1":
             set_state("stake_address", stake_id, "pool_saturated", "0")
 
@@ -326,6 +575,16 @@ def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float |
             alt_text = f"【Cardanoism】委任先プール「{pool_name}」の誓約が不足しています" if lang == "ja" else f"[Cardanoism] Pool '{pool_name}' has insufficient pledge"
             contents = line_flex.pool_pledge_shortage(pool_name, pledged_ada, live_ada, apy, nickname, CARDANOISM_URL, lang=lang)
             flex_and_log(line_id, user_id, event_type, dedup_key, alt_text, contents)
+            if addr.get("email_addr"):
+                dk = dedup_key + "_email"
+                if not already_sent(user_id, event_type, dk):
+                    subj = f"委任先プール「{pool_name}」の誓約が不足しています" if lang == "ja" else f"Pool '{pool_name}' has insufficient pledge"
+                    ls = ([f"ウォレット: {nickname}", f"誓約金額: {pledged_ada:,.0f} ADA", f"現在の実績: {live_ada:,.0f} ADA", "誓約不足のプールは報酬が減少する場合があります。"]
+                          if lang == "ja" else
+                          [f"Wallet: {nickname}", f"Pledge: {pledged_ada:,.0f} ADA", f"Live pledge: {live_ada:,.0f} ADA", "Pools with insufficient pledge may have reduced rewards."])
+                    email_and_log(addr["email_addr"], user_id, event_type, dk, subj,
+                                  build_html(subj, ls, CARDANOISM_URL, "マイページを開く" if lang == "ja" else "Open MyPage", lang),
+                                  build_text(subj, ls, CARDANOISM_URL, lang))
         elif not is_short and was_short == "1":
             set_state("stake_address", stake_id, "pool_pledge_short", "0")
 
@@ -371,6 +630,16 @@ def _check_pool_reward_received(addr: dict):
     alt_text = f"【Cardanoism】Epoch {reward_epoch} 分の報酬が入金されました" if lang == "ja" else f"[Cardanoism] Rewards for Epoch {reward_epoch} have arrived"
     contents = line_flex.pool_reward_received(reward_epoch, amount_ada, apy, nickname, CARDANOISM_URL, lang=lang)
     flex_and_log(line_id, user_id, "pool_reward_received", dedup_key, alt_text, contents)
+    if addr.get("email_addr"):
+        dk = dedup_key + "_email"
+        if not already_sent(user_id, "pool_reward_received", dk):
+            subj = f"Epoch {reward_epoch} 分の報酬が入金されました" if lang == "ja" else f"Rewards for Epoch {reward_epoch} have arrived"
+            ls = ([f"ウォレット: {nickname}", f"Epoch {reward_epoch} の報酬: {amount_ada:.6f} ADA"]
+                  if lang == "ja" else
+                  [f"Wallet: {nickname}", f"Epoch {reward_epoch} reward: {amount_ada:.6f} ADA"])
+            email_and_log(addr["email_addr"], user_id, "pool_reward_received", dk, subj,
+                          build_html(subj, ls, CARDANOISM_URL, "マイページを開く" if lang == "ja" else "Open MyPage", lang),
+                          build_text(subj, ls, CARDANOISM_URL, lang))
 
 
 # ============================================================
@@ -419,7 +688,11 @@ def _get_delegation_days(stake_id: int, address: str, cache_key: str, fetch_fn) 
 
 
 def _check_pool_delegation_reminder():
-    for addr in get_stake_addrs_with_event("pool_delegation_reminder"):
+    addrs = _merge_stake_channels(
+        get_stake_addrs_with_event("pool_delegation_reminder"),
+        get_stake_addrs_with_email_event("pool_delegation_reminder"),
+    )
+    for addr in addrs:
         pool_id = addr.get("delegated_pool_id")
         if not pool_id:
             continue
@@ -445,10 +718,24 @@ def _check_pool_delegation_reminder():
             alt_text = f"【Cardanoism】委任から{milestone}日が経過しました。委任先プールを確認しましょう" if lang == "ja" else f"[Cardanoism] {milestone} days since delegation. Please check your pool."
             contents = line_flex.pool_delegation_reminder(pool_name, milestone, apy, addr["nickname"], CARDANOISM_URL, lang=lang)
             flex_and_log(addr["line_notify_id"], addr["user_id"], "pool_delegation_reminder", dedup_key, alt_text, contents)
+            if addr.get("email_addr"):
+                dk = dedup_key + "_email"
+                if not already_sent(addr["user_id"], "pool_delegation_reminder", dk):
+                    subj = f"委任から{milestone}日が経過しました。委任先プールを確認しましょう" if lang == "ja" else f"{milestone} days since delegation. Please check your pool."
+                    ls = ([f"ウォレット: {addr['nickname']}", f"委任先プール: {pool_name}", f"委任から {milestone} 日が経過しました。委任先プールの状態を確認することをお勧めします。"]
+                          if lang == "ja" else
+                          [f"Wallet: {addr['nickname']}", f"Pool: {pool_name}", f"{milestone} days have passed since delegation. We recommend reviewing your pool."])
+                    email_and_log(addr["email_addr"], addr["user_id"], "pool_delegation_reminder", dk, subj,
+                                  build_html(subj, ls, CARDANOISM_URL, "マイページを開く" if lang == "ja" else "Open MyPage", lang),
+                                  build_text(subj, ls, CARDANOISM_URL, lang))
 
 
 def _check_drep_delegation_reminder():
-    for addr in get_stake_addrs_with_event("drep_delegation_reminder"):
+    addrs = _merge_stake_channels(
+        get_stake_addrs_with_event("drep_delegation_reminder"),
+        get_stake_addrs_with_email_event("drep_delegation_reminder"),
+    )
+    for addr in addrs:
         drep_id = addr.get("delegated_drep_id")
         if not drep_id:
             continue
@@ -473,6 +760,17 @@ def _check_drep_delegation_reminder():
             alt_text = f"【Cardanoism】委任から{milestone}日が経過しました。委任先DRepを確認しましょう" if lang == "ja" else f"[Cardanoism] {milestone} days since delegation. Please check your DRep."
             contents = line_flex.drep_delegation_reminder(drep_name, milestone, addr["nickname"], f"{CARDANOISM_URL}/governance", lang=lang)
             flex_and_log(addr["line_notify_id"], addr["user_id"], "drep_delegation_reminder", dedup_key, alt_text, contents)
+            if addr.get("email_addr"):
+                dk = dedup_key + "_email"
+                if not already_sent(addr["user_id"], "drep_delegation_reminder", dk):
+                    subj = f"委任から{milestone}日が経過しました。委任先DRepを確認しましょう" if lang == "ja" else f"{milestone} days since delegation. Please check your DRep."
+                    ls = ([f"ウォレット: {addr['nickname']}", f"委任先DRep: {drep_name}", f"委任から {milestone} 日が経過しました。委任先DRepの活動を確認することをお勧めします。"]
+                          if lang == "ja" else
+                          [f"Wallet: {addr['nickname']}", f"DRep: {drep_name}", f"{milestone} days have passed since delegation. We recommend reviewing your DRep's activity."])
+                    gov_url = f"{CARDANOISM_URL}/governance"
+                    email_and_log(addr["email_addr"], addr["user_id"], "drep_delegation_reminder", dk, subj,
+                                  build_html(subj, ls, gov_url, "ガバナンスを確認" if lang == "ja" else "Check Governance", lang),
+                                  build_text(subj, ls, gov_url, lang))
 
 
 def check_drep_events():
@@ -513,9 +811,29 @@ def _check_drep_new_governance_action():
         contents = line_flex.drep_new_governance_action(proposal_type, f"{CARDANOISM_URL}/governance", lang=lang)
         flex_and_log(line_id, user_id, "drep_new_governance_action", dedup_key, alt_text, contents)
 
+    # メール送信（LINE とは別ループ）
+    gov_url = f"{CARDANOISM_URL}/governance"
+    for addr in get_stake_addrs_with_email_event("drep_new_governance_action"):
+        user_id = addr["user_id"]
+        lang = addr.get("language", "ja")
+        dk = f"new_gov_{latest_key}_{addr['stake_id']}_email"
+        if already_sent(user_id, "drep_new_governance_action", dk):
+            continue
+        subj = f"新しいガバナンスアクションが提出されました: {proposal_type}" if lang == "ja" else f"New governance action submitted: {proposal_type}"
+        ls = ([f"新しいガバナンスアクション（{proposal_type}）が提出されました。", "Cardanoism でアクションの詳細を確認できます。"]
+              if lang == "ja" else
+              [f"A new governance action ({proposal_type}) has been submitted.", "Check the details on Cardanoism."])
+        email_and_log(addr["email_addr"], user_id, "drep_new_governance_action", dk, subj,
+                      build_html(subj, ls, gov_url, "ガバナンスを確認" if lang == "ja" else "Check Governance", lang),
+                      build_text(subj, ls, gov_url, lang))
+
 
 def _check_drep_vote():
-    for addr in get_stake_addrs_with_event("drep_vote"):
+    addrs = _merge_stake_channels(
+        get_stake_addrs_with_event("drep_vote"),
+        get_stake_addrs_with_email_event("drep_vote"),
+    )
+    for addr in addrs:
         drep_id = addr.get("delegated_drep_id")
         if not drep_id:
             continue
@@ -555,10 +873,29 @@ def _check_drep_vote():
         alt_text = f"【Cardanoism】委任先DRep「{drep_name}」が投票しました（{vote_label_ja}）" if lang == "ja" else f"[Cardanoism] Delegated DRep '{drep_name}' voted ({vote_label_en})"
         contents = line_flex.drep_vote(drep_name, vote, proposal_title, addr["nickname"], f"{CARDANOISM_URL}/governance", lang=lang)
         flex_and_log(line_id, user_id, "drep_vote", dedup_key, alt_text, contents)
+        if addr.get("email_addr"):
+            dk = dedup_key + "_email"
+            if not already_sent(user_id, "drep_vote", dk):
+                vote_label = vote_label_ja if lang == "ja" else vote_label_en
+                subj = f"委任先DRep「{drep_name}」が投票しました（{vote_label}）" if lang == "ja" else f"Delegated DRep '{drep_name}' voted ({vote_label})"
+                ls_ja = [f"ウォレット: {addr['nickname']}", f"DRep: {drep_name}", f"投票結果: {vote_label_ja}"]
+                ls_en = [f"Wallet: {addr['nickname']}", f"DRep: {drep_name}", f"Vote: {vote_label_en}"]
+                if proposal_title:
+                    ls_ja.append(f"対象: {proposal_title}")
+                    ls_en.append(f"Proposal: {proposal_title}")
+                ls = ls_ja if lang == "ja" else ls_en
+                gov_url = f"{CARDANOISM_URL}/governance"
+                email_and_log(addr["email_addr"], user_id, "drep_vote", dk, subj,
+                              build_html(subj, ls, gov_url, "ガバナンスを確認" if lang == "ja" else "Check Governance", lang),
+                              build_text(subj, ls, gov_url, lang))
 
 
 def _check_drep_status_change():
-    for addr in get_stake_addrs_with_event("drep_status_change"):
+    addrs = _merge_stake_channels(
+        get_stake_addrs_with_event("drep_status_change"),
+        get_stake_addrs_with_email_event("drep_status_change"),
+    )
+    for addr in addrs:
         drep_id = addr.get("delegated_drep_id")
         if not drep_id:
             continue
@@ -589,6 +926,16 @@ def _check_drep_status_change():
         alt_text = f"【Cardanoism】委任先DRep「{drep_name}」のステータスが変わりました" if lang == "ja" else f"[Cardanoism] Delegated DRep '{drep_name}' status changed"
         contents = line_flex.drep_status_change(drep_name, last_status, status, addr["nickname"], CARDANOISM_URL, lang=lang)
         flex_and_log(line_id, user_id, "drep_status_change", dedup_key, alt_text, contents)
+        if addr.get("email_addr"):
+            dk = dedup_key + "_email"
+            if not already_sent(user_id, "drep_status_change", dk):
+                subj = f"委任先DRep「{drep_name}」のステータスが変わりました" if lang == "ja" else f"Delegated DRep '{drep_name}' status changed"
+                ls = ([f"ウォレット: {addr['nickname']}", f"DRep: {drep_name}", f"ステータス: {last_status} → {status}"]
+                      if lang == "ja" else
+                      [f"Wallet: {addr['nickname']}", f"DRep: {drep_name}", f"Status: {last_status} → {status}"])
+                email_and_log(addr["email_addr"], user_id, "drep_status_change", dk, subj,
+                              build_html(subj, ls, CARDANOISM_URL, "ガバナンスを確認" if lang == "ja" else "Check Governance", lang),
+                              build_text(subj, ls, CARDANOISM_URL, lang))
 
 
 # ============================================================
@@ -901,7 +1248,16 @@ def main():
         action="store_true",
         help="--test と組み合わせて使う。ユーザーの ON イベントのみダミーテスト送信する",
     )
+    parser.add_argument(
+        "--epoch-schedule",
+        action="store_true",
+        help="直近のエポック切り替わり時刻（UTC）を表示して終了する",
+    )
     args = parser.parse_args()
+
+    if args.epoch_schedule:
+        print_epoch_schedule()
+        return
 
     if args.list_users:
         list_users()

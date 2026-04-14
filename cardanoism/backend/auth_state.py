@@ -91,6 +91,7 @@ class AuthState(rx.State):
     stake_role_loading: bool = False
     active_tab: str = "favorites"
 
+
     # お気に入り（catalyst）
     favorites: list[dict] = []
     favorite_ids: list[str] = []
@@ -194,6 +195,12 @@ class AuthState(rx.State):
             elif ch["channel_type"] == "email":
                 self.email_notify_channel = ch["channel_value"]
                 self.email_notify_enabled = bool(ch["enabled"])
+
+        # メールアドレスが登録済みなのにチャンネルがない場合は自動作成
+        if self.email and not self.email_notify_channel:
+            upsert_notification_channel(self.user_id, "email", self.email)
+            self.email_notify_channel = self.email
+            self.email_notify_enabled = True
 
     def _apply_login(self, user: dict, session_token: str):
         """ログイン後の state をまとめてセットする。"""
@@ -653,6 +660,13 @@ class AuthState(rx.State):
         self.email = email_to_save or ""
         self.avatar_url = self.edit_avatar_url
         self.profile_saved = True
+
+        # メールアドレスに応じて通知チャンネルを同期
+        if self.email:
+            upsert_notification_channel(self.user_id, "email", self.email)
+        else:
+            remove_notification_channel(self.user_id, "email")
+        self._load_providers_and_channels()
 
     # ============================================================
     # ステークアドレス

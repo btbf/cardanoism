@@ -13,7 +13,8 @@
       "Bash(cp \"c:/Users/btbfc/Downloads/LINE_Login_Button_Image/Line_Login_Button_Image/images/DeskTop/2x/44dp/btn_login_press.png\" \"c:/Users/btbfc/Documents/GitHub/cardanoism/assets/line-btn-press.png\")",
       "Bash(python3 -c \"from PIL import Image; img=Image.open\\('c:/Users/btbfc/Documents/GitHub/cardanoism/assets/line-btn-base.png'\\); print\\('btn_login_base:', img.size\\)\")",
       "Bash(python3 -c \"import struct,zlib; data=open\\('c:/Users/btbfc/Documents/GitHub/cardanoism/assets/line-btn-base.png','rb'\\).read\\(\\); w=struct.unpack\\('>I',data[16:20]\\)[0]; h=struct.unpack\\('>I',data[20:24]\\)[0]; print\\('btn_login_base size:', w, 'x', h\\)\")",
-      "Bash(python3 -c \"import struct; data=open\\('c:/Users/btbfc/Documents/GitHub/cardanoism/assets/line-icon.png','rb'\\).read\\(\\); w=struct.unpack\\('>I',data[16:20]\\)[0]; h=struct.unpack\\('>I',data[20:24]\\)[0]; print\\('line_88 size:', w, 'x', h\\)\")"
+      "Bash(python3 -c \"import struct; data=open\\('c:/Users/btbfc/Documents/GitHub/cardanoism/assets/line-icon.png','rb'\\).read\\(\\); w=struct.unpack\\('>I',data[16:20]\\)[0]; h=struct.unpack\\('>I',data[20:24]\\)[0]; print\\('line_88 size:', w, 'x', h\\)\")",
+      "Bash(C:\\\\Users\\\\btbfc\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python312\\\\python.exe:*)"
     ]
   }
 }
