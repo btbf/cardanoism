@@ -247,15 +247,15 @@ def governance_detail_content(action: Dict[str, Any]) -> rx.Component:
     favorite_btn = rx.cond(
         AuthState.ga_favorite_ids.contains(action["proposal_tx_hash"]),
         rx.icon_button(
-            rx.icon("bookmark", size=16),
+            rx.icon("heart", size=16),
             variant="soft",
-            color_scheme="amber",
+            color_scheme="red",
             size="2",
             cursor="pointer",
             on_click=AuthState.toggle_ga_favorite(action["proposal_tx_hash"]),
         ),
         rx.icon_button(
-            rx.icon("bookmark", size=16),
+            rx.icon("heart", size=16),
             variant="ghost",
             color_scheme="gray",
             size="2",
@@ -432,6 +432,19 @@ def governance_modal() -> rx.Component:
                     rx.callout("詳細を読み込めませんでした", icon="info", color_scheme="gray"),
                 ),
             ),
+            rx.hstack(
+                rx.dialog.close(
+                    rx.button(
+                        "閉じる",
+                        on_click=lambda: GovernanceState.handle_modal_change(False),
+                        width="100%",
+                        variant="soft",
+                        cursor="pointer",
+                    ),
+                ),
+                width="100%",
+                padding_top="16px",
+            ),
             max_width="780px",
             width="95vw",
             max_height="90vh",
@@ -503,15 +516,15 @@ def _ga_fav_btn_list(action: Dict[str, Any]) -> rx.Component:
     return rx.cond(
         AuthState.ga_favorite_ids.contains(action["proposal_tx_hash"]),
         rx.icon_button(
-            rx.icon("bookmark", size=15),
+            rx.icon("heart", size=15),
             variant="soft",
-            color_scheme="amber",
+            color_scheme="red",
             size="1",
             cursor="pointer",
             on_click=AuthState.toggle_ga_favorite(action["proposal_tx_hash"]),
         ),
         rx.icon_button(
-            rx.icon("bookmark", size=15),
+            rx.icon("heart", size=15),
             variant="ghost",
             color_scheme="gray",
             size="1",
