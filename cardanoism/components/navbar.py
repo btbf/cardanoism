@@ -125,7 +125,7 @@ def navbar_icons() -> rx.Component:
                         ),
                     ),
                 ),
-                navbar_icons_item("ガバナンス", "/#", True),
+                navbar_icons_item("ガバナンス", "/governance", False),
                 lang_toggle(),
                 auth_area,
                 spacing="6",

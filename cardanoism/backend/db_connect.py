@@ -1106,3 +1106,315 @@ class FundListState(rx.State):
         self.load = False
         self.funds = fetch_funds()
         self.load = True
+
+
+# ─── Governance Actions ───────────────────────────────────────────────────────
+
+_GA_STATUS_SQL = (
+    "CASE"
+    " WHEN enacted_epoch IS NOT NULL THEN 'enacted'"
+    " WHEN ratified_epoch IS NOT NULL THEN 'ratified'"
+    " WHEN dropped_epoch IS NOT NULL THEN 'dropped'"
+    " WHEN expired_epoch IS NOT NULL THEN 'expired'"
+    " ELSE 'active'"
+    " END"
+)
+
+_GA_TYPE_LABELS: Dict[str, str] = {
+    "ParameterChange":    "プロトコル変更",
+    "TreasuryWithdrawals": "国庫引き出し",
+    "HardForkInitiation": "ハードフォーク",
+    "InfoAction":         "情報提案",
+    "NewCommittee":       "委員会変更",
+    "NewConstitution":    "新憲法",
+    "NoConfidence":       "不信任",
+}
+
+_GA_TYPE_COLORS: Dict[str, str] = {
+    "ParameterChange":    "blue",
+    "TreasuryWithdrawals": "amber",
+    "HardForkInitiation": "tomato",
+    "InfoAction":         "gray",
+    "NewCommittee":       "violet",
+    "NewConstitution":    "green",
+    "NoConfidence":       "crimson",
+}
+
+
+def _format_ga_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    """governance_actions 行にUI表示用フィールドを追加する。"""
+    deposit = row.get("deposit")
+    try:
+        ada = int(deposit) / 1_000_000 if deposit is not None else None
+        row["deposit_ada"] = f"{int(ada):,}" if ada is not None else ""
+    except Exception:
+        row["deposit_ada"] = ""
+
+    ptype = row.get("proposal_type") or ""
+    row["proposal_type_display"] = _GA_TYPE_LABELS.get(ptype, ptype)
+    row["proposal_type_color"]   = _GA_TYPE_COLORS.get(ptype, "gray")
+
+    status = row.get("ga_status") or "active"
+    row["ga_status"] = status
+
+    row["title_display"]      = row.get("title_ja")      or row.get("title")      or ""
+    row["abstract_display"]   = row.get("abstract_ja")   or row.get("abstract")   or ""
+    row["motivation_display"] = row.get("motivation_ja") or row.get("motivation") or ""
+    row["rationale_display"]  = row.get("rationale_ja")  or row.get("rationale")  or ""
+
+    refs_raw = row.get("references_json")
+    if "references_list" not in row:
+        if refs_raw and isinstance(refs_raw, str):
+            try:
+                parsed = json.loads(refs_raw)
+                row["references_list"] = parsed if isinstance(parsed, list) else []
+            except Exception:
+                row["references_list"] = []
+        else:
+            row["references_list"] = []
+
+    tx  = row.get("proposal_tx_hash") or ""
+    idx = row.get("proposal_index") or 0
+    row["govtool_url"] = f"https://gov.tools/governance_actions/{tx}%23{idx}" if tx else ""
+
+    return row
+
+
+class GovernanceState(rx.State):
+    actions: List[Dict[str, Any]] = []
+    current_page: int = 1
+    items_per_page: int = 20
+    total_pages: int = 0
+    total_items: int = 0
+    start_page: int = 1
+    end_page: int = 1
+    middle_page: list[int] = []
+    load: bool = False
+
+    inputed_value: str = ""
+    search_query: str = ""
+    filter_type_selected: List[Dict[str, str]] = []
+    filter_status_selected: List[Dict[str, str]] = []
+    filter_types: List[str] = []
+    filter_statuses: List[str] = []
+
+    view_mode: str = "list"
+
+    modal_open: bool = False
+    modal_action: Dict[str, Any] = {}
+    modal_action_refs: List[Dict[str, Any]] = []
+    modal_loading: bool = False
+    modal_lang: str = "ja"
+    last_list_path: str = ""
+
+    # ── WHERE 句構築 ──────────────────────────────────────────────────────────
+
+    def _build_where(self) -> tuple[str, list]:
+        conditions = ["1=1"]
+        params: list = []
+        if self.inputed_value:
+            sv = f"%{self.inputed_value}%"
+            conditions.append(
+                "(title LIKE ? OR title_ja LIKE ? OR `abstract` LIKE ? OR abstract_ja LIKE ?)"
+            )
+            params.extend([sv, sv, sv, sv])
+        if self.filter_types:
+            placeholders = ", ".join(["?"] * len(self.filter_types))
+            conditions.append(f"proposal_type IN ({placeholders})")
+            params.extend(self.filter_types)
+        if self.filter_statuses:
+            parts = []
+            for s in self.filter_statuses:
+                if s == "active":
+                    parts.append(
+                        "(ratified_epoch IS NULL AND enacted_epoch IS NULL"
+                        " AND dropped_epoch IS NULL AND expired_epoch IS NULL)"
+                    )
+                elif s == "ratified":
+                    parts.append("ratified_epoch IS NOT NULL")
+                elif s == "enacted":
+                    parts.append("enacted_epoch IS NOT NULL")
+                elif s == "dropped":
+                    parts.append("dropped_epoch IS NOT NULL")
+                elif s == "expired":
+                    parts.append("expired_epoch IS NOT NULL")
+            if parts:
+                conditions.append(f"({' OR '.join(parts)})")
+        return " AND ".join(conditions), params
+
+    # ── データ取得 ────────────────────────────────────────────────────────────
+
+    def data_fetch(self):
+        where_sql, params = self._build_where()
+        offset = (self.current_page - 1) * self.items_per_page
+        select_sql = (
+            "SELECT id, proposal_id, proposal_tx_hash, proposal_index, proposal_type,"
+            " proposed_epoch, ratified_epoch, enacted_epoch, dropped_epoch, expired_epoch,"
+            f" expiration, block_time, deposit, meta_url, title, `abstract`, title_ja, abstract_ja,"
+            f" {_GA_STATUS_SQL} AS ga_status"
+            " FROM governance_actions"
+            f" WHERE {where_sql}"
+            " ORDER BY proposed_epoch DESC, id DESC"
+            f" LIMIT {self.items_per_page} OFFSET {offset}"
+        )
+        count_sql = f"SELECT COUNT(*) AS cnt FROM governance_actions WHERE {where_sql}"
+        try:
+            with get_db() as (cursor, _):
+                cursor.execute(select_sql, params)
+                self.actions = [_format_ga_row(dict(r)) for r in cursor.fetchall()]
+                cursor.execute(count_sql, params)
+                self.total_items = int((cursor.fetchone() or {}).get("cnt", 0))
+        except Exception as e:
+            logger.exception("GovernanceState.data_fetch: %s", e)
+            self.actions = []
+            self.total_items = 0
+        self.total_pages = max(1, (self.total_items + self.items_per_page - 1) // self.items_per_page)
+        self.start_page  = max(1, self.current_page - 3)
+        self.end_page    = min(self.total_pages, self.current_page + 3)
+        self.middle_page = list(range(self.start_page, self.end_page + 1))
+        self.load = True
+
+    def _load_full_action(self, action_id: str) -> None:
+        """ID を指定して governance_actions の全カラムを modal_action に読み込む。"""
+        try:
+            with get_db() as (cursor, _):
+                cursor.execute(
+                    f"SELECT *, {_GA_STATUS_SQL} AS ga_status"
+                    " FROM governance_actions WHERE id = ?",
+                    (action_id,),
+                )
+                row = cursor.fetchone()
+                if row:
+                    formatted = _format_ga_row(dict(row))
+                    self.modal_action_refs = formatted.get("references_list", [])
+                    self.modal_action = formatted
+        except Exception as e:
+            logger.exception("GovernanceState._load_full_action(id=%s): %s", action_id, e)
+
+    # ── ページロード ──────────────────────────────────────────────────────────
+
+    def on_load(self):
+        ensure_warm()
+        self.load = False
+        self.actions = []
+        self.current_page = 1
+        self.total_pages = 0
+        self.total_items = 0
+        self.inputed_value = ""
+        self.search_query = ""
+        self.filter_type_selected = []
+        self.filter_status_selected = []
+        self.filter_types = []
+        self.filter_statuses = []
+        self.view_mode = "list"
+        self.modal_open = False
+        self.modal_action = {}
+        self.modal_action_refs = []
+        self.modal_loading = False
+        self.modal_lang = "ja"
+        self.last_list_path = ""
+        self.data_fetch()
+
+    def load_detail_page(self):
+        """個別ページ /governance/[id] のロード処理。"""
+        self.load = False
+        self.modal_action = {}
+        self.modal_action_refs = []
+        path = self.router.url.path or ""
+        parts = [p for p in path.split("/") if p]
+        action_id = parts[-1] if parts else ""
+        if action_id:
+            self._load_full_action(action_id)
+        self.load = True
+
+    # ── モーダル ──────────────────────────────────────────────────────────────
+
+    def open_modal(self, action: Dict[str, Any]):
+        self.modal_open = True
+        self.modal_loading = True
+        self.modal_action = action
+        self.modal_action_refs = []
+        self.modal_lang = "ja"
+        self.last_list_path = self.router.url.path or ""
+        action_id = str(action.get("id", ""))
+        self._load_full_action(action_id)
+        self.modal_loading = False
+        return rx.call_script(
+            f"history.pushState(null, '', '/governance/{action_id}');"
+        )
+
+    def handle_modal_change(self, open: bool):
+        if not open:
+            self.modal_open = False
+            self.modal_action = {}
+            self.modal_action_refs = []
+            target = self.last_list_path or "/governance"
+            return rx.call_script(
+                "if (window.location.pathname.startsWith('/governance/')"
+                "    && window.location.pathname !== '/governance/') {"
+                "  if (history.state !== null) { history.back(); }"
+                f"  else {{ history.replaceState(null, '', '{target}'); }}"
+                "}"
+            )
+
+    def set_view_mode(self, mode: str):
+        self.view_mode = mode
+
+    def set_modal_lang(self, lang: str):
+        self.modal_lang = lang
+
+    # ── フィルター ────────────────────────────────────────────────────────────
+
+    def set_inputed_value(self, value: str):
+        self.inputed_value = value
+        self.search_query = value
+        self.current_page = 1
+        self.data_fetch()
+
+    def set_filter_types(self, value):
+        if isinstance(value, list):
+            self.filter_type_selected = value
+            self.filter_types = [
+                str(item["value"])
+                for item in value
+                if isinstance(item, dict) and item.get("value")
+            ]
+        else:
+            self.filter_type_selected = []
+            self.filter_types = []
+        self.current_page = 1
+        self.data_fetch()
+
+    def set_filter_statuses(self, value):
+        if isinstance(value, list):
+            self.filter_status_selected = value
+            self.filter_statuses = [
+                str(item["value"])
+                for item in value
+                if isinstance(item, dict) and item.get("value")
+            ]
+        else:
+            self.filter_status_selected = []
+            self.filter_statuses = []
+        self.current_page = 1
+        self.data_fetch()
+
+    # ── ページネーション ──────────────────────────────────────────────────────
+
+    def set_page(self, page: int):
+        if 1 <= page <= self.total_pages:
+            self.current_page = page
+            self.data_fetch()
+        return rx.call_script("window.scrollTo(0, 0)")
+
+    def next_page(self):
+        if self.current_page < self.total_pages:
+            self.current_page += 1
+            self.data_fetch()
+        return rx.call_script("window.scrollTo(0, 0)")
+
+    def prev_page(self):
+        if self.current_page > 1:
+            self.current_page -= 1
+            self.data_fetch()
+        return rx.call_script("window.scrollTo(0, 0)")
