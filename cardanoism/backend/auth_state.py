@@ -632,6 +632,10 @@ class AuthState(rx.State):
         self.auth_providers = []
         self.line_notify_channel = ""
         self.email_notify_channel = ""
+        self.favorite_ids = []
+        self.favorites = []
+        self.ga_favorite_ids = []
+        self.ga_favorites = []
         return rx.redirect("/")
 
     # ============================================================

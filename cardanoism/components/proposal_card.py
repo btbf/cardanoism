@@ -3,6 +3,7 @@ from typing import Dict, Any
 from cardanoism.backend.db_connect import AppState
 from cardanoism.backend.auth_state import AuthState
 from cardanoism import styles
+from cardanoism.components.login_modal import login_modal
 
 
 class ReactStarLib(rx.Component):
@@ -1117,6 +1118,7 @@ def detail_modal() -> rx.Component:
 def card_foreach_dict() -> rx.Component:
     return rx.box(
         STATUS_DOT_STYLE,
+        login_modal(),
         modal_history_script(),
         detail_modal(),
         rx.cond(

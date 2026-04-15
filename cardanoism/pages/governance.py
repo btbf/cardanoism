@@ -14,6 +14,7 @@ from cardanoism.components.governance_card import (
 )
 from cardanoism.components.proposal_card import STATUS_DOT_STYLE
 from cardanoism.components.componets import top_button_component
+from cardanoism.components.login_modal import login_modal
 
 
 # ─── react-select ──────────────────────────────────────────────────────────────
@@ -398,6 +399,7 @@ def governance_page() -> rx.Component:
         GovernanceState.load,
         rx.box(
             STATUS_DOT_STYLE,
+            login_modal(),
             governance_modal(),
             rx.vstack(
                 gov_breadcrumb(),
@@ -430,6 +432,7 @@ def governance_detail_page() -> rx.Component:
         GovernanceState.load,
         rx.box(
             STATUS_DOT_STYLE,
+            login_modal(),
             rx.vstack(
                 gov_breadcrumb_detail(),
                 rx.cond(
