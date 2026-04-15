@@ -89,6 +89,18 @@ def get_pool_name(pool_id: str) -> str:
     return _extract_str(meta.get("ticker") or meta.get("name"))
 
 
+def batch_account_info(stake_addresses: list[str]) -> dict[str, dict]:
+    """複数ステークアドレスのアカウント情報を1リクエストで一括取得。
+    戻り値: {stake_address: account_info_dict}
+    """
+    if not stake_addresses:
+        return {}
+    data = _post("/account_info", {"_stake_addresses": stake_addresses})
+    if not data or not isinstance(data, list):
+        return {}
+    return {item["stake_address"]: item for item in data if item.get("stake_address")}
+
+
 def detect_stake_role(stake_address: str) -> dict:
     """
     ステークアドレスのロールと委任先DRep・プール情報を返す。
@@ -202,7 +214,7 @@ def get_pool_apy(pool_id: str, epoch: int | None = None) -> float | None:
         if current is None:
             return None
         epoch = current - 2
-    data = _post("/pool_history", {"_pool_bech32_id": pool_id, "_epoch_no": epoch})
+    data = _get("/pool_history", {"_pool_bech32": pool_id, "_epoch_no": epoch})
     if not data or not isinstance(data, list):
         return None
     ros = data[0].get("epoch_ros")
@@ -221,6 +233,29 @@ def get_drep_delegation_date(stake_address: str, drep_id: str = ""):
     return _get_latest_delegation_date(stake_address, "delegation_drep")
 
 
+def batch_account_update_history(stake_addresses: list[str]) -> dict[str, list]:
+    """
+    複数ステークアドレスのアカウント更新履歴を1リクエストで一括取得。
+    戻り値: {stake_address: [update_entry, ...]}
+
+    各エントリには action_type / block_time / epoch_no などが含まれる。
+    委任履歴の取得に使用:
+      pool 委任 → action_type == "delegation_pool"
+      DRep 委任 → action_type == "delegation_drep"
+    """
+    if not stake_addresses:
+        return {}
+    data = _post("/account_update_history", {"_stake_addresses": stake_addresses})
+    if not data or not isinstance(data, list):
+        return {}
+    result: dict[str, list] = {}
+    for item in data:
+        sa = item.get("stake_address")
+        if sa:
+            result.setdefault(sa, []).append(item)
+    return result
+
+
 def _fetch_drep_name(drep_id: str) -> str:
     """DRepの表示名を /drep_updates の最新エントリから取得する。"""
     updates = _post("/drep_updates", {"_drep_id": drep_id})
@@ -233,15 +268,19 @@ def _fetch_drep_name(drep_id: str) -> str:
 def get_proposal_title(proposal_tx_hash: str, proposal_index: int = 0) -> str | None:
     """
     ガバナンスアクションのタイトルを取得する。
-    /proposal_list で proposal_tx_hash を絞り込み、meta_json.body.title を返す。
-    取得できない場合は proposal_type を返す。
+    /proposal_list (GET) で全件取得し、proposal_tx_hash と index で照合して
+    meta_json.body.title を返す。取得できない場合は proposal_type を返す。
     """
-    data = _post("/proposal_list", {"_proposal_id": [f"{proposal_tx_hash}#{proposal_index}"]})
-    if not data or not isinstance(data, list) or not data[0]:
+    data = _get("/proposal_list")
+    if not data or not isinstance(data, list):
         return None
-    item = data[0]
-    body = (item.get("meta_json") or {}).get("body") or {}
-    title = _extract_str(body.get("title"))
-    if title:
-        return title
-    return _extract_str(item.get("proposal_type")) or None
+    target_id = f"{proposal_tx_hash}#{proposal_index}"
+    for item in data:
+        item_id = f"{item.get('proposal_tx_hash') or ''}#{item.get('proposal_index') or 0}"
+        if item_id == target_id:
+            body = (item.get("meta_json") or {}).get("body") or {}
+            title = _extract_str(body.get("title"))
+            if title:
+                return title
+            return _extract_str(item.get("proposal_type")) or None
+    return None

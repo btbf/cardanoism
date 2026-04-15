@@ -27,8 +27,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cardanoism.backend.db_connect import get_db
 from cardanoism.backend.koios import (
     _post, _get, get_current_epoch,
-    get_pool_delegation_date, get_drep_delegation_date,
-    get_pool_apy, get_proposal_title,
+    get_pool_apy, get_proposal_title, batch_account_info,
+    batch_account_update_history,
 )
 from cardanoism.backend.line_notify import send_line_push, send_line_flex
 from cardanoism.backend import line_flex
@@ -404,11 +404,76 @@ def check_epoch_start():
 # イベント: プール系
 # ============================================================
 
+def refresh_stake_delegations():
+    """全ステークアドレスの委任先（プール・DRep）を /account_info で一括リフレッシュしDBを更新する。
+    1リクエストで全アドレスを処理し、変化があった行のみ UPDATE する。
+    """
+    with get_db() as (cursor, _):
+        cursor.execute(
+            "SELECT id, address, delegated_pool_id, delegated_drep_id FROM stake_addresses"
+        )
+        rows = [dict(r) for r in cursor.fetchall()]
+
+    if not rows:
+        return
+
+    addresses = [r["address"] for r in rows]
+    account_map = batch_account_info(addresses)
+    if not account_map:
+        logger.warning("refresh_stake_delegations: /account_info の取得に失敗しました")
+        return
+
+    updated = 0
+    for row in rows:
+        account = account_map.get(row["address"])
+        if not account:
+            continue
+
+        new_pool_id = account.get("delegated_pool") or None
+        new_drep_id = account.get("delegated_drep") or None
+
+        # 特殊DRep値はNoneとして扱う
+        if new_drep_id in ("drep_always_abstain", "drep_always_no_confidence"):
+            new_drep_id = None
+
+        if new_pool_id == row["delegated_pool_id"] and new_drep_id == row["delegated_drep_id"]:
+            continue  # 変化なし
+
+        with get_db() as (cursor, conn):
+            cursor.execute(
+                """UPDATE stake_addresses
+                   SET delegated_pool_id = ?, delegated_drep_id = ?, role_checked_at = NOW()
+                   WHERE id = ?""",
+                (new_pool_id, new_drep_id, row["id"]),
+            )
+            conn.commit()
+
+        logger.info(
+            "委任先更新: address_id=%d  pool %s→%s  drep %s→%s",
+            row["id"],
+            row["delegated_pool_id"], new_pool_id,
+            row["delegated_drep_id"], new_drep_id,
+        )
+        updated += 1
+
+    logger.info("refresh_stake_delegations: %d件更新 / %d件チェック", updated, len(rows))
+
+
 def _fetch_pool_info(pool_id: str) -> dict | None:
     data = _post("/pool_info", {"_pool_bech32_ids": [pool_id]})
     if not data or not isinstance(data, list) or not data[0]:
         return None
     return data[0]
+
+
+def _fetch_pool_infos_batch(pool_ids: list[str]) -> dict[str, dict]:
+    """複数プールの情報を1リクエストで一括取得。{pool_id_bech32: info} を返す。"""
+    if not pool_ids:
+        return {}
+    data = _post("/pool_info", {"_pool_bech32_ids": pool_ids})
+    if not data or not isinstance(data, list):
+        return {}
+    return {item["pool_id_bech32"]: item for item in data if item.get("pool_id_bech32")}
 
 
 def check_pool_events():
@@ -431,17 +496,21 @@ def check_pool_events():
             all_addrs[sid]["email_addr"] = addr["email_addr"]
             enabled_events.setdefault(sid, set()).add(event_type)
 
-    # pool_id ごとに pool_info と APY を一括取得
-    pool_ids = {a["delegated_pool_id"] for a in all_addrs.values() if a.get("delegated_pool_id")}
-    pool_infos: dict[str, dict] = {}
-    pool_apys: dict[str, float | None] = {}
-    for pool_id in pool_ids:
-        info = _fetch_pool_info(pool_id)
-        if info:
-            pool_infos[pool_id] = info
-        pool_apys[pool_id] = get_pool_apy(pool_id)
+    # /tip を1回だけ呼んでエポックをキャッシュ
+    current_epoch = get_current_epoch()
 
-    # 各アドレスのイベントをチェック
+    # 全プールの pool_info を1リクエストで一括取得
+    pool_ids = list({a["delegated_pool_id"] for a in all_addrs.values() if a.get("delegated_pool_id")})
+    pool_infos = _fetch_pool_infos_batch(pool_ids)
+
+    # APY は pool_history のみ（/tip は上でキャッシュ済のエポックを渡す）
+    pool_apys: dict[str, float | None] = {}
+    if current_epoch is not None:
+        apy_epoch = current_epoch - 2
+        for pool_id in pool_ids:
+            pool_apys[pool_id] = get_pool_apy(pool_id, apy_epoch)
+
+    # 各アドレスのイベントをチェック（pool_reward_received は後で一括処理）
     for stake_id, addr in all_addrs.items():
         pool_id = addr.get("delegated_pool_id")
         if not pool_id or pool_id not in pool_infos:
@@ -449,7 +518,12 @@ def check_pool_events():
         pool_info = pool_infos[pool_id]
         apy = pool_apys.get(pool_id)
         for event_type in enabled_events[stake_id]:
-            _check_pool_event(event_type, addr, pool_info, apy)
+            if event_type == "pool_reward_received":
+                continue
+            _check_pool_event(event_type, addr, pool_info, apy, current_epoch=current_epoch)
+
+    # pool_reward_received を /account_reward_history 一括呼び出しで処理
+    _check_pool_reward_received_batch(all_addrs, enabled_events, current_epoch, pool_apys)
 
 
 def _apy_line(apy: float | None) -> str:
@@ -459,7 +533,7 @@ def _apy_line(apy: float | None) -> str:
     return f"\nAPY: {apy:.2f}%"
 
 
-def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float | None = None):
+def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float | None = None, current_epoch: int | None = None):
     stake_id = addr["stake_id"]
     user_id = addr["user_id"]
     line_id = addr["line_notify_id"]
@@ -589,57 +663,90 @@ def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float |
             set_state("stake_address", stake_id, "pool_pledge_short", "0")
 
     elif event_type == "pool_reward_received":
-        _check_pool_reward_received(addr)
+        pass  # check_pool_events で _check_pool_reward_received_batch に一括委譲
 
 
-def _check_pool_reward_received(addr: dict):
+def _check_pool_reward_received_batch(
+    all_addrs: dict,
+    enabled_events: dict,
+    current_epoch: int | None,
+    pool_apys: dict,
+):
     """
-    報酬入金通知。
+    報酬入金通知を全対象アドレスに対して /account_reward_history 1回で一括処理する。
     Cardanoでは Epoch N のスナップショット → Epoch N+2 で報酬が確定・入金される。
-    現在エポック-2 を対象に /account_reward_history で取得する。
     """
-    stake_id = addr["stake_id"]
-    user_id = addr["user_id"]
-    line_id = addr["line_notify_id"]
-    lang = addr.get("language", "ja")
-    pool_name = addr.get("delegated_pool_name") or (addr.get("delegated_pool_id") or "")[:12]
-    nickname = addr["nickname"]
-
-    current_epoch = get_current_epoch()
     if current_epoch is None:
         return
-    reward_epoch = current_epoch - 2  # 報酬が確定するエポック
+    reward_epoch = current_epoch - 2
 
-    dedup_key = f"reward_{stake_id}_{reward_epoch}"
-    if already_sent(user_id, "pool_reward_received", dedup_key):
+    # dedup 済みでない報酬通知対象アドレスを収集
+    reward_addrs = [
+        addr for stake_id, addr in all_addrs.items()
+        if "pool_reward_received" in enabled_events.get(stake_id, set())
+        and not already_sent(
+            addr["user_id"], "pool_reward_received", f"reward_{addr['stake_id']}_{reward_epoch}"
+        )
+    ]
+    if not reward_addrs:
         return
 
+    # 全アドレスを1リクエストで取得
     data = _post(
         "/account_reward_history",
-        {"_stake_addresses": [addr["address"]], "_epoch_no": reward_epoch},
+        {"_stake_addresses": [a["address"] for a in reward_addrs], "_epoch_no": reward_epoch},
     )
-    # レスポンスはフラットな配列: [{"stake_address":..., "earned_epoch":..., "amount":"...", ...}]
     if not data or not isinstance(data, list):
         return
 
-    amount_ada = sum(int(r.get("amount", 0)) for r in data) / 1_000_000
-    if amount_ada <= 0:
-        return
+    # stake_address → 合計報酬額（lovelace）のマップを作成
+    reward_map: dict[str, int] = {}
+    for r in data:
+        sa = r.get("stake_address")
+        if sa:
+            reward_map[sa] = reward_map.get(sa, 0) + int(r.get("amount", 0))
 
-    apy = get_pool_apy(addr.get("delegated_pool_id") or "", reward_epoch)
-    alt_text = f"【Cardanoism】Epoch {reward_epoch} 分の報酬が入金されました" if lang == "ja" else f"[Cardanoism] Rewards for Epoch {reward_epoch} have arrived"
-    contents = line_flex.pool_reward_received(reward_epoch, amount_ada, apy, nickname, CARDANOISM_URL, lang=lang)
-    flex_and_log(line_id, user_id, "pool_reward_received", dedup_key, alt_text, contents)
-    if addr.get("email_addr"):
-        dk = dedup_key + "_email"
-        if not already_sent(user_id, "pool_reward_received", dk):
-            subj = f"Epoch {reward_epoch} 分の報酬が入金されました" if lang == "ja" else f"Rewards for Epoch {reward_epoch} have arrived"
-            ls = ([f"ウォレット: {nickname}", f"Epoch {reward_epoch} の報酬: {amount_ada:.6f} ADA"]
-                  if lang == "ja" else
-                  [f"Wallet: {nickname}", f"Epoch {reward_epoch} reward: {amount_ada:.6f} ADA"])
-            email_and_log(addr["email_addr"], user_id, "pool_reward_received", dk, subj,
-                          build_html(subj, ls, CARDANOISM_URL, "マイページを開く" if lang == "ja" else "Open MyPage", lang),
-                          build_text(subj, ls, CARDANOISM_URL, lang))
+    # 各アドレスに通知
+    for addr in reward_addrs:
+        total_lovelace = reward_map.get(addr["address"], 0)
+        if total_lovelace <= 0:
+            continue
+
+        amount_ada = total_lovelace / 1_000_000
+        stake_id = addr["stake_id"]
+        user_id = addr["user_id"]
+        line_id = addr["line_notify_id"]
+        lang = addr.get("language", "ja")
+        pool_name = addr.get("delegated_pool_name") or (addr.get("delegated_pool_id") or "")[:12]
+        nickname = addr["nickname"]
+        apy = pool_apys.get(addr.get("delegated_pool_id") or "")
+
+        dedup_key = f"reward_{stake_id}_{reward_epoch}"
+        alt_text = (
+            f"【Cardanoism】Epoch {reward_epoch} 分の報酬が入金されました"
+            if lang == "ja" else
+            f"[Cardanoism] Rewards for Epoch {reward_epoch} have arrived"
+        )
+        contents = line_flex.pool_reward_received(reward_epoch, amount_ada, apy, nickname, CARDANOISM_URL, lang=lang)
+        flex_and_log(line_id, user_id, "pool_reward_received", dedup_key, alt_text, contents)
+        if addr.get("email_addr"):
+            dk = dedup_key + "_email"
+            if not already_sent(user_id, "pool_reward_received", dk):
+                subj = (
+                    f"Epoch {reward_epoch} 分の報酬が入金されました"
+                    if lang == "ja" else
+                    f"Rewards for Epoch {reward_epoch} have arrived"
+                )
+                ls = (
+                    [f"ウォレット: {nickname}", f"Epoch {reward_epoch} の報酬: {amount_ada:.6f} ADA"]
+                    if lang == "ja" else
+                    [f"Wallet: {nickname}", f"Epoch {reward_epoch} reward: {amount_ada:.6f} ADA"]
+                )
+                email_and_log(
+                    addr["email_addr"], user_id, "pool_reward_received", dk, subj,
+                    build_html(subj, ls, CARDANOISM_URL, "マイページを開く" if lang == "ja" else "Open MyPage", lang),
+                    build_text(subj, ls, CARDANOISM_URL, lang),
+                )
 
 
 # ============================================================
@@ -666,48 +773,49 @@ def _days_since_dt(dt) -> int | None:
     return (datetime.now(timezone.utc) - dt).days
 
 
-def _get_delegation_days(stake_id: int, address: str, cache_key: str, fetch_fn) -> int | None:
-    """
-    委任基準日をキャッシュから取得するか API で取得してキャッシュに保存する。
-    戻り値: 委任からの経過日数（取得できない場合 None）
-    """
-    from datetime import datetime, timezone
-    cached = get_state("stake_address", stake_id, cache_key)
-    if cached:
-        try:
-            dt = datetime.fromisoformat(cached).replace(tzinfo=timezone.utc)
-            return _days_since_dt(dt)
-        except ValueError:
-            pass
-
-    dt = fetch_fn()
-    if dt is None:
-        return None
-    set_state("stake_address", stake_id, cache_key, dt.isoformat())
-    return _days_since_dt(dt)
-
 
 def _check_pool_delegation_reminder():
     addrs = _merge_stake_channels(
         get_stake_addrs_with_event("pool_delegation_reminder"),
         get_stake_addrs_with_email_event("pool_delegation_reminder"),
     )
-    for addr in addrs:
-        pool_id = addr.get("delegated_pool_id")
-        if not pool_id:
-            continue
+    addrs = [a for a in addrs if a.get("delegated_pool_id")]
+    if not addrs:
+        return
 
-        days = _get_delegation_days(
-            addr["stake_id"],
-            addr["address"],
-            "pool_delegation_date",
-            lambda: get_pool_delegation_date(addr["address"], pool_id),
-        )
+    # キャッシュが未設定のアドレスを /account_update_history で一括取得
+    uncached = [a for a in addrs if not get_state("stake_address", a["stake_id"], "pool_delegation_date")]
+    if uncached:
+        history_map = batch_account_update_history([a["address"] for a in uncached])
+        for addr in uncached:
+            entries = history_map.get(addr["address"], [])
+            pool_entries = [e for e in entries if e.get("action_type") == "delegation_pool"]
+            if pool_entries:
+                latest = max(pool_entries, key=lambda e: e.get("block_time", 0))
+                bt = latest.get("block_time")
+                if bt:
+                    dt = datetime.fromtimestamp(int(bt), tz=timezone.utc)
+                    set_state("stake_address", addr["stake_id"], "pool_delegation_date", dt.isoformat())
+
+    # ユニークプールIDの APY を一括取得
+    unique_pool_ids = list({a["delegated_pool_id"] for a in addrs})
+    pool_apys: dict[str, float | None] = {pid: get_pool_apy(pid) for pid in unique_pool_ids}
+
+    for addr in addrs:
+        cached = get_state("stake_address", addr["stake_id"], "pool_delegation_date")
+        if not cached:
+            continue
+        try:
+            dt = datetime.fromisoformat(cached).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        days = _days_since_dt(dt)
         if days is None:
             continue
 
+        pool_id = addr["delegated_pool_id"]
         pool_name = addr.get("delegated_pool_name") or pool_id[:12]
-        apy = get_pool_apy(pool_id)
+        apy = pool_apys.get(pool_id)
         lang = addr.get("language", "ja")
         for milestone in REMINDER_MILESTONES:
             if days < milestone:
@@ -735,20 +843,37 @@ def _check_drep_delegation_reminder():
         get_stake_addrs_with_event("drep_delegation_reminder"),
         get_stake_addrs_with_email_event("drep_delegation_reminder"),
     )
-    for addr in addrs:
-        drep_id = addr.get("delegated_drep_id")
-        if not drep_id:
-            continue
+    addrs = [a for a in addrs if a.get("delegated_drep_id")]
+    if not addrs:
+        return
 
-        days = _get_delegation_days(
-            addr["stake_id"],
-            addr["address"],
-            "drep_delegation_date",
-            lambda: get_drep_delegation_date(addr["address"], drep_id),
-        )
+    # キャッシュが未設定のアドレスを /account_update_history で一括取得
+    uncached = [a for a in addrs if not get_state("stake_address", a["stake_id"], "drep_delegation_date")]
+    if uncached:
+        history_map = batch_account_update_history([a["address"] for a in uncached])
+        for addr in uncached:
+            entries = history_map.get(addr["address"], [])
+            drep_entries = [e for e in entries if e.get("action_type") == "delegation_drep"]
+            if drep_entries:
+                latest = max(drep_entries, key=lambda e: e.get("block_time", 0))
+                bt = latest.get("block_time")
+                if bt:
+                    dt = datetime.fromtimestamp(int(bt), tz=timezone.utc)
+                    set_state("stake_address", addr["stake_id"], "drep_delegation_date", dt.isoformat())
+
+    for addr in addrs:
+        cached = get_state("stake_address", addr["stake_id"], "drep_delegation_date")
+        if not cached:
+            continue
+        try:
+            dt = datetime.fromisoformat(cached).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        days = _days_since_dt(dt)
         if days is None:
             continue
 
+        drep_id = addr["delegated_drep_id"]
         drep_name = addr.get("delegated_drep_name") or drep_id[:12]
         lang = addr.get("language", "ja")
         for milestone in REMINDER_MILESTONES:
@@ -781,7 +906,7 @@ def check_drep_events():
 
 
 def _check_drep_new_governance_action():
-    data = _post("/proposal_list", {})
+    data = _get("/proposal_list")
     if not data or not isinstance(data, list) or not data:
         return
 
@@ -833,24 +958,31 @@ def _check_drep_vote():
         get_stake_addrs_with_event("drep_vote"),
         get_stake_addrs_with_email_event("drep_vote"),
     )
+    addrs = [a for a in addrs if a.get("delegated_drep_id")]
+    if not addrs:
+        return
+
+    # ユニーク drep_id ごとに /drep_votes を1回ずつ呼んでキャッシュ
+    # （/drep_votes は1 drep_id しか指定できないため drep_id 単位で呼ぶ）
+    unique_drep_ids = list({a["delegated_drep_id"] for a in addrs})
+    drep_latest_vote: dict[str, dict] = {}  # {drep_id: latest_vote_entry}
+    for drep_id in unique_drep_ids:
+        data = _post("/drep_votes", {"_drep_id": drep_id})
+        if data and isinstance(data, list) and data[0].get("tx_hash"):
+            drep_latest_vote[drep_id] = data[0]
+
     for addr in addrs:
-        drep_id = addr.get("delegated_drep_id")
-        if not drep_id:
+        drep_id = addr["delegated_drep_id"]
+        latest = drep_latest_vote.get(drep_id)
+        if not latest:
             continue
+
         stake_id = addr["stake_id"]
         user_id = addr["user_id"]
         line_id = addr["line_notify_id"]
         lang = addr.get("language", "ja")
         drep_name = addr.get("delegated_drep_name") or drep_id[:12]
-
-        data = _post("/drep_votes", {"_drep_id": drep_id})
-        if not data or not isinstance(data, list):
-            continue
-
-        latest = data[0]
         vote_tx = latest.get("tx_hash") or ""
-        if not vote_tx:
-            continue
 
         last_tx = get_state("stake_address", stake_id, "last_drep_vote_tx")
         if last_tx == vote_tx:
@@ -895,23 +1027,36 @@ def _check_drep_status_change():
         get_stake_addrs_with_event("drep_status_change"),
         get_stake_addrs_with_email_event("drep_status_change"),
     )
+    addrs = [a for a in addrs if a.get("delegated_drep_id")]
+    if not addrs:
+        return
+
+    # ユニーク drep_id を1リクエストで一括取得
+    unique_drep_ids = list({a["delegated_drep_id"] for a in addrs})
+    data = _post("/drep_info", {"_drep_ids": unique_drep_ids})
+    if not data or not isinstance(data, list):
+        return
+
+    # {drep_id: status} マップを作成
+    drep_status_map: dict[str, str] = {
+        item["drep_id"]: (item.get("status") or "")
+        for item in data
+        if item.get("drep_id")
+    }
+
     for addr in addrs:
-        drep_id = addr.get("delegated_drep_id")
-        if not drep_id:
+        drep_id = addr["delegated_drep_id"]
+        status = drep_status_map.get(drep_id)
+        if status is None:
             continue
+
         stake_id = addr["stake_id"]
         user_id = addr["user_id"]
         line_id = addr["line_notify_id"]
         lang = addr.get("language", "ja")
         drep_name = addr.get("delegated_drep_name") or drep_id[:12]
 
-        data = _post("/drep_info", {"_drep_ids": [drep_id]})
-        if not data or not isinstance(data, list) or not data[0]:
-            continue
-
-        status = data[0].get("status") or ""
         last_status = get_state("stake_address", stake_id, "drep_status")
-
         if last_status is None:
             set_state("stake_address", stake_id, "drep_status", status)
             continue
@@ -1274,6 +1419,8 @@ def main():
 
     if args.event in ("all", "epoch_start"):
         check_epoch_start()
+    if args.event in ("all", "pool", "drep", "reminder"):
+        refresh_stake_delegations()
     if args.event in ("all", "pool"):
         check_pool_events()
     if args.event in ("all", "drep"):
