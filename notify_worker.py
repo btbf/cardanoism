@@ -2,7 +2,7 @@
 notify_worker.py
 通知バッチワーカー - cron で定期実行する独立スクリプト
 
-推奨 cron 設定:
+推奨 cron 設定（10,000件規模対応）:
   # エポック切り替わりは常に 21:44:51 UTC。ウィンドウを設定して1日1回だけ実行。
   # (5日に1回だけ実際に処理が走る)
   44 21 * * *  EPOCH_CHECK_WINDOW_MIN=60 python /path/to/notify_worker.py --event epoch_start
@@ -10,8 +10,12 @@ notify_worker.py
   # 切り替わり時刻を確認する場合:
   python notify_worker.py --epoch-schedule
 
-  */30 * * * *  python /path/to/notify_worker.py --event pool
-  */30 * * * *  python /path/to/notify_worker.py --event drep
+  # pool/drep は5分ごと（リアルタイム性優先）
+  */5 * * * *   python /path/to/notify_worker.py --event pool
+  */5 * * * *   python /path/to/notify_worker.py --event drep
+
+  # リマインダーは1時間ごとで十分
+  0 * * * *     python /path/to/notify_worker.py --event reminder
 
 全イベント一括実行:
   python notify_worker.py
@@ -20,6 +24,7 @@ import os
 import sys
 import argparse
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -28,7 +33,8 @@ from cardanoism.backend.db_connect import get_db
 from cardanoism.backend.koios import (
     _post, _get, get_current_epoch,
     get_pool_apy, get_proposal_title, batch_account_info,
-    batch_account_update_history,
+    batch_account_update_history, batch_account_reward_history,
+    KOIOS_BATCH_SIZE, _chunks,
 )
 from cardanoism.backend.line_notify import send_line_push, send_line_flex
 from cardanoism.backend import line_flex
@@ -58,6 +64,7 @@ _CARDANO_EPOCH_SECONDS: dict[str, int] = {
 # エポック切り替わり時刻付近のみ処理するウィンドウ（分）。0 = 常に実行。
 # 環境変数 EPOCH_CHECK_WINDOW_MIN で設定する。
 EPOCH_CHECK_WINDOW_MIN = int(os.getenv("EPOCH_CHECK_WINDOW_MIN", "0"))
+MAX_WORKERS = 10  # 並列 Koios API コール数
 
 
 def _koios_network() -> str:
@@ -186,6 +193,33 @@ def set_state(scope_type: str, scope_id, key: str, value: str):
             (scope_type, scope_id, key, value, value),
         )
         conn.commit()
+
+
+def bulk_get_state(scope_type: str, scope_ids: list, key: str) -> dict:
+    """複数 scope_id の状態を1クエリで一括取得。{scope_id: last_value}"""
+    if not scope_ids:
+        return {}
+    placeholders = ",".join(["?"] * len(scope_ids))
+    with get_db() as (cursor, _):
+        cursor.execute(
+            f"SELECT scope_id, last_value FROM notification_check_state "
+            f"WHERE scope_type = ? AND scope_id IN ({placeholders}) AND key_name = ?",
+            [scope_type, *scope_ids, key],
+        )
+        return {row["scope_id"]: row["last_value"] for row in cursor.fetchall()}
+
+
+def bulk_already_sent(dedup_keys: list[str]) -> set[str]:
+    """dedup_key のリストを1クエリで一括チェック。送信済み dedup_key のセットを返す。"""
+    if not dedup_keys:
+        return set()
+    placeholders = ",".join(["?"] * len(dedup_keys))
+    with get_db() as (cursor, _):
+        cursor.execute(
+            f"SELECT DISTINCT dedup_key FROM notification_log WHERE dedup_key IN ({placeholders})",
+            dedup_keys,
+        )
+        return {row["dedup_key"] for row in cursor.fetchall()}
 
 
 def already_sent(user_id: int, event_type: str, dedup_key: str) -> bool:
@@ -503,12 +537,14 @@ def check_pool_events():
     pool_ids = list({a["delegated_pool_id"] for a in all_addrs.values() if a.get("delegated_pool_id")})
     pool_infos = _fetch_pool_infos_batch(pool_ids)
 
-    # APY は pool_history のみ（/tip は上でキャッシュ済のエポックを渡す）
+    # APY を並列取得（プールごとに独立した API コールのため ThreadPoolExecutor で高速化）
     pool_apys: dict[str, float | None] = {}
     if current_epoch is not None:
         apy_epoch = current_epoch - 2
-        for pool_id in pool_ids:
-            pool_apys[pool_id] = get_pool_apy(pool_id, apy_epoch)
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            futures = {executor.submit(get_pool_apy, pid, apy_epoch): pid for pid in pool_ids}
+            for f in as_completed(futures):
+                pool_apys[futures[f]] = f.result()
 
     # 各アドレスのイベントをチェック（pool_reward_received は後で一括処理）
     for stake_id, addr in all_addrs.items():
@@ -691,20 +727,12 @@ def _check_pool_reward_received_batch(
     if not reward_addrs:
         return
 
-    # 全アドレスを1リクエストで取得
-    data = _post(
-        "/account_reward_history",
-        {"_stake_addresses": [a["address"] for a in reward_addrs], "_epoch_no": reward_epoch},
+    # 1,000件チャンクで一括取得
+    reward_map = batch_account_reward_history(
+        [a["address"] for a in reward_addrs], reward_epoch
     )
-    if not data or not isinstance(data, list):
+    if not reward_map:
         return
-
-    # stake_address → 合計報酬額（lovelace）のマップを作成
-    reward_map: dict[str, int] = {}
-    for r in data:
-        sa = r.get("stake_address")
-        if sa:
-            reward_map[sa] = reward_map.get(sa, 0) + int(r.get("amount", 0))
 
     # 各アドレスに通知
     for addr in reward_addrs:
@@ -962,14 +990,22 @@ def _check_drep_vote():
     if not addrs:
         return
 
-    # ユニーク drep_id ごとに /drep_votes を1回ずつ呼んでキャッシュ
-    # （/drep_votes は1 drep_id しか指定できないため drep_id 単位で呼ぶ）
+    # DRep ごとに独立した API コールを並列実行
     unique_drep_ids = list({a["delegated_drep_id"] for a in addrs})
-    drep_latest_vote: dict[str, dict] = {}  # {drep_id: latest_vote_entry}
-    for drep_id in unique_drep_ids:
-        data = _post("/drep_votes", {"_drep_id": drep_id})
-        if data and isinstance(data, list) and data[0].get("tx_hash"):
-            drep_latest_vote[drep_id] = data[0]
+    drep_latest_vote: dict[str, dict] = {}
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {
+            executor.submit(_post, "/drep_votes", {"_drep_id": did}): did
+            for did in unique_drep_ids
+        }
+        for f in as_completed(futures):
+            did = futures[f]
+            try:
+                data = f.result()
+                if data and isinstance(data, list) and data[0].get("tx_hash"):
+                    drep_latest_vote[did] = data[0]
+            except Exception as e:
+                logger.warning("drep_votes 取得失敗 drep_id=%s: %s", did, e)
 
     for addr in addrs:
         drep_id = addr["delegated_drep_id"]
@@ -1031,18 +1067,17 @@ def _check_drep_status_change():
     if not addrs:
         return
 
-    # ユニーク drep_id を1リクエストで一括取得
+    # ユニーク drep_id を 1,000 件チャンクで一括取得
     unique_drep_ids = list({a["delegated_drep_id"] for a in addrs})
-    data = _post("/drep_info", {"_drep_ids": unique_drep_ids})
-    if not data or not isinstance(data, list):
+    drep_status_map: dict[str, str] = {}
+    for chunk in _chunks(unique_drep_ids, KOIOS_BATCH_SIZE):
+        data = _post("/drep_info", {"_drep_ids": chunk})
+        if data and isinstance(data, list):
+            for item in data:
+                if item.get("drep_id"):
+                    drep_status_map[item["drep_id"]] = item.get("status") or ""
+    if not drep_status_map:
         return
-
-    # {drep_id: status} マップを作成
-    drep_status_map: dict[str, str] = {
-        item["drep_id"]: (item.get("status") or "")
-        for item in data
-        if item.get("drep_id")
-    }
 
     for addr in addrs:
         drep_id = addr["delegated_drep_id"]

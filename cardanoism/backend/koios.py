@@ -7,10 +7,49 @@ Koios API を使ったオンチェーンデータ取得ユーティリティ
   preprod            : https://preprod.koios.rest/api/v1
 """
 import os
+import time
+import threading
 import logging
 import requests
 
 logger = logging.getLogger(__name__)
+
+KOIOS_BATCH_SIZE = 1000  # Koios POST エンドポイントの上限件数
+
+
+def _chunks(lst: list, n: int):
+    """リストを n 件ずつのチャンクに分割するジェネレータ。"""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+
+
+class _RateLimiter:
+    """スレッドセーフなスライディングウィンドウ方式レートリミッター。
+    Koios burst limit: 100 req / 10s。安全マージンとして 80/10s に設定。
+    """
+    def __init__(self, max_calls: int = 80, period: float = 10.0):
+        self._lock = threading.Lock()
+        self._timestamps: list[float] = []
+        self._max = max_calls
+        self._period = period
+
+    def acquire(self):
+        with self._lock:
+            now = time.monotonic()
+            # ウィンドウ外のタイムスタンプを除去
+            self._timestamps = [t for t in self._timestamps if now - t < self._period]
+            if len(self._timestamps) >= self._max:
+                # ウィンドウの先頭が抜けるまで待機
+                sleep_for = self._period - (now - self._timestamps[0])
+                if sleep_for > 0:
+                    time.sleep(sleep_for)
+                now = time.monotonic()
+                self._timestamps = [t for t in self._timestamps if now - t < self._period]
+            self._timestamps.append(time.monotonic())
+
+
+_rate_limiter = _RateLimiter()
+
 
 _NETWORK_URLS = {
     "mainnet": "https://api.koios.rest/api/v1",
@@ -23,6 +62,7 @@ logger.info("Koios ネットワーク: %s (%s)", _network, KOIOS_BASE_URL)
 
 
 def _post(endpoint: str, payload: dict) -> list | dict | None:
+    _rate_limiter.acquire()
     try:
         resp = requests.post(
             f"{KOIOS_BASE_URL}{endpoint}",
@@ -39,6 +79,7 @@ def _post(endpoint: str, payload: dict) -> list | dict | None:
 
 
 def _get(endpoint: str, params: dict | None = None) -> list | dict | None:
+    _rate_limiter.acquire()
     try:
         resp = requests.get(
             f"{KOIOS_BASE_URL}{endpoint}",
@@ -90,15 +131,19 @@ def get_pool_name(pool_id: str) -> str:
 
 
 def batch_account_info(stake_addresses: list[str]) -> dict[str, dict]:
-    """複数ステークアドレスのアカウント情報を1リクエストで一括取得。
+    """複数ステークアドレスのアカウント情報を一括取得（1,000件チャンク対応）。
     戻り値: {stake_address: account_info_dict}
     """
     if not stake_addresses:
         return {}
-    data = _post("/account_info", {"_stake_addresses": stake_addresses})
-    if not data or not isinstance(data, list):
-        return {}
-    return {item["stake_address"]: item for item in data if item.get("stake_address")}
+    result: dict[str, dict] = {}
+    for chunk in _chunks(stake_addresses, KOIOS_BATCH_SIZE):
+        data = _post("/account_info", {"_stake_addresses": chunk})
+        if data and isinstance(data, list):
+            for item in data:
+                if item.get("stake_address"):
+                    result[item["stake_address"]] = item
+    return result
 
 
 def detect_stake_role(stake_address: str) -> dict:
@@ -234,26 +279,37 @@ def get_drep_delegation_date(stake_address: str, drep_id: str = ""):
 
 
 def batch_account_update_history(stake_addresses: list[str]) -> dict[str, list]:
-    """
-    複数ステークアドレスのアカウント更新履歴を1リクエストで一括取得。
+    """複数ステークアドレスのアカウント更新履歴を一括取得（1,000件チャンク対応）。
     戻り値: {stake_address: [update_entry, ...]}
-
-    各エントリには action_type / block_time / epoch_no などが含まれる。
-    委任履歴の取得に使用:
-      pool 委任 → action_type == "delegation_pool"
-      DRep 委任 → action_type == "delegation_drep"
     """
     if not stake_addresses:
         return {}
-    data = _post("/account_update_history", {"_stake_addresses": stake_addresses})
-    if not data or not isinstance(data, list):
-        return {}
     result: dict[str, list] = {}
-    for item in data:
-        sa = item.get("stake_address")
-        if sa:
-            result.setdefault(sa, []).append(item)
+    for chunk in _chunks(stake_addresses, KOIOS_BATCH_SIZE):
+        data = _post("/account_update_history", {"_stake_addresses": chunk})
+        if data and isinstance(data, list):
+            for item in data:
+                sa = item.get("stake_address")
+                if sa:
+                    result.setdefault(sa, []).append(item)
     return result
+
+
+def batch_account_reward_history(stake_addresses: list[str], epoch: int) -> dict[str, int]:
+    """複数アドレスの指定エポック報酬合計を一括取得（1,000件チャンク対応）。
+    戻り値: {stake_address: lovelace合計}
+    """
+    if not stake_addresses:
+        return {}
+    reward_map: dict[str, int] = {}
+    for chunk in _chunks(stake_addresses, KOIOS_BATCH_SIZE):
+        data = _post("/account_reward_history", {"_stake_addresses": chunk, "_epoch_no": epoch})
+        if data and isinstance(data, list):
+            for r in data:
+                sa = r.get("stake_address")
+                if sa:
+                    reward_map[sa] = reward_map.get(sa, 0) + int(r.get("amount", 0))
+    return reward_map
 
 
 def _fetch_drep_name(drep_id: str) -> str:
