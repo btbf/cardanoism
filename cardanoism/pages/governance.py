@@ -272,20 +272,6 @@ def gov_filters() -> rx.Component:
 # ─── ヘッダー ──────────────────────────────────────────────────────────────────
 
 def gov_header() -> rx.Component:
-    def _view_btn(icon_name: str, mode: str) -> rx.Component:
-        is_active = GovernanceState.view_mode == mode
-        return rx.button(
-            rx.icon(icon_name),
-            variant=rx.cond(is_active, "solid", "soft"),
-            color_scheme=None,
-            background_color=rx.cond(is_active, "var(--amber-7)", "var(--gray-3)"),
-            color=rx.cond(is_active, "var(--gray-12)", "var(--gray-10)"),
-            _hover={"background_color": "var(--amber-7)", "color": "var(--gray-12)"},
-            size="2",
-            on_click=lambda: GovernanceState.set_view_mode(mode),
-            cursor="pointer",
-        )
-
     return rx.flex(
         rx.flex(
             rx.text("検索結果", size="4"),
@@ -297,8 +283,28 @@ def gov_header() -> rx.Component:
         ),
         rx.tablet_and_desktop(
             rx.hstack(
-                _view_btn("list", "list"),
-                _view_btn("layout-grid", "grid"),
+                rx.button(
+                    rx.icon("list"),
+                    variant=rx.cond(GovernanceState.view_mode == "list", "solid", "soft"),
+                    color_scheme=None,
+                    background_color=rx.cond(GovernanceState.view_mode == "list", "var(--amber-7)", "var(--gray-3)"),
+                    color=rx.cond(GovernanceState.view_mode == "list", "var(--gray-12)", "var(--gray-10)"),
+                    _hover={"background_color": "var(--amber-7)", "color": "var(--gray-12)"},
+                    size="2",
+                    on_click=GovernanceState.set_view_mode("list"),
+                    cursor="pointer",
+                ),
+                rx.button(
+                    rx.icon("layout-grid"),
+                    variant=rx.cond(GovernanceState.view_mode == "grid", "solid", "soft"),
+                    color_scheme=None,
+                    background_color=rx.cond(GovernanceState.view_mode == "grid", "var(--amber-7)", "var(--gray-3)"),
+                    color=rx.cond(GovernanceState.view_mode == "grid", "var(--gray-12)", "var(--gray-10)"),
+                    _hover={"background_color": "var(--amber-7)", "color": "var(--gray-12)"},
+                    size="2",
+                    on_click=GovernanceState.set_view_mode("grid"),
+                    cursor="pointer",
+                ),
                 spacing="2",
             ),
         ),
