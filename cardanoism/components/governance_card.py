@@ -9,6 +9,7 @@ from typing import Dict, Any
 from cardanoism.backend.db_connect import GovernanceState
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.components.proposal_card import badge_with_dot
+from cardanoism import styles
 
 
 # ─── ステータス・タイプ バッジ ─────────────────────────────────────────────────
@@ -55,13 +56,18 @@ def _markdown_section(label: str, text_var) -> rx.Component:
         rx.box(
             rx.markdown(text_var),
             class_name=(
-                "text-[16px] leading-7 prose max-w-none "
+                "text-[15px] leading-7 prose max-w-none dark:prose-invert "
+                "prose-p:text-[var(--gray-12)] dark:prose-p:text-[var(--gray-12)] "
                 "prose-strong:text-[var(--gray-12)] dark:prose-strong:text-[var(--gray-12)] "
-                "prose-a:text-[var(--amber-11)] prose-headings:text-[var(--gray-12)]"
+                "prose-a:text-[var(--amber-11)] dark:prose-a:text-[var(--amber-11)] "
+                "prose-headings:text-[var(--gray-12)] dark:prose-headings:text-[var(--gray-12)] "
+                "prose-li:text-[var(--gray-12)] dark:prose-li:text-[var(--gray-12)] "
+                "prose-code:text-[var(--gray-12)] dark:prose-code:bg-[var(--gray-4)] "
+                "prose-blockquote:border-[var(--gray-6)] prose-blockquote:text-[var(--gray-11)]"
             ),
             width="100%",
             padding_x="8px",
-            color="var(--sand-a12)",
+            color="var(--gray-12)",
         ),
         spacing="2",
         width="100%",
@@ -155,8 +161,8 @@ def governance_detail_header(action: Dict[str, Any], close_btn=None) -> rx.Compo
             action["proposed_epoch"],
             rx.hstack(
                 rx.icon("calendar", size=14, color="var(--gray-9)"),
-                rx.text("提案エポック: ", size="2", color="var(--gray-9)"),
-                rx.text(action["proposed_epoch"], size="2", weight="medium"),
+                rx.text("提案: ", size="2", color="var(--gray-9)"),
+                rx.text(action["proposed_epoch_display"], size="2", weight="medium"),
                 spacing="1",
                 align="center",
             ),
@@ -166,8 +172,8 @@ def governance_detail_header(action: Dict[str, Any], close_btn=None) -> rx.Compo
             action["expiration"],
             rx.hstack(
                 rx.icon("timer", size=14, color="var(--gray-9)"),
-                rx.text("期限エポック: ", size="2", color="var(--gray-9)"),
-                rx.text(action["expiration"], size="2", weight="medium"),
+                rx.text("期限: ", size="2", color="var(--gray-9)"),
+                rx.text(action["expiration_display"], size="2", weight="medium"),
                 spacing="1",
                 align="center",
             ),
@@ -365,6 +371,20 @@ def governance_detail_content(action: Dict[str, Any]) -> rx.Component:
 def governance_modal() -> rx.Component:
     return rx.dialog.root(
         rx.dialog.content(
+            rx.html(
+                "<style>"
+                ".governance-modal, .governance-modal * {"
+                "  font-family: " + styles.font_family + ";"
+                "  font-size: 15px;"
+                "}"
+                ".governance-modal .rt-Text {"
+                "  font-family: " + styles.font_family + ";"
+                "}"
+                ".governance-modal .prose {"
+                "  font-size: 15px;"
+                "}"
+                "</style>"
+            ),
             rx.vstack(
                 # ── 固定ヘッダー: タイトル（＋閉じるボタン）・バッジ・エポック ──
                 rx.cond(
@@ -512,7 +532,7 @@ def _card_footer(action: Dict[str, Any]) -> rx.Component:
             action["proposed_epoch"],
             rx.hstack(
                 rx.icon("calendar", size=14, color="var(--gray-9)"),
-                rx.text(action["proposed_epoch"], size="2", color="var(--gray-10)"),
+                rx.text(action["proposed_epoch_display"], size="2", color="var(--gray-10)"),
                 spacing="1",
                 align="center",
             ),
@@ -523,18 +543,7 @@ def _card_footer(action: Dict[str, Any]) -> rx.Component:
             rx.hstack(
                 rx.icon("timer", size=14, color="var(--gray-8)"),
                 rx.text("期限:", size="2", color="var(--gray-10)"),
-                rx.text(action["expiration"], size="2", color="var(--gray-10)"),
-                spacing="1",
-                align="center",
-            ),
-            rx.fragment(),
-        ),
-        rx.cond(
-            action["deposit_ada"],
-            rx.hstack(
-                rx.icon("coins", size=14, color="var(--gray-8)"),
-                rx.text(action["deposit_ada"], size="2", weight="bold", color="var(--indigo-11)"),
-                rx.text("ADA", size="2", color="var(--gray-9)"),
+                rx.text(action["expiration_display"], size="2", color="var(--gray-10)"),
                 spacing="1",
                 align="center",
             ),

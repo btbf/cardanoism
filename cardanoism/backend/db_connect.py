@@ -3,6 +3,7 @@ import os
 import sys
 import json
 import mariadb
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Tuple
 from contextlib import contextmanager
 from time import perf_counter
@@ -1141,6 +1142,32 @@ _GA_TYPE_COLORS: Dict[str, str] = {
 }
 
 
+# ネットワーク別エポック長（notify_worker.py と同じ定義）
+_EPOCH_SECONDS: dict[str, int] = {
+    "mainnet": 432_000,
+    "preprod": 432_000,
+    "preview":  86_400,
+}
+_KOIOS_NETWORK = os.getenv("KOIOS_NETWORK", "mainnet").lower()
+_EPOCH_DURATION = timedelta(seconds=_EPOCH_SECONDS.get(_KOIOS_NETWORK, 432_000))
+
+
+def _epoch_to_display(epoch, ref_epoch, ref_dt: datetime | None) -> str:
+    """エポック番号を 'Ep.NNN（YYYY/MM/DD）' 形式に変換する。
+    ref_epoch/ref_dt（block_time）を基準に差分×エポック長で日付を算出する。
+    """
+    if epoch is None:
+        return ""
+    try:
+        n = int(epoch)
+        if ref_dt is not None and ref_epoch is not None:
+            dt = ref_dt + _EPOCH_DURATION * (n - int(ref_epoch))
+            return f"Ep.{n}（{dt.strftime('%Y/%m/%d')}）"
+        return f"Ep.{n}"
+    except (ValueError, TypeError):
+        return str(epoch)
+
+
 def _format_ga_row(row: Dict[str, Any]) -> Dict[str, Any]:
     """governance_actions 行にUI表示用フィールドを追加する。"""
     deposit = row.get("deposit")
@@ -1172,6 +1199,19 @@ def _format_ga_row(row: Dict[str, Any]) -> Dict[str, Any]:
                 row["references_list"] = []
         else:
             row["references_list"] = []
+
+    # block_time を基準点としてエポック→日付を相対計算
+    ref_dt: datetime | None = None
+    block_time_raw = row.get("block_time")
+    if block_time_raw:
+        try:
+            bt_str = str(block_time_raw)[:19]  # "YYYY-MM-DD HH:MM:SS"
+            ref_dt = datetime.strptime(bt_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+    proposed = row.get("proposed_epoch")
+    row["proposed_epoch_display"] = _epoch_to_display(proposed, proposed, ref_dt)
+    row["expiration_display"]     = _epoch_to_display(row.get("expiration"), proposed, ref_dt)
 
     tx  = row.get("proposal_tx_hash") or ""
     idx = row.get("proposal_index") or 0
