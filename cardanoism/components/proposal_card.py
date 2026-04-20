@@ -535,7 +535,7 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
                     ),
                     rx.text(
                         rx.cond(AuthState.language == "en", proposal["title_ja"], proposal["title"]),
-                        size="2", color="var(--gray-9)", class_name="mt-0",
+                        size="2", color="var(--gray-9)", class_name="mt-0 line-clamp-1",
                     ),
                     rx.text(
                         description,
@@ -628,7 +628,7 @@ def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
         ),
         rx.text(
             rx.cond(AuthState.language == "en", proposal["title_ja"], proposal["title"]),
-            size="2", color="var(--gray-9)", class_name="mt-0",
+            size="2", color="var(--gray-9)", class_name="mt-0 line-clamp-1",
         ),
         rx.text(
             description,
