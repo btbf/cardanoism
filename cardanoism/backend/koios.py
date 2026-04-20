@@ -122,12 +122,28 @@ def _extract_str(value) -> str:
 
 
 def get_pool_name(pool_id: str) -> str:
-    """プールIDからプール名（またはティッカー）を取得する。"""
+    """プールIDからプール名（ticker → name → meta_url フェッチの順）を取得する。"""
     data = _post("/pool_info", {"_pool_bech32_ids": [pool_id]})
     if not data or not isinstance(data, list) or not data[0]:
         return ""
-    meta = data[0].get("meta_json") or {}
-    return _extract_str(meta.get("ticker") or meta.get("name"))
+    info = data[0]
+    meta = info.get("meta_json") or {}
+    name = _extract_str(meta.get("ticker") or meta.get("name"))
+    if name:
+        return name
+    # meta_json に名前がない場合は meta_url から直接取得
+    meta_url = _extract_str(info.get("meta_url"))
+    if meta_url:
+        try:
+            resp = requests.get(meta_url, timeout=5)
+            resp.raise_for_status()
+            remote = resp.json()
+            name = _extract_str(remote.get("ticker") or remote.get("name"))
+            if name:
+                return name
+        except Exception as e:
+            logger.debug("meta_url 取得失敗 pool=%s url=%s: %s", pool_id, meta_url, e)
+    return ""
 
 
 def batch_account_info(stake_addresses: list[str]) -> dict[str, dict]:
@@ -244,6 +260,26 @@ def _get_latest_delegation_date(stake_address: str, action_type: str):
     if not block_time:
         return None
     return datetime.fromtimestamp(block_time, tz=timezone.utc)
+
+
+def get_pool_epoch_stats(pool_id: str, epoch_no: int) -> dict | None:
+    """指定エポックのプール実績を返す。
+    戻り値: {active_stake_ada, saturation_pct, block_cnt, apy} or None
+    """
+    data = _get("/pool_history", {"_pool_bech32": pool_id, "_epoch_no": epoch_no})
+    if not data or not isinstance(data, list) or not data[0]:
+        return None
+    row = data[0]
+    active_stake = row.get("active_stake")
+    saturation = row.get("saturation_pct")
+    block_cnt = row.get("block_cnt")
+    ros = row.get("epoch_ros")
+    return {
+        "active_stake_ada": int(active_stake) / 1_000_000 if active_stake is not None else None,
+        "saturation_pct": float(saturation) if saturation is not None else None,
+        "block_cnt": int(block_cnt) if block_cnt is not None else None,
+        "apy": float(ros) if ros is not None else None,
+    }
 
 
 def get_pool_apy(pool_id: str, epoch: int | None = None) -> float | None:

@@ -230,6 +230,8 @@ def pool_fee_change(
     nickname: str,
     url: str,
     lang: str = "ja",
+    old_pledge_ada: float | None = None,
+    new_pledge_ada: float | None = None,
 ) -> dict:
     t = get_flex(lang)
     margin_color = TEXT_UP if new_margin_pct > old_margin_pct else TEXT_DOWN
@@ -239,6 +241,13 @@ def pool_fee_change(
         _row(t["pool_fee_variable_label"], f"{old_margin_pct:.1f}% → {new_margin_pct:.1f}%", margin_color),
         _row(t["pool_fee_fixed_label"], f"{old_fixed_ada:.0f} → {new_fixed_ada:.0f} {t['pool_fee_fixed_unit']}", fixed_color),
     ]
+    if new_pledge_ada is not None and old_pledge_ada != new_pledge_ada:
+        pledge_color = TEXT_DOWN if (old_pledge_ada is None or new_pledge_ada > old_pledge_ada) else TEXT_UP
+        if old_pledge_ada is not None:
+            pledge_text = f"{old_pledge_ada:.0f} → {new_pledge_ada:.0f} ADA"
+        else:
+            pledge_text = f"{new_pledge_ada:.0f} ADA"
+        rows.append(_row(t["pool_fee_pledge_label"], pledge_text, pledge_color))
     if apy is not None:
         rows.append(_row(t["apy_label"], f"{apy:.2f}%", TEXT_APY))
 
@@ -571,6 +580,62 @@ def drep_status_change(
                 "contents": [
                     _row(t["drep_status_label"], f"{old_status} → {new_status}", TEXT_WARN),
                 ],
+            },
+            _wallet_row(nickname, lang),
+        ],
+        url,
+        t["footer_open"],
+    )
+
+
+# ============================================================
+# drep_delegation_reminder
+# ============================================================
+
+def pool_epoch_performance(
+    pool_name: str,
+    epoch_no: int,
+    active_stake_ada: float | None,
+    saturation_pct: float | None,
+    block_cnt: int | None,
+    apy: float | None,
+    nickname: str,
+    url: str,
+    lang: str = "ja",
+    apy_epoch_no: int | None = None,
+) -> dict:
+    t = get_flex(lang)
+    rows = [_row(t["pool_epoch_perf_epoch_label"], str(epoch_no), TEXT_PRIMARY)]
+    if active_stake_ada is not None:
+        ada_m = active_stake_ada / 1_000_000
+        rows.append(_row(t["pool_epoch_perf_active_stake_label"], f"{ada_m:,.1f}M ADA", TEXT_PRIMARY))
+    if saturation_pct is not None:
+        color = TEXT_UP if saturation_pct >= 100 else TEXT_PRIMARY
+        rows.append(_row(t["pool_epoch_perf_saturation_label"], f"{saturation_pct:.1f}%", color))
+    if block_cnt is not None:
+        rows.append(_row(t["pool_epoch_perf_blocks_label"], str(block_cnt), TEXT_PRIMARY))
+    if apy is not None:
+        apy_label = f"{t['pool_epoch_perf_apy_label']}（Ep.{apy_epoch_no}）" if apy_epoch_no else t["pool_epoch_perf_apy_label"]
+        rows.append(_row(apy_label, f"{apy:.2f}%", TEXT_APY))
+
+    return _bubble(
+        _header(t["pool_epoch_perf_title"], t["pool_epoch_perf_subtitle"]),
+        [
+            {
+                "type": "text",
+                "text": pool_name,
+                "weight": "bold",
+                "size": "md",
+                "wrap": True,
+                "color": TEXT_PRIMARY,
+            },
+            {"type": "separator", "margin": "md"},
+            {
+                "type": "box",
+                "layout": "vertical",
+                "margin": "md",
+                "spacing": "sm",
+                "contents": rows,
             },
             _wallet_row(nickname, lang),
         ],

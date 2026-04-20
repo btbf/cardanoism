@@ -27,6 +27,7 @@ POOL_NOTIFICATION_EVENT_TYPES = [
     "pool_saturation",
     "pool_pledge_shortage",
     "pool_reward_received",
+    "pool_epoch_performance",
     "pool_delegation_reminder",
 ]
 

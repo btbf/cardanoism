@@ -16,6 +16,7 @@ NOTIFICATION_LABELS_JA: dict[str, str] = {
     "pool_saturation": "飽和ライン超過",
     "pool_pledge_shortage": "誓約不足",
     "pool_reward_received": "報酬受取",
+    "pool_epoch_performance": "エポック実績",
     "pool_delegation_reminder": "長期委任リマインダー（90/120/365日）",
     "drep_vote": "委任先DRepの投票通知",
     "drep_status_change": "委任先DRepのステータス変化",
@@ -32,6 +33,7 @@ NOTIFICATION_LABELS_EN: dict[str, str] = {
     "pool_saturation": "Saturation Exceeded",
     "pool_pledge_shortage": "Pledge Shortage",
     "pool_reward_received": "Reward Received",
+    "pool_epoch_performance": "Epoch Performance",
     "pool_delegation_reminder": "Delegation Reminder (90/120/365 days)",
     "drep_vote": "Delegated DRep Vote",
     "drep_status_change": "Delegated DRep Status Change",
@@ -240,12 +242,22 @@ FLEX_JA: dict[str, str] = {
     "pool_fee_variable_label": "変動手数料",
     "pool_fee_fixed_label": "固定費",
     "pool_fee_fixed_unit": "ADA",
+    "pool_fee_pledge_label": "誓約",
 
     # pool_saturation
     "pool_saturation_title": "飽和ライン超過",
     "pool_saturation_subtitle": "委任先プールが飽和ラインを超えました",
     "pool_saturation_label": "飽和度",
     "pool_saturation_hint": "報酬効率が下がる可能性があります",
+
+    # pool_epoch_performance
+    "pool_epoch_perf_title": "エポック実績通知",
+    "pool_epoch_perf_subtitle": "前エポックのプール実績です",
+    "pool_epoch_perf_epoch_label": "エポック",
+    "pool_epoch_perf_active_stake_label": "有効ステーク",
+    "pool_epoch_perf_saturation_label": "飽和度",
+    "pool_epoch_perf_blocks_label": "ブロック生成数",
+    "pool_epoch_perf_apy_label": "APY（実績）",
 
     # pool_pledge_shortage
     "pool_pledge_shortage_title": "誓約不足",
@@ -320,6 +332,16 @@ FLEX_EN: dict[str, str] = {
     "pool_fee_variable_label": "Variable Fee",
     "pool_fee_fixed_label": "Fixed Fee",
     "pool_fee_fixed_unit": "ADA",
+    "pool_fee_pledge_label": "Pledge",
+
+    # pool_epoch_performance
+    "pool_epoch_perf_title": "Epoch Performance",
+    "pool_epoch_perf_subtitle": "Previous epoch pool performance",
+    "pool_epoch_perf_epoch_label": "Epoch",
+    "pool_epoch_perf_active_stake_label": "Active Stake",
+    "pool_epoch_perf_saturation_label": "Saturation",
+    "pool_epoch_perf_blocks_label": "Blocks Minted",
+    "pool_epoch_perf_apy_label": "APY (actual)",
 
     # pool_saturation
     "pool_saturation_title": "Saturation Exceeded",
