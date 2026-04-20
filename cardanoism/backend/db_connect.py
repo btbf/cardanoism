@@ -877,6 +877,10 @@ class AppState(rx.State):
         else:
             self.modal_semantic_blocks = self.modal_semantic_blocks_ja
 
+    def reset_semantic_view_for_language(self, language: str):
+        default_view = "raw" if language == "en" else "ja"
+        self.set_modal_semantic_view(default_view)
+
     def on_popstate(self, event_state: Dict[str, Any] | None):
         event_state = event_state or {}
         filters_changed = False
@@ -1367,6 +1371,13 @@ class GovernanceState(rx.State):
             self._load_full_action(proposal_tx_hash)
         self.load = True
 
+    async def load_detail_page_with_lang(self):
+        """load_detail_page + グローバル言語に合わせて modal_lang を初期化。"""
+        from cardanoism.backend.auth_state import AuthState as _AuthState
+        auth = await self.get_state(_AuthState)
+        self.modal_lang = "en" if auth.language == "en" else "ja"
+        self.load_detail_page()
+
     # ── モーダル ──────────────────────────────────────────────────────────────
 
     def open_modal(self, action: Dict[str, Any]):
@@ -1374,7 +1385,6 @@ class GovernanceState(rx.State):
         self.modal_loading = True
         self.modal_action = action
         self.modal_action_refs = []
-        self.modal_lang = "ja"
         self.last_list_path = self.router.url.path or ""
         tx_hash = str(action.get("proposal_tx_hash", ""))
         self._load_full_action(tx_hash)
@@ -1402,6 +1412,9 @@ class GovernanceState(rx.State):
 
     def set_modal_lang(self, lang: str):
         self.modal_lang = lang
+
+    def reset_modal_lang_for_language(self, language: str):
+        self.modal_lang = "en" if language == "en" else "ja"
 
     # ── フィルター ────────────────────────────────────────────────────────────
 

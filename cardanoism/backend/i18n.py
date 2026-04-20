@@ -88,6 +88,7 @@ UI_JA: dict[str, str] = {
     "proposal_section_problem": "課題",
     "proposal_section_solution": "解決策",
     "proposal_close": "閉じる",
+    "proposal_share": "シェア",
     "proposal_copy_url": "URLコピー",
     "proposal_url_copied": "提案リンクをコピーしました",
     "score_alignment": "提案整合性",
@@ -99,6 +100,39 @@ UI_JA: dict[str, str] = {
     "votes_wallet_label": "投票",
     "votes_yes_label": "賛成",
     "votes_abstain_label": "棄権",
+
+    # ガバナンスページ
+    "gov_breadcrumb_detail": "詳細",
+    "gov_filter_type_placeholder": "アクションタイプ",
+    "gov_filter_status_placeholder": "批准ステータス",
+    "gov_filter_search_placeholder": "キーワードを検索...(タイトル、概要)",
+    "gov_filter_expand": "さらに絞り込む",
+    "gov_search_results": "検索結果",
+    "gov_results_unit": "件",
+    "gov_no_results": "ガバナンスアクションが見つかりませんでした",
+    "gov_type_parameter_change": "プロトコル変更",
+    "gov_type_treasury_withdrawals": "国庫引き出し",
+    "gov_type_hard_fork": "ハードフォーク",
+    "gov_type_info_action": "情報提案",
+    "gov_type_new_committee": "委員会変更",
+    "gov_type_new_constitution": "新憲法",
+    "gov_type_no_confidence": "不信任",
+    "gov_status_active": "アクティブ",
+    "gov_status_ratified": "批准済み",
+    "gov_status_enacted": "施行済み",
+    "gov_status_dropped": "廃止",
+    "gov_status_expired": "失効",
+    "gov_title_none": "（タイトルなし）",
+    "gov_proposed_epoch_label": "提案: ",
+    "gov_expiration_label": "期限: ",
+    "gov_deposit_label": "デポジット: ",
+    "gov_section_abstract": "概要",
+    "gov_section_motivation": "動機",
+    "gov_section_rationale": "根拠",
+    "gov_section_refs": "参考リンク",
+    "gov_modal_load_error": "詳細を読み込めませんでした",
+    "gov_url_copied": "GAリンクをコピーしました",
+    "gov_ref_no_label": "（ラベルなし）",
 
     # インデックスページ
     "hero_daily_update": "提案データを毎日更新",
@@ -195,6 +229,16 @@ UI_JA: dict[str, str] = {
     # 未ログイン
     "login_required": "マイページを利用するにはログインが必要です",
     "login_button": "ログインする",
+
+    # ログインページ・モーダル
+    "login_page_title": "ログイン",
+    "login_page_desc": "マイページ・お気に入り・通知機能を利用するにはログインが必要です。",
+    "login_modal_desc": "ログインしてマイページ・お気に入り・通知機能を利用できます。",
+    "login_line": "LINEでログイン",
+    "login_google": "Googleでログイン",
+    "login_x": "Xでログイン",
+    "login_back_to_top": "← トップページに戻る",
+    "login_close": "閉じる",
 }
 
 UI_EN: dict[str, str] = {
@@ -236,6 +280,7 @@ UI_EN: dict[str, str] = {
     "proposal_section_problem": "Problem",
     "proposal_section_solution": "Solution",
     "proposal_close": "Close",
+    "proposal_share": "Share",
     "proposal_copy_url": "Copy URL",
     "proposal_url_copied": "Link copied",
     "score_alignment": "Alignment",
@@ -247,6 +292,39 @@ UI_EN: dict[str, str] = {
     "votes_wallet_label": "Votes",
     "votes_yes_label": "Yes",
     "votes_abstain_label": "Abstain",
+
+    # Governance page
+    "gov_breadcrumb_detail": "Detail",
+    "gov_filter_type_placeholder": "Action Type",
+    "gov_filter_status_placeholder": "Ratification Status",
+    "gov_filter_search_placeholder": "Search keywords... (title, abstract)",
+    "gov_filter_expand": "More filters",
+    "gov_search_results": "Results",
+    "gov_results_unit": "",
+    "gov_no_results": "No governance actions found",
+    "gov_type_parameter_change": "Protocol Change",
+    "gov_type_treasury_withdrawals": "Treasury Withdrawals",
+    "gov_type_hard_fork": "Hard Fork",
+    "gov_type_info_action": "Info Action",
+    "gov_type_new_committee": "Committee Change",
+    "gov_type_new_constitution": "New Constitution",
+    "gov_type_no_confidence": "No Confidence",
+    "gov_status_active": "Active",
+    "gov_status_ratified": "Ratified",
+    "gov_status_enacted": "Enacted",
+    "gov_status_dropped": "Dropped",
+    "gov_status_expired": "Expired",
+    "gov_title_none": "(No title)",
+    "gov_proposed_epoch_label": "Proposed: ",
+    "gov_expiration_label": "Expires: ",
+    "gov_deposit_label": "Deposit: ",
+    "gov_section_abstract": "Abstract",
+    "gov_section_motivation": "Motivation",
+    "gov_section_rationale": "Rationale",
+    "gov_section_refs": "References",
+    "gov_modal_load_error": "Failed to load details",
+    "gov_url_copied": "Link copied",
+    "gov_ref_no_label": "(No label)",
 
     # Index page
     "hero_daily_update": "Daily proposal updates",
@@ -343,6 +421,16 @@ UI_EN: dict[str, str] = {
     # Not logged in
     "login_required": "Login required to use My Page",
     "login_button": "Log In",
+
+    # Login page / modal
+    "login_page_title": "Login",
+    "login_page_desc": "Login is required to use My Page, favorites, and notification features.",
+    "login_modal_desc": "Log in to access My Page, favorites, and notification features.",
+    "login_line": "Log in with LINE",
+    "login_google": "Sign in with Google",
+    "login_x": "Log in with X",
+    "login_back_to_top": "← Back to top",
+    "login_close": "Close",
 }
 
 

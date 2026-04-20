@@ -143,11 +143,10 @@ def fund_label(proposal: Dict[str, Any]):
 
 
 def campaign_label(proposal: Dict[str, Any]):
-    """Return campaign title (ja if present, else fallback)."""
     return rx.cond(
-        proposal.get("campaign_title_ja"),
-        proposal.get("campaign_title_ja"),
-        proposal.get("campaign_title", ""),
+        AuthState.language == "en",
+        rx.cond(proposal.get("campaign_title"), proposal.get("campaign_title"), proposal.get("campaign_title_ja", "")),
+        rx.cond(proposal.get("campaign_title_ja"), proposal.get("campaign_title_ja"), proposal.get("campaign_title", "")),
     )
 
 
@@ -532,6 +531,7 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
                         line_height="1.2",
                         color="var(--gray-12)",
                         class_name="proposal-title",
+                        style={"wordBreak": "break-word", "overflowWrap": "break-word"},
                     ),
                     rx.text(
                         rx.cond(AuthState.language == "en", proposal["title_ja"], proposal["title"]),
@@ -576,7 +576,7 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
             ),
         )
 
-    modal_click = lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"])]
+    modal_click = lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"]), AppState.reset_semantic_view_for_language(AuthState.language)]
     proposal_path = "/catalyst/proposals/" + proposal["uuid"].to(str)
     popup_click = rx.redirect(proposal_path, is_external=True, popup=True)
 
@@ -710,7 +710,7 @@ def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
             ),
         )
 
-    modal_click = lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"])]
+    modal_click = lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"]), AppState.reset_semantic_view_for_language(AuthState.language)]
     proposal_path = "/catalyst/proposals/" + proposal["uuid"].to(str)
     popup_click = rx.redirect(proposal_path, is_external=True, popup=True)
 
@@ -1140,19 +1140,28 @@ def card_foreach_dict() -> rx.Component:
                         rx.foreach(AppState.proposals, proposal_grid),
                         columns={"base": "1"},
                         spacing="4",
+                        width="100%",
                         style={"userSelect": "none"},
                     )
                 ),
                 rx.tablet_and_desktop(
-                    rx.cond(
-                        AppState.view_mode == "grid",
-                        rx.grid(
-                            rx.foreach(AppState.proposals, proposal_grid),
-                            columns={"base": "1", "md": "2", "lg": "2"},
-                            spacing="4",
+                    rx.box(
+                        rx.cond(
+                            AppState.view_mode == "grid",
+                            rx.grid(
+                                rx.foreach(AppState.proposals, proposal_grid),
+                                columns={"base": "1", "md": "2", "lg": "2"},
+                                spacing="4",
+                                width="100%",
+                            ),
+                            rx.box(
+                                rx.foreach(AppState.proposals, proposal_list),
+                                width="100%",
+                            ),
                         ),
-                        rx.foreach(AppState.proposals, proposal_list),
-                    )
+                        width="100%",
+                    ),
+                    width="100%",
                 ),
             ),
             rx.flex(
@@ -1163,4 +1172,5 @@ def card_foreach_dict() -> rx.Component:
                 padding_y="20px",
             ),
         ),
+        width="100%",
     )

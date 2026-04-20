@@ -166,6 +166,46 @@ class AuthState(rx.State):
             {"value": "complete", "label": "完了"},
         ]
 
+    @rx.var
+    def gov_type_options(self) -> list[dict]:
+        if self.language == "en":
+            return [
+                {"value": "ParameterChange",     "label": "Protocol Change"},
+                {"value": "TreasuryWithdrawals",  "label": "Treasury Withdrawals"},
+                {"value": "HardForkInitiation",   "label": "Hard Fork"},
+                {"value": "InfoAction",           "label": "Info Action"},
+                {"value": "NewCommittee",         "label": "Committee Change"},
+                {"value": "NewConstitution",      "label": "New Constitution"},
+                {"value": "NoConfidence",         "label": "No Confidence"},
+            ]
+        return [
+            {"value": "ParameterChange",     "label": "プロトコル変更"},
+            {"value": "TreasuryWithdrawals",  "label": "国庫引き出し"},
+            {"value": "HardForkInitiation",   "label": "ハードフォーク"},
+            {"value": "InfoAction",           "label": "情報提案"},
+            {"value": "NewCommittee",         "label": "委員会変更"},
+            {"value": "NewConstitution",      "label": "新憲法"},
+            {"value": "NoConfidence",         "label": "不信任"},
+        ]
+
+    @rx.var
+    def gov_status_options(self) -> list[dict]:
+        if self.language == "en":
+            return [
+                {"value": "active",   "label": "Active"},
+                {"value": "ratified", "label": "Ratified"},
+                {"value": "enacted",  "label": "Enacted"},
+                {"value": "expired",  "label": "Expired"},
+                {"value": "dropped",  "label": "Dropped"},
+            ]
+        return [
+            {"value": "active",   "label": "アクティブ"},
+            {"value": "ratified", "label": "批准済み"},
+            {"value": "enacted",  "label": "施行済み"},
+            {"value": "expired",  "label": "失効"},
+            {"value": "dropped",  "label": "廃止"},
+        ]
+
     def set_language(self, lang: str):
         if lang not in ("ja", "en"):
             return

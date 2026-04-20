@@ -7,6 +7,7 @@ from typing import Dict, List
 
 from cardanoism.templates import template
 from cardanoism.backend.db_connect import GovernanceState
+from cardanoism.backend.auth_state import AuthState
 from cardanoism.components.governance_card import (
     governance_modal,
     ga_cards_view,
@@ -107,23 +108,6 @@ FILTER_CSS = """
 </style>
 """
 
-TYPE_OPTIONS = [
-    {"value": "ParameterChange",     "label": "プロトコル変更"},
-    {"value": "TreasuryWithdrawals", "label": "国庫引き出し"},
-    {"value": "HardForkInitiation",  "label": "ハードフォーク"},
-    {"value": "InfoAction",          "label": "情報提案"},
-    {"value": "NewCommittee",        "label": "委員会変更"},
-    {"value": "NewConstitution",     "label": "新憲法"},
-    {"value": "NoConfidence",        "label": "不信任"},
-]
-
-STATUS_OPTIONS = [
-    {"value": "active",   "label": "アクティブ"},
-    {"value": "ratified", "label": "批准済み"},
-    {"value": "enacted",  "label": "施行済み"},
-    {"value": "expired",  "label": "失効"},
-    {"value": "dropped",  "label": "廃止"},
-]
 
 
 # ─── パンくずリスト ────────────────────────────────────────────────────────────
@@ -132,7 +116,7 @@ def gov_breadcrumb() -> rx.Component:
     return rx.hstack(
         rx.link(rx.icon("home", size=16), href="/", underline="none", color_scheme="gray"),
         rx.icon("chevron-right", size=14, color="gray"),
-        rx.text("ガバナンス", size="2", weight="medium"),
+        rx.text(AuthState.t["nav_governance"], size="2", weight="medium"),
         spacing="2",
         align="center",
         width="100%",
@@ -145,9 +129,9 @@ def gov_breadcrumb_detail() -> rx.Component:
     return rx.hstack(
         rx.link(rx.icon("home", size=16), href="/", underline="none", color_scheme="gray"),
         rx.icon("chevron-right", size=14, color="gray"),
-        rx.link("ガバナンス", href="/governance", size="2", underline="hover", color_scheme="gray"),
+        rx.link(AuthState.t["nav_governance"], href="/governance", size="2", underline="hover", color_scheme="gray"),
         rx.icon("chevron-right", size=14, color="gray"),
-        rx.text("詳細", size="2", weight="medium"),
+        rx.text(AuthState.t["gov_breadcrumb_detail"], size="2", weight="medium"),
         spacing="2",
         align="center",
         width="100%",
@@ -163,8 +147,8 @@ def gov_filters() -> rx.Component:
     mobile_selects = rx.vstack(
         gov_select(
             classNamePrefix="gov-filter",
-            options=TYPE_OPTIONS,
-            placeholder="アクションタイプ",
+            options=AuthState.gov_type_options,
+            placeholder=AuthState.t["gov_filter_type_placeholder"],
             defaultValue=GovernanceState.filter_type_selected,
             onChange=lambda value: GovernanceState.set_filter_types(value),
             isMulti=True,
@@ -174,8 +158,8 @@ def gov_filters() -> rx.Component:
         ),
         gov_select(
             classNamePrefix="gov-filter",
-            options=STATUS_OPTIONS,
-            placeholder="批准ステータス",
+            options=AuthState.gov_status_options,
+            placeholder=AuthState.t["gov_filter_status_placeholder"],
             defaultValue=GovernanceState.filter_status_selected,
             onChange=lambda value: GovernanceState.set_filter_statuses(value),
             isMulti=True,
@@ -193,8 +177,8 @@ def gov_filters() -> rx.Component:
         rx.box(
             gov_select(
                 classNamePrefix="gov-filter",
-                options=TYPE_OPTIONS,
-                placeholder="アクションタイプ",
+                options=AuthState.gov_type_options,
+                placeholder=AuthState.t["gov_filter_type_placeholder"],
                 defaultValue=GovernanceState.filter_type_selected,
                 onChange=lambda value: GovernanceState.set_filter_types(value),
                 isMulti=True,
@@ -207,8 +191,8 @@ def gov_filters() -> rx.Component:
         rx.box(
             gov_select(
                 classNamePrefix="gov-filter",
-                options=STATUS_OPTIONS,
-                placeholder="批准ステータス",
+                options=AuthState.gov_status_options,
+                placeholder=AuthState.t["gov_filter_status_placeholder"],
                 defaultValue=GovernanceState.filter_status_selected,
                 onChange=lambda value: GovernanceState.set_filter_statuses(value),
                 isMulti=True,
@@ -228,7 +212,7 @@ def gov_filters() -> rx.Component:
         rx.html(FILTER_CSS),
         rx.box(
             rx.input(
-                placeholder="キーワードを検索...(タイトル、概要)",
+                placeholder=AuthState.t["gov_filter_search_placeholder"],
                 size="3",
                 max_length=100,
                 value=GovernanceState.search_query,
@@ -241,7 +225,7 @@ def gov_filters() -> rx.Component:
             rx.accordion.root(
                 rx.accordion.item(
                     header=rx.accordion.trigger(
-                        rx.text("さらに絞り込む", size="3"),
+                        rx.text(AuthState.t["gov_filter_expand"], size="3"),
                         class_name="ga-mobile-filter-trigger",
                     ),
                     content=rx.accordion.content(
@@ -274,9 +258,9 @@ def gov_filters() -> rx.Component:
 def gov_header() -> rx.Component:
     return rx.flex(
         rx.flex(
-            rx.text("検索結果", size="4"),
+            rx.text(AuthState.t["gov_search_results"], size="4"),
             rx.text(GovernanceState.total_items, size="6", weight="bold", color="var(--amber-11)"),
-            rx.text("件", size="4"),
+            rx.text(AuthState.t["gov_results_unit"], size="4"),
             align_items="baseline",
             spacing="2",
             margin_left="4px",
@@ -394,7 +378,7 @@ def governance_page() -> rx.Component:
     no_results = rx.card(
         rx.vstack(
             rx.icon("circle-off", size=28),
-            rx.text("ガバナンスアクションが見つかりませんでした"),
+            rx.text(AuthState.t["gov_no_results"]),
             spacing="2",
             align="center",
         ),
@@ -431,7 +415,7 @@ def governance_page() -> rx.Component:
 @template(
     route="/governance/[id]",
     title="ガバナンスアクション | Cardanoism",
-    on_load=GovernanceState.load_detail_page,
+    on_load=GovernanceState.load_detail_page_with_lang,
 )
 def governance_detail_page() -> rx.Component:
     return rx.cond(
@@ -450,7 +434,7 @@ def governance_detail_page() -> rx.Component:
                         background_color="var(--gray-3)",
                     ),
                     rx.callout(
-                        "ガバナンスアクションが見つかりませんでした",
+                        AuthState.t["gov_no_results"],
                         icon="info",
                         color_scheme="gray",
                     ),

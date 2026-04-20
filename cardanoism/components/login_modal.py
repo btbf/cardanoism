@@ -35,7 +35,7 @@ def _line_login_button(href: str) -> rx.Component:
             },
         ),
         rx.el.span(
-            "LINEでログイン",
+            AuthState.t["login_line"],
             style={
                 "flex": "1",
                 "text-align": "center",
@@ -82,7 +82,7 @@ def login_modal() -> rx.Component:
                 ),
                 rx.dialog.description(
                     rx.text(
-                        "ログインしてマイページ・お気に入り・通知機能を利用できます。",
+                        AuthState.t["login_modal_desc"],
                         size="2",
                         color="var(--gray-9)",
                         text_align="center",
@@ -93,7 +93,7 @@ def login_modal() -> rx.Component:
                     rx.el.a(
                         _google_svg_icon(),
                         rx.el.span(
-                            "Googleでログイン",
+                            AuthState.t["login_google"],
                             style={
                                 "font-family": "'Roboto', 'Google Sans', Arial, sans-serif",
                                 "font-weight": "500",
@@ -131,7 +131,7 @@ def login_modal() -> rx.Component:
                     rx.link(
                         rx.button(
                             rx.image(src="/x-icon.svg", width="16px", height="16px", alt="X"),
-                            rx.text("Xでログイン", size="3", weight="bold"),
+                            rx.text(AuthState.t["login_x"], size="3", weight="bold"),
                             width="100%",
                             size="3",
                             style={
@@ -153,7 +153,7 @@ def login_modal() -> rx.Component:
                 ),
                 rx.dialog.close(
                     rx.button(
-                        "閉じる",
+                        AuthState.t["login_close"],
                         variant="ghost",
                         size="2",
                         color="var(--gray-9)",

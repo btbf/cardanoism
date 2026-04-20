@@ -5,6 +5,7 @@ login.py
 import reflex as rx
 from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
+from typing import Any
 
 X_BLACK = "#000000"
 X_BLACK_DARK = "#333333"
@@ -20,12 +21,12 @@ def _google_svg_icon() -> rx.Component:
     )
 
 
-def google_login_button(href: str, label: str = "Googleでログイン") -> rx.Component:
+def google_login_button(href: str, label: Any = None) -> rx.Component:
     """Google公式デザイン（ピル型）のログインボタン。"""
     return rx.el.a(
         _google_svg_icon(),
         rx.el.span(
-            label,
+            label if label is not None else AuthState.t["login_google"],
             style={
                 "font-family": "'Roboto', 'Google Sans', Arial, sans-serif",
                 "font-weight": "500",
@@ -62,10 +63,9 @@ def google_login_button(href: str, label: str = "Googleでログイン") -> rx.C
     )
 
 
-def line_login_button(href: str) -> rx.Component:
+def line_login_button(href: str, label: Any = None) -> rx.Component:
     """LINE公式ガイドライン準拠のログインボタン。"""
     return rx.el.a(
-        # アイコンエリア（左）
         rx.el.span(
             rx.el.img(src="/line-icon.png", alt="LINE", style={"width": "32px", "height": "32px", "object-fit": "contain"}),
             style={
@@ -78,9 +78,8 @@ def line_login_button(href: str) -> rx.Component:
                 "flex-shrink": "0",
             },
         ),
-        # テキストエリア（右）
         rx.el.span(
-            "LINEでログイン",
+            label if label is not None else AuthState.t["login_line"],
             style={
                 "flex": "1",
                 "text-align": "center",
@@ -142,24 +141,21 @@ def login_page() -> rx.Component:
             # カード
             rx.box(
                 rx.vstack(
-                    rx.heading("ログイン", size="5", weight="bold", text_align="center"),
+                    rx.heading(AuthState.t["login_page_title"], size="5", weight="bold", text_align="center"),
                     rx.text(
-                        "マイページ・お気に入り・通知機能を利用するにはログインが必要です。",
+                        AuthState.t["login_page_desc"],
                         size="2",
                         color="var(--gray-9)",
                         text_align="center",
                         line_height="1.6",
                     ),
                     rx.divider(),
-                    # LINEログインボタン
                     line_login_button("/auth/line/login"),
-                    # Googleログインボタン
                     google_login_button("/auth/google/login"),
-                    # X(Twitter)ログインボタン
                     rx.link(
                         rx.button(
                             rx.image(src="/x-icon.svg", width="18px", height="18px", alt="X"),
-                            rx.text("Xでログイン", size="3", weight="bold"),
+                            rx.text(AuthState.t["login_x"], size="3", weight="bold"),
                             width="100%",
                             size="3",
                             style={
@@ -190,7 +186,7 @@ def login_page() -> rx.Component:
                 max_width="400px",
             ),
             rx.link(
-                rx.text("← トップページに戻る", size="2", color="var(--gray-9)"),
+                rx.text(AuthState.t["login_back_to_top"], size="2", color="var(--gray-9)"),
                 href="/",
                 underline="none",
             ),

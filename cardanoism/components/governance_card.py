@@ -17,18 +17,29 @@ from cardanoism import styles
 def ga_status_badge(action: Dict[str, Any]) -> rx.Component:
     return rx.match(
         action["ga_status"],
-        ("active",   badge_with_dot("アクティブ", "white", bg="#22c55e", text_color="white", blink=True)),
-        ("ratified", badge_with_dot("批准済み",   "white", bg="#073ff4", text_color="white")),
-        ("enacted",  badge_with_dot("施行済み",   "white", bg="#4b0082", text_color="white")),
-        ("dropped",  badge_with_dot("廃止",       "white", bg="#808080", text_color="white")),
-        ("expired",  badge_with_dot("失効",       "white", bg="#808080", text_color="white")),
+        ("active",   badge_with_dot(AuthState.t["gov_status_active"],  "white", bg="#22c55e", text_color="white", blink=True)),
+        ("ratified", badge_with_dot(AuthState.t["gov_status_ratified"], "white", bg="#073ff4", text_color="white")),
+        ("enacted",  badge_with_dot(AuthState.t["gov_status_enacted"],  "white", bg="#4b0082", text_color="white")),
+        ("dropped",  badge_with_dot(AuthState.t["gov_status_dropped"],  "white", bg="#808080", text_color="white")),
+        ("expired",  badge_with_dot(AuthState.t["gov_status_expired"],  "white", bg="#808080", text_color="white")),
         badge_with_dot(action["ga_status"], "white", bg="#808080", text_color="white"),
     )
 
 
 def ga_type_badge(action: Dict[str, Any]) -> rx.Component:
+    label = rx.match(
+        action["proposal_type"],
+        ("ParameterChange",    AuthState.t["gov_type_parameter_change"]),
+        ("TreasuryWithdrawals", AuthState.t["gov_type_treasury_withdrawals"]),
+        ("HardForkInitiation", AuthState.t["gov_type_hard_fork"]),
+        ("InfoAction",         AuthState.t["gov_type_info_action"]),
+        ("NewCommittee",       AuthState.t["gov_type_new_committee"]),
+        ("NewConstitution",    AuthState.t["gov_type_new_constitution"]),
+        ("NoConfidence",       AuthState.t["gov_type_no_confidence"]),
+        action["proposal_type"],
+    )
     return rx.badge(
-        action["proposal_type_display"],
+        label,
         color_scheme=action["proposal_type_color"],
         variant="surface",
         radius="full",
@@ -95,7 +106,7 @@ def _ref_item(ref: Dict[str, Any]) -> rx.Component:
             color="var(--amber-11)",
         ),
         rx.text(
-            rx.cond(ref["label"], ref["label"], "（ラベルなし）"),
+            rx.cond(ref["label"], ref["label"], AuthState.t["gov_ref_no_label"]),
             size="3",
             color="var(--gray-10)",
         ),
@@ -128,9 +139,9 @@ def governance_detail_header(action: Dict[str, Any], close_btn=None) -> rx.Compo
     title_block = rx.vstack(
         rx.text(
             rx.cond(
-                action["title_ja"],
-                action["title_ja"],
-                rx.cond(action["title"], action["title"], "（タイトルなし）"),
+                AuthState.language == "en",
+                rx.cond(action["title"], action["title"], rx.cond(action["title_ja"], action["title_ja"], AuthState.t["gov_title_none"])),
+                rx.cond(action["title_ja"], action["title_ja"], rx.cond(action["title"], action["title"], AuthState.t["gov_title_none"])),
             ),
             size={"base": "6", "md": "5"},
             weight="bold",
@@ -161,7 +172,7 @@ def governance_detail_header(action: Dict[str, Any], close_btn=None) -> rx.Compo
             action["proposed_epoch"],
             rx.hstack(
                 rx.icon("calendar", size=14, color="var(--gray-9)"),
-                rx.text("提案: ", size="2", color="var(--gray-9)"),
+                rx.text(AuthState.t["gov_proposed_epoch_label"], size="2", color="var(--gray-9)"),
                 rx.text(action["proposed_epoch_display"], size="2", weight="medium"),
                 spacing="1",
                 align="center",
@@ -172,7 +183,7 @@ def governance_detail_header(action: Dict[str, Any], close_btn=None) -> rx.Compo
             action["expiration"],
             rx.hstack(
                 rx.icon("timer", size=14, color="var(--gray-9)"),
-                rx.text("期限: ", size="2", color="var(--gray-9)"),
+                rx.text(AuthState.t["gov_expiration_label"], size="2", color="var(--gray-9)"),
                 rx.text(action["expiration_display"], size="2", weight="medium"),
                 spacing="1",
                 align="center",
@@ -183,7 +194,7 @@ def governance_detail_header(action: Dict[str, Any], close_btn=None) -> rx.Compo
             action["deposit_ada"],
             rx.hstack(
                 rx.icon("coins", size=14, color="var(--gray-9)"),
-                rx.text("デポジット: ", size="2", color="var(--gray-9)"),
+                rx.text(AuthState.t["gov_deposit_label"], size="2", color="var(--gray-9)"),
                 rx.text(action["deposit_ada"], size="2", weight="medium"),
                 rx.text("ADA", size="2", color="var(--gray-9)"),
                 spacing="1",
@@ -313,17 +324,17 @@ def governance_detail_body(action: Dict[str, Any], sticky_top: str = "5.5em") ->
     body_sections = rx.vstack(
         rx.cond(
             action["abstract_display"],
-            _markdown_section("概要", abstract_text),
+            _markdown_section(AuthState.t["gov_section_abstract"], abstract_text),
             rx.fragment(),
         ),
         rx.cond(
             action["motivation_display"],
-            _markdown_section("動機", motivation_text),
+            _markdown_section(AuthState.t["gov_section_motivation"], motivation_text),
             rx.fragment(),
         ),
         rx.cond(
             action["rationale_display"],
-            _markdown_section("根拠", rationale_text),
+            _markdown_section(AuthState.t["gov_section_rationale"], rationale_text),
             rx.fragment(),
         ),
         spacing="4",
@@ -333,7 +344,7 @@ def governance_detail_body(action: Dict[str, Any], sticky_top: str = "5.5em") ->
     refs_section = rx.cond(
         GovernanceState.modal_action_refs,
         rx.vstack(
-            _section_heading("参考リンク"),
+            _section_heading(AuthState.t["gov_section_refs"]),
             rx.vstack(
                 rx.foreach(GovernanceState.modal_action_refs, _ref_item),
                 spacing="2",
@@ -419,7 +430,7 @@ def governance_modal() -> rx.Component:
                         rx.cond(
                             GovernanceState.modal_action,
                             governance_detail_body(GovernanceState.modal_action, sticky_top="0px"),
-                            rx.callout("詳細を読み込めませんでした", icon="info", color_scheme="gray"),
+                            rx.callout(AuthState.t["gov_modal_load_error"], icon="info", color_scheme="gray"),
                         ),
                     ),
                     flex="1",
@@ -431,7 +442,7 @@ def governance_modal() -> rx.Component:
                 # ── フッター（固定）──────────────────────────────────────────
                 rx.hstack(
                     rx.button(
-                        "閉じる",
+                        AuthState.t["proposal_close"],
                         on_click=GovernanceState.handle_modal_change(False),
                         width="90%",
                         variant="soft",
@@ -467,11 +478,11 @@ def governance_modal() -> rx.Component:
                                 ),
                             ),
                             rx.menu.item(
-                                "URLコピー",
+                                AuthState.t["proposal_copy_url"],
                                 on_click=[
                                     rx.call_script("navigator.clipboard.writeText(window.location.href);"),
                                     rx.toast(
-                                        "GAリンクをコピーしました",
+                                        AuthState.t["gov_url_copied"],
                                         position="top-center",
                                         style={
                                             "background-color": "var(--indigo-11)",
@@ -542,7 +553,7 @@ def _card_footer(action: Dict[str, Any]) -> rx.Component:
             action["expiration"],
             rx.hstack(
                 rx.icon("timer", size=14, color="var(--gray-8)"),
-                rx.text("期限:", size="2", color="var(--gray-10)"),
+                rx.text(AuthState.t["gov_expiration_label"], size="2", color="var(--gray-10)"),
                 rx.text(action["expiration_display"], size="2", color="var(--gray-10)"),
                 spacing="1",
                 align="center",
@@ -593,7 +604,11 @@ def ga_list_card(action: Dict[str, Any]) -> rx.Component:
                 align="center",
             ),
             rx.text(
-                action["title_display"],
+                rx.cond(
+                    AuthState.language == "en",
+                    rx.cond(action["title"], action["title"], action["title_ja"]),
+                    rx.cond(action["title_ja"], action["title_ja"], action["title"]),
+                ),
                 size="4",
                 weight="bold",
                 line_height="1.2",
@@ -603,7 +618,11 @@ def ga_list_card(action: Dict[str, Any]) -> rx.Component:
             rx.cond(
                 action["abstract_display"],
                 rx.text(
-                    action["abstract_display"],
+                    rx.cond(
+                        AuthState.language == "en",
+                        rx.cond(action["abstract"], action["abstract"], action["abstract_ja"]),
+                        rx.cond(action["abstract_ja"], action["abstract_ja"], action["abstract"]),
+                    ),
                     size="3",
                     line_height="1.6",
                     text_wrap="wrap",
@@ -617,7 +636,7 @@ def ga_list_card(action: Dict[str, Any]) -> rx.Component:
             spacing="3",
             flex="1",
             min_width="0",
-            on_click=GovernanceState.open_modal(action),
+            on_click=[GovernanceState.open_modal(action), GovernanceState.reset_modal_lang_for_language(AuthState.language)],
             cursor="pointer",
         ),
         rx.box(
@@ -659,7 +678,11 @@ def ga_grid_card(action: Dict[str, Any]) -> rx.Component:
             width="100%",
         ),
         rx.text(
-            action["title_display"],
+            rx.cond(
+                AuthState.language == "en",
+                rx.cond(action["title"], action["title"], action["title_ja"]),
+                rx.cond(action["title_ja"], action["title_ja"], action["title"]),
+            ),
             size="3",
             weight="bold",
             color="var(--gray-12)",
@@ -668,7 +691,11 @@ def ga_grid_card(action: Dict[str, Any]) -> rx.Component:
         rx.cond(
             action["abstract_display"],
             rx.text(
-                action["abstract_display"],
+                rx.cond(
+                    AuthState.language == "en",
+                    rx.cond(action["abstract"], action["abstract"], action["abstract_ja"]),
+                    rx.cond(action["abstract_ja"], action["abstract_ja"], action["abstract"]),
+                ),
                 size="2",
                 color="var(--gray-12)",
                 line_height="1.6",
@@ -689,7 +716,7 @@ def ga_grid_card(action: Dict[str, Any]) -> rx.Component:
             width="100%",
             height="100%",
             justify="between",
-            on_click=GovernanceState.open_modal(action),
+            on_click=[GovernanceState.open_modal(action), GovernanceState.reset_modal_lang_for_language(AuthState.language)],
             cursor="pointer",
         ),
         width="100%",
