@@ -71,14 +71,14 @@ def navbar_icons() -> rx.Component:
                 ),
             ),
             rx.menu.content(
-                rx.menu.item(rx.link("マイページ", href="/mypage", width="100%", underline="none")),
+                rx.menu.item(rx.link(AuthState.t["nav_mypage"], href="/mypage", width="100%", underline="none")),
                 rx.menu.separator(),
-                rx.menu.item(rx.text("ログアウト", color="var(--red-9)", on_click=AuthState.logout, cursor="pointer", width="100%")),
+                rx.menu.item(rx.text(AuthState.t["nav_logout"], color="var(--red-9)", on_click=AuthState.logout, cursor="pointer", width="100%")),
             ),
         ),
         rx.link(
             rx.button(
-                "ログイン",
+                AuthState.t["nav_login"],
                 size="2",
                 variant="soft",
                 cursor="pointer",
@@ -92,11 +92,11 @@ def navbar_icons() -> rx.Component:
         rx.hstack(
             logo,
             rx.hstack(
-                navbar_icons_item("ホーム", "/", False),
+                navbar_icons_item(AuthState.t["nav_home"], "/", False),
                 rx.menu.root(
                     rx.menu.trigger(
                         rx.button(
-                            rx.text("カタリスト", size="4", weight="medium", color="var(--gray-12)"),
+                            rx.text(AuthState.t["nav_catalyst"], size="4", weight="medium", color="var(--gray-12)"),
                             weight="medium",
                             variant="ghost",
                             size="3",
@@ -109,7 +109,7 @@ def navbar_icons() -> rx.Component:
                     rx.menu.content(
                         rx.menu.item(
                             rx.link(
-                                rx.text("提案一覧", size="3", weight="medium", color="var(--gray-12)"),
+                                rx.text(AuthState.t["nav_proposals_list"], size="3", weight="medium", color="var(--gray-12)"),
                                 href="/catalyst",
                                 width="100%",
                                 underline="none"
@@ -117,7 +117,7 @@ def navbar_icons() -> rx.Component:
                         ),
                         rx.menu.item(
                             rx.link(
-                                rx.text("ファンド一覧", size="3", weight="medium", color="var(--gray-12)"),
+                                rx.text(AuthState.t["nav_funds_list"], size="3", weight="medium", color="var(--gray-12)"),
                                 href="/catalyst/funds",
                                 width="100%",
                                 underline="none"
@@ -125,7 +125,7 @@ def navbar_icons() -> rx.Component:
                         ),
                     ),
                 ),
-                navbar_icons_item("ガバナンス", "/governance", False),
+                navbar_icons_item(AuthState.t["nav_governance"], "/governance", False),
                 lang_toggle(),
                 auth_area,
                 spacing="6",
@@ -146,11 +146,11 @@ def navbar_icons() -> rx.Component:
                 rx.menu.root(
                     rx.menu.trigger(rx.icon("menu", size=30)),
                     rx.menu.content(
-                        navbar_icons_item("ホーム", "/", False),
+                        navbar_icons_item(AuthState.t["nav_home"], "/", False),
                         rx.menu.root(
                             rx.menu.trigger(
                                 rx.button(
-                                    rx.text("カタリスト", size="4", weight="medium", color="var(--gray-12)"),
+                                    rx.text(AuthState.t["nav_catalyst"], size="4", weight="medium", color="var(--gray-12)"),
                                     rx.icon("chevron-down"),
                                     weight="medium",
                                     variant="ghost",
@@ -160,31 +160,31 @@ def navbar_icons() -> rx.Component:
                             rx.menu.content(
                                 rx.menu.item(
                                     rx.link(
-                                        rx.text("提案一覧", size="3", weight="medium", color="var(--gray-12)"),
+                                        rx.text(AuthState.t["nav_proposals_list"], size="3", weight="medium", color="var(--gray-12)"),
                                         href="/catalyst",
                                         width="100%",
                                     ),
                                 ),
                                 rx.menu.item(
                                     rx.link(
-                                        rx.text("ファンド一覧", size="3", weight="medium", color="var(--gray-12)"),
+                                        rx.text(AuthState.t["nav_funds_list"], size="3", weight="medium", color="var(--gray-12)"),
                                         href="/catalyst/funds",
                                         width="100%",
                                     ),
                                 ),
                             ),
                         ),
-                        navbar_icons_item("ガバナンス", "/#", True),
+                        navbar_icons_item(AuthState.t["nav_governance"], "/#", True),
                         rx.menu.separator(),
                         rx.menu.item(lang_toggle()),
                         rx.cond(
                             AuthState.is_logged_in,
                             rx.fragment(
                                 rx.menu.separator(),
-                                rx.menu.item(rx.link("マイページ", href="/mypage", width="100%", underline="none")),
-                                rx.menu.item(rx.text("ログアウト", color="var(--red-9)", on_click=AuthState.logout, cursor="pointer", width="100%")),
+                                rx.menu.item(rx.link(AuthState.t["nav_mypage"], href="/mypage", width="100%", underline="none")),
+                                rx.menu.item(rx.text(AuthState.t["nav_logout"], color="var(--red-9)", on_click=AuthState.logout, cursor="pointer", width="100%")),
                             ),
-                            rx.menu.item(rx.link("ログイン", href="/login", width="100%", underline="none")),
+                            rx.menu.item(rx.link(AuthState.t["nav_login"], href="/login", width="100%", underline="none")),
                         ),
                     ),
                 ),

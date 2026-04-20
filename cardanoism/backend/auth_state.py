@@ -138,6 +138,34 @@ class AuthState(rx.State):
         from cardanoism.backend.i18n import NOTIFICATION_LABELS_EN, NOTIFICATION_LABELS_JA
         return NOTIFICATION_LABELS_EN if self.language == "en" else NOTIFICATION_LABELS_JA
 
+    @rx.var
+    def funding_status_options(self) -> list[dict]:
+        if self.language == "en":
+            return [
+                {"value": "funded", "label": "Funded"},
+                {"value": "not_approved", "label": "Not Approved"},
+                {"value": "over_budget", "label": "Over Budget"},
+                {"value": "pending", "label": "Pending Vote"},
+            ]
+        return [
+            {"value": "funded", "label": "採択"},
+            {"value": "not_approved", "label": "不採択"},
+            {"value": "over_budget", "label": "申請不備"},
+            {"value": "pending", "label": "投票期間中"},
+        ]
+
+    @rx.var
+    def project_status_options(self) -> list[dict]:
+        if self.language == "en":
+            return [
+                {"value": "in_progress", "label": "In Progress"},
+                {"value": "complete", "label": "Complete"},
+            ]
+        return [
+            {"value": "in_progress", "label": "進行中"},
+            {"value": "complete", "label": "完了"},
+        ]
+
     def set_language(self, lang: str):
         if lang not in ("ja", "en"):
             return

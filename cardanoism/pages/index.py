@@ -3,6 +3,7 @@ import reflex as rx
 from cardanoism.templates import template
 from cardanoism import styles
 from cardanoism.backend.warmup import WarmupState
+from cardanoism.backend.auth_state import AuthState
 
 
 ACCENT = "#ffcf00"
@@ -19,9 +20,9 @@ h1, h2, h3, h4, h5, h6 {{
 
 def hero_section() -> rx.Component:
     stats = rx.hstack(
-        rx.hstack(rx.icon("activity", size=16, color=ACCENT_DARK), rx.text("提案データを毎日更新", size="2"), spacing="2"),
-        rx.hstack(rx.icon("layers", size=16, color=ACCENT_DARK), rx.text("ガバナンス管理", size="2"), spacing="2"),
-        rx.hstack(rx.icon("sparkles", size=16, color=ACCENT_DARK), rx.text("ステーキング管理", size="2"), spacing="2"),
+        rx.hstack(rx.icon("activity", size=16, color=ACCENT_DARK), rx.text(AuthState.t["hero_daily_update"], size="2"), spacing="2"),
+        rx.hstack(rx.icon("layers", size=16, color=ACCENT_DARK), rx.text(AuthState.t["hero_governance_mgmt"], size="2"), spacing="2"),
+        rx.hstack(rx.icon("sparkles", size=16, color=ACCENT_DARK), rx.text(AuthState.t["hero_staking_mgmt"], size="2"), spacing="2"),
         spacing="4",
         wrap="wrap",
         align="start",
@@ -29,9 +30,9 @@ def hero_section() -> rx.Component:
 
     content = rx.vstack(
         rx.text("Project Catalyst / Governance / Staking", size="2", letter_spacing="0.08em", color="var(--gray-9)"),
-        rx.heading("カルダノガバナンスを日本語でナビゲート", size="7", weight="bold", line_height="1.05", as_="h1"),
+        rx.heading(AuthState.t["hero_heading"], size="7", weight="bold", line_height="1.05", as_="h1"),
         rx.text(
-            "Catalyst提案検索からCardanoの意思決定を日本語でキャッチアップし、ガバナンス・ステーキングの管理をワンストップで扱えるプラットフォームへ進化させます。",
+            AuthState.t["hero_subtitle"],
             size="4",
             color=rx.color_mode_cond("rgba(30,30,30,0.82)", "rgba(230,230,245,0.9)"),
             line_height="1.6",
@@ -41,7 +42,7 @@ def hero_section() -> rx.Component:
         rx.hstack(
             rx.link(
                 rx.button(
-                    "Catalyst提案を探す",
+                    AuthState.t["hero_cta_catalyst"],
                     right_icon="arrow-right",
                     size="3",
                     background=f"linear-gradient(135deg, {ACCENT}, {ACCENT_DARK})",
@@ -53,7 +54,7 @@ def hero_section() -> rx.Component:
             ),
             rx.link(
                 rx.button(
-                    "Fundの動きを見る",
+                    AuthState.t["hero_cta_funds"],
                     variant="soft",
                     size="3",
                     border=rx.color_mode_cond("1px solid rgba(0,0,0,0.08)", f"1px solid {ACCENT}33"),
@@ -136,14 +137,14 @@ def feature_card(title: str, desc: str, icon: str, note: str | None = None) -> r
 
 def feature_section() -> rx.Component:
     items = [
-        ("カタリスト管理", "投票に必要なデータを集め、気になる提案をまとめて管理。", "search", "開発中"),
-        ("ガバナンス管理", "カルダノガバナンスを日本語で見える化し、委任先DRepの投票状況も通知。", "layers", "2026年実装"),
-        ("ステーキング管理", "委任先ステークプールの運用状況をモニタし、異変をすぐ把握。", "sparkles", "2026年実装"),
+        (AuthState.t["feature_catalyst_title"], AuthState.t["feature_catalyst_desc"], "search", "開発中"),
+        (AuthState.t["feature_governance_title"], AuthState.t["feature_governance_desc"], "layers", "2026年実装"),
+        (AuthState.t["feature_staking_title"], AuthState.t["feature_staking_desc"], "sparkles", "2026年実装"),
     ]
     return rx.container(
         rx.vstack(
-            rx.heading("Cardanoismのコア機能", size="6", as_="h2", weight="bold"),
-            rx.text("プロダクトの進化軸を3つの視点で整理しました", size="3", color=TEXT_MUTED),
+            rx.heading(AuthState.t["feature_section_title"], size="6", as_="h2", weight="bold"),
+            rx.text(AuthState.t["feature_section_subtitle"], size="3", color=TEXT_MUTED),
             rx.hstack(
                 *[feature_card(title, desc, icon, note) for title, desc, icon, note in items],
                 flex_direction=["column", "column", "row"],

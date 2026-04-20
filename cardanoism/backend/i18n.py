@@ -50,6 +50,75 @@ NOTIFICATION_LABELS_EN: dict[str, str] = {
 # ============================================================
 
 UI_JA: dict[str, str] = {
+    # ナビバー
+    "nav_home": "ホーム",
+    "nav_catalyst": "カタリスト",
+    "nav_proposals_list": "提案一覧",
+    "nav_funds_list": "ファンド一覧",
+    "nav_governance": "ガバナンス",
+    "nav_mypage": "マイページ",
+    "nav_logout": "ログアウト",
+    "nav_login": "ログイン",
+
+    # カタリストページ
+    "catalyst_search_placeholder": "キーワードを入力...(タイトル、タグ、提案者名など)",
+    "catalyst_filter_expand": "さらに絞り込む",
+    "catalyst_filter_fund": "対象ファンドを選択してください",
+    "catalyst_filter_challenge": "チャレンジを選択",
+    "catalyst_filter_funding_status": "資金調達ステータス",
+    "catalyst_filter_project_status": "プロジェクト進捗",
+    "catalyst_search_results": "検索結果",
+    "catalyst_results_unit": "件",
+    "catalyst_no_proposals": "提案が見つかりませんでした",
+
+    # 提案ステータスバッジ
+    "badge_in_progress": "進行中",
+    "badge_complete": "完了",
+    "badge_funded_label": "採択",
+    "badge_not_approved": "不採択",
+    "badge_over_budget": "申請不備",
+    "badge_pending_vote": "投票期間中",
+
+    # 提案カード・モーダル
+    "funding_rate_label": "資金調達率",
+    "view_milestones": "進捗状況を見る",
+    "proposal_view_raw": "英語原文",
+    "proposal_view_ja": "日本語翻訳",
+    "proposal_view_ai": "AI要約",
+    "proposal_section_problem": "課題",
+    "proposal_section_solution": "解決策",
+    "proposal_close": "閉じる",
+    "proposal_copy_url": "URLコピー",
+    "proposal_url_copied": "提案リンクをコピーしました",
+    "score_alignment": "提案整合性",
+    "score_feasibility": "実現可能性",
+    "score_auditability": "監査可能性",
+    "votes_wallet_tooltip": "投票ウォレット数",
+    "votes_yes_tooltip": "賛成票数",
+    "votes_abstain_tooltip": "棄権票数",
+    "votes_wallet_label": "投票",
+    "votes_yes_label": "賛成",
+    "votes_abstain_label": "棄権",
+
+    # インデックスページ
+    "hero_daily_update": "提案データを毎日更新",
+    "hero_governance_mgmt": "ガバナンス管理",
+    "hero_staking_mgmt": "ステーキング管理",
+    "hero_heading": "カルダノガバナンスを日本語でナビゲート",
+    "hero_subtitle": "Catalyst提案検索からCardanoの意思決定を日本語でキャッチアップし、ガバナンス・ステーキングの管理をワンストップで扱えるプラットフォームへ進化させます。",
+    "hero_cta_catalyst": "Catalyst提案を探す",
+    "hero_cta_funds": "Fundの動きを見る",
+
+    # フィーチャーセクション
+    "feature_section_title": "Cardanoismのコア機能",
+    "feature_section_subtitle": "プロダクトの進化軸を3つの視点で整理しました",
+    "feature_catalyst_title": "カタリスト管理",
+    "feature_catalyst_desc": "投票に必要なデータを集め、気になる提案をまとめて管理。",
+    "feature_governance_title": "ガバナンス管理",
+    "feature_governance_desc": "カルダノガバナンスを日本語で見える化し、委任先DRepの投票状況も通知。",
+    "feature_staking_title": "ステーキング管理",
+    "feature_staking_desc": "委任先ステークプールの運用状況をモニタし、異変をすぐ把握。",
+
     # タブ
     "tab_favorites": "お気に入り",
     "tab_profile": "プロフィール",
@@ -129,6 +198,75 @@ UI_JA: dict[str, str] = {
 }
 
 UI_EN: dict[str, str] = {
+    # Navbar
+    "nav_home": "Home",
+    "nav_catalyst": "Catalyst",
+    "nav_proposals_list": "Proposals",
+    "nav_funds_list": "Funds",
+    "nav_governance": "Governance",
+    "nav_mypage": "My Page",
+    "nav_logout": "Logout",
+    "nav_login": "Login",
+
+    # Catalyst page
+    "catalyst_search_placeholder": "Search... (title, tag, proposer name, etc.)",
+    "catalyst_filter_expand": "More filters",
+    "catalyst_filter_fund": "Select fund",
+    "catalyst_filter_challenge": "Select challenge",
+    "catalyst_filter_funding_status": "Funding status",
+    "catalyst_filter_project_status": "Project status",
+    "catalyst_search_results": "Results",
+    "catalyst_results_unit": "",
+    "catalyst_no_proposals": "No proposals found",
+
+    # Proposal status badges
+    "badge_in_progress": "In Progress",
+    "badge_complete": "Complete",
+    "badge_funded_label": "Funded",
+    "badge_not_approved": "Not Approved",
+    "badge_over_budget": "Over Budget",
+    "badge_pending_vote": "Pending Vote",
+
+    # Proposal card / modal
+    "funding_rate_label": "Funding Rate",
+    "view_milestones": "View Progress",
+    "proposal_view_raw": "Original (EN)",
+    "proposal_view_ja": "Japanese (JA)",
+    "proposal_view_ai": "AI Summary",
+    "proposal_section_problem": "Problem",
+    "proposal_section_solution": "Solution",
+    "proposal_close": "Close",
+    "proposal_copy_url": "Copy URL",
+    "proposal_url_copied": "Link copied",
+    "score_alignment": "Alignment",
+    "score_feasibility": "Feasibility",
+    "score_auditability": "Auditability",
+    "votes_wallet_tooltip": "Voting wallets",
+    "votes_yes_tooltip": "Yes votes",
+    "votes_abstain_tooltip": "Abstain votes",
+    "votes_wallet_label": "Votes",
+    "votes_yes_label": "Yes",
+    "votes_abstain_label": "Abstain",
+
+    # Index page
+    "hero_daily_update": "Daily proposal updates",
+    "hero_governance_mgmt": "Governance management",
+    "hero_staking_mgmt": "Staking management",
+    "hero_heading": "Navigate Cardano Governance",
+    "hero_subtitle": "Catch up on Cardano's decision-making through Catalyst proposal search, and evolve into a one-stop platform for managing governance and staking.",
+    "hero_cta_catalyst": "Browse Catalyst",
+    "hero_cta_funds": "View Fund Activity",
+
+    # Feature section
+    "feature_section_title": "Core Features",
+    "feature_section_subtitle": "Three pillars driving the product evolution",
+    "feature_catalyst_title": "Catalyst Management",
+    "feature_catalyst_desc": "Collect data needed for voting and manage your favorite proposals.",
+    "feature_governance_title": "Governance Management",
+    "feature_governance_desc": "Visualize Cardano governance and get notified of your delegated DRep's voting activity.",
+    "feature_staking_title": "Staking Management",
+    "feature_staking_desc": "Monitor your delegated stake pool's performance and catch anomalies early.",
+
     # Tabs
     "tab_favorites": "Favorites",
     "tab_profile": "Profile",
