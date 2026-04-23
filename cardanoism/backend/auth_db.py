@@ -512,3 +512,47 @@ def update_language(user_id: int, language: str) -> None:
             (language, user_id),
         )
         conn.commit()
+
+
+# ============================================================
+# Telegram 連携トークン
+# ============================================================
+
+TELEGRAM_TOKEN_EXPIRE_MINUTES = 15
+
+
+def create_telegram_token(user_id: int) -> str:
+    """一時トークンを生成してDBに保存し返す。"""
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.utcnow() + timedelta(minutes=TELEGRAM_TOKEN_EXPIRE_MINUTES)
+    with get_db() as (cursor, conn):
+        cursor.execute(
+            "DELETE FROM telegram_connect_tokens WHERE user_id = ?",
+            (user_id,),
+        )
+        cursor.execute(
+            "INSERT INTO telegram_connect_tokens (token, user_id, expires_at) VALUES (?, ?, ?)",
+            (token, user_id, expires_at),
+        )
+        conn.commit()
+    return token
+
+
+def consume_telegram_token(token: str) -> Optional[int]:
+    """トークンを検証して user_id を返す。使用済みトークンは削除する。期限切れ・不正は None。"""
+    with get_db() as (cursor, conn):
+        cursor.execute(
+            "SELECT user_id, expires_at FROM telegram_connect_tokens WHERE token = ?",
+            (token,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        if datetime.utcnow() > row["expires_at"]:
+            cursor.execute("DELETE FROM telegram_connect_tokens WHERE token = ?", (token,))
+            conn.commit()
+            return None
+        user_id = row["user_id"]
+        cursor.execute("DELETE FROM telegram_connect_tokens WHERE token = ?", (token,))
+        conn.commit()
+        return user_id

@@ -1045,6 +1045,84 @@ def notification_tab() -> rx.Component:
             border=f"1px solid {rx.color('gray', 4)}",
             width="100%",
         ),
+        # Telegram連携セクション
+        rx.box(
+            rx.vstack(
+                rx.hstack(
+                    rx.icon("send", size=18, color="#2AABEE"),
+                    rx.text(AuthState.t["notification_tab_telegram_title"], size="4", weight="bold"),
+                    spacing="2",
+                    align="center",
+                ),
+                rx.cond(
+                    AuthState.telegram_chat_id != "",
+                    rx.vstack(
+                        rx.hstack(
+                            rx.icon("check-circle", size=16, color="var(--green-9)"),
+                            rx.text(AuthState.t["notification_tab_telegram_connected"], size="3", color="var(--green-9)", weight="medium"),
+                            spacing="1",
+                            align="center",
+                        ),
+                        rx.button(
+                            AuthState.t["notification_tab_telegram_disconnect_button"],
+                            on_click=AuthState.disconnect_telegram,
+                            size="2",
+                            variant="soft",
+                            color_scheme="red",
+                            cursor="pointer",
+                        ),
+                        spacing="2",
+                        align_items="start",
+                    ),
+                    rx.vstack(
+                        rx.text(AuthState.t["notification_tab_telegram_not_connected"], size="3", color="var(--gray-9)"),
+                        rx.hstack(
+                            rx.button(
+                                rx.hstack(
+                                    rx.icon("send", size=16),
+                                    rx.text(AuthState.t["notification_tab_telegram_connect_button"], size="3", weight="bold"),
+                                    spacing="2",
+                                    align="center",
+                                ),
+                                on_click=AuthState.start_telegram_connect,
+                                size="2",
+                                style={
+                                    "background": "#2AABEE",
+                                    "color": "white",
+                                    "border": "none",
+                                    "cursor": "pointer",
+                                },
+                            ),
+                            rx.button(
+                                rx.hstack(
+                                    rx.icon("refresh-cw", size=16),
+                                    rx.text(AuthState.t["notification_tab_telegram_reload_button"], size="3"),
+                                    spacing="2",
+                                    align="center",
+                                ),
+                                on_click=AuthState.reload_telegram_channel,
+                                size="2",
+                                variant="soft",
+                            ),
+                            spacing="2",
+                            wrap="wrap",
+                        ),
+                        rx.cond(
+                            AuthState.telegram_reload_msg != "",
+                            rx.text(AuthState.telegram_reload_msg, size="2", color="var(--orange-9)"),
+                        ),
+                        spacing="2",
+                        align_items="start",
+                    ),
+                ),
+                spacing="3",
+                align_items="start",
+            ),
+            padding="16px",
+            border_radius="10px",
+            border=f"1px solid {rx.color('gray', 4)}",
+            width="100%",
+        ),
         # ステークアドレスごとの通知設定
         rx.cond(
             AuthState.is_stake_addresses_empty,

@@ -23,7 +23,9 @@
       "WebFetch(domain:preprod.koios.rest)",
       "WebFetch(domain:ogmios.dev)",
       "WebFetch(domain:blockfrost.io)",
-      "WebFetch(domain:docs.txpipe.io)"
+      "WebFetch(domain:docs.txpipe.io)",
+      "WebFetch(domain:utxorpc.org)",
+      "Bash(git add *)"
     ]
   }
 }

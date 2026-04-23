@@ -38,6 +38,7 @@ from cardanoism.backend.koios import (
 from cardanoism.backend.line_notify import send_line_push, send_line_flex
 from cardanoism.backend import line_flex
 from cardanoism.backend.mail_notify import send_email, build_html, build_text
+from cardanoism.backend.telegram_notify import send_telegram
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,7 +46,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("notify_worker")
 
-CARDANOISM_URL = os.getenv("CARDANOISM_URL", "https://cardanoism.app")
+CARDANOISM_URL = os.getenv("CARDANOISM_URL", "https://cardanoism.com")
 
 # ============================================================
 # Cardano エポック時刻計算
@@ -281,21 +282,67 @@ def get_stake_addrs_with_email_event(event_type: str) -> list[dict]:
         return [dict(row) for row in cursor.fetchall()]
 
 
-def _merge_stake_channels(line_addrs: list[dict], email_addrs: list[dict]) -> list[dict]:
+def get_users_with_telegram_event(event_type: str) -> list[dict]:
+    """指定イベントが有効で Telegram 通知チャンネルを持つユーザー一覧。"""
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT u.id, nc.channel_value AS telegram_chat_id, COALESCE(u.language, 'ja') AS language
+            FROM users u
+            JOIN notification_settings ns ON u.id = ns.user_id
+            JOIN notification_channels nc ON u.id = nc.user_id
+              AND nc.channel_type = 'telegram' AND nc.enabled = 1
+            WHERE ns.event_type = ? AND ns.enabled = 1
+            """,
+            (event_type,),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def get_stake_addrs_with_telegram_event(event_type: str) -> list[dict]:
+    """指定イベントが有効なステークアドレスとユーザー情報一覧（Telegramチャンネル）。"""
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT sa.id AS stake_id, sa.address, sa.nickname,
+                   sa.role, sa.created_at,
+                   sa.delegated_pool_id, sa.delegated_pool_name,
+                   sa.delegated_drep_id, sa.delegated_drep_name,
+                   u.id AS user_id, nc.channel_value AS telegram_chat_id,
+                   COALESCE(u.language, 'ja') AS language
+            FROM stake_addresses sa
+            JOIN users u ON sa.user_id = u.id
+            JOIN notification_channels nc ON u.id = nc.user_id
+              AND nc.channel_type = 'telegram' AND nc.enabled = 1
+            JOIN stake_notification_settings sns ON sa.id = sns.stake_address_id
+            WHERE sns.event_type = ? AND sns.enabled = 1
+            """,
+            (event_type,),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def _merge_stake_channels(line_addrs: list[dict], email_addrs: list[dict], telegram_addrs: list[dict] | None = None) -> list[dict]:
     """
-    LINE と email のアドレスリストを stake_id をキーにマージして返す。
+    LINE / email / telegram のアドレスリストを stake_id をキーにマージして返す。
     どちらか一方のチャンネルしか持たない場合も含む。
     """
     merged: dict[int, dict] = {}
     for addr in line_addrs:
         sid = addr["stake_id"]
-        merged[sid] = {**addr, "email_addr": None}
+        merged[sid] = {**addr, "email_addr": None, "telegram_chat_id": None}
     for addr in email_addrs:
         sid = addr["stake_id"]
         if sid not in merged:
-            merged[sid] = {**addr, "line_notify_id": None}
+            merged[sid] = {**addr, "line_notify_id": None, "telegram_chat_id": None}
         else:
             merged[sid]["email_addr"] = addr["email_addr"]
+    for addr in (telegram_addrs or []):
+        sid = addr["stake_id"]
+        if sid not in merged:
+            merged[sid] = {**addr, "line_notify_id": None, "email_addr": None}
+        else:
+            merged[sid]["telegram_chat_id"] = addr["telegram_chat_id"]
     return list(merged.values())
 
 
@@ -304,6 +351,14 @@ def flex_and_log(line_id: str, user_id: int, event_type: str, dedup_key: str, al
     ok = send_line_flex(line_id, alt_text, contents)
     if ok:
         log_sent(user_id, event_type, dedup_key, "line", alt_text)
+    return ok
+
+
+def telegram_and_log(chat_id: str, user_id: int, event_type: str, dedup_key: str, text: str) -> bool:
+    """Telegram 送信 + ログ記録。成功時 True。"""
+    ok = send_telegram(chat_id, text)
+    if ok:
+        log_sent(user_id, event_type, dedup_key, "telegram", text[:500])
     return ok
 
 
@@ -430,7 +485,7 @@ def _fetch_pool_infos_batch(pool_ids: list[str]) -> dict[str, dict]:
 def check_pool_events():
     logger.info("プールイベント チェック開始")
 
-    # LINE と email チャンネルを持つアドレスをまとめて収集
+    # LINE / email / telegram チャンネルを持つアドレスをまとめて収集
     all_addrs: dict[int, dict] = {}
     enabled_events: dict[int, set] = {}
 
@@ -438,13 +493,19 @@ def check_pool_events():
         for addr in get_stake_addrs_with_event(event_type):
             sid = addr["stake_id"]
             if sid not in all_addrs:
-                all_addrs[sid] = {**addr, "email_addr": None}
+                all_addrs[sid] = {**addr, "email_addr": None, "telegram_chat_id": None}
             enabled_events.setdefault(sid, set()).add(event_type)
         for addr in get_stake_addrs_with_email_event(event_type):
             sid = addr["stake_id"]
             if sid not in all_addrs:
-                all_addrs[sid] = {**addr, "line_notify_id": None}
+                all_addrs[sid] = {**addr, "line_notify_id": None, "telegram_chat_id": None}
             all_addrs[sid]["email_addr"] = addr["email_addr"]
+            enabled_events.setdefault(sid, set()).add(event_type)
+        for addr in get_stake_addrs_with_telegram_event(event_type):
+            sid = addr["stake_id"]
+            if sid not in all_addrs:
+                all_addrs[sid] = {**addr, "line_notify_id": None, "email_addr": None}
+            all_addrs[sid]["telegram_chat_id"] = addr["telegram_chat_id"]
             enabled_events.setdefault(sid, set()).add(event_type)
 
     # /tip を1回だけ呼んでエポックをキャッシュ
@@ -519,6 +580,13 @@ def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float |
                     email_and_log(addr["email_addr"], user_id, event_type, dk, subj,
                                   build_html(subj, ls, CARDANOISM_URL, "マイページを開く" if lang == "ja" else "Open MyPage", lang),
                                   build_text(subj, ls, CARDANOISM_URL, lang))
+            if addr.get("telegram_chat_id"):
+                dk = dedup_key + "_telegram"
+                if not already_sent(user_id, event_type, dk):
+                    tg_text = (f"⚠️ <b>委任先プール飽和アラート</b>\nウォレット: {nickname}\nプール: {pool_name}\n飽和度: {sat_pct:.1f}%\n委任先の変更をご検討ください。"
+                               if lang == "ja" else
+                               f"⚠️ <b>Pool Saturation Alert</b>\nWallet: {nickname}\nPool: {pool_name}\nSaturation: {sat_pct:.1f}%\nPlease consider changing your delegation.")
+                    telegram_and_log(addr["telegram_chat_id"], user_id, event_type, dk, tg_text)
         elif not is_saturated and was_saturated == "1":
             set_state("stake_address", stake_id, "pool_saturated", "0")
 
@@ -547,6 +615,13 @@ def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float |
                     email_and_log(addr["email_addr"], user_id, event_type, dk, subj,
                                   build_html(subj, ls, CARDANOISM_URL, "マイページを開く" if lang == "ja" else "Open MyPage", lang),
                                   build_text(subj, ls, CARDANOISM_URL, lang))
+            if addr.get("telegram_chat_id"):
+                dk = dedup_key + "_telegram"
+                if not already_sent(user_id, event_type, dk):
+                    tg_text = (f"⚠️ <b>誓約不足アラート</b>\nウォレット: {nickname}\nプール: {pool_name}\n誓約: {pledged_ada:,.0f} ADA / 実績: {live_ada:,.0f} ADA"
+                               if lang == "ja" else
+                               f"⚠️ <b>Pledge Shortage Alert</b>\nWallet: {nickname}\nPool: {pool_name}\nPledge: {pledged_ada:,.0f} ADA / Live: {live_ada:,.0f} ADA")
+                    telegram_and_log(addr["telegram_chat_id"], user_id, event_type, dk, tg_text)
         elif not is_short and was_short == "1":
             set_state("stake_address", stake_id, "pool_pledge_short", "0")
 
@@ -627,6 +702,13 @@ def _check_pool_reward_received_batch(
                     build_html(subj, ls, CARDANOISM_URL, "マイページを開く" if lang == "ja" else "Open MyPage", lang),
                     build_text(subj, ls, CARDANOISM_URL, lang),
                 )
+        if addr.get("telegram_chat_id"):
+            dk = dedup_key + "_telegram"
+            if not already_sent(user_id, "pool_reward_received", dk):
+                tg_text = (f"💰 <b>ステーキング報酬入金</b>\nウォレット: {nickname}\nEpoch {reward_epoch} 報酬: {amount_ada:.6f} ADA"
+                           if lang == "ja" else
+                           f"💰 <b>Staking Reward Received</b>\nWallet: {nickname}\nEpoch {reward_epoch} reward: {amount_ada:.6f} ADA")
+                telegram_and_log(addr["telegram_chat_id"], user_id, "pool_reward_received", dk, tg_text)
 
 
 # ============================================================
@@ -658,6 +740,7 @@ def _check_pool_delegation_reminder():
     addrs = _merge_stake_channels(
         get_stake_addrs_with_event("pool_delegation_reminder"),
         get_stake_addrs_with_email_event("pool_delegation_reminder"),
+        get_stake_addrs_with_telegram_event("pool_delegation_reminder"),
     )
     addrs = [a for a in addrs if a.get("delegated_pool_id")]
     if not addrs:
@@ -716,12 +799,20 @@ def _check_pool_delegation_reminder():
                     email_and_log(addr["email_addr"], addr["user_id"], "pool_delegation_reminder", dk, subj,
                                   build_html(subj, ls, CARDANOISM_URL, "マイページを開く" if lang == "ja" else "Open MyPage", lang),
                                   build_text(subj, ls, CARDANOISM_URL, lang))
+            if addr.get("telegram_chat_id"):
+                dk = dedup_key + "_telegram"
+                if not already_sent(addr["user_id"], "pool_delegation_reminder", dk):
+                    tg_text = (f"🔔 <b>委任リマインダー</b>\nウォレット: {addr['nickname']}\nプール: {pool_name}\n委任から {milestone} 日が経過しました。委任先を確認しましょう。"
+                               if lang == "ja" else
+                               f"🔔 <b>Delegation Reminder</b>\nWallet: {addr['nickname']}\nPool: {pool_name}\n{milestone} days since delegation. Please review your pool.")
+                    telegram_and_log(addr["telegram_chat_id"], addr["user_id"], "pool_delegation_reminder", dk, tg_text)
 
 
 def _check_drep_delegation_reminder():
     addrs = _merge_stake_channels(
         get_stake_addrs_with_event("drep_delegation_reminder"),
         get_stake_addrs_with_email_event("drep_delegation_reminder"),
+        get_stake_addrs_with_telegram_event("drep_delegation_reminder"),
     )
     addrs = [a for a in addrs if a.get("delegated_drep_id")]
     if not addrs:
@@ -776,6 +867,13 @@ def _check_drep_delegation_reminder():
                     email_and_log(addr["email_addr"], addr["user_id"], "drep_delegation_reminder", dk, subj,
                                   build_html(subj, ls, gov_url, "ガバナンスを確認" if lang == "ja" else "Check Governance", lang),
                                   build_text(subj, ls, gov_url, lang))
+            if addr.get("telegram_chat_id"):
+                dk = dedup_key + "_telegram"
+                if not already_sent(addr["user_id"], "drep_delegation_reminder", dk):
+                    tg_text = (f"🗳️ <b>DRep委任リマインダー</b>\nウォレット: {addr['nickname']}\nDRep: {drep_name}\n委任から {milestone} 日が経過しました。DRepの活動を確認しましょう。"
+                               if lang == "ja" else
+                               f"🗳️ <b>DRep Delegation Reminder</b>\nWallet: {addr['nickname']}\nDRep: {drep_name}\n{milestone} days since delegation. Please review your DRep's activity.")
+                    telegram_and_log(addr["telegram_chat_id"], addr["user_id"], "drep_delegation_reminder", dk, tg_text)
 
 
 def check_drep_events():
@@ -787,6 +885,7 @@ def _check_drep_status_change():
     addrs = _merge_stake_channels(
         get_stake_addrs_with_event("drep_status_change"),
         get_stake_addrs_with_email_event("drep_status_change"),
+        get_stake_addrs_with_telegram_event("drep_status_change"),
     )
     addrs = [a for a in addrs if a.get("delegated_drep_id")]
     if not addrs:
@@ -841,6 +940,13 @@ def _check_drep_status_change():
                 email_and_log(addr["email_addr"], user_id, "drep_status_change", dk, subj,
                               build_html(subj, ls, CARDANOISM_URL, "ガバナンスを確認" if lang == "ja" else "Check Governance", lang),
                               build_text(subj, ls, CARDANOISM_URL, lang))
+        if addr.get("telegram_chat_id"):
+            dk = dedup_key + "_telegram"
+            if not already_sent(user_id, "drep_status_change", dk):
+                tg_text = (f"📋 <b>DRepステータス変更</b>\nウォレット: {addr['nickname']}\nDRep: {drep_name}\nステータス: {last_status} → {status}"
+                           if lang == "ja" else
+                           f"📋 <b>DRep Status Changed</b>\nWallet: {addr['nickname']}\nDRep: {drep_name}\nStatus: {last_status} → {status}")
+                telegram_and_log(addr["telegram_chat_id"], user_id, "drep_status_change", dk, tg_text)
 
 
 # ============================================================

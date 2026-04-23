@@ -203,6 +203,7 @@ UI_JA: dict[str, str] = {
     "notification_channel_desc": "通知を受け取るチャンネルをON/OFFで選択してください。",
     "notification_channel_email": "メール通知",
     "notification_channel_line": "LINE通知",
+    "notification_channel_telegram": "Telegram通知",
 
     # 通知管理タブ
     "notification_tab_line_title": "LINE通知連携",
@@ -211,6 +212,12 @@ UI_JA: dict[str, str] = {
     "notification_tab_line_connect_button": "LINEと連携する",
     "notification_tab_line_disconnect_button": "連携を解除する",
     "notification_tab_line_not_connected": "LINEと連携すると、イベント発生時にLINEで通知を受け取れます。",
+    "notification_tab_telegram_title": "Telegram通知連携",
+    "notification_tab_telegram_connected": "Telegram通知連携済みです。",
+    "notification_tab_telegram_connect_button": "Telegramで連携する",
+    "notification_tab_telegram_reload_button": "連携済み！ページを更新",
+    "notification_tab_telegram_disconnect_button": "連携を解除する",
+    "notification_tab_telegram_not_connected": "Telegramと連携すると、イベント発生時にTelegramで通知を受け取れます。",
     "notification_tab_no_stake": "ステークアドレスを登録すると、アドレスごとに通知を設定できます。",
     "notification_tab_per_addr_title": "アドレスごとの通知設定",
     "notification_pool_label": "委任プール",
@@ -395,6 +402,7 @@ UI_EN: dict[str, str] = {
     "notification_channel_desc": "Select which channels you want to receive notifications through.",
     "notification_channel_email": "Email Notifications",
     "notification_channel_line": "LINE Notifications",
+    "notification_channel_telegram": "Telegram Notifications",
 
     # Notification tab
     "notification_tab_line_title": "LINE Notifications",
@@ -403,6 +411,12 @@ UI_EN: dict[str, str] = {
     "notification_tab_line_connect_button": "Connect with LINE",
     "notification_tab_line_disconnect_button": "Disconnect",
     "notification_tab_line_not_connected": "Connect with LINE to receive event notifications via LINE.",
+    "notification_tab_telegram_title": "Telegram Notifications",
+    "notification_tab_telegram_connected": "Telegram notifications connected.",
+    "notification_tab_telegram_connect_button": "Connect with Telegram",
+    "notification_tab_telegram_reload_button": "Connected! Reload status",
+    "notification_tab_telegram_disconnect_button": "Disconnect",
+    "notification_tab_telegram_not_connected": "Connect with Telegram to receive event notifications via Telegram.",
     "notification_tab_no_stake": "Register a stake address to configure notifications per address.",
     "notification_tab_per_addr_title": "Notification Settings per Address",
     "notification_pool_label": "Pool",

@@ -70,8 +70,11 @@ class AuthState(rx.State):
     # 通知チャンネル
     line_notify_channel: str = ""    # LINE通知送信先 (LINE user ID)
     email_notify_channel: str = ""   # メール通知送信先
+    telegram_chat_id: str = ""       # Telegram chat ID
+    telegram_reload_msg: str = ""    # リロード結果メッセージ
     line_notify_enabled: bool = True
     email_notify_enabled: bool = True
+    telegram_notify_enabled: bool = True
 
     # OAuth CSRF用 state（全プロバイダ共通）
     oauth_state: str = ""
@@ -261,8 +264,10 @@ class AuthState(rx.State):
 
         self.line_notify_channel = ""
         self.email_notify_channel = ""
+        self.telegram_chat_id = ""
         self.line_notify_enabled = True
         self.email_notify_enabled = True
+        self.telegram_notify_enabled = True
 
         for ch in get_notification_channels(self.user_id):
             if ch["channel_type"] == "line":
@@ -271,6 +276,9 @@ class AuthState(rx.State):
             elif ch["channel_type"] == "email":
                 self.email_notify_channel = ch["channel_value"]
                 self.email_notify_enabled = bool(ch["enabled"])
+            elif ch["channel_type"] == "telegram":
+                self.telegram_chat_id = ch["channel_value"]
+                self.telegram_notify_enabled = bool(ch["enabled"])
 
         # メールアドレスが登録済みなのにチャンネルがない場合は自動作成
         if self.email and not self.email_notify_channel:
@@ -464,6 +472,38 @@ class AuthState(rx.State):
             return
         remove_notification_channel(self.user_id, "line")
         self.line_notify_channel = ""
+
+    def start_telegram_connect(self):
+        """Telegram 連携用の一時トークンを生成して Bot へのリンクにリダイレクトする。"""
+        if not self.is_logged_in:
+            self.show_login_modal = True
+            return
+        from cardanoism.backend.auth_db import create_telegram_token
+        import os
+        bot_username = os.getenv("TELEGRAM_BOT_USERNAME", "")
+        if not bot_username:
+            logger.warning("TELEGRAM_BOT_USERNAME が未設定です")
+            return
+        token = create_telegram_token(self.user_id)
+        return rx.redirect(f"https://t.me/{bot_username}?start={token}", is_external=True)
+
+    def disconnect_telegram(self):
+        """Telegram 通知チャンネルを解除する。"""
+        if not self.is_logged_in:
+            return
+        remove_notification_channel(self.user_id, "telegram")
+        self.telegram_chat_id = ""
+
+    def reload_telegram_channel(self):
+        """Telegram連携後にDBから最新チャンネル情報を再取得する。"""
+        if not self.is_logged_in:
+            return
+        prev = self.telegram_chat_id
+        self._load_providers_and_channels()
+        if self.telegram_chat_id:
+            self.telegram_reload_msg = ""
+        else:
+            self.telegram_reload_msg = "まだ連携が確認できません。BotでStartを送信してからお試しください。"
 
     # ============================================================
     # Google OAuth フロー
@@ -700,6 +740,7 @@ class AuthState(rx.State):
         self.auth_providers = []
         self.line_notify_channel = ""
         self.email_notify_channel = ""
+        self.telegram_chat_id = ""
         self.favorite_ids = []
         self.favorites = []
         self.ga_favorite_ids = []
@@ -1005,6 +1046,12 @@ class AuthState(rx.State):
             return
         self.email_notify_enabled = value
         set_channel_enabled(self.user_id, "email", value)
+
+    def set_telegram_notify_enabled(self, value: bool):
+        if not self.is_logged_in or not self.telegram_chat_id:
+            return
+        self.telegram_notify_enabled = value
+        set_channel_enabled(self.user_id, "telegram", value)
 
     # ============================================================
     # 通知設定（イベントON/OFF）

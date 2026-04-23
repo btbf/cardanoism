@@ -207,7 +207,7 @@ SMTP 経由でメールを送信するヘルパー。
 | 変数 | 説明 | デフォルト |
 |------|------|----------|
 | `KOIOS_NETWORK` | Koios ネットワーク（mainnet / preprod / preview） | `mainnet` |
-| `CARDANOISM_URL` | サイトの URL（通知メール内リンク等に使用） | `https://cardanoism.app` |
+| `CARDANOISM_URL` | サイトの URL（通知メール内リンク等に使用） | `https://cardanoism.com` |
 | `LINE_CLIENT_ID` | LINE OAuth クライアント ID | - |
 | `LINE_CLIENT_SECRET` | LINE OAuth クライアントシークレット | - |
 | `LINE_REDIRECT_URI` | LINE OAuth コールバック URI | - |
