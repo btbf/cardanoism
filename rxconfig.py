@@ -1,4 +1,7 @@
 import reflex as rx
+from dotenv import load_dotenv
+
+load_dotenv("cardanoism/.env", override=True)
 
 config = rx.Config(
     app_name="cardanoism",

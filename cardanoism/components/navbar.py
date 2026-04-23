@@ -1,27 +1,168 @@
 import reflex as rx
+from cardanoism.backend.auth_state import AuthState
 
+ACCENT = "#ffcf00"
+ACCENT_DARK = "#c7a300"
 
-UNDERLINE_STYLE = {
+_PILL = {
     "textDecoration": "none",
-    "display": "inline-block",
-    "backgroundImage": "linear-gradient(currentColor, currentColor)",
-    "backgroundSize": "0% 2px",
-    "backgroundPosition": "0 100%",
-    "backgroundRepeat": "no-repeat",
-    "transition": "background-size 0.2s ease",
-    "paddingBottom": "2px",
+    "display": "inline-flex",
+    "alignItems": "center",
+    "padding": "5px 12px",
+    "borderRadius": "9999px",
+    "fontWeight": "500",
+    "fontSize": "16px",
+    "color": "var(--gray-11)",
+    "transition": "background 0.15s, color 0.15s",
+    "cursor": "pointer",
+}
+_PILL_HOVER = {
+    "backgroundColor": "var(--gray-a3)",
+    "color": "var(--gray-12)",
+    "textDecoration": "none",
 }
 
-HOVER_UNDERLINE = {"backgroundSize": "100% 2px", "backgroundColor": "unset"}
+
+def lang_toggle() -> rx.Component:
+    btn_base = {
+        "borderRadius": "9999px",
+        "fontSize": "13px",
+        "fontWeight": "700",
+        "cursor": "pointer",
+        "padding": "3px 9px",
+        "border": "none",
+        "transition": "background 0.15s, color 0.15s",
+        "lineHeight": "1.5",
+    }
+    active = {
+        **btn_base,
+        "background": ACCENT,
+        "color": "#111",
+    }
+    inactive = {
+        **btn_base,
+        "background": "transparent",
+        "color": "var(--gray-10)",
+    }
+    return rx.hstack(
+        rx.el.button(
+            "JA",
+            on_click=AuthState.set_language("ja"),
+            style=rx.cond(AuthState.language == "ja", active, inactive),
+        ),
+        rx.el.button(
+            "EN",
+            on_click=AuthState.set_language("en"),
+            style=rx.cond(AuthState.language == "en", active, inactive),
+        ),
+        spacing="0",
+        padding="3px",
+        background=rx.color_mode_cond("var(--gray-4)", "var(--gray-5)"),
+        border_radius="9999px",
+        align="center",
+    )
 
 
-def navbar_icons_item(text: str, url: str, disabled: bool) -> rx.Component:
-    disabled_style = {"pointerEvents": "none", "opacity": "0.6"} if disabled else {}
+def nav_pill(text, url: str, disabled: bool = False) -> rx.Component:
+    style = {**_PILL, **({"opacity": "0.4", "pointerEvents": "none"} if disabled else {})}
     return rx.link(
-        rx.text(text, size="4", weight="medium", color="var(--gray-12)"),
+        rx.text(text, size="3", weight="medium"),
         href=url,
-        style=UNDERLINE_STYLE | disabled_style,
-        _hover=HOVER_UNDERLINE,
+        style=style,
+        _hover=_PILL_HOVER,
+    )
+
+
+def catalyst_dropdown() -> rx.Component:
+    return rx.menu.root(
+        rx.menu.trigger(
+            rx.button(
+                rx.text(AuthState.t["nav_catalyst"], size="3", weight="medium", color="var(--gray-11)"),
+                rx.icon("chevron-down", size=13, color="var(--gray-9)"),
+                variant="ghost",
+                cursor="pointer",
+                style={
+                    **_PILL,
+                    "gap": "4px",
+                    "color": "var(--gray-11)",
+                    "background": "transparent",
+                },
+                _hover=_PILL_HOVER,
+                _active={"background": "var(--gray-a3)"},
+            ),
+        ),
+        rx.menu.content(
+            rx.menu.item(
+                rx.link(
+                    rx.hstack(rx.icon("file-text", size=14), rx.text(AuthState.t["nav_proposals_list"], size="3", weight="medium"), spacing="2", align="center"),
+                    href="/catalyst", width="100%", underline="none", color="var(--gray-12)",
+                ),
+            ),
+            rx.menu.item(
+                rx.link(
+                    rx.hstack(rx.icon("layers", size=14), rx.text(AuthState.t["nav_funds_list"], size="3", weight="medium"), spacing="2", align="center"),
+                    href="/catalyst/funds", width="100%", underline="none", color="var(--gray-12)",
+                ),
+            ),
+        ),
+    )
+
+
+def auth_section() -> rx.Component:
+    return rx.cond(
+        AuthState.is_logged_in,
+        rx.menu.root(
+            rx.menu.trigger(
+                rx.button(
+                    rx.cond(
+                        AuthState.avatar_url != "",
+                        rx.avatar(src=AuthState.avatar_url, size="2", radius="full"),
+                        rx.avatar(fallback=AuthState.username[:1], size="2", radius="full"),
+                    ),
+                    variant="ghost",
+                    cursor="pointer",
+                    padding="0",
+                    border_radius="full",
+                    style={"outline": "2px solid transparent", "transition": "outline-color 0.15s"},
+                    _hover={"outline": f"2px solid {ACCENT}"},
+                ),
+            ),
+            rx.menu.content(
+                rx.menu.item(
+                    rx.hstack(rx.icon("user", size=14), rx.text(AuthState.t["nav_mypage"], size="3"), spacing="2"),
+                    on_click=rx.redirect("/mypage"),
+                    cursor="pointer",
+                ),
+                rx.menu.separator(),
+                rx.menu.item(
+                    rx.hstack(rx.icon("log-out", size=14), rx.text(AuthState.t["nav_logout"], size="3"), spacing="2"),
+                    color_scheme="red",
+                    on_click=AuthState.logout,
+                    cursor="pointer",
+                ),
+            ),
+        ),
+        rx.link(
+            rx.button(
+                AuthState.t["nav_login"],
+                size="3",
+                border_radius="9999px",
+                cursor="pointer",
+                style={
+                    "background": f"linear-gradient(135deg, {ACCENT}, {ACCENT_DARK})",
+                    "color": "#111",
+                    "fontWeight": "700",
+                    "border": "none",
+                    "transition": "opacity 0.15s, box-shadow 0.15s",
+                    "_hover": {
+                        "opacity": "0.88",
+                        "boxShadow": "0 2px 10px rgba(255,207,0,0.4)",
+                    },
+                },
+            ),
+            href="/login",
+            underline="none",
+        ),
     )
 
 
@@ -32,110 +173,118 @@ def navbar_icons() -> rx.Component:
                 light="/cardanoism-new-logo-light.png",
                 dark="/cardanoism-new-logo-dark.png",
             ),
-            width="15em",
+            width="13em",
             height="auto",
             alt="カルダノイズム",
         ),
         href="/",
     )
 
+    divider = rx.box(
+        width="1px",
+        height="18px",
+        background=rx.color_mode_cond("var(--gray-5)", "var(--gray-6)"),
+        flex_shrink="0",
+    )
+
     desktop_nav = rx.desktop_only(
         rx.hstack(
             logo,
+            divider,
             rx.hstack(
-                navbar_icons_item("ホーム", "/", False),
-                rx.menu.root(
-                    rx.menu.trigger(
-                        rx.button(
-                            rx.text("カタリスト", size="4", weight="medium", color="var(--gray-12)"),
-                            weight="medium",
-                            variant="ghost",
-                            size="3",
-                            style=UNDERLINE_STYLE,
-                            _hover=HOVER_UNDERLINE,
-                            _active={"background_color": "unset"},
-                            cursor="pointer",
-                        ),
-                    ),
-                    rx.menu.content(
-                        rx.menu.item(
-                            rx.link(
-                                rx.text("提案一覧", size="3", weight="medium", color="var(--gray-12)"),
-                                href="/catalyst",
-                                width="100%",
-                                underline="none"
-                            ),
-                        ),
-                        rx.menu.item(
-                            rx.link(
-                                rx.text("ファンド一覧", size="3", weight="medium", color="var(--gray-12)"),
-                                href="/catalyst/funds",
-                                width="100%",
-                                underline="none"
-                            ),
-                        ),
-                    ),
-                ),
-                navbar_icons_item("ガバナンス", "/#", True),
-                spacing="6",
-                padding_right="5px",
+                nav_pill(AuthState.t["nav_home"], "/"),
+                catalyst_dropdown(),
+                nav_pill(AuthState.t["nav_governance"], "/governance"),
+                spacing="1",
+                align="center",
             ),
-            justify_content="space-between",
+            rx.box(flex="1"),
+            rx.hstack(
+                lang_toggle(),
+                divider,
+                auth_section(),
+                spacing="3",
+                align="center",
+            ),
             align_items="center",
             max_width="1130px",
             margin_x="auto",
+            width="100%",
+            spacing="4",
         ),
     )
 
     mobile_nav = rx.mobile_and_tablet(
         rx.hstack(
             logo,
-            rx.menu.root(
-                rx.menu.trigger(rx.icon("menu", size=30)),
-                rx.menu.content(
-                    navbar_icons_item("ホーム", "/", False),
-                    rx.menu.root(
-                        rx.menu.trigger(
-                            rx.button(
-                                rx.text("カタリスト", size="4", weight="medium", color="var(--gray-12)"),
-                                rx.icon("chevron-down"),
-                                weight="medium",
-                                variant="ghost",
-                                size="3",
-                            ),
-                        ),
-                        rx.menu.content(
-                            rx.menu.item(
-                                rx.link(
-                                    rx.text("提案一覧", size="3", weight="medium", color="var(--gray-12)"),
-                                    href="/catalyst",
-                                    width="100%",
-                                ),
-                            ),
-                            rx.menu.item(
-                                rx.link(
-                                    rx.text("ファンド一覧", size="3", weight="medium", color="var(--gray-12)"),
-                                    href="/catalyst/funds",
-                                    width="100%",
-                                ),
-                            ),
+            rx.hstack(
+                auth_section(),
+                rx.menu.root(
+                    rx.menu.trigger(
+                        rx.box(
+                            rx.icon("menu", size=20, color="var(--gray-11)"),
+                            padding="6px 8px",
+                            border_radius="8px",
+                            cursor="pointer",
+                            background=rx.color_mode_cond("var(--gray-3)", "var(--gray-4)"),
+                            _hover={"background": rx.color_mode_cond("var(--gray-4)", "var(--gray-5)")},
+                            style={"transition": "background 0.15s", "display": "inline-flex", "alignItems": "center"},
                         ),
                     ),
-                    navbar_icons_item("ガバナンス", "/#", True),
+                    rx.menu.content(
+                        rx.menu.item(
+                            rx.link(AuthState.t["nav_home"], href="/", width="100%", underline="none", color="var(--gray-12)"),
+                        ),
+                        rx.menu.sub(
+                            rx.menu.sub_trigger(
+                                rx.text(AuthState.t["nav_catalyst"], size="3"),
+                            ),
+                            rx.menu.sub_content(
+                                rx.menu.item(rx.link(AuthState.t["nav_proposals_list"], href="/catalyst", width="100%", underline="none", color="var(--gray-12)")),
+                                rx.menu.item(rx.link(AuthState.t["nav_funds_list"], href="/catalyst/funds", width="100%", underline="none", color="var(--gray-12)")),
+                            ),
+                        ),
+                        rx.menu.item(rx.text(AuthState.t["nav_governance"], size="3", opacity="0.4")),
+                        rx.menu.separator(),
+                        rx.menu.item(lang_toggle()),
+                        rx.cond(
+                            AuthState.is_logged_in,
+                            rx.fragment(
+                                rx.menu.separator(),
+                                rx.menu.item(rx.link(AuthState.t["nav_mypage"], href="/mypage", width="100%", underline="none", color="var(--gray-12)")),
+                                rx.menu.item(rx.text(AuthState.t["nav_logout"], size="3", color="var(--red-9)", on_click=AuthState.logout, cursor="pointer", width="100%")),
+                            ),
+                            rx.menu.item(rx.link(AuthState.t["nav_login"], href="/login", width="100%", underline="none", color="var(--gray-12)")),
+                        ),
+                    ),
                 ),
+                spacing="2",
+                align="center",
             ),
             justify_content="space-between",
+            align="center",
+            width="100%",
         ),
     )
 
     return rx.box(
         desktop_nav,
         mobile_nav,
-        padding_x="1em",
-        padding_y="1em",
-        justify="center",
+        padding_x="1.5em",
+        padding_y="0.8em",
         position="fixed",
         z_index="500",
         width="100%",
-        background_color="var(--gray-1)",
+        background=rx.color_mode_cond(
+            "rgba(255,255,255,0.80)",
+            "rgba(11,11,17,0.80)",
+        ),
+        style={
+            "backdropFilter": "blur(16px)",
+            "WebkitBackdropFilter": "blur(16px)",
+            "borderBottom": rx.color_mode_cond(
+                "1px solid rgba(0,0,0,0.07)",
+                "1px solid rgba(255,255,255,0.07)",
+            ),
+        },
     )

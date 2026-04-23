@@ -6,3 +6,10 @@ playwright
 beautifulsoup4
 lxml
 tiktoken
+authlib
+itsdangerous
+fastapi
+python-dotenv
+utxorpc
+bech32
+websockets>=12.0

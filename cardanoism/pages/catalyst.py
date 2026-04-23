@@ -3,6 +3,7 @@ from typing import Dict, List
 
 from cardanoism.templates import template
 from cardanoism.backend.db_connect import AppState, get_fund_options
+from cardanoism.backend.auth_state import AuthState
 from cardanoism.components.proposal_card import card_foreach_dict
 from cardanoism.components.proposal_pagenation import pagination_component
 from cardanoism.components.componets import top_button_component
@@ -28,18 +29,6 @@ class CatalystChallengeSelect(ReactSelectLib):
 challegeFilter = CatalystChallengeSelect.create
 
 FUND_SELECT_OPTIONS = get_fund_options()
-
-FUNDING_STATUS_OPTIONS = [
-    {"value": "funded", "label": "採択"},
-    {"value": "not_approved", "label": "不採択"},
-    {"value": "over_budget", "label": "申請不備"},
-    {"value": "pending", "label": "投票期間中"},
-]
-
-PROJECT_STATUS_OPTIONS = [
-    {"value": "in_progress", "label": "進行中"},
-    {"value": "complete", "label": "完了"},
-]
 
 FILTER_THEME_CSS = """
 <style>
@@ -152,7 +141,7 @@ def catalyst() -> rx.Component:
         rx.html(FILTER_THEME_CSS),
         rx.box(
             rx.input(
-                placeholder="キーワードを入力...(タイトル、タグ、提案者名など)",
+                placeholder=AuthState.t["catalyst_search_placeholder"],
                 size="3",
                 max_length=100,
                 value=AppState.search_query,
@@ -165,7 +154,7 @@ def catalyst() -> rx.Component:
             rx.accordion.root(
                 rx.accordion.item(
                     header=rx.accordion.trigger(
-                        rx.text("さらに絞り込む", size="3"),
+                        rx.text(AuthState.t["catalyst_filter_expand"], size="3"),
                         class_name="mobile-filter-trigger",
                     ),
                     content=rx.accordion.content(
@@ -173,7 +162,7 @@ def catalyst() -> rx.Component:
                             challegeFilter(
                                 classNamePrefix="filter",
                                 options=FUND_SELECT_OPTIONS,
-                                placeholder="対象ファンドを選択してください",
+                                placeholder=AuthState.t["catalyst_filter_fund"],
                                 defaultValue=AppState.selected_fund_filters,
                                 onChange=lambda value: AppState.set_selected_fund_value(value),
                                 isMulti=True,
@@ -185,7 +174,7 @@ def catalyst() -> rx.Component:
                             challegeFilter(
                                 options=AppState.challenge_options,
                                 classNamePrefix="filter",
-                                placeholder="チャレンジを選択",
+                                placeholder=AuthState.t["catalyst_filter_challenge"],
                                 defaultValue=AppState.selected_challenge_filters,
                                 onChange=lambda value: AppState.set_selected_chllenge_value(value),
                                 isMulti=True,
@@ -194,9 +183,9 @@ def catalyst() -> rx.Component:
                                 width="100%",
                             ),
                             challegeFilter(
-                                options=FUNDING_STATUS_OPTIONS,
+                                options=AuthState.funding_status_options,
                                 classNamePrefix="filter",
-                                placeholder="資金調達ステータス",
+                                placeholder=AuthState.t["catalyst_filter_funding_status"],
                                 defaultValue=AppState.selected_funding_status_filters,
                                 onChange=lambda value: AppState.set_selected_fundingStatus_value(value),
                                 isMulti=True,
@@ -205,16 +194,16 @@ def catalyst() -> rx.Component:
                                 width="100%",
                             ),
                             challegeFilter(
-                                options=PROJECT_STATUS_OPTIONS,
+                                options=AuthState.project_status_options,
                                 classNamePrefix="filter",
-                                placeholder="プロジェクト進捗",
+                                placeholder=AuthState.t["catalyst_filter_project_status"],
                                 defaultValue=AppState.selected_project_status_filters,
                                 onChange=lambda value: AppState.set_selected_projectStatus_value(value),
                                 isMulti=True,
                                 styles=None,
                                 theme=None,
                                 width="100%",
-                                
+
                             ),
                             spacing="2",
                             width="100%",
@@ -244,7 +233,7 @@ def catalyst() -> rx.Component:
                 challegeFilter(
                     classNamePrefix="filter",
                     options=FUND_SELECT_OPTIONS,
-                    placeholder="対象ファンドを選択してください",
+                    placeholder=AuthState.t["catalyst_filter_fund"],
                     defaultValue=AppState.selected_fund_filters,
                     onChange=lambda value: AppState.set_selected_fund_value(value),
                     isMulti=True,
@@ -255,7 +244,7 @@ def catalyst() -> rx.Component:
                 challegeFilter(
                     options=AppState.challenge_options,
                     classNamePrefix="filter",
-                    placeholder="チャレンジを選択",
+                    placeholder=AuthState.t["catalyst_filter_challenge"],
                     defaultValue=AppState.selected_challenge_filters,
                     onChange=lambda value: AppState.set_selected_chllenge_value(value),
                     isMulti=True,
@@ -264,9 +253,9 @@ def catalyst() -> rx.Component:
                     width=["100%", "100%", "49.5%", "49.5%", "49.5%"],
                 ),
                 challegeFilter(
-                    options=FUNDING_STATUS_OPTIONS,
+                    options=AuthState.funding_status_options,
                     classNamePrefix="filter",
-                    placeholder="資金調達ステータス",
+                    placeholder=AuthState.t["catalyst_filter_funding_status"],
                     defaultValue=AppState.selected_funding_status_filters,
                     onChange=lambda value: AppState.set_selected_fundingStatus_value(value),
                     isMulti=True,
@@ -275,9 +264,9 @@ def catalyst() -> rx.Component:
                     width=["100%", "100%", "49.5%", "49.5%", "49.5%"],
                 ),
                 challegeFilter(
-                    options=PROJECT_STATUS_OPTIONS,
+                    options=AuthState.project_status_options,
                     classNamePrefix="filter",
-                    placeholder="プロジェクト進捗",
+                    placeholder=AuthState.t["catalyst_filter_project_status"],
                     defaultValue=AppState.selected_project_status_filters,
                     onChange=lambda value: AppState.set_selected_projectStatus_value(value),
                     isMulti=True,
@@ -301,9 +290,9 @@ def catalyst() -> rx.Component:
 
     header = rx.flex(
         rx.flex(
-            rx.text("検索結果", size="4"),
+            rx.text(AuthState.t["catalyst_search_results"], size="4"),
             rx.text(AppState.total_items, size="6", weight="bold", color="var(--amber-11)"),
-            rx.text("件", size="4"),
+            rx.text(AuthState.t["catalyst_results_unit"], size="4"),
             rx.cond(
                 AppState.selected_fund_filters,
                 rx.hstack(
@@ -347,7 +336,7 @@ def catalyst() -> rx.Component:
                         "color": "var(--gray-12)",
                     },
                     size="2",
-                    on_click=lambda: AppState.set_view_mode("list"),
+                    on_click=AppState.set_view_mode("list"),
                     cursor="pointer",
                 ),
                 rx.button(
@@ -373,7 +362,7 @@ def catalyst() -> rx.Component:
                         "color": "var(--gray-12)",
                     },
                     size="2",
-                    on_click=lambda: AppState.set_view_mode("grid"),
+                    on_click=AppState.set_view_mode("grid"),
                     cursor="pointer",
                 ),
                 spacing="2",
@@ -388,7 +377,7 @@ def catalyst() -> rx.Component:
     no_proposals_view = rx.card(
         rx.vstack(
             rx.icon("circle-off", size=28),
-            rx.text("提案が見つかりませんでした"),
+            rx.text(AuthState.t["catalyst_no_proposals"]),
             spacing="2",
             align="center",
         ),

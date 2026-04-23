@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:docs.blockfrost.io)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "WebFetch(domain:blockfrost.dev)",
+      "WebFetch(domain:www.postman.com)",
+      "Bash(cp \"c:/Users/btbfc/Downloads/LINE_Login_Button_Image/Line_Login_Button_Image/images/DeskTop/2x/44dp/line_88.png\" \"c:/Users/btbfc/Documents/GitHub/cardanoism/assets/line-icon.png\")",
+      "Bash(cp \"c:/Users/btbfc/Downloads/LINE_Login_Button_Image/Line_Login_Button_Image/images/DeskTop/2x/44dp/btn_login_base.png\" \"c:/Users/btbfc/Documents/GitHub/cardanoism/assets/line-btn-base.png\")",
+      "Bash(cp \"c:/Users/btbfc/Downloads/LINE_Login_Button_Image/Line_Login_Button_Image/images/DeskTop/2x/44dp/btn_login_hover.png\" \"c:/Users/btbfc/Documents/GitHub/cardanoism/assets/line-btn-hover.png\")",
+      "Bash(cp \"c:/Users/btbfc/Downloads/LINE_Login_Button_Image/Line_Login_Button_Image/images/DeskTop/2x/44dp/btn_login_press.png\" \"c:/Users/btbfc/Documents/GitHub/cardanoism/assets/line-btn-press.png\")",
+      "Bash(python3 -c \"from PIL import Image; img=Image.open\\('c:/Users/btbfc/Documents/GitHub/cardanoism/assets/line-btn-base.png'\\); print\\('btn_login_base:', img.size\\)\")",
+      "Bash(python3 -c \"import struct,zlib; data=open\\('c:/Users/btbfc/Documents/GitHub/cardanoism/assets/line-btn-base.png','rb'\\).read\\(\\); w=struct.unpack\\('>I',data[16:20]\\)[0]; h=struct.unpack\\('>I',data[20:24]\\)[0]; print\\('btn_login_base size:', w, 'x', h\\)\")",
+      "Bash(python3 -c \"import struct; data=open\\('c:/Users/btbfc/Documents/GitHub/cardanoism/assets/line-icon.png','rb'\\).read\\(\\); w=struct.unpack\\('>I',data[16:20]\\)[0]; h=struct.unpack\\('>I',data[20:24]\\)[0]; print\\('line_88 size:', w, 'x', h\\)\")",
+      "Bash(C:\\\\Users\\\\btbfc\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python312\\\\python.exe:*)",
+      "Bash(curl -s \"https://api.koios.rest/koiosapi.yaml\")",
+      "Bash(curl -s 'https://api.koios.rest/api/v1/pool_history?_pool_bech32_id=pool100wj94uzf54vup2hdzk0afng4dhjaqggt7j434mtgm8v2gfvfgp&_epoch_no=500' -H 'accept: application/json')",
+      "Bash(grep -A 8 \"name: _pool_bech32$\")",
+      "Bash(curl -s 'https://api.koios.rest/api/v1/pool_history?_pool_bech32=pool155efqn9xpcf73pphkk88cmlkdwx4ulkg606tne970qswczg3asc&_epoch_no=500' -H 'accept: application/json')",
+      "WebFetch(domain:api.koios.rest)",
+      "WebFetch(domain:preprod.koios.rest)",
+      "WebFetch(domain:ogmios.dev)",
+      "WebFetch(domain:blockfrost.io)",
+      "WebFetch(domain:docs.txpipe.io)",
+      "WebFetch(domain:utxorpc.org)",
+      "Bash(git add *)"
+    ]
+  }
+}

@@ -6,6 +6,7 @@ from cardanoism import styles
 #from cardanoism.components.sidebar import sidebar
 from cardanoism.components.navbar import navbar_icons
 from cardanoism.components.footer import footer_three_columns
+from cardanoism.backend.auth_state import AuthState
 from typing import Callable
 
 import reflex as rx
@@ -68,6 +69,14 @@ def template(
         """
         # Get the meta tags for the page.
         all_meta = [*default_meta, *(meta or [])]
+
+        # on_load にAuthState.check_auth と言語検出を必ず含める
+        if on_load is None:
+            combined_on_load = [AuthState.check_auth, AuthState.detect_browser_language]
+        elif isinstance(on_load, list):
+            combined_on_load = [AuthState.check_auth, AuthState.detect_browser_language, *on_load]
+        else:
+            combined_on_load = [AuthState.check_auth, AuthState.detect_browser_language, on_load]
         
         def templated_page():
             return rx.vstack(
@@ -93,7 +102,7 @@ def template(
             title=title,
             description=description,
             meta=all_meta,
-            on_load=on_load,
+            on_load=combined_on_load,
         )
         def theme_wrap():
             return rx.theme(

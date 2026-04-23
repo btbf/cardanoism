@@ -1,7 +1,9 @@
 import reflex as rx
 from typing import Dict, Any
 from cardanoism.backend.db_connect import AppState
+from cardanoism.backend.auth_state import AuthState
 from cardanoism import styles
+from cardanoism.components.login_modal import login_modal
 
 
 class ReactStarLib(rx.Component):
@@ -82,29 +84,26 @@ def status_badge(proposal: Dict[str, Any]) -> rx.Component:
     """Status pill aligned with Fund badge sizing."""
     funding_status = proposal.get("funding_status", "")
     project_status = proposal.get("project_status", "")
-    # color palette
     blue = "#073ff4"
     indigo = "#4b0082"
     gray = "#808080"
-    gray_text = "var(--gray-11)"
     green = "#22c55e"
-    badge_bg = None  # use solid color per status
     return rx.cond(
         funding_status == "funded",
         rx.match(
             project_status,
-            ("in_progress", badge_with_dot("進行中", "white", bg=blue, text_color="white", blink=True)),
-            ("onboarding",badge_with_dot("進行中", "white", bg=blue, text_color="white", blink=True)),
-            ("complete", badge_with_dot("完了", "white", bg=indigo, text_color="white")),
-            badge_with_dot("採択", "white", bg=indigo, text_color="white"),
+            ("in_progress", badge_with_dot(AuthState.t["badge_in_progress"], "white", bg=blue, text_color="white", blink=True)),
+            ("onboarding", badge_with_dot(AuthState.t["badge_in_progress"], "white", bg=blue, text_color="white", blink=True)),
+            ("complete", badge_with_dot(AuthState.t["badge_complete"], "white", bg=indigo, text_color="white")),
+            badge_with_dot(AuthState.t["badge_funded_label"], "white", bg=indigo, text_color="white"),
         ),
         rx.match(
             funding_status,
-            ("not_approved", badge_with_dot("不採択", "white", bg=gray, text_color="white")),
-            ("over_budget", badge_with_dot("申請不備", "white", bg=gray, text_color="white")),
-            ("pending", badge_with_dot("投票期間中", "white", bg=green, text_color="white", blink=True)),
-            ("Pending vote", badge_with_dot("投票期間中", "white", bg=green, text_color="white", blink=True)),
-            badge_with_dot("進行中", "white", bg=blue, text_color="white", blink=True),
+            ("not_approved", badge_with_dot(AuthState.t["badge_not_approved"], "white", bg=gray, text_color="white")),
+            ("over_budget", badge_with_dot(AuthState.t["badge_over_budget"], "white", bg=gray, text_color="white")),
+            ("pending", badge_with_dot(AuthState.t["badge_pending_vote"], "white", bg=green, text_color="white", blink=True)),
+            ("Pending vote", badge_with_dot(AuthState.t["badge_pending_vote"], "white", bg=green, text_color="white", blink=True)),
+            badge_with_dot(AuthState.t["badge_in_progress"], "white", bg=blue, text_color="white", blink=True),
         ),
     )
 
@@ -144,11 +143,10 @@ def fund_label(proposal: Dict[str, Any]):
 
 
 def campaign_label(proposal: Dict[str, Any]):
-    """Return campaign title (ja if present, else fallback)."""
     return rx.cond(
-        proposal.get("campaign_title_ja"),
-        proposal.get("campaign_title_ja"),
-        proposal.get("campaign_title", ""),
+        AuthState.language == "en",
+        rx.cond(proposal.get("campaign_title"), proposal.get("campaign_title"), proposal.get("campaign_title_ja", "")),
+        rx.cond(proposal.get("campaign_title_ja"), proposal.get("campaign_title_ja"), proposal.get("campaign_title", "")),
     )
 
 
@@ -157,7 +155,7 @@ def fund_progress_bar(proposal: Dict[str, Any]) -> rx.Component:
     return rx.cond(
         proposal["funding_status"] == "funded",
         rx.hstack(
-            rx.text("資金調達率", size="2", color="var(--gray-10)"),
+            rx.text(AuthState.t["funding_rate_label"], size="2", color="var(--gray-10)"),
             rx.box(
                 rx.progress(
                     value=proposal["fund_percent"],
@@ -171,7 +169,7 @@ def fund_progress_bar(proposal: Dict[str, Any]) -> rx.Component:
                 proposal["milestones_link"],
                 rx.link(
                         rx.hstack(
-                            rx.text("進捗状況を見る", size="2", weight="medium"),
+                            rx.text(AuthState.t["view_milestones"], size="2", weight="medium"),
                             rx.icon("external-link", size=16),
                             spacing="1",
                             align="center",
@@ -187,32 +185,32 @@ def fund_progress_bar(proposal: Dict[str, Any]) -> rx.Component:
                 rx.tooltip(
                     rx.hstack(
                         rx.icon("wallet", size=14, color="var(--gray-10)"),
-                        rx.text("投票", size="1", color="var(--gray-10)"),
+                        rx.text(AuthState.t["votes_wallet_label"], size="1", color="var(--gray-10)"),
                         rx.text(proposal.get("unique_wallets_display", "0"), size="2", color="var(--gray-10)"),
                         spacing="1",
                         align="center",
                     ),
-                    content="投票ウォレット数",
+                    content=AuthState.t["votes_wallet_tooltip"],
                 ),
                 rx.tooltip(
                     rx.hstack(
                         rx.icon("thumbs-up", size=14, color="var(--gray-10)"),
-                        rx.text("賛成", size="1", color="var(--gray-10)"),
+                        rx.text(AuthState.t["votes_yes_label"], size="1", color="var(--gray-10)"),
                         rx.text(proposal.get("yes_votes_count_display", "0"), size="2", color="var(--gray-10)"),
                         spacing="1",
                         align="center",
                     ),
-                    content="賛成票数",
+                    content=AuthState.t["votes_yes_tooltip"],
                 ),
                 rx.tooltip(
                     rx.hstack(
                         rx.icon("hand", size=14, color="var(--gray-10)"),
-                        rx.text("棄権", size="1", color="var(--gray-10)"),
+                        rx.text(AuthState.t["votes_abstain_label"], size="1", color="var(--gray-10)"),
                         rx.text(proposal.get("abstain_votes_count_display", "0"), size="2", color="var(--gray-10)"),
                         spacing="1",
                         align="center",
                     ),
-                    content="棄権票数",
+                    content=AuthState.t["votes_abstain_tooltip"],
                 ),
                 spacing="3",
                 align="center",
@@ -411,14 +409,35 @@ def semantic_toggle_panel(
     return inner
 
 
+def favorite_button(proposal) -> rx.Component:
+    """お気に入りトグルボタン（コンテンツと横並びで独立したクリック領域）。"""
+    proposal_uuid = proposal["uuid"].to(str)
+    is_fav = AuthState.favorite_ids.contains(proposal_uuid)
+    return rx.box(
+        rx.cond(
+            is_fav,
+            rx.icon("heart", size=26, color="var(--red-9)", style={"fill": "var(--red-9)"}),
+            rx.icon("heart", size=26, color="var(--gray-8)"),
+        ),
+        on_click=AuthState.toggle_favorite(proposal_uuid),
+        cursor="pointer",
+        padding="6px",
+        flex_shrink="0",
+    )
+
+
 def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
     description = rx.cond(
-        proposal["solution_ja"],
-        proposal["solution_ja"],
+        AuthState.language == "en",
         rx.cond(
-            proposal["problem_ja"],
-            proposal["problem_ja"],
-            proposal["title"],
+            proposal["solution"],
+            proposal["solution"],
+            rx.cond(proposal["problem"], proposal["problem"], proposal["title"]),
+        ),
+        rx.cond(
+            proposal["solution_ja"],
+            proposal["solution_ja"],
+            rx.cond(proposal["problem_ja"], proposal["problem_ja"], proposal["title_ja"]),
         ),
     )
 
@@ -494,30 +513,30 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
 
     def render_card(on_click):
         return rx.card(
-            rx.box(
+            rx.hstack(
                 rx.vstack(
                     rx.hstack(
-                        rx.hstack(
-                            status_badge(proposal),
-                            catalyst_id_badge(proposal),
-                            pill(f"{fund_label(proposal)}", "layers", "yellow"),
-                            pill(campaign_label(proposal), "flag", "gray"),
-                            spacing="2",
-                            wrap="wrap",
-                            align="center",
-                        ),
-                        justify="between",
-                        width="100%",
+                        status_badge(proposal),
+                        catalyst_id_badge(proposal),
+                        pill(f"{fund_label(proposal)}", "layers", "yellow"),
+                        pill(campaign_label(proposal), "flag", "gray"),
+                        spacing="2",
+                        wrap="wrap",
+                        align="center",
                     ),
                     rx.text(
-                        proposal["title_ja"],
+                        rx.cond(AuthState.language == "en", proposal["title"], proposal["title_ja"]),
                         size="4",
                         weight="bold",
                         line_height="1.2",
                         color="var(--gray-12)",
                         class_name="proposal-title",
+                        style={"wordBreak": "break-word", "overflowWrap": "break-word"},
                     ),
-                    rx.text(proposal["title"], size="2", color="var(--gray-9)", class_name="mt-0"),
+                    rx.text(
+                        rx.cond(AuthState.language == "en", proposal["title_ja"], proposal["title"]),
+                        size="2", color="var(--gray-9)", class_name="mt-0 line-clamp-1",
+                    ),
                     rx.text(
                         description,
                         size="3",
@@ -530,10 +549,14 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
                     rx.mobile_and_tablet(mobile_footer),
                     rx.desktop_only(desktop_footer),
                     spacing="3",
-                    width="100%",
+                    flex="1",
+                    min_width="0",
+                    on_click=on_click,
+                    cursor="pointer",
                 ),
-                #page_icon,
-                position="relative",
+                favorite_button(proposal),
+                align="start",
+                spacing="2",
                 width="100%",
             ),
             width="100%",
@@ -551,11 +574,9 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
                 "hover:shadow-[0_0_6px_rgba(229,229,229,229.12)]"
                 ),
             ),
-            on_click=on_click,
-            cursor="pointer",
         )
 
-    modal_click = lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"])]
+    modal_click = lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"]), AppState.reset_semantic_view_for_language(AuthState.language)]
     proposal_path = "/catalyst/proposals/" + proposal["uuid"].to(str)
     popup_click = rx.redirect(proposal_path, is_external=True, popup=True)
 
@@ -567,12 +588,16 @@ def proposal_list(proposal: Dict[str, Any]) -> rx.Component:
 
 def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
     description = rx.cond(
-        proposal["solution_ja"],
-        proposal["solution_ja"],
+        AuthState.language == "en",
         rx.cond(
-            proposal["problem_ja"],
-            proposal["problem_ja"],
-            proposal["title"],
+            proposal["solution"],
+            proposal["solution"],
+            rx.cond(proposal["problem"], proposal["problem"], proposal["title"]),
+        ),
+        rx.cond(
+            proposal["solution_ja"],
+            proposal["solution_ja"],
+            rx.cond(proposal["problem_ja"], proposal["problem_ja"], proposal["title_ja"]),
         ),
     )
     fund_progress = fund_progress_bar(proposal)
@@ -595,13 +620,16 @@ def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
             align="center",
         ),
         rx.text(
-            proposal["title_ja"],
+            rx.cond(AuthState.language == "en", proposal["title"], proposal["title_ja"]),
             size="3",
             weight="bold",
             color="var(--gray-12)",
             class_name="proposal-title"
         ),
-        rx.text(proposal["title"], size="2", color="var(--gray-9)", class_name="mt-0"),
+        rx.text(
+            rx.cond(AuthState.language == "en", proposal["title_ja"], proposal["title"]),
+            size="2", color="var(--gray-9)", class_name="mt-0 line-clamp-1",
+        ),
         rx.text(
             description,
             size="2",
@@ -645,17 +673,27 @@ def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
 
     def render_card(on_click):
         return rx.card(
-            rx.box(
-                rx.vstack(
-                    content_block,
-                    footer_block,
-                    spacing="3",
-                    width="100%",
+            rx.hstack(
+                rx.box(
+                    rx.vstack(
+                        content_block,
+                        footer_block,
+                        spacing="3",
+                        width="100%",
+                        height="100%",
+                        justify="between",
+                        on_click=on_click,
+                        cursor="pointer",
+                    ),
+                    page_icon,
+                    position="relative",
+                    flex="1",
+                    min_width="0",
                     height="100%",
-                    justify="between",
                 ),
-                page_icon,
-                position="relative",
+                favorite_button(proposal),
+                align="start",
+                spacing="2",
                 width="100%",
                 height="100%",
             ),
@@ -670,11 +708,9 @@ def proposal_grid(proposal: Dict[str, Any]) -> rx.Component:
                 "hover:shadow-[0_0_6px_rgba(229,229,229,229.12)]"
                 ),
             ),
-            on_click=on_click,
-            cursor="pointer",
         )
 
-    modal_click = lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"])]
+    modal_click = lambda: [AppState.open_modal(proposal), AppState.load_modal_detail(proposal["uuid"]), AppState.reset_semantic_view_for_language(AuthState.language)]
     proposal_path = "/catalyst/proposals/" + proposal["uuid"].to(str)
     popup_click = rx.redirect(proposal_path, is_external=True, popup=True)
 
@@ -769,7 +805,7 @@ def detail_modal() -> rx.Component:
                 rx.hstack(
                     rx.vstack(
                         rx.text(
-                            p.get("title_ja", "提案詳細"),
+                            rx.cond(AuthState.language == "en", p.get("title", ""), p.get("title_ja", "")),
                             size="5",
                             weight="bold",
                             width="100%",
@@ -777,7 +813,7 @@ def detail_modal() -> rx.Component:
                             class_name="proposal-title"
                         ),
                         rx.text(
-                            p.get("title", ""),
+                            rx.cond(AuthState.language == "en", p.get("title_ja", ""), p.get("title", "")),
                             size="2",
                             width="100%",
                             style={"wordBreak": "break-word"},
@@ -851,9 +887,9 @@ def detail_modal() -> rx.Component:
                         rx.box(
                             rx.tablet_and_desktop(
                                 rx.grid(
-                                    score_panel("提案整合性", p.get("alignment_score"), "primary"),
-                                    score_panel("実現可能性", p.get("feasibility_score"), "primary"),
-                                    score_panel("監査可能性", p.get("auditability_score"), "primary"),
+                                    score_panel(AuthState.t["score_alignment"], p.get("alignment_score"), "primary"),
+                                    score_panel(AuthState.t["score_feasibility"], p.get("feasibility_score"), "primary"),
+                                    score_panel(AuthState.t["score_auditability"], p.get("auditability_score"), "primary"),
                                     columns={"base": "1", "md": "3"},
                                     spacing="4",
                                     width="100%",
@@ -862,19 +898,19 @@ def detail_modal() -> rx.Component:
                             rx.vstack(
                                 semantic_toggle_bar(
                                     semantic_toggle_button(
-                                        "英語原文",
+                                        AuthState.t["proposal_view_raw"],
                                         "raw",
                                         AppState.modal_semantic_view,
                                         lambda: AppState.set_modal_semantic_view("raw"),
                                     ),
                                     semantic_toggle_button(
-                                        "日本語翻訳",
+                                        AuthState.t["proposal_view_ja"],
                                         "ja",
                                         AppState.modal_semantic_view,
                                         lambda: AppState.set_modal_semantic_view("ja"),
                                     ),
                                     semantic_toggle_button(
-                                        "AI要約",
+                                        AuthState.t["proposal_view_ai"],
                                         "ai",
                                         AppState.modal_semantic_view,
                                         lambda: AppState.set_modal_semantic_view("ai"),
@@ -892,7 +928,7 @@ def detail_modal() -> rx.Component:
                                         AppState.modal_semantic_view == "raw",
                                         rx.vstack(
                                             rx.el.h2(
-                                                "課題",
+                                                AuthState.t["proposal_section_problem"],
                                                 class_name=(
                                                     "text-[16px] md:text-[16px] font-semibold tracking-tight "
                                                     "text-[var(--gray-12)] pb-1 border-b border-[var(--gray-5)] "
@@ -906,7 +942,7 @@ def detail_modal() -> rx.Component:
                                         ),
                                         rx.vstack(
                                             rx.el.h2(
-                                                "課題",
+                                                AuthState.t["proposal_section_problem"],
                                                 class_name=(
                                                     "text-[16px] md:text-[16px] font-semibold tracking-tight "
                                                     "text-[var(--gray-12)] pb-1 border-b border-[var(--gray-5)] "
@@ -927,7 +963,7 @@ def detail_modal() -> rx.Component:
                                         AppState.modal_semantic_view == "raw",
                                         rx.vstack(
                                             rx.el.h2(
-                                                "解決策",
+                                                AuthState.t["proposal_section_solution"],
                                                 class_name=(
                                                     "text-[16px] md:text-[16px] font-semibold tracking-tight "
                                                     "text-[var(--gray-12)] pb-1 border-b border-[var(--gray-5)] "
@@ -940,7 +976,7 @@ def detail_modal() -> rx.Component:
                                         ),
                                         rx.vstack(
                                             rx.el.h2(
-                                                "解決策",
+                                                AuthState.t["proposal_section_solution"],
                                                 class_name=(
                                                     "text-[16px] md:text-[16px] font-semibold tracking-tight "
                                                     "text-[var(--gray-12)] pb-1 border-b border-[var(--gray-5)] "
@@ -964,9 +1000,9 @@ def detail_modal() -> rx.Component:
                                 ),
                                 rx.mobile_only(
                                     rx.vstack(
-                                        score_panel("提案整合性", p.get("alignment_score"), "primary"),
-                                        score_panel("実現可能性", p.get("feasibility_score"), "primary"),
-                                        score_panel("監査可能性", p.get("auditability_score"), "primary"),
+                                        score_panel(AuthState.t["score_alignment"], p.get("alignment_score"), "primary"),
+                                        score_panel(AuthState.t["score_feasibility"], p.get("feasibility_score"), "primary"),
+                                        score_panel(AuthState.t["score_auditability"], p.get("auditability_score"), "primary"),
                                         spacing="1",
                                         width="100%",
                                         justify="center",
@@ -990,22 +1026,15 @@ def detail_modal() -> rx.Component:
                 ),
                 rx.hstack(
                     rx.button(
-                        "閉じる",
+                        AuthState.t["proposal_close"],
                         on_click=AppState.close_modal,
-                        width="80%",
+                        width="90%",
                         variant="soft",
-                        background_color="var(--amber-9)",
-                        color=rx.color_mode_cond(
-                            light="var(--gray-12)",
-                            dark="var(--gray-2)",
-                        ),
                         cursor="pointer",
-                        _hover={"background_color": "var(--amber-6)"},
                     ),
                     rx.menu.root(
                         rx.menu.trigger(
-                            rx.button("シェア", variant="soft"),
-                            width="20%",
+                            rx.icon("share-2", size=20, variant="soft", color="var(--gray-8)", cursor="pointer"),
                         ),
                         rx.menu.content(
                             rx.menu.item(
@@ -1041,13 +1070,13 @@ def detail_modal() -> rx.Component:
                                 ),
                             ),
                             rx.menu.item(
-                                "URLコピー",
+                                AuthState.t["proposal_copy_url"],
                                 on_click=[
                                     rx.call_script(
                                         "navigator.clipboard.writeText(window.location.href);"
                                     ),
                                     rx.toast(
-                                        "提案リンクをコピーしました",
+                                        AuthState.t["proposal_url_copied"],
                                         position="top-center",
                                         style={
                                             "background-color": "var(--indigo-11)",
@@ -1059,7 +1088,20 @@ def detail_modal() -> rx.Component:
                             ),
                         ),
                     ),
+                    rx.box(
+                        rx.cond(
+                            AuthState.favorite_ids.contains(AppState.modal_proposal["uuid"].to(str)),
+                            rx.icon("heart", size=26, color="var(--red-9)", style={"fill": "var(--red-9)"}),
+                            rx.icon("heart", size=26, color="var(--gray-8)"),
+                        ),
+                        on_click=AuthState.toggle_favorite(AppState.modal_proposal["uuid"].to(str)),
+                        cursor="pointer",
+                        padding="6px",
+                        display="flex",
+                        align_items="center",
+                    ),
                     width="100%",
+                    align="center",
                 ),
                 spacing="3",
                 width="100%",
@@ -1087,6 +1129,7 @@ def detail_modal() -> rx.Component:
 def card_foreach_dict() -> rx.Component:
     return rx.box(
         STATUS_DOT_STYLE,
+        login_modal(),
         modal_history_script(),
         detail_modal(),
         rx.cond(
@@ -1097,19 +1140,28 @@ def card_foreach_dict() -> rx.Component:
                         rx.foreach(AppState.proposals, proposal_grid),
                         columns={"base": "1"},
                         spacing="4",
+                        width="100%",
                         style={"userSelect": "none"},
                     )
                 ),
                 rx.tablet_and_desktop(
-                    rx.cond(
-                        AppState.view_mode == "grid",
-                        rx.grid(
-                            rx.foreach(AppState.proposals, proposal_grid),
-                            columns={"base": "1", "md": "2", "lg": "2"},
-                            spacing="4",
+                    rx.box(
+                        rx.cond(
+                            AppState.view_mode == "grid",
+                            rx.grid(
+                                rx.foreach(AppState.proposals, proposal_grid),
+                                columns={"base": "1", "md": "2", "lg": "2"},
+                                spacing="4",
+                                width="100%",
+                            ),
+                            rx.box(
+                                rx.foreach(AppState.proposals, proposal_list),
+                                width="100%",
+                            ),
                         ),
-                        rx.foreach(AppState.proposals, proposal_list),
-                    )
+                        width="100%",
+                    ),
+                    width="100%",
                 ),
             ),
             rx.flex(
@@ -1120,4 +1172,5 @@ def card_foreach_dict() -> rx.Component:
                 padding_y="20px",
             ),
         ),
+        width="100%",
     )

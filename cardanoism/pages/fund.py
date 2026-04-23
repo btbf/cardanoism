@@ -432,7 +432,7 @@ def proposal_controls() -> rx.Component:
                         "color": "var(--gray-12)",
                     },
                     size="2",
-                    on_click=lambda: AppState.set_view_mode("list"),
+                    on_click=AppState.set_view_mode("list"),
                     cursor="pointer",
                 ),
                 rx.button(
@@ -458,7 +458,7 @@ def proposal_controls() -> rx.Component:
                         "color": "var(--gray-12)",
                     },
                     size="2",
-                    on_click=lambda: AppState.set_view_mode("grid"),
+                    on_click=AppState.set_view_mode("grid"),
                     cursor="pointer",
                 ),
                 spacing="2",
