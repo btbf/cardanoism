@@ -7,6 +7,9 @@ from .proposals import proposal_detail_page
 from .login import login_page
 from .mypage import mypage
 from .governance import governance_page, governance_detail_page
+from .governance_treasury import governance_treasury_page
+from .governance_drep import governance_drep_page
+from .governance_drep_detail import governance_drep_detail_page
 from .auth import (
     line_login_redirect,
     line_callback,
