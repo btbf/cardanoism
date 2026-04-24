@@ -25,7 +25,20 @@
       "WebFetch(domain:blockfrost.io)",
       "WebFetch(domain:docs.txpipe.io)",
       "WebFetch(domain:utxorpc.org)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(gh pr *)",
+      "WebFetch(domain:cardano.org)",
+      "Bash(python *)",
+      "Bash(py -c \"import ast; ast.parse\\(open\\('cardanoism/pages/governance_treasury.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('cardanoism/pages/governance_treasury.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(py *)",
+      "WebFetch(domain:adastat.net)",
+      "Bash(curl -s \"https://api.koios.rest/api/v1/proposal_list?proposal_type=eq.InfoAction&limit=100\")",
+      "Bash(curl -s \"https://api.koios.rest/api/v1/proposal_list?proposal_type=eq.InfoAction&limit=500\")",
+      "Bash(curl -s -X POST \"https://api.koios.rest/api/v1/proposal_list\" -H \"Content-Type: application/json\")",
+      "Bash(.venv/Scripts/python *)"
     ]
   }
 }
