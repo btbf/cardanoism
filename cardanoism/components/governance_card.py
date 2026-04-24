@@ -255,88 +255,779 @@ def governance_detail_header(action: Dict[str, Any], close_btn=None) -> rx.Compo
     )
 
 
-def governance_detail_body(action: Dict[str, Any], sticky_top: str = "5.5em") -> rx.Component:
-    """言語切り替えバー・本文・参考リンク（モーダルのスクロール部／ページ共通）。"""
-    lang_toggle = rx.box(
-        rx.center(
-            rx.box(
-                rx.hstack(
-                    rx.button(
-                        "日本語",
-                        size="2",
-                        radius="full",
-                        variant=rx.cond(GovernanceState.modal_lang == "ja", "solid", "soft"),
-                        color_scheme=rx.cond(GovernanceState.modal_lang == "ja", "blue", "gray"),
-                        padding_x="14px",
-                        padding_y="7px",
-                        class_name=(
-                            "transition-all duration-200 "
-                            "shadow-[0_6px_16px_rgba(0,0,0,0.08)] "
-                            "hover:shadow-[0_8px_18px_rgba(0,0,0,0.12)] text-[13px]"
-                        ),
-                        on_click=GovernanceState.set_modal_lang("ja"),
-                        cursor="pointer",
-                    ),
-                    rx.button(
-                        "English",
-                        size="2",
-                        radius="full",
-                        variant=rx.cond(GovernanceState.modal_lang == "en", "solid", "soft"),
-                        color_scheme=rx.cond(GovernanceState.modal_lang == "en", "blue", "gray"),
-                        padding_x="14px",
-                        padding_y="7px",
-                        class_name=(
-                            "transition-all duration-200 "
-                            "shadow-[0_6px_16px_rgba(0,0,0,0.08)] "
-                            "hover:shadow-[0_8px_18px_rgba(0,0,0,0.12)] text-[13px]"
-                        ),
-                        on_click=GovernanceState.set_modal_lang("en"),
-                        cursor="pointer",
-                    ),
-                    spacing="2",
-                    align="end",
-                    margin_y="6px",
-                ),
-                background_color="var(--gray-2)",
-                padding="8px 18px",
-                border_radius="9999px",
-            ),
-        ),
-        position="sticky",
-        top=sticky_top,
-        z_index="3",
-        padding_y="6px",
-        width="100%",
-        background_color="transparent",
+def _localized_text(ja_key: str, en_key: str, action: Dict[str, Any]) -> rx.Component:
+    """AuthState.language に応じて ja/en を出し分ける。片方が空ならもう一方をフォールバック。"""
+    return rx.cond(
+        AuthState.language == "en",
+        rx.cond(action[en_key], action[en_key], action[ja_key]),
+        rx.cond(action[ja_key], action[ja_key], action[en_key]),
     )
 
-    def text_ja_or_en(ja_key: str, en_key: str):
-        return rx.cond(
-            GovernanceState.modal_lang == "ja",
-            rx.cond(action[ja_key], action[ja_key], rx.cond(action[en_key], action[en_key], "")),
-            rx.cond(action[en_key], action[en_key], rx.cond(action[ja_key], action[ja_key], "")),
-        )
 
-    abstract_text   = text_ja_or_en("abstract_ja",  "abstract")
-    motivation_text = text_ja_or_en("motivation_ja", "motivation")
-    rationale_text  = text_ja_or_en("rationale_ja",  "rationale")
+def _has_any_text(ja_key: str, en_key: str, action: Dict[str, Any]):
+    """ja / en のどちらかに値があるかを返す（rx.cond の条件用）。"""
+    return rx.cond(action[ja_key], action[ja_key], action[en_key])
+
+
+def _fiat_inline(jpy_var, usd_var, size: str = "2", color: str = "var(--gray-10)") -> rx.Component:
+    """ADA の後ろに括弧付きで法定通貨を併記（言語連動）。空なら非表示。"""
+    jpy_part = rx.cond(
+        jpy_var != "",
+        rx.text("(≈ ", jpy_var, ")", size=size, color=color),
+        rx.fragment(),
+    )
+    usd_part = rx.cond(
+        usd_var != "",
+        rx.text("(≈ ", usd_var, ")", size=size, color=color),
+        rx.fragment(),
+    )
+    return rx.cond(AuthState.language == "en", usd_part, jpy_part)
+
+
+def _withdrawal_entry_row(entry) -> rx.Component:
+    """内訳1行（受取ステークアドレス + 金額 + 法定通貨）。"""
+    return rx.hstack(
+        rx.code(entry["stake_address_short"], size="1"),
+        rx.text("→", size="2", color="var(--gray-8)"),
+        rx.text(entry["amount_ada_display"], size="2", weight="medium"),
+        rx.text("ADA", size="1", color="var(--gray-10)"),
+        _fiat_inline(
+            entry["amount_jpy_display"],
+            entry["amount_usd_display"],
+            size="1",
+        ),
+        spacing="2", align="center", wrap="wrap",
+    )
+
+
+def _mini_bar(label, yes_pct, threshold_pct, status, applicable) -> rx.Component:
+    """一覧カード用の投票ミニカラム（ラベル/%が上・プログレスバーが下の縦積み）。"""
+    yes_color = rx.match(
+        status,
+        ("passed", "var(--green-9)"),
+        ("failed", "var(--red-9)"),
+        "var(--gray-9)",
+    )
+    yes_text_color = rx.match(
+        status,
+        ("passed", "var(--green-11)"),
+        ("failed", "var(--red-11)"),
+        "var(--gray-11)",
+    )
+
+    normal = rx.vstack(
+        rx.hstack(
+            rx.text(label, size="1", color="var(--gray-10)", style={"fontSize": "10px"}),
+            rx.spacer(),
+            rx.text(yes_pct, size="1", weight="bold", color=yes_text_color, style={"fontSize": "10px"}),
+            rx.text("%", size="1", color="var(--gray-10)", style={"fontSize": "9px"}),
+            rx.cond(
+                threshold_pct != "",
+                rx.text(
+                    "/" + threshold_pct + "%",
+                    style={"fontSize": "9px", "color": "var(--gray-9)", "marginLeft": "2px"},
+                ),
+                rx.fragment(),
+            ),
+            spacing="0",
+            align="baseline",
+            width="100%",
+        ),
+        rx.box(
+            rx.box(
+                width=yes_pct + "%",
+                height="100%",
+                background=yes_color,
+                border_radius="4px",
+                transition="width 0.3s",
+            ),
+            rx.cond(
+                threshold_pct != "",
+                rx.box(
+                    style={
+                        "position": "absolute",
+                        "left": threshold_pct + "%",
+                        "top": "-3px",
+                        "bottom": "-3px",
+                        "width": "2px",
+                        "background": "var(--gray-12)",
+                    },
+                ),
+                rx.fragment(),
+            ),
+            position="relative",
+            width="100%",
+            height="8px",
+            background="var(--gray-6)",
+            border_radius="4px",
+            border=f"1px solid {rx.color('gray', 7)}",
+        ),
+        spacing="1",
+        flex="1",
+        min_width="110px",
+    )
+
+    disabled = rx.vstack(
+        rx.hstack(
+            rx.text(label, size="1", color="var(--gray-9)", style={"fontSize": "10px"}),
+            rx.spacer(),
+            rx.text("—", size="1", color="var(--gray-8)", style={"fontSize": "10px"}),
+            spacing="0", align="baseline", width="100%",
+        ),
+        rx.box(
+            width="100%",
+            height="8px",
+            background="var(--gray-6)",
+            border_radius="4px",
+            border=f"1px solid {rx.color('gray', 7)}",
+            style={"opacity": "0.5"},
+        ),
+        spacing="1",
+        flex="1",
+        min_width="110px",
+    )
+
+    return rx.cond(applicable == "no", disabled, normal)
+
+
+def _vote_summary_inline(action: Dict[str, Any]) -> rx.Component:
+    """一覧カード用のコンパクト投票サマリ（3ロール横並び）。voting_summary なしなら非表示。"""
+    return rx.cond(
+        action["has_voting_summary"].to(str) != "",
+        rx.hstack(
+            _mini_bar(
+                AuthState.t["gov_voter_drep"],
+                action["drep_yes_pct"].to(str),
+                action["drep_threshold_pct"].to(str),
+                action["drep_status"].to(str),
+                action["drep_applicable"].to(str),
+            ),
+            _mini_bar(
+                AuthState.t["gov_voter_cc"],
+                action["cc_yes_pct"].to(str),
+                action["cc_threshold_pct"].to(str),
+                action["cc_status"].to(str),
+                action["cc_applicable"].to(str),
+            ),
+            _mini_bar(
+                AuthState.t["gov_voter_spo"],
+                action["pool_yes_pct"].to(str),
+                action["pool_threshold_pct"].to(str),
+                action["pool_status"].to(str),
+                action["pool_applicable"].to(str),
+            ),
+            spacing="3",
+            align="start",
+            wrap="wrap",
+            width="100%",
+        ),
+        rx.fragment(),
+    )
+
+
+def _withdrawal_inline(action: Dict[str, Any]) -> rx.Component:
+    """カード一覧用のコンパクトな引き出し額表示（1 行）。TreasuryWithdrawals のみ表示。"""
+    return rx.cond(
+        action["is_treasury_withdrawal"].to(bool),
+        rx.hstack(
+            rx.icon("landmark", size=14, color="var(--amber-11)"),
+            rx.text(
+                action["withdrawal_total_ada_display"].to(str),
+                size="2", weight="bold", color="var(--amber-11)",
+            ),
+            rx.text("ADA", size="1", color="var(--gray-10)"),
+            _fiat_inline(
+                action["withdrawal_total_jpy_display"].to(str),
+                action["withdrawal_total_usd_display"].to(str),
+                size="1",
+            ),
+            spacing="2", align="center", wrap="wrap",
+        ),
+        rx.fragment(),
+    )
+
+
+def _withdrawal_section(action: Dict[str, Any]) -> rx.Component:
+    """TreasuryWithdrawals の場合のみ表示される引き出し額セクション。"""
+    return rx.cond(
+        action["is_treasury_withdrawal"].to(bool),
+        rx.vstack(
+            _section_heading(AuthState.t["gov_section_withdrawal"]),
+            rx.box(
+                rx.vstack(
+                    rx.hstack(
+                        rx.icon("landmark", size=22, color="var(--amber-11)"),
+                        rx.text(action["withdrawal_total_ada_display"].to(str), size="7", weight="bold", color="var(--amber-11)"),
+                        rx.text("ADA", size="3", color="var(--gray-11)"),
+                        _fiat_inline(
+                            action["withdrawal_total_jpy_display"].to(str),
+                            action["withdrawal_total_usd_display"].to(str),
+                            size="2",
+                        ),
+                        spacing="2", align="baseline", wrap="wrap",
+                    ),
+                    rx.cond(
+                        action["withdrawal_list"].to(list).length() > 1,
+                        rx.vstack(
+                            rx.text(
+                                AuthState.t["gov_withdrawal_breakdown"],
+                                size="2", weight="medium", color="var(--gray-11)",
+                                padding_top="8px",
+                            ),
+                            rx.foreach(
+                                action["withdrawal_list"].to(list[dict[str, str]]),
+                                _withdrawal_entry_row,
+                            ),
+                            spacing="1", align="start", width="100%",
+                        ),
+                        rx.fragment(),
+                    ),
+                    spacing="2", align="start", width="100%",
+                ),
+                padding="16px",
+                border=f"1px solid {rx.color('gray', 4)}",
+                border_radius="10px",
+                background="var(--gray-2)",
+                width="100%",
+            ),
+            spacing="2", align="start", width="100%",
+        ),
+        rx.fragment(),
+    )
+
+
+def _donut_chart(role_label, yes_pct, no_pct, abstain_pct, threshold, status, donut_bg, applicable) -> rx.Component:
+    """1つの役割のドーナツチャート。中央に Yes%、下に閾値と状態バッジ。
+    applicable: "yes" = 通常表示 / "no" = グレーアウト / "conditional" = 条件付き注釈付き
+    """
+    status_badge = rx.match(
+        status,
+        ("passed", rx.badge(AuthState.t["gov_vote_passed"], color_scheme="green", variant="soft", size="1")),
+        ("failed", rx.badge(AuthState.t["gov_vote_failed"], color_scheme="red",   variant="soft", size="1")),
+        rx.fragment(),
+    )
+
+    # 通常のコンテンツ
+    normal_content = rx.vstack(
+        rx.text(role_label, size="2", weight="bold", color="var(--gray-12)"),
+        rx.box(
+            rx.box(
+                width="140px",
+                height="140px",
+                border_radius="50%",
+                background=donut_bg,
+                transition="background 0.3s ease",
+            ),
+            rx.center(
+                rx.vstack(
+                    rx.text("Yes", size="1", color="var(--gray-10)"),
+                    rx.hstack(
+                        rx.text(yes_pct, size="6", weight="bold", color="var(--green-11)"),
+                        rx.text("%", size="2", color="var(--gray-11)"),
+                        spacing="0", align="baseline",
+                    ),
+                    spacing="0", align="center",
+                ),
+                position="absolute",
+                top="50%", left="50%",
+                transform="translate(-50%, -50%)",
+                width="96px", height="96px",
+                border_radius="50%",
+                background="var(--gray-2)",
+            ),
+            position="relative",
+            width="140px",
+            height="140px",
+        ),
+        rx.cond(
+            threshold != "",
+            rx.hstack(
+                rx.text(AuthState.t["gov_vote_threshold_label"], size="1", color="var(--gray-10)"),
+                rx.text(threshold, size="2", weight="medium", color="var(--gray-12)"),
+                rx.text("%", size="1", color="var(--gray-10)"),
+                spacing="1", align="baseline",
+            ),
+            rx.text(AuthState.t["gov_vote_no_threshold"], size="1", color="var(--gray-9)"),
+        ),
+        # conditional（ParameterChange の SPO など）の注釈
+        rx.cond(
+            applicable == "conditional",
+            rx.badge(
+                AuthState.t["gov_vote_conditional"],
+                color_scheme="amber",
+                variant="soft",
+                size="1",
+            ),
+            status_badge,
+        ),
+        rx.hstack(
+            rx.text("No: ", size="1", color="var(--gray-10)"),
+            rx.text(no_pct + "%", size="1", color="var(--red-11)", weight="medium"),
+            rx.text(" / ", size="1", color="var(--gray-9)"),
+            rx.text("Abstain: ", size="1", color="var(--gray-10)"),
+            rx.text(abstain_pct + "%", size="1", color="var(--gray-11)"),
+            spacing="0", align="baseline", wrap="wrap",
+        ),
+        spacing="2",
+        align="center",
+    )
+
+    # 対象外（グレーアウト）
+    disabled_content = rx.vstack(
+        rx.text(role_label, size="2", weight="bold", color="var(--gray-9)"),
+        rx.box(
+            rx.box(
+                width="140px",
+                height="140px",
+                border_radius="50%",
+                background="var(--gray-4)",
+            ),
+            rx.center(
+                rx.vstack(
+                    rx.icon("ban", size=28, color="var(--gray-8)"),
+                    rx.text(AuthState.t["gov_vote_not_applicable"], size="1", color="var(--gray-9)"),
+                    spacing="1", align="center",
+                ),
+                position="absolute",
+                top="50%", left="50%",
+                transform="translate(-50%, -50%)",
+                width="96px", height="96px",
+                border_radius="50%",
+                background="var(--gray-2)",
+            ),
+            position="relative",
+            width="140px",
+            height="140px",
+        ),
+        spacing="2",
+        align="center",
+        style={"opacity": "0.6"},
+    )
+
+    return rx.box(
+        rx.cond(applicable == "no", disabled_content, normal_content),
+        padding="12px",
+        border=f"1px solid {rx.color('gray', 4)}",
+        border_radius="12px",
+        background="var(--gray-2)",
+        min_width="150px",
+        flex="1",
+    )
+
+
+def _cc_member_row(m) -> rx.Component:
+    """CC メンバー 1 名の投票行。スクロール不要になるようコンパクト表示。"""
+    identity = rx.cond(
+        m["display_name"] != "",
+        rx.text(m["display_name"], size="1", weight="medium", color="var(--gray-12)"),
+        rx.text(
+            m["show_id_short"],
+            style={
+                "fontFamily": "var(--code-font-family, ui-monospace, monospace)",
+                "fontSize": "10px",
+                "color": "var(--gray-11)",
+            },
+        ),
+    )
+    vote_ui = rx.cond(
+        m["has_voted"] != "",
+        _vote_badge(m["vote"]),
+        rx.badge(AuthState.t["gov_vote_not_voted"], color_scheme="gray", variant="outline", size="1"),
+    )
+    return rx.hstack(
+        rx.box(identity, flex="1", min_width="0"),
+        vote_ui,
+        spacing="2",
+        align="center",
+        width="100%",
+    )
+
+
+def _cc_vote_card(action: Dict[str, Any]) -> rx.Component:
+    """CC はメンバー数が少ないので円グラフではなく個別投票リストで表示。"""
+    cc_applicable = action["cc_applicable"].to(str)
+    cc_threshold = action["cc_threshold_pct"].to(str)
+    cc_status = action["cc_status"].to(str)
+    cc_yes_pct = action["cc_yes_pct"].to(str)
+
+    status_badge = rx.match(
+        cc_status,
+        ("passed", rx.badge(AuthState.t["gov_vote_passed"], color_scheme="green", variant="soft", size="1")),
+        ("failed", rx.badge(AuthState.t["gov_vote_failed"], color_scheme="red",   variant="soft", size="1")),
+        rx.fragment(),
+    )
+
+    normal_content = rx.vstack(
+        rx.text(AuthState.t["gov_voter_cc"], size="2", weight="bold", color="var(--gray-12)"),
+        rx.hstack(
+            rx.text("Yes ", size="1", color="var(--gray-10)"),
+            rx.text(cc_yes_pct, size="3", weight="bold", color="var(--green-11)"),
+            rx.text("%", size="1", color="var(--gray-11)"),
+            rx.cond(
+                cc_threshold != "",
+                rx.hstack(
+                    rx.text("/", size="1", color="var(--gray-9)"),
+                    rx.text(cc_threshold, size="2", weight="medium", color="var(--gray-12)"),
+                    rx.text("%", size="1", color="var(--gray-10)"),
+                    spacing="1", align="baseline",
+                ),
+                rx.fragment(),
+            ),
+            spacing="1", align="baseline", wrap="wrap",
+        ),
+        status_badge,
+        # メンバー別投票リスト（全件表示・コンパクト）
+        rx.box(
+            rx.cond(
+                GovernanceState.modal_cc_votes,
+                rx.vstack(
+                    rx.foreach(
+                        GovernanceState.modal_cc_votes.to(list[dict[str, str]]),
+                        _cc_member_row,
+                    ),
+                    spacing="1",
+                    width="100%",
+                ),
+                rx.text(AuthState.t["gov_vote_no_members"], size="1", color="var(--gray-9)"),
+            ),
+            width="100%",
+            padding_top="4px",
+        ),
+        spacing="2",
+        align="start",
+        width="100%",
+    )
+
+    disabled_content = rx.vstack(
+        rx.text(AuthState.t["gov_voter_cc"], size="2", weight="bold", color="var(--gray-9)"),
+        rx.center(
+            rx.vstack(
+                rx.icon("ban", size=28, color="var(--gray-8)"),
+                rx.text(AuthState.t["gov_vote_not_applicable"], size="1", color="var(--gray-9)"),
+                spacing="1", align="center",
+            ),
+            width="100%",
+            min_height="140px",
+        ),
+        spacing="2",
+        align="center",
+        width="100%",
+        style={"opacity": "0.6"},
+    )
+
+    return rx.box(
+        rx.cond(cc_applicable == "no", disabled_content, normal_content),
+        padding="12px",
+        border=f"1px solid {rx.color('gray', 4)}",
+        border_radius="12px",
+        background="var(--gray-2)",
+        min_width="220px",
+        flex="1.3",
+    )
+
+
+def _voting_summary_section(action: Dict[str, Any]) -> rx.Component:
+    """DRep / CC / SPO の3ドーナツを横並びで表示。見出しの右隣に投票状況への遷移ボタン。"""
+    return rx.cond(
+        action["has_voting_summary"].to(str) != "",
+        rx.vstack(
+            rx.hstack(
+                rx.box(_section_heading(AuthState.t["gov_section_voting_summary"]), flex="1"),
+                _votes_anchor_button(),
+                spacing="2",
+                align="center",
+                width="100%",
+                wrap="wrap",
+            ),
+            rx.hstack(
+                _donut_chart(
+                    AuthState.t["gov_voter_drep"],
+                    action["drep_yes_pct"].to(str),
+                    action["drep_no_pct"].to(str),
+                    action["drep_abstain_pct"].to(str),
+                    action["drep_threshold_pct"].to(str),
+                    action["drep_status"].to(str),
+                    action["drep_donut_bg"].to(str),
+                    action["drep_applicable"].to(str),
+                ),
+                _cc_vote_card(action),
+                _donut_chart(
+                    AuthState.t["gov_voter_spo"],
+                    action["pool_yes_pct"].to(str),
+                    action["pool_no_pct"].to(str),
+                    action["pool_abstain_pct"].to(str),
+                    action["pool_threshold_pct"].to(str),
+                    action["pool_status"].to(str),
+                    action["pool_donut_bg"].to(str),
+                    action["pool_applicable"].to(str),
+                ),
+                spacing="3",
+                wrap="wrap",
+                width="100%",
+                justify="center",
+            ),
+            spacing="2", align="start", width="100%",
+        ),
+        rx.fragment(),
+    )
+
+
+def _vote_badge(vote_var) -> rx.Component:
+    """Yes / No / Abstain のバッジ（アイコン + ソリッドカラーで強調）。"""
+    return rx.match(
+        vote_var,
+        ("Yes", rx.badge(
+            rx.hstack(
+                rx.icon("check", size=14, stroke_width=3),
+                rx.text("Yes", weight="bold"),
+                spacing="1", align="center",
+            ),
+            color_scheme="green", variant="solid", size="2", radius="full",
+        )),
+        ("No", rx.badge(
+            rx.hstack(
+                rx.icon("x", size=14, stroke_width=3),
+                rx.text("No", weight="bold"),
+                spacing="1", align="center",
+            ),
+            color_scheme="red", variant="solid", size="2", radius="full",
+        )),
+        ("Abstain", rx.badge(
+            rx.hstack(
+                rx.icon("minus", size=14, stroke_width=3),
+                rx.text("Abstain", weight="bold"),
+                spacing="1", align="center",
+            ),
+            color_scheme="gray", variant="soft", size="2", radius="full",
+        )),
+        rx.badge(vote_var, variant="soft"),
+    )
+
+
+def _role_badge(role_var) -> rx.Component:
+    """DRep / ConstitutionalCommittee / SPO のバッジ。"""
+    return rx.match(
+        role_var,
+        ("DRep",                     rx.badge("DRep", color_scheme="blue",   variant="soft")),
+        ("ConstitutionalCommittee",  rx.badge("CC",   color_scheme="violet", variant="soft")),
+        ("SPO",                      rx.badge("SPO",  color_scheme="amber",  variant="soft")),
+        rx.badge(role_var, variant="soft"),
+    )
+
+
+def _vote_row(v) -> rx.Component:
+    """投票 1 行。ロール / 投票者（DRep名+小さい省略ID）/ 投票 / 日時 / 理由（有れば）。"""
+    rationale_text = rx.cond(
+        v["rationale_ja"] != "",
+        v["rationale_ja"],
+        v["rationale"],
+    )
+    has_rationale = rx.cond(
+        v["rationale_ja"] != "",
+        True,
+        v["rationale"] != "",
+    )
+    # DRep 名があれば名前を大きく、省略 ID を下に小さく表示。
+    # 名前が空（CC/SPO や名前未設定 DRep）の場合は省略 ID のみ。
+    voter_cell = rx.cond(
+        v["voter_name"] != "",
+        rx.vstack(
+            rx.text(
+                v["voter_name"],
+                size="2", weight="medium", color="var(--gray-12)",
+                style={"wordBreak": "break-word"},
+            ),
+            rx.text(
+                v["voter_id_short"],
+                size="1",
+                color="var(--gray-9)",
+                style={"fontFamily": "var(--code-font-family, ui-monospace, monospace)", "fontSize": "10px"},
+            ),
+            spacing="0", align="start",
+        ),
+        rx.text(
+            v["voter_id_short"],
+            size="1",
+            color="var(--gray-11)",
+            style={"fontFamily": "var(--code-font-family, ui-monospace, monospace)"},
+        ),
+    )
+    return rx.table.row(
+        rx.table.cell(_role_badge(v["voter_role"])),
+        rx.table.cell(voter_cell),
+        rx.table.cell(_vote_badge(v["vote"])),
+        rx.table.cell(
+            rx.text(v["block_time"], size="1", color="var(--gray-10)"),
+        ),
+        rx.table.cell(
+            rx.cond(
+                has_rationale,
+                rx.dialog.root(
+                    rx.dialog.trigger(
+                        rx.button(
+                            AuthState.t["gov_vote_rationale_view"],
+                            variant="soft",
+                            color_scheme="blue",
+                            size="1",
+                            cursor="pointer",
+                        ),
+                    ),
+                    rx.dialog.content(
+                        rx.dialog.title(AuthState.t["gov_vote_rationale_title"]),
+                        rx.vstack(
+                            # 投票者情報
+                            rx.hstack(
+                                _role_badge(v["voter_role"]),
+                                rx.cond(
+                                    v["voter_name"] != "",
+                                    rx.text(v["voter_name"], size="2", weight="medium"),
+                                    rx.fragment(),
+                                ),
+                                _vote_badge(v["vote"]),
+                                spacing="2", align="center", wrap="wrap",
+                            ),
+                            rx.text(
+                                v["voter_id_short"],
+                                size="1", color="var(--gray-10)",
+                                style={"fontFamily": "var(--code-font-family, ui-monospace, monospace)"},
+                            ),
+                            rx.divider(),
+                            # 日本語訳（あれば）
+                            rx.cond(
+                                v["rationale_ja"] != "",
+                                rx.vstack(
+                                    rx.text(AuthState.t["gov_vote_rationale_ja_label"], size="2", weight="bold", color="var(--gray-12)"),
+                                    rx.text(
+                                        v["rationale_ja"],
+                                        size="2", color="var(--gray-12)",
+                                        style={"whiteSpace": "pre-wrap", "lineHeight": "1.6"},
+                                    ),
+                                    spacing="1", align="start", width="100%",
+                                ),
+                                rx.fragment(),
+                            ),
+                            # 原文
+                            rx.cond(
+                                v["rationale"] != "",
+                                rx.vstack(
+                                    rx.text(AuthState.t["gov_vote_rationale_en_label"], size="2", weight="bold", color="var(--gray-12)"),
+                                    rx.text(
+                                        v["rationale"],
+                                        size="2", color="var(--gray-11)",
+                                        style={"whiteSpace": "pre-wrap", "lineHeight": "1.6"},
+                                    ),
+                                    spacing="1", align="start", width="100%",
+                                ),
+                                rx.fragment(),
+                            ),
+                            rx.dialog.close(
+                                rx.button(
+                                    AuthState.t["gov_vote_rationale_close"],
+                                    variant="soft",
+                                    size="2",
+                                    cursor="pointer",
+                                ),
+                            ),
+                            spacing="3", align="start", width="100%",
+                        ),
+                        max_width=["95vw", "95vw", "680px"],
+                    ),
+                ),
+                rx.text("—", size="1", color="var(--gray-8)"),
+            ),
+        ),
+    )
+
+
+def _vote_section(action: Dict[str, Any]) -> rx.Component:
+    """投票一覧セクション。1 テーブルにロール混在で表示。
+    id='votes' をアンカー対象にして、上部のボタンからジャンプできるようにする。
+    テーブルは max-height でスクロール可能。
+    """
+    return rx.cond(
+        GovernanceState.modal_votes,
+        rx.vstack(
+            _section_heading(AuthState.t["gov_section_votes"]),
+            rx.box(
+                rx.table.root(
+                    rx.table.header(
+                        rx.table.row(
+                            rx.table.column_header_cell(AuthState.t["gov_vote_col_role"]),
+                            rx.table.column_header_cell(AuthState.t["gov_vote_col_voter"]),
+                            rx.table.column_header_cell(AuthState.t["gov_vote_col_vote"]),
+                            rx.table.column_header_cell(AuthState.t["gov_vote_col_time"]),
+                            rx.table.column_header_cell(AuthState.t["gov_vote_col_rationale"]),
+                        )
+                    ),
+                    rx.table.body(
+                        rx.foreach(
+                            GovernanceState.modal_votes.to(list[dict[str, str]]),
+                            _vote_row,
+                        ),
+                    ),
+                    variant="surface",
+                    size="1",
+                ),
+                id="votes",
+                width="100%",
+                max_height="820px",
+                overflow_y="auto",
+                overflow_x="auto",
+                border=f"1px solid {rx.color('gray', 5)}",
+                border_radius="8px",
+            ),
+            spacing="2", align="start", width="100%",
+        ),
+        rx.fragment(),
+    )
+
+
+def _votes_anchor_button() -> rx.Component:
+    """投票セクションへのアンカーボタン（本文上部に配置）。モーダル/ページ両対応で JS で scrollIntoView。"""
+    return rx.cond(
+        GovernanceState.modal_votes,
+        rx.button(
+            rx.icon("vote", size=14),
+            rx.text(AuthState.t["gov_anchor_votes"], size="2", weight="medium"),
+            on_click=rx.call_script(
+                "document.getElementById('votes')?.scrollIntoView({behavior:'smooth', block:'start'});"
+            ),
+            variant="soft",
+            color_scheme="blue",
+            size="2",
+            cursor="pointer",
+        ),
+        rx.fragment(),
+    )
+
+
+def governance_detail_body(action: Dict[str, Any]) -> rx.Component:
+    """本文・参考リンク（モーダルのスクロール部／ページ共通）。言語はグローバル AuthState.language に連動。"""
+    abstract_text   = _localized_text("abstract_ja",  "abstract",  action)
+    motivation_text = _localized_text("motivation_ja", "motivation", action)
+    rationale_text  = _localized_text("rationale_ja",  "rationale",  action)
 
     body_sections = rx.vstack(
+        _withdrawal_section(action),
+        # 投票集計（ドーナツ + CC メンバーリスト）は概要より先に表示。右隣に投票状況へジャンプボタン
+        _voting_summary_section(action),
         rx.cond(
-            action["abstract_display"],
+            _has_any_text("abstract_ja", "abstract", action),
             _markdown_section(AuthState.t["gov_section_abstract"], abstract_text),
             rx.fragment(),
         ),
         rx.cond(
-            action["motivation_display"],
+            _has_any_text("motivation_ja", "motivation", action),
             _markdown_section(AuthState.t["gov_section_motivation"], motivation_text),
             rx.fragment(),
         ),
         rx.cond(
-            action["rationale_display"],
+            _has_any_text("rationale_ja", "rationale", action),
             _markdown_section(AuthState.t["gov_section_rationale"], rationale_text),
             rx.fragment(),
         ),
+        # 投票状況は本文の下部に配置
+        _vote_section(action),
         spacing="4",
         width="100%",
     )
@@ -357,7 +1048,6 @@ def governance_detail_body(action: Dict[str, Any], sticky_top: str = "5.5em") ->
     )
 
     return rx.vstack(
-        lang_toggle,
         body_sections,
         refs_section,
         spacing="4",
@@ -370,7 +1060,7 @@ def governance_detail_content(action: Dict[str, Any]) -> rx.Component:
     """ページ用: ヘッダー＋ボディを結合した完全レイアウト。"""
     return rx.vstack(
         governance_detail_header(action),
-        governance_detail_body(action, sticky_top="5.5em"),
+        governance_detail_body(action),
         spacing="4",
         width="100%",
         align_items="stretch",
@@ -429,7 +1119,7 @@ def governance_modal() -> rx.Component:
                         rx.flex(rx.spinner(size="3"), justify="center", align="center", padding_y="40px"),
                         rx.cond(
                             GovernanceState.modal_action,
-                            governance_detail_body(GovernanceState.modal_action, sticky_top="0px"),
+                            governance_detail_body(GovernanceState.modal_action),
                             rx.callout(AuthState.t["gov_modal_load_error"], icon="info", color_scheme="gray"),
                         ),
                     ),
@@ -497,13 +1187,13 @@ def governance_modal() -> rx.Component:
                     rx.box(
                         rx.cond(
                             AuthState.ga_favorite_ids.contains(
-                                GovernanceState.modal_action["proposal_tx_hash"].to(str)
+                                GovernanceState.modal_action["proposal_id"].to(str)
                             ),
                             rx.icon("heart", size=26, color="var(--red-9)", style={"fill": "var(--red-9)"}),
                             rx.icon("heart", size=26, color="var(--gray-8)"),
                         ),
                         on_click=AuthState.toggle_ga_favorite(
-                            GovernanceState.modal_action["proposal_tx_hash"].to(str)
+                            GovernanceState.modal_action["proposal_id"].to(str)
                         ),
                         cursor="pointer",
                         padding="6px",
@@ -527,6 +1217,7 @@ def governance_modal() -> rx.Component:
             height=["100vh", "100vh", "auto"],
             padding="24px",
             class_name="governance-modal",
+            background_color="var(--gray-3)",
             style={"display": "flex", "flexDirection": "column"},
         ),
         open=GovernanceState.modal_open,
@@ -579,14 +1270,14 @@ _CARD_CLASS_DARK = (
 
 
 def _ga_fav_btn_list(action: Dict[str, Any]) -> rx.Component:
-    tx_hash = action["proposal_tx_hash"].to(str)
+    proposal_id = action["proposal_id"].to(str)
     return rx.box(
         rx.cond(
-            AuthState.ga_favorite_ids.contains(tx_hash),
+            AuthState.ga_favorite_ids.contains(proposal_id),
             rx.icon("heart", size=22, color="var(--red-9)", style={"fill": "var(--red-9)"}),
             rx.icon("heart", size=22, color="var(--gray-8)"),
         ),
-        on_click=AuthState.toggle_ga_favorite(tx_hash),
+        on_click=AuthState.toggle_ga_favorite(proposal_id),
         cursor="pointer",
         padding="4px",
         flex_shrink="0",
@@ -615,14 +1306,12 @@ def ga_list_card(action: Dict[str, Any]) -> rx.Component:
                 color="var(--gray-12)",
                 class_name="ga-title proposal-title",
             ),
+            _withdrawal_inline(action),
+            _vote_summary_inline(action),
             rx.cond(
-                action["abstract_display"],
+                _has_any_text("abstract_ja", "abstract", action),
                 rx.text(
-                    rx.cond(
-                        AuthState.language == "en",
-                        rx.cond(action["abstract"], action["abstract"], action["abstract_ja"]),
-                        rx.cond(action["abstract_ja"], action["abstract_ja"], action["abstract"]),
-                    ),
+                    _localized_text("abstract_ja", "abstract", action),
                     size="3",
                     line_height="1.6",
                     text_wrap="wrap",
@@ -636,7 +1325,7 @@ def ga_list_card(action: Dict[str, Any]) -> rx.Component:
             spacing="3",
             flex="1",
             min_width="0",
-            on_click=[GovernanceState.open_modal(action), GovernanceState.reset_modal_lang_for_language(AuthState.language)],
+            on_click=GovernanceState.open_modal(action),
             cursor="pointer",
         ),
         rx.box(
@@ -688,14 +1377,12 @@ def ga_grid_card(action: Dict[str, Any]) -> rx.Component:
             color="var(--gray-12)",
             class_name="ga-title proposal-title",
         ),
+        _withdrawal_inline(action),
+        _vote_summary_inline(action),
         rx.cond(
-            action["abstract_display"],
+            _has_any_text("abstract_ja", "abstract", action),
             rx.text(
-                rx.cond(
-                    AuthState.language == "en",
-                    rx.cond(action["abstract"], action["abstract"], action["abstract_ja"]),
-                    rx.cond(action["abstract_ja"], action["abstract_ja"], action["abstract"]),
-                ),
+                _localized_text("abstract_ja", "abstract", action),
                 size="2",
                 color="var(--gray-12)",
                 line_height="1.6",
@@ -716,7 +1403,7 @@ def ga_grid_card(action: Dict[str, Any]) -> rx.Component:
             width="100%",
             height="100%",
             justify="between",
-            on_click=[GovernanceState.open_modal(action), GovernanceState.reset_modal_lang_for_language(AuthState.language)],
+            on_click=GovernanceState.open_modal(action),
             cursor="pointer",
         ),
         width="100%",

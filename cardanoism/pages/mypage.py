@@ -21,6 +21,7 @@ ACCENT_DARK = "#c7a300"
 
 GENERAL_EVENTS = [
     "epoch_start",
+    "treasury_withdrawal_enacted",
 ]
 
 

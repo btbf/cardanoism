@@ -1125,6 +1125,16 @@ _GA_STATUS_SQL = (
     " END"
 )
 
+_GA_STATUS_SQL_GA = (
+    "CASE"
+    " WHEN ga.enacted_epoch IS NOT NULL THEN 'enacted'"
+    " WHEN ga.ratified_epoch IS NOT NULL THEN 'ratified'"
+    " WHEN ga.dropped_epoch IS NOT NULL THEN 'dropped'"
+    " WHEN ga.expired_epoch IS NOT NULL THEN 'expired'"
+    " ELSE 'active'"
+    " END"
+)
+
 _GA_TYPE_LABELS: Dict[str, str] = {
     "ParameterChange":    "プロトコル変更",
     "TreasuryWithdrawals": "国庫引き出し",
@@ -1172,8 +1182,97 @@ def _epoch_to_display(epoch, ref_epoch, ref_dt: datetime | None) -> str:
         return str(epoch)
 
 
-def _format_ga_row(row: Dict[str, Any]) -> Dict[str, Any]:
-    """governance_actions 行にUI表示用フィールドを追加する。"""
+def _attach_voting_summary(row: Dict[str, Any], protocol_params: dict | None) -> None:
+    """行に voting_summary 表示用フィールドを追加する。
+    row に drep_yes_pct / pool_yes_pct / committee_yes_pct 等が含まれている想定。
+    見つからなければデフォルト（空値）を入れる。
+    """
+    from cardanoism.backend.params_db import thresholds_for_type, voters_for_type
+
+    def _pct(v, default=0.0):
+        try:
+            return float(v) if v is not None else default
+        except (TypeError, ValueError):
+            return default
+
+    ptype = row.get("proposal_type") or ""
+    thresholds = thresholds_for_type(ptype, protocol_params or {})
+    voters = voters_for_type(ptype)
+
+    drep_yes = _pct(row.get("drep_yes_pct"))
+    drep_no = _pct(row.get("drep_no_pct"))
+    pool_yes = _pct(row.get("pool_yes_pct"))
+    pool_no = _pct(row.get("pool_no_pct"))
+    cc_yes = _pct(row.get("committee_yes_pct"))
+    cc_no = _pct(row.get("committee_no_pct"))
+
+    has_any = (row.get("drep_yes_pct") is not None
+               or row.get("pool_yes_pct") is not None
+               or row.get("committee_yes_pct") is not None)
+
+    def _th_pct(role):
+        t = thresholds.get(role)
+        return round(float(t) * 100.0, 1) if t is not None else None
+
+    drep_th = _th_pct("drep")
+    pool_th = _th_pct("pool")
+    cc_th = _th_pct("committee")
+
+    def _status(yes, th):
+        if th is None:
+            return "none"
+        return "passed" if yes >= th else "failed"
+
+    def _applicable(role):
+        v = voters.get(role, True)
+        if v is True:
+            return "yes"
+        if v is False:
+            return "no"
+        return str(v)
+
+    def _donut(yes, no):
+        y_end = yes
+        n_end = yes + no
+        return (
+            f"conic-gradient("
+            f"var(--green-9) 0% {y_end:.2f}%, "
+            f"var(--red-9) {y_end:.2f}% {n_end:.2f}%, "
+            f"var(--gray-5) {n_end:.2f}% 100%)"
+        )
+
+    row.update({
+        "has_voting_summary": "1" if has_any else "",
+        "drep_yes_pct":       f"{drep_yes:.2f}",
+        "drep_no_pct":        f"{drep_no:.2f}",
+        "drep_abstain_pct":   f"{max(0.0, 100.0 - drep_yes - drep_no):.2f}",
+        "drep_threshold_pct": f"{drep_th:.1f}" if drep_th is not None else "",
+        "drep_status":        _status(drep_yes, drep_th),
+        "drep_donut_bg":      _donut(drep_yes, drep_no),
+        "drep_applicable":    _applicable("drep"),
+        "pool_yes_pct":       f"{pool_yes:.2f}",
+        "pool_no_pct":        f"{pool_no:.2f}",
+        "pool_abstain_pct":   f"{max(0.0, 100.0 - pool_yes - pool_no):.2f}",
+        "pool_threshold_pct": f"{pool_th:.1f}" if pool_th is not None else "",
+        "pool_status":        _status(pool_yes, pool_th),
+        "pool_donut_bg":      _donut(pool_yes, pool_no),
+        "pool_applicable":    _applicable("pool"),
+        "cc_yes_pct":         f"{cc_yes:.2f}",
+        "cc_no_pct":          f"{cc_no:.2f}",
+        "cc_abstain_pct":     f"{max(0.0, 100.0 - cc_yes - cc_no):.2f}",
+        "cc_threshold_pct":   f"{cc_th:.1f}" if cc_th is not None else "",
+        "cc_status":          _status(cc_yes, cc_th),
+        "cc_donut_bg":        _donut(cc_yes, cc_no),
+        "cc_applicable":      _applicable("committee"),
+    })
+
+
+def _format_ga_row(row: Dict[str, Any], fiat_rate: Dict[str, float] | None = None) -> Dict[str, Any]:
+    """governance_actions 行にUI表示用フィールドを追加する。
+    fiat_rate に {"ada_jpy": float, "ada_usd": float} を渡すと withdrawal の JPY/USD 文字列も生成する。
+    """
+    from cardanoism.backend.price import format_ada, format_jpy_short, format_usd_short
+
     deposit = row.get("deposit")
     try:
         ada = int(deposit) / 1_000_000 if deposit is not None else None
@@ -1188,10 +1287,61 @@ def _format_ga_row(row: Dict[str, Any]) -> Dict[str, Any]:
     status = row.get("ga_status") or "active"
     row["ga_status"] = status
 
-    row["title_display"]      = row.get("title_ja")      or row.get("title")      or ""
-    row["abstract_display"]   = row.get("abstract_ja")   or row.get("abstract")   or ""
-    row["motivation_display"] = row.get("motivation_ja") or row.get("motivation") or ""
-    row["rationale_display"]  = row.get("rationale_ja")  or row.get("rationale")  or ""
+    # TreasuryWithdrawals の引き出し情報
+    row["is_treasury_withdrawal"] = (ptype == "TreasuryWithdrawals")
+    wtotal = row.get("withdrawal_total_lovelace")
+    row["withdrawal_total_ada_display"] = ""
+    row["withdrawal_total_jpy_display"] = ""
+    row["withdrawal_total_usd_display"] = ""
+    row["withdrawal_list"] = []
+    if wtotal is not None:
+        try:
+            total_lovelace = int(wtotal)
+            row["withdrawal_total_ada_display"] = format_ada(total_lovelace, integer=True)
+            if fiat_rate:
+                total_ada = total_lovelace / 1_000_000
+                ada_jpy = fiat_rate.get("ada_jpy") or 0.0
+                ada_usd = fiat_rate.get("ada_usd") or 0.0
+                if ada_jpy:
+                    row["withdrawal_total_jpy_display"] = format_jpy_short(total_ada * ada_jpy)
+                if ada_usd:
+                    row["withdrawal_total_usd_display"] = format_usd_short(total_ada * ada_usd)
+        except (TypeError, ValueError):
+            pass
+
+    wjson_raw = row.get("withdrawal_json")
+    if isinstance(wjson_raw, str) and wjson_raw:
+        try:
+            items = json.loads(wjson_raw) or []
+        except Exception:
+            items = []
+        wlist = []
+        for w in items if isinstance(items, list) else []:
+            try:
+                amount_lovelace = int(w.get("amount") or 0)
+            except (TypeError, ValueError):
+                amount_lovelace = 0
+            addr = str(w.get("stake_address") or "")
+            entry = {
+                "stake_address": addr,
+                "stake_address_short": (addr[:10] + "..." + addr[-6:]) if len(addr) > 20 else addr,
+                "amount_ada_display": format_ada(amount_lovelace, integer=True),
+                "amount_jpy_display": "",
+                "amount_usd_display": "",
+            }
+            if fiat_rate:
+                amount_ada = amount_lovelace / 1_000_000
+                ada_jpy = fiat_rate.get("ada_jpy") or 0.0
+                ada_usd = fiat_rate.get("ada_usd") or 0.0
+                if ada_jpy:
+                    entry["amount_jpy_display"] = format_jpy_short(amount_ada * ada_jpy)
+                if ada_usd:
+                    entry["amount_usd_display"] = format_usd_short(amount_ada * ada_usd)
+            wlist.append(entry)
+        row["withdrawal_list"] = wlist
+
+    # title / abstract / motivation / rationale は UI で AuthState.language に基づき ja/en 分岐する。
+    # DB 側で事前に *_display を決め打ちすると言語切替が効かなくなるので、原文カラムをそのまま渡す。
 
     refs_raw = row.get("references_json")
     if "references_list" not in row:
@@ -1247,8 +1397,9 @@ class GovernanceState(rx.State):
     modal_open: bool = False
     modal_action: Dict[str, Any] = {}
     modal_action_refs: List[Dict[str, Any]] = []
+    modal_votes: List[Dict[str, Any]] = []
+    modal_cc_votes: List[Dict[str, Any]] = []
     modal_loading: bool = False
-    modal_lang: str = "ja"
     last_list_path: str = ""
 
     # ── WHERE 句構築 ──────────────────────────────────────────────────────────
@@ -1291,21 +1442,37 @@ class GovernanceState(rx.State):
     def data_fetch(self):
         where_sql, params = self._build_where()
         offset = (self.current_page - 1) * self.items_per_page
+        # governance_actions に voting_summary を LEFT JOIN（集計カラムを一緒に取得）
+        # WHERE の各テーブル接頭辞を補うため、条件は governance_actions 基準で記述する想定。
         select_sql = (
-            "SELECT id, proposal_id, proposal_tx_hash, proposal_index, proposal_type,"
-            " proposed_epoch, ratified_epoch, enacted_epoch, dropped_epoch, expired_epoch,"
-            f" expiration, block_time, deposit, meta_url, title, `abstract`, title_ja, abstract_ja,"
-            f" {_GA_STATUS_SQL} AS ga_status"
-            " FROM governance_actions"
+            "SELECT ga.id, ga.proposal_id, ga.proposal_tx_hash, ga.proposal_index, ga.proposal_type,"
+            " ga.proposed_epoch, ga.ratified_epoch, ga.enacted_epoch, ga.dropped_epoch, ga.expired_epoch,"
+            " ga.expiration, ga.block_time, ga.deposit, ga.withdrawal_total_lovelace, ga.withdrawal_json,"
+            " ga.meta_url, ga.title, ga.`abstract`, ga.title_ja, ga.abstract_ja,"
+            f" {_GA_STATUS_SQL_GA} AS ga_status,"
+            " vs.drep_yes_pct, vs.drep_no_pct, vs.pool_yes_pct, vs.pool_no_pct,"
+            " vs.committee_yes_pct, vs.committee_no_pct"
+            " FROM governance_actions ga"
+            " LEFT JOIN proposal_voting_summary vs ON ga.proposal_id = vs.proposal_id"
             f" WHERE {where_sql}"
-            " ORDER BY proposed_epoch DESC, id DESC"
+            " ORDER BY ga.proposed_epoch DESC, ga.id DESC"
             f" LIMIT {self.items_per_page} OFFSET {offset}"
         )
-        count_sql = f"SELECT COUNT(*) AS cnt FROM governance_actions WHERE {where_sql}"
+        count_sql = f"SELECT COUNT(*) AS cnt FROM governance_actions ga WHERE {where_sql}"
         try:
+            from cardanoism.backend.fiat_db import get_fiat_rate
+            from cardanoism.backend.params_db import get_protocol_params
+            fiat_rate = get_fiat_rate()
+            protocol_params = get_protocol_params()
             with get_db() as (cursor, _):
                 cursor.execute(select_sql, params)
-                self.actions = [_format_ga_row(dict(r)) for r in cursor.fetchall()]
+                rows = [dict(r) for r in cursor.fetchall()]
+                out: list[dict] = []
+                for r in rows:
+                    formatted = _format_ga_row(r, fiat_rate)
+                    _attach_voting_summary(formatted, protocol_params)
+                    out.append(formatted)
+                self.actions = out
                 cursor.execute(count_sql, params)
                 self.total_items = int((cursor.fetchone() or {}).get("cnt", 0))
         except Exception as e:
@@ -1318,22 +1485,97 @@ class GovernanceState(rx.State):
         self.middle_page = list(range(self.start_page, self.end_page + 1))
         self.load = True
 
-    def _load_full_action(self, proposal_tx_hash: str) -> None:
-        """proposal_tx_hash を指定して governance_actions の全カラムを modal_action に読み込む。"""
+    def _load_full_action(self, proposal_id: str) -> None:
+        """proposal_id を指定して governance_actions の全カラムを modal_action に読み込む。
+        proposal_tx_hash は 1 Tx に複数 GA を含められるためユニークではない。proposal_id を使う。
+        """
         try:
+            from cardanoism.backend.fiat_db import get_fiat_rate
+            from cardanoism.backend.vote_db import get_votes_by_proposal
+            from cardanoism.backend.voting_summary_db import get_voting_summary
+            from cardanoism.backend.params_db import get_protocol_params
+            fiat_rate = get_fiat_rate()
             with get_db() as (cursor, _):
                 cursor.execute(
                     f"SELECT *, {_GA_STATUS_SQL} AS ga_status"
-                    " FROM governance_actions WHERE proposal_tx_hash = ?",
-                    (proposal_tx_hash,),
+                    " FROM governance_actions WHERE proposal_id = ?",
+                    (proposal_id,),
                 )
                 row = cursor.fetchone()
                 if row:
-                    formatted = _format_ga_row(dict(row))
+                    formatted = _format_ga_row(dict(row), fiat_rate)
                     self.modal_action_refs = formatted.get("references_list", [])
+
+                    # 投票集計と閾値を共通ヘルパーでマージ
+                    summary = get_voting_summary(proposal_id) or {}
+                    protocol_params = get_protocol_params()
+                    # 集計カラムを row に反映してから _attach_voting_summary に渡す
+                    for k in ("drep_yes_pct", "drep_no_pct",
+                              "pool_yes_pct", "pool_no_pct",
+                              "committee_yes_pct", "committee_no_pct"):
+                        formatted[k] = summary.get(k)
+                    _attach_voting_summary(formatted, protocol_params)
                     self.modal_action = formatted
+
+            # 投票一覧を整形して modal_votes にセット
+            votes = get_votes_by_proposal(proposal_id)
+            votes_out: list[dict] = []
+            for v in votes:
+                vid = str(v.get("voter_id") or "")
+                if len(vid) > 24:
+                    vid_short = f"{vid[:12]}...{vid[-8:]}"
+                else:
+                    vid_short = vid
+                bt = v.get("block_time")
+                bt_display = bt.strftime("%Y-%m-%d %H:%M") if bt else ""
+                role = str(v.get("voter_role") or "")
+                drep_name = str(v.get("drep_name") or "").strip()
+                voter_name = drep_name if (role == "DRep" and drep_name) else ""
+                votes_out.append({
+                    "id":              str(v.get("id") or ""),
+                    "voter_role":      role,
+                    "voter_id":        vid,
+                    "voter_id_short":  vid_short,
+                    "voter_name":      voter_name,
+                    "vote":            str(v.get("vote") or ""),
+                    "block_time":      bt_display,
+                    "rationale":       str(v.get("rationale") or ""),
+                    "rationale_ja":    str(v.get("rationale_ja") or ""),
+                })
+            self.modal_votes = votes_out
+            # CC は固定メンバーなので、authorized な全員を表示する。
+            # 投票済みのメンバーには投票を結合、未投票には空文字の vote をセット。
+            from cardanoism.backend.params_db import get_active_cc_members
+            cc_members = get_active_cc_members()
+            # cc_hot_id または cc_cold_id のどちらで Koios が voter_id を返すか不定のため両方でマッチ
+            cc_vote_map: dict[str, dict] = {}
+            for v in votes_out:
+                if v["voter_role"] == "ConstitutionalCommittee":
+                    cc_vote_map[v["voter_id"]] = v
+            cc_out: list[dict] = []
+            for m in cc_members:
+                hot_id = str(m.get("cc_hot_id") or "")
+                cold_id = str(m.get("cc_cold_id") or "")
+                matched = cc_vote_map.get(hot_id) or cc_vote_map.get(cold_id)
+                display_name = str(m.get("display_name") or "").strip()
+                # 表示用 ID は hot 優先、短縮
+                show_id = hot_id or cold_id
+                if len(show_id) > 24:
+                    show_id_short = f"{show_id[:12]}...{show_id[-8:]}"
+                else:
+                    show_id_short = show_id
+                cc_out.append({
+                    "cc_cold_id":     cold_id,
+                    "cc_hot_id":      hot_id,
+                    "display_name":   display_name,
+                    "show_id_short":  show_id_short,
+                    "vote":           matched["vote"] if matched else "",
+                    "block_time":     matched["block_time"] if matched else "",
+                    "has_voted":      "1" if matched else "",
+                })
+            self.modal_cc_votes = cc_out
         except Exception as e:
-            logger.exception("GovernanceState._load_full_action(tx=%s): %s", proposal_tx_hash, e)
+            logger.exception("GovernanceState._load_full_action(id=%s): %s", proposal_id, e)
 
     # ── ページロード ──────────────────────────────────────────────────────────
 
@@ -1355,27 +1597,23 @@ class GovernanceState(rx.State):
         self.modal_action = {}
         self.modal_action_refs = []
         self.modal_loading = False
-        self.modal_lang = "ja"
         self.last_list_path = ""
         self.data_fetch()
 
     def load_detail_page(self):
-        """個別ページ /governance/[proposal_tx_hash] のロード処理。"""
+        """個別ページ /governance/[proposal_id] のロード処理。"""
         self.load = False
         self.modal_action = {}
         self.modal_action_refs = []
         path = self.router.url.path or ""
         parts = [p for p in path.split("/") if p]
-        proposal_tx_hash = parts[-1] if parts else ""
-        if proposal_tx_hash:
-            self._load_full_action(proposal_tx_hash)
+        proposal_id = parts[-1] if parts else ""
+        if proposal_id:
+            self._load_full_action(proposal_id)
         self.load = True
 
     async def load_detail_page_with_lang(self):
-        """load_detail_page + グローバル言語に合わせて modal_lang を初期化。"""
-        from cardanoism.backend.auth_state import AuthState as _AuthState
-        auth = await self.get_state(_AuthState)
-        self.modal_lang = "en" if auth.language == "en" else "ja"
+        """後方互換のため残すが、言語は AuthState.language に一本化されたため初期化処理は不要。"""
         self.load_detail_page()
 
     # ── モーダル ──────────────────────────────────────────────────────────────
@@ -1386,11 +1624,11 @@ class GovernanceState(rx.State):
         self.modal_action = action
         self.modal_action_refs = []
         self.last_list_path = self.router.url.path or ""
-        tx_hash = str(action.get("proposal_tx_hash", ""))
-        self._load_full_action(tx_hash)
+        proposal_id = str(action.get("proposal_id", ""))
+        self._load_full_action(proposal_id)
         self.modal_loading = False
         return rx.call_script(
-            f"history.pushState(null, '', '/governance/{tx_hash}');"
+            f"history.pushState(null, '', '/governance/{proposal_id}');"
         )
 
     def handle_modal_change(self, open: bool):
@@ -1409,12 +1647,6 @@ class GovernanceState(rx.State):
 
     def set_view_mode(self, mode: str):
         self.view_mode = mode
-
-    def set_modal_lang(self, lang: str):
-        self.modal_lang = lang
-
-    def reset_modal_lang_for_language(self, language: str):
-        self.modal_lang = "en" if language == "en" else "ja"
 
     # ── フィルター ────────────────────────────────────────────────────────────
 

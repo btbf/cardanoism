@@ -18,6 +18,7 @@ STAKE_ADDRESS_LIMIT = 3
 # ユーザー単位の通知イベント（アドレスに紐づかない全体通知）
 NOTIFICATION_EVENT_TYPES = [
     "epoch_start",
+    "treasury_withdrawal_enacted",
 ]
 
 # ステークアドレス共通（プール委任者として）
@@ -409,7 +410,9 @@ def is_favorite(user_id: int, proposal_uuid: str, type: str = "catalyst") -> boo
 
 
 def get_ga_favorites(user_id: int) -> list:
-    """ガバナンスお気に入り一覧を取得（governance_actions JOIN）。"""
+    """ガバナンスお気に入り一覧を取得（governance_actions JOIN）。
+    favorites.proposal_uuid には proposal_id を保存している。
+    """
     with get_db() as (cursor, _):
         cursor.execute(
             """
@@ -419,7 +422,7 @@ def get_ga_favorites(user_id: int) -> list:
                    g.ratified_epoch, g.enacted_epoch,
                    g.dropped_epoch, g.expired_epoch
             FROM favorites f
-            JOIN governance_actions g ON f.proposal_uuid = g.proposal_tx_hash
+            JOIN governance_actions g ON f.proposal_uuid = g.proposal_id
             WHERE f.user_id = ? AND f.type = 'governance'
             ORDER BY f.created_at DESC
             """,

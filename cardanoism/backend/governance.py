@@ -133,12 +133,28 @@ def _extract_fields(item: dict) -> dict:
     deposit = item.get("deposit")
     meta_is_valid = item.get("meta_is_valid")
 
+    # TreasuryWithdrawals の引き出し配列（[{amount, stake_address}, ...]）を集計
+    withdrawal = item.get("withdrawal")
+    withdrawal_total = None
+    withdrawal_json = None
+    if isinstance(withdrawal, list) and withdrawal:
+        total = 0
+        for w in withdrawal:
+            try:
+                total += int(w.get("amount") or 0)
+            except (TypeError, ValueError):
+                continue
+        withdrawal_total = total
+        withdrawal_json = json.dumps(withdrawal, ensure_ascii=False)
+
     return {
         "proposal_id":      item.get("proposal_id") or "",
         "proposal_tx_hash": item.get("proposal_tx_hash") or "",
         "proposal_index":   int(item.get("proposal_index") or 0),
         "proposal_type":    item.get("proposal_type") or "",
         "deposit":          int(deposit) if deposit is not None else None,
+        "withdrawal_total_lovelace": withdrawal_total,
+        "withdrawal_json":  withdrawal_json,
         "return_address":   item.get("return_address"),
         "proposed_epoch":   item.get("proposed_epoch"),
         "ratified_epoch":   item.get("ratified_epoch"),
@@ -173,31 +189,34 @@ def upsert_proposal(fields: dict):
             """
             INSERT INTO governance_actions (
                 proposal_id, proposal_tx_hash, proposal_index, proposal_type,
-                deposit, return_address,
+                deposit, withdrawal_total_lovelace, withdrawal_json, return_address,
                 proposed_epoch, ratified_epoch, enacted_epoch,
                 dropped_epoch, expired_epoch, expiration,
                 block_time, meta_url, meta_hash, meta_is_valid,
                 title, `abstract`, motivation, rationale, references_json
             ) VALUES (
                 ?, ?, ?, ?,
-                ?, ?,
+                ?, ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?, ?, ?
             )
             ON DUPLICATE KEY UPDATE
-                -- ステータスエポックのみ更新（本文・メタはオンチェーン固定のため不変）
-                ratified_epoch = VALUES(ratified_epoch),
-                enacted_epoch  = VALUES(enacted_epoch),
-                dropped_epoch  = VALUES(dropped_epoch),
-                expired_epoch  = VALUES(expired_epoch),
-                updated_at     = NOW()
+                -- ステータスエポック + 引き出し情報を更新
+                ratified_epoch            = VALUES(ratified_epoch),
+                enacted_epoch             = VALUES(enacted_epoch),
+                dropped_epoch             = VALUES(dropped_epoch),
+                expired_epoch             = VALUES(expired_epoch),
+                withdrawal_total_lovelace = VALUES(withdrawal_total_lovelace),
+                withdrawal_json           = VALUES(withdrawal_json),
+                updated_at                = NOW()
             """,
             (
                 fields["proposal_id"],     fields["proposal_tx_hash"], fields["proposal_index"],
                 fields["proposal_type"],
-                fields["deposit"],         fields["return_address"],
+                fields["deposit"],         fields["withdrawal_total_lovelace"],
+                fields["withdrawal_json"], fields["return_address"],
                 fields["proposed_epoch"],  fields["ratified_epoch"],   fields["enacted_epoch"],
                 fields["dropped_epoch"],   fields["expired_epoch"],    fields["expiration"],
                 fields["block_time"],      fields["meta_url"],         fields["meta_hash"],

@@ -78,13 +78,13 @@ def _post(endpoint: str, payload: dict) -> list | dict | None:
         return None
 
 
-def _get(endpoint: str, params: dict | None = None) -> list | dict | None:
+def _get(endpoint: str, params: dict | None = None, timeout: float = 10.0) -> list | dict | None:
     _rate_limiter.acquire()
     try:
         resp = requests.get(
             f"{KOIOS_BASE_URL}{endpoint}",
             params=params,
-            timeout=10,
+            timeout=timeout,
         )
         if resp.status_code != 200:
             logger.warning("Koios GET error %s: %s", resp.status_code, endpoint)
@@ -355,6 +355,329 @@ def _fetch_drep_name(drep_id: str) -> str:
         return ""
     body = (updates[0].get("meta_json") or {}).get("body") or {}
     return _extract_str(body.get("givenName"))
+
+
+# ============================================================
+# トレジャリー関連
+# ============================================================
+
+def get_totals(epoch_no: int | None = None) -> dict | None:
+    """
+    指定エポック（未指定時は最新）の循環供給・トレジャリー・リワード・準備金を返す。
+    レスポンスは最新順で返ってくる想定。
+    戻り値: {epoch_no, circulation, treasury, reward, supply, reserves}（すべて Lovelace 文字列）
+    """
+    params = {"_epoch_no": epoch_no} if epoch_no is not None else None
+    data = _get("/totals", params)
+    if not data or not isinstance(data, list) or not data[0]:
+        return None
+    # Koios は降順で返すため先頭が最新
+    return data[0]
+
+
+def get_treasury_withdrawals(limit: int = 1000) -> list[dict]:
+    """
+    トレジャリー引き出し履歴を返す（降順）。
+    戻り値: [{stake_address, amount, earned_epoch, spendable_epoch}, ...]
+    """
+    data = _get("/treasury_withdrawals", {"limit": limit, "order": "earned_epoch.desc"})
+    if not data or not isinstance(data, list):
+        return []
+    return data
+
+
+def get_treasury_proposals() -> list[dict]:
+    """
+    TreasuryWithdrawals タイプのガバナンスアクションを返す。
+    ステータス判定（active/ratified/enacted/...）は上位で行う想定。
+    """
+    data = _get("/proposal_list")
+    if not data or not isinstance(data, list):
+        return []
+    return [p for p in data if p.get("proposal_type") == "TreasuryWithdrawals"]
+
+
+def _parse_ncl_from_body(body: dict) -> tuple[int | None, int | None, int | None]:
+    """
+    NCL提案の body から上限ADA・開始エポック・終了エポックを抽出する。
+    戻り値: (limit_ada, start_epoch, end_epoch) - いずれも取れない場合は None。
+
+    タイトル例:
+      "Net Change Limit (Epoch 613 to Epoch 713)"
+      "Net Change Limit of 300 Million ADA for Epochs 613–713"
+    本文（abstract / rationale）例:
+      "350,000,000,000,000 lovelace (350M ada)"
+      "start of Epoch 613" ... "end of Epoch 713"
+      "Epochs 563–635"
+    """
+    import re
+
+    def _extract_str(val) -> str:
+        if isinstance(val, dict):
+            return str(val.get("@value") or "")
+        return str(val or "")
+
+    title = _extract_str(body.get("title"))
+    abstract = _extract_str(body.get("abstract"))
+    rationale = _extract_str(body.get("rationale"))
+    text = "\n".join([title, abstract, rationale])
+
+    # 上限 ADA 抽出
+    limit_ada: int | None = None
+    # 1) lovelace 数値（"350,000,000,000,000 lovelace"）
+    m = re.search(r"([\d,]{10,})\s*lovelace", text, re.IGNORECASE)
+    if m:
+        try:
+            limit_ada = int(m.group(1).replace(",", "")) // 1_000_000
+        except ValueError:
+            pass
+    # 2) "350M ada" / "350 million ada"
+    if limit_ada is None:
+        m = re.search(r"(\d{1,4}(?:[.,]\d+)?)\s*(?:M|million)\s*ada", text, re.IGNORECASE)
+        if m:
+            try:
+                limit_ada = int(float(m.group(1).replace(",", "")) * 1_000_000)
+            except ValueError:
+                pass
+    # 3) "350,000,000 ada"
+    if limit_ada is None:
+        m = re.search(r"([\d,]{9,})\s*ada", text, re.IGNORECASE)
+        if m:
+            try:
+                limit_ada = int(m.group(1).replace(",", ""))
+            except ValueError:
+                pass
+
+    # エポック範囲抽出（"Epoch 613 to Epoch 713" / "Epochs 613–713" / "Epochs 613-713"）
+    start_epoch: int | None = None
+    end_epoch: int | None = None
+    m = re.search(r"Epochs?\s+(\d{3,4})\s*(?:to|-|–|through|〜)\s*(?:Epoch\s+)?(\d{3,4})", text, re.IGNORECASE)
+    if m:
+        try:
+            start_epoch = int(m.group(1))
+            end_epoch = int(m.group(2))
+        except ValueError:
+            pass
+    if start_epoch is None:
+        m = re.search(r"start of\s+Epoch\s+(\d{3,4})", text, re.IGNORECASE)
+        if m:
+            start_epoch = int(m.group(1))
+    if end_epoch is None:
+        m = re.search(r"(?:end of|conclusion of|conclude[^.]*?|finishing at[^.]*?)\s+Epoch\s+(\d{3,4})", text, re.IGNORECASE)
+        if m:
+            end_epoch = int(m.group(1))
+
+    return limit_ada, start_epoch, end_epoch
+
+
+# NCL 取得キャッシュ（重い API 呼び出しを抑制）
+_NCL_CACHE: dict | None = None
+_NCL_CACHE_AT: float = 0.0
+_NCL_CACHE_TTL = 30 * 60  # 30分
+
+
+def fetch_active_ncl(use_cache: bool = True) -> dict | None:
+    """
+    直近のNCL提案のうち、DRep の賛成が過半数（>50%）に達しているものを1件返す。
+
+    憲法規定: "approval of a Net Change Limit requires a threshold of greater than
+    50% of the active voting DRep stake." ため、enacted_epoch が立たない
+    InfoAction でも DRep 過半数賛成で有効。
+
+    戻り値:
+      {
+        "limit_ada": int,
+        "start_epoch": int,
+        "end_epoch": int,
+        "title": str,
+        "proposal_tx_hash": str,
+        "proposal_id": str,
+        "drep_yes_pct": float,
+      }
+    または解析失敗時は None。
+    """
+    global _NCL_CACHE, _NCL_CACHE_AT
+    if use_cache and _NCL_CACHE and (time.time() - _NCL_CACHE_AT) < _NCL_CACHE_TTL:
+        return _NCL_CACHE
+
+    proposals = _post("/proposal_list", {}) or _get("/proposal_list") or []
+    if not isinstance(proposals, list):
+        return None
+
+    candidates: list[dict] = []
+    for p in proposals:
+        if p.get("proposal_type") != "InfoAction":
+            continue
+        meta_body = (p.get("meta_json") or {}).get("body") or {}
+        title_raw = meta_body.get("title")
+        title = title_raw.get("@value") if isinstance(title_raw, dict) else title_raw
+        if not isinstance(title, str):
+            continue
+        tl = title.lower()
+        if "net change limit" not in tl and "ncl" not in tl:
+            continue
+        candidates.append(p)
+
+    candidates.sort(key=lambda p: (p.get("proposed_epoch") or 0), reverse=True)
+
+    for p in candidates:
+        pid = p.get("proposal_id")
+        if not pid:
+            continue
+        summary = _get("/proposal_voting_summary", {"_proposal_id": pid}, timeout=30.0)
+        if not summary or not isinstance(summary, list) or not summary[0]:
+            continue
+        drep_yes_pct = summary[0].get("drep_yes_pct")
+        try:
+            yes = float(drep_yes_pct) if drep_yes_pct is not None else 0.0
+        except (TypeError, ValueError):
+            yes = 0.0
+        if yes <= 50.0:
+            continue
+
+        body = (p.get("meta_json") or {}).get("body") or {}
+        limit_ada, start_epoch, end_epoch = _parse_ncl_from_body(body)
+        if limit_ada is None or start_epoch is None or end_epoch is None:
+            logger.warning("NCL提案 %s のパースに失敗: limit=%s start=%s end=%s",
+                           pid, limit_ada, start_epoch, end_epoch)
+            continue
+
+        title_raw = body.get("title")
+        title = title_raw.get("@value") if isinstance(title_raw, dict) else (title_raw or "")
+        result = {
+            "limit_ada": limit_ada,
+            "start_epoch": start_epoch,
+            "end_epoch": end_epoch,
+            "title": str(title),
+            "proposal_tx_hash": p.get("proposal_tx_hash") or "",
+            "proposal_id": pid,
+            "drep_yes_pct": yes,
+        }
+        _NCL_CACHE = result
+        _NCL_CACHE_AT = time.time()
+        return result
+    return None
+
+
+# ============================================================
+# DRep 関連
+# ============================================================
+
+def get_drep_list() -> list[dict]:
+    """全 DRep の最小情報（drep_id, hex, has_script, registered）を返す。
+    Koios GET はデフォルト 1000 件上限なので offset で全件取得するまでループ。
+    """
+    all_out: list[dict] = []
+    limit = 1000
+    offset = 0
+    while True:
+        data = _get("/drep_list", {"limit": limit, "offset": offset})
+        if not data or not isinstance(data, list):
+            break
+        all_out.extend(data)
+        if len(data) < limit:
+            break
+        offset += limit
+    return all_out
+
+
+# Koios /drep_info と /drep_metadata は他の POST より厳しいペイロード制限があり、
+# 100 件で 413 Payload Too Large を返す。実測では 50 件までは OK。余裕を持って 25 件。
+DREP_BATCH_SIZE = 25
+
+
+def _post_split_on_413(endpoint: str, key: str, ids: list[str]) -> list[dict]:
+    """POST して 413 などで None が返った場合、ペイロードを半分に分割して再帰リトライ。"""
+    if not ids:
+        return []
+    data = _post(endpoint, {key: ids})
+    if isinstance(data, list):
+        return data
+    # 取得失敗（413 等）: 1 件まで縮めても失敗する場合は諦める
+    if len(ids) <= 1:
+        logger.warning("Koios %s: id=%s の取得を断念", endpoint, ids[0] if ids else "?")
+        return []
+    mid = len(ids) // 2
+    return _post_split_on_413(endpoint, key, ids[:mid]) + _post_split_on_413(endpoint, key, ids[mid:])
+
+
+def get_drep_info_batch(drep_ids: list[str]) -> list[dict]:
+    """複数 DRep の登録情報・委任量を一括取得（25 件チャンク + 413 自動分割）。"""
+    if not drep_ids:
+        return []
+    out: list[dict] = []
+    for chunk in _chunks(drep_ids, DREP_BATCH_SIZE):
+        out.extend(_post_split_on_413("/drep_info", "_drep_ids", chunk))
+    return out
+
+
+def get_committee_info() -> dict | None:
+    """現在の Constitutional Committee 情報（quorum と members）を返す。"""
+    data = _get("/committee_info", timeout=15.0)
+    if not data:
+        return None
+    if isinstance(data, list):
+        return data[0] if data else None
+    return data
+
+
+def get_epoch_params(epoch_no: int | None = None) -> dict | None:
+    """指定エポック（未指定なら最新）のプロトコルパラメータを返す。"""
+    params = {"_epoch_no": epoch_no} if epoch_no is not None else None
+    data = _get("/epoch_params", params, timeout=15.0)
+    if not data or not isinstance(data, list) or not data[0]:
+        return None
+    return data[0]
+
+
+def get_proposal_voting_summary(proposal_id: str) -> dict | None:
+    """指定 proposal の投票集計（Yes/No/Abstain の票数・パーセンテージ）を返す。
+    Koios 側で計算コストが高く数十秒かかることがあるため、長めのタイムアウト + 1 回リトライ。
+    """
+    if not proposal_id:
+        return None
+    for attempt in range(2):
+        data = _get(
+            "/proposal_voting_summary",
+            {"_proposal_id": proposal_id},
+            timeout=60.0,
+        )
+        if data and isinstance(data, list) and data[0]:
+            return data[0]
+        if attempt == 0:
+            time.sleep(2)
+    return None
+
+
+def get_proposal_votes(proposal_id: str, limit: int = 1000) -> list[dict]:
+    """指定された proposal_id への投票一覧を全件取得する（Koios ページネーション対応）。"""
+    if not proposal_id:
+        return []
+    all_out: list[dict] = []
+    offset = 0
+    while True:
+        data = _get(
+            "/proposal_votes",
+            {"_proposal_id": proposal_id, "limit": limit, "offset": offset},
+            timeout=30.0,
+        )
+        if not data or not isinstance(data, list):
+            break
+        all_out.extend(data)
+        if len(data) < limit:
+            break
+        offset += limit
+    return all_out
+
+
+def get_drep_metadata_batch(drep_ids: list[str]) -> list[dict]:
+    """複数 DRep の CIP-119 メタデータを一括取得（25 件チャンク + 413 自動分割）。"""
+    if not drep_ids:
+        return []
+    out: list[dict] = []
+    for chunk in _chunks(drep_ids, DREP_BATCH_SIZE):
+        out.extend(_post_split_on_413("/drep_metadata", "_drep_ids", chunk))
+    return out
 
 
 def get_proposal_title(proposal_tx_hash: str, proposal_index: int = 0) -> str | None:
