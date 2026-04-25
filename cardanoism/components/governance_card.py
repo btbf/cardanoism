@@ -560,13 +560,18 @@ def _donut_chart(role_label, yes_pct, no_pct, abstain_pct, threshold, status, do
             ),
             status_badge,
         ),
-        rx.hstack(
-            rx.text("No: ", size="1", color="var(--gray-10)"),
-            rx.text(no_pct + "%", size="1", color="var(--red-11)", weight="medium"),
-            rx.text(" / ", size="1", color="var(--gray-9)"),
-            rx.text("Abstain: ", size="1", color="var(--gray-10)"),
-            rx.text(abstain_pct + "%", size="1", color="var(--gray-11)"),
-            spacing="0", align="baseline", wrap="wrap",
+        rx.vstack(
+            rx.hstack(
+                rx.text("No:", size="1", color="var(--gray-10)"),
+                rx.text(no_pct + "%", size="1", color="var(--red-11)", weight="medium"),
+                spacing="1", align="baseline",
+            ),
+            rx.hstack(
+                rx.text("Abstain:", size="1", color="var(--gray-10)"),
+                rx.text(abstain_pct + "%", size="1", color="var(--gray-11)"),
+                spacing="1", align="baseline",
+            ),
+            spacing="1", align="center",
         ),
         spacing="2",
         align="center",
@@ -765,6 +770,7 @@ def _voting_summary_section(action: Dict[str, Any]) -> rx.Component:
                 wrap="wrap",
                 width="100%",
                 justify="center",
+                align="stretch",
             ),
             spacing="2", align="start", width="100%",
         ),
