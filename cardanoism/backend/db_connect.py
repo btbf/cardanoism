@@ -1402,6 +1402,9 @@ class GovernanceState(rx.State):
     modal_loading: bool = False
     last_list_path: str = ""
 
+    # 現行憲法（最新の enacted NewConstitution）
+    current_constitution: Dict[str, Any] = {}
+
     # ── WHERE 句構築 ──────────────────────────────────────────────────────────
 
     def _build_where(self) -> tuple[str, list]:
@@ -1598,7 +1601,43 @@ class GovernanceState(rx.State):
         self.modal_action_refs = []
         self.modal_loading = False
         self.last_list_path = ""
+        self._load_current_constitution()
         self.data_fetch()
+
+    def _load_current_constitution(self) -> None:
+        """最新の enacted NewConstitution を current_constitution にロードする。"""
+        try:
+            with get_db() as (cursor, _):
+                cursor.execute(
+                    """
+                    SELECT proposal_id, proposal_tx_hash, proposal_index,
+                           title, title_ja, `abstract`, abstract_ja,
+                           proposed_epoch, ratified_epoch, enacted_epoch,
+                           block_time, meta_url, meta_hash
+                    FROM governance_actions
+                    WHERE proposal_type = 'NewConstitution'
+                      AND enacted_epoch IS NOT NULL
+                    ORDER BY enacted_epoch DESC
+                    LIMIT 1
+                    """
+                )
+                row = cursor.fetchone()
+                if row:
+                    d = dict(row)
+                    self.current_constitution = {
+                        "proposal_id":    str(d.get("proposal_id") or ""),
+                        "title":          str(d.get("title") or ""),
+                        "title_ja":       str(d.get("title_ja") or ""),
+                        "abstract":       str(d.get("abstract") or ""),
+                        "abstract_ja":    str(d.get("abstract_ja") or ""),
+                        "enacted_epoch":  int(d.get("enacted_epoch") or 0),
+                        "meta_url":       str(d.get("meta_url") or ""),
+                    }
+                else:
+                    self.current_constitution = {}
+        except Exception as e:
+            logger.exception("_load_current_constitution: %s", e)
+            self.current_constitution = {}
 
     def load_detail_page(self):
         """個別ページ /governance/[proposal_id] のロード処理。"""
