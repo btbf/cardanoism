@@ -142,51 +142,34 @@ CardanoガバナンスをナビゲートするReflexベースの日本語ポー�
 
 ---
 
-## 3. 通知バッチワーカー（`notify_worker.py`）
+## 3. 通知バックエンド
 
-cron で定期実行する独立スクリプト。Reflex アプリとは独立して動作する。
+通知系は2系統で構成される。両系統とも同じ MariaDB を共有し、`notification_log.dedup_key` で重複送信を防ぐ。
 
-### アーキテクチャ
+### 3-1. リアルタイム通知（`ogmios_listener.py`）
 
-```
-notify_worker.py
-├── 状態管理        : notification_check_state テーブル（前回値との差分検出）
-├── 重複送信防止    : notification_log テーブル（dedup_key で管理）
-├── LINE 送信       : cardanoism/backend/line_notify.py（Messaging API）
-└── メール送信      : cardanoism/backend/mail_notify.py（SMTP）
-```
+cardano-node + Ogmios + WebSocket で、ブロック確定の瞬間にイベントを発火する常駐デーモン。
 
-### 送信チャンネルの取得方法
+**担当**: `epoch_start` / `pool_epoch_performance` / `pool_retire` / `pool_fee_change` / `drep_new_governance_action` / `drep_vote`
 
-- LINE：`notification_channels WHERE channel_type='line'` を JOIN
-- メール：`notification_channels WHERE channel_type='email'` を JOIN
-- 両チャンネルをマージして送信（`_merge_stake_channels()` ヘルパー）
+セットアップ詳細: [`docs/realtime-notification-backend.md`](docs/realtime-notification-backend.md)
 
-### エポック時刻チェック（`EPOCH_CHECK_WINDOW_MIN`）
+### 3-2. Koios ポーリング（`notify_worker.py`）
 
-`--event epoch_start` 実行時に時間外スキップを行う機能。
+cron で定期実行する独立スクリプト。計算値・履歴値・キャッシュ同期を担当する。
 
-- Koios `/tip` の `epoch_slot`（エポック内経過秒数）で判定
-- `EPOCH_CHECK_WINDOW_MIN=60` のとき、エポック開始から 60 分以内のみ処理
-- ネットワーク別エポック長：mainnet/preprod = 432,000秒（5日）、preview = 86,400秒（1日）
+**担当通知**: `pool_saturation` / `pool_pledge_shortage` / `pool_reward_received` / `pool_delegation_reminder` / `drep_delegation_reminder` / `drep_status_change` / `treasury_withdrawal_enacted`
 
-```cron
-# 推奨 cron 設定（毎日 21:44 UTC に実行、mainnet の場合）
-44 21 * * *  EPOCH_CHECK_WINDOW_MIN=60 python notify_worker.py --event epoch_start
-44 21 * * *  は実際には 5 日に 1 回だけ処理が走る
+**担当キャッシュ同期**: `treasury_sync` / `fiat_sync` / `drep_sync` / `vote_sync` / `summary_sync` / `params_sync` / `vote_rationale_sync`
 
-# エポック切り替わり時刻確認
-python notify_worker.py --epoch-schedule
-```
+セットアップ詳細: [`docs/koios-polling-backend.md`](docs/koios-polling-backend.md)
 
-### 推奨 cron 設定
+### 3-3. 共通実装
 
-```cron
-44 21 * * *   EPOCH_CHECK_WINDOW_MIN=60 python /path/to/notify_worker.py --event epoch_start
-*/30 * * * *  python /path/to/notify_worker.py --event pool
-*/30 * * * *  python /path/to/notify_worker.py --event drep
-0 * * * *     python /path/to/notify_worker.py --event reminder
-```
+- 状態管理: `notification_check_state` テーブル
+- 重複送信防止: `notification_log` テーブル（`dedup_key` で判定）
+- 送信ヘルパー: `flex_and_log()` / `email_and_log()` / `telegram_and_log()`（`notify_worker.py` に定義、`ogmios_listener.py` は import して再利用）
+- 送信チャンネル取得: `notification_channels WHERE channel_type IN ('line', 'email', 'telegram')` を JOIN し `_merge_stake_channels()` でマージ
 
 ---
 
@@ -226,39 +209,49 @@ SMTP 経由でメールを送信するヘルパー。
 
 ## 6. データモデル
 
-- **DB：** MariaDB（既存）
+- **DB：** MariaDB
 - **接続：** `mariadb` Pythonライブラリ + コネクションプール（`db_connect.py` の既存パターンに従う）
 - SQLModel（rx.Model）は**使わない**。生 SQL でテーブル操作する
+- **マイグレーション：** `cardanoism/backend/migrations/` 配下に統合済みスキーマ（001〜007）。すべて `CREATE TABLE IF NOT EXISTS` で冪等。詳細は同ディレクトリの `README.md`
 
 ### テーブル一覧
 
+#### 認証・ユーザー（001_users_auth.sql / 002_user_data.sql）
 | テーブル | 説明 |
 |---------|------|
-| `users` | ユーザー基本情報（email, username, avatar_url 等） |
+| `users` | ユーザー基本情報（username, email, avatar_url, language, notification_frequency） |
 | `user_sessions` | セッショントークン管理 |
 | `user_providers` | ソーシャルログインプロバイダ（line / google / twitter） |
-| `notification_channels` | 通知チャンネル（line / email）と enabled フラグ |
-| `stake_addresses` | ステークアドレス（最大3件/ユーザー） |
+| `notification_channels` | 通知チャンネル（line / email / telegram）と enabled フラグ |
+| `telegram_connect_tokens` | Telegram Bot 連携時の一時トークン |
+| `stake_addresses` | ステークアドレス（最大3件/ユーザー）+ 委任先 pool/drep 情報 |
 | `favorites` | お気に入り提案（catalyst / governance） |
+
+#### 通知（003_notifications.sql）
+| テーブル | 説明 |
+|---------|------|
 | `notification_settings` | ユーザー全体の通知設定（epoch_start 等） |
 | `stake_notification_settings` | ステークアドレスごとの通知設定 |
-| `notification_check_state` | バッチワーカーの状態管理（前回チェック値） |
+| `notification_check_state` | リアルタイム / バッチワーカーの状態管理（前回チェック値・カーソル） |
 | `notification_log` | 送信ログ・重複防止（dedup_key） |
 
-### `notification_channels` テーブル
+#### ガバナンス（004_governance.sql）
+| テーブル | 説明 |
+|---------|------|
+| `governance_actions` | GA 本体（CIP-100/108 メタデータ含む） |
+| `proposal_votes` | GA への投票（DRep / SPO / CC） |
+| `proposal_voting_summary` | GA ごとの投票集計 |
+| `protocol_params` | プロトコルパラメータ（id=1 固定） |
+| `cc_members` | 憲法委員会メンバー |
 
-```sql
-CREATE TABLE IF NOT EXISTS notification_channels (
-  id           INT AUTO_INCREMENT PRIMARY KEY,
-  user_id      INT NOT NULL,
-  channel_type ENUM('line', 'email') NOT NULL,
-  channel_value VARCHAR(255) NOT NULL,   -- LINE user ID / メールアドレス
-  enabled      TINYINT(1) NOT NULL DEFAULT 1,
-  created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  UNIQUE KEY uq_user_channel (user_id, channel_type)
-);
-```
+#### キャッシュ（005〜007）
+| テーブル | 説明 |
+|---------|------|
+| `dreps` | DRep 一覧 + CIP-119 メタデータ |
+| `treasury_snapshot` | 最新トレジャリー残高（id=1 固定） |
+| `treasury_withdrawal` | トレジャリー引き出し履歴 |
+| `ncl_active` | 採用中の Net Change Limit（id=1 固定） |
+| `fiat_rate` | ADA 法定通貨レート（id=1 固定） |
 
 ---
 
@@ -274,10 +267,8 @@ CREATE TABLE IF NOT EXISTS notification_channels (
 ## 8. 次フェーズのスコープ（現在対象外）
 
 - X（Twitter）ログイン
-- Telegram 通知チャンネル
 - サブスクリプション機能（有料プラン・ステークアドレス上限拡張）
 - LINEミニアプリ実装
-- ガバナンス提案お気に入り
 - アカウント削除機能
 - 通知履歴ページ
 - 複数ソーシャルアカウントの同一アカウントへの連携
