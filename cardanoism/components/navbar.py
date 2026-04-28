@@ -73,41 +73,6 @@ def nav_pill(text, url: str, disabled: bool = False) -> rx.Component:
     )
 
 
-def catalyst_dropdown() -> rx.Component:
-    return rx.menu.root(
-        rx.menu.trigger(
-            rx.button(
-                rx.text(AuthState.t["nav_catalyst"], size="3", weight="medium", color="var(--gray-11)"),
-                rx.icon("chevron-down", size=13, color="var(--gray-9)"),
-                variant="ghost",
-                cursor="pointer",
-                style={
-                    **_PILL,
-                    "gap": "4px",
-                    "color": "var(--gray-11)",
-                    "background": "transparent",
-                },
-                _hover=_PILL_HOVER,
-                _active={"background": "var(--gray-a3)"},
-            ),
-        ),
-        rx.menu.content(
-            rx.menu.item(
-                rx.link(
-                    rx.hstack(rx.icon("file-text", size=14), rx.text(AuthState.t["nav_proposals_list"], size="3", weight="medium"), spacing="2", align="center"),
-                    href="/catalyst", width="100%", underline="none", color="var(--gray-12)",
-                ),
-            ),
-            rx.menu.item(
-                rx.link(
-                    rx.hstack(rx.icon("layers", size=14), rx.text(AuthState.t["nav_funds_list"], size="3", weight="medium"), spacing="2", align="center"),
-                    href="/catalyst/funds", width="100%", underline="none", color="var(--gray-12)",
-                ),
-            ),
-        ),
-    )
-
-
 def auth_section() -> rx.Component:
     return rx.cond(
         AuthState.is_logged_in,
@@ -193,8 +158,8 @@ def navbar_icons() -> rx.Component:
             divider,
             rx.hstack(
                 nav_pill(AuthState.t["nav_home"], "/"),
-                catalyst_dropdown(),
                 nav_pill(AuthState.t["nav_governance"], "/governance"),
+                nav_pill(AuthState.t["nav_catalyst"], "/catalyst"),
                 spacing="1",
                 align="center",
             ),
@@ -235,16 +200,12 @@ def navbar_icons() -> rx.Component:
                         rx.menu.item(
                             rx.link(AuthState.t["nav_home"], href="/", width="100%", underline="none", color="var(--gray-12)"),
                         ),
-                        rx.menu.sub(
-                            rx.menu.sub_trigger(
-                                rx.text(AuthState.t["nav_catalyst"], size="3"),
-                            ),
-                            rx.menu.sub_content(
-                                rx.menu.item(rx.link(AuthState.t["nav_proposals_list"], href="/catalyst", width="100%", underline="none", color="var(--gray-12)")),
-                                rx.menu.item(rx.link(AuthState.t["nav_funds_list"], href="/catalyst/funds", width="100%", underline="none", color="var(--gray-12)")),
-                            ),
+                        rx.menu.item(
+                            rx.link(AuthState.t["nav_governance"], href="/governance", width="100%", underline="none", color="var(--gray-12)"),
                         ),
-                        rx.menu.item(rx.text(AuthState.t["nav_governance"], size="3", opacity="0.4")),
+                        rx.menu.item(
+                            rx.link(AuthState.t["nav_catalyst"], href="/catalyst", width="100%", underline="none", color="var(--gray-12)"),
+                        ),
                         rx.menu.separator(),
                         rx.menu.item(lang_toggle()),
                         rx.cond(

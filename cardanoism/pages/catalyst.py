@@ -7,6 +7,7 @@ from cardanoism.backend.auth_state import AuthState
 from cardanoism.components.proposal_card import card_foreach_dict
 from cardanoism.components.proposal_pagenation import pagination_component
 from cardanoism.components.componets import top_button_component
+from cardanoism.components.catalyst_tabs import catalyst_tabs
 
 
 class ReactSelectLib(rx.Component):
@@ -389,6 +390,7 @@ def catalyst() -> rx.Component:
         rx.box(
             rx.vstack(
                 catalyst_breadcrumb(),
+                catalyst_tabs(active="proposals"),
                 filters,
                 header,
                 rx.cond(AppState.proposals, card_foreach_dict(), no_proposals_view),
