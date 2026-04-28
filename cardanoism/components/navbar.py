@@ -159,6 +159,7 @@ def navbar_icons() -> rx.Component:
             rx.hstack(
                 nav_pill(AuthState.t["nav_home"], "/"),
                 nav_pill(AuthState.t["nav_governance"], "/governance"),
+                nav_pill(AuthState.t["nav_staking"], "/staking"),
                 nav_pill(AuthState.t["nav_catalyst"], "/catalyst"),
                 spacing="1",
                 align="center",
@@ -202,6 +203,9 @@ def navbar_icons() -> rx.Component:
                         ),
                         rx.menu.item(
                             rx.link(AuthState.t["nav_governance"], href="/governance", width="100%", underline="none", color="var(--gray-12)"),
+                        ),
+                        rx.menu.item(
+                            rx.link(AuthState.t["nav_staking"], href="/staking", width="100%", underline="none", color="var(--gray-12)"),
                         ),
                         rx.menu.item(
                             rx.link(AuthState.t["nav_catalyst"], href="/catalyst", width="100%", underline="none", color="var(--gray-12)"),
