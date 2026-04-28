@@ -8,316 +8,533 @@ from cardanoism.backend.auth_state import AuthState
 
 ACCENT = "#ffcf00"
 ACCENT_DARK = "#c7a300"
-TEXT_MUTED = "var(--gray-9)"
-HEADINGS_FONT_CSS = f"""
+TEXT_MUTED = "var(--gray-10)"
+
+REWARD_COLOR = "#16a34a"
+DREP_COLOR = "#3b82f6"
+POOL_COLOR = ACCENT_DARK
+
+LINE_BRAND = "#06C755"
+TG_BRAND = "#2AABEE"
+MAIL_BRAND = "#7c5cff"
+
+
+HOME_CSS = f"""
 <style>
 h1, h2, h3, h4, h5, h6 {{
   font-family: {styles.font_family};
+}}
+@keyframes cdn_float {{
+  0%, 100% {{ transform: translateY(0); }}
+  50% {{ transform: translateY(-7px); }}
+}}
+@keyframes cdn_pulse {{
+  0%, 100% {{ opacity: 0.55; transform: scale(1); }}
+  50% {{ opacity: 1; transform: scale(1.25); }}
+}}
+.cdn-hero-grid {{
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(140,140,140,0.10) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(140,140,140,0.10) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 70% 60% at 80% 30%, black 0%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 80% 30%, black 0%, transparent 75%);
+  pointer-events: none;
+}}
+.cdn-hero-glow {{
+  position: absolute;
+  width: 520px;
+  height: 520px;
+  top: -140px;
+  right: -120px;
+  background: radial-gradient(circle, rgba(255,207,0,0.22) 0%, transparent 70%);
+  filter: blur(36px);
+  pointer-events: none;
+}}
+.cdn-soft-card {{
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}}
+.cdn-soft-card:hover {{
+  transform: translateY(-3px);
 }}
 </style>
 """
 
 
-def hero_section() -> rx.Component:
-    stats = rx.hstack(
-        rx.hstack(rx.icon("activity", size=16, color=ACCENT_DARK), rx.text(AuthState.t["hero_daily_update"], size="2"), spacing="2"),
-        rx.hstack(rx.icon("layers", size=16, color=ACCENT_DARK), rx.text(AuthState.t["hero_governance_mgmt"], size="2"), spacing="2"),
-        rx.hstack(rx.icon("sparkles", size=16, color=ACCENT_DARK), rx.text(AuthState.t["hero_staking_mgmt"], size="2"), spacing="2"),
-        spacing="4",
-        wrap="wrap",
-        align="start",
-    )
-
-    content = rx.vstack(
-        rx.text("Project Catalyst / Governance / Staking", size="2", letter_spacing="0.08em", color="var(--gray-9)"),
-        rx.heading(AuthState.t["hero_heading"], size="7", weight="bold", line_height="1.05", as_="h1"),
-        rx.text(
-            AuthState.t["hero_subtitle"],
-            size="4",
-            color=rx.color_mode_cond("rgba(30,30,30,0.82)", "rgba(230,230,245,0.9)"),
-            line_height="1.6",
-            max_width="820px",
-        ),
-        stats,
-        rx.hstack(
-            rx.link(
-                rx.button(
-                    AuthState.t["hero_cta_catalyst"],
-                    right_icon="arrow-right",
-                    size="3",
-                    background=f"linear-gradient(135deg, {ACCENT}, {ACCENT_DARK})",
-                    color="#111",
-                    border=f"1px solid {ACCENT_DARK}",
-                    cursor="pointer",
-                ),
-                href="/catalyst",
-            ),
-            rx.link(
-                rx.button(
-                    AuthState.t["hero_cta_funds"],
-                    variant="soft",
-                    size="3",
-                    border=rx.color_mode_cond("1px solid rgba(0,0,0,0.08)", f"1px solid {ACCENT}33"),
-                    cursor="pointer",
-                ),
-                href="/catalyst/funds",
-            ),
-            spacing="3",
-            wrap="wrap",
-        ),
-        spacing="5",
-        align_items="start",
+def _shell(*children, **kw) -> rx.Component:
+    base = dict(
+        max_width="1180px",
         width="100%",
+        margin_x="auto",
+        padding_x=["20px", "28px", "40px"],
+    )
+    base.update(kw)
+    return rx.box(*children, **base)
+
+
+# ---------- Hero -----------------------------------------------------------
+
+def _live_pill() -> rx.Component:
+    return rx.hstack(
+        rx.box(
+            width="7px",
+            height="7px",
+            border_radius="999px",
+            background="#22c55e",
+            box_shadow="0 0 0 4px rgba(34,197,94,0.18)",
+            style={"animation": "cdn_pulse 2.2s ease-in-out infinite"},
+        ),
+        rx.text("LIVE", size="1", weight="bold", letter_spacing="0.16em"),
+        rx.text(AuthState.t["home_preview_label"], size="1", color=TEXT_MUTED),
+        spacing="2",
+        align="center",
+        padding="6px 12px",
+        border=f"1px solid {rx.color('gray', 5)}",
+        border_radius="999px",
+        background=rx.color_mode_cond("rgba(255,255,255,0.7)", "rgba(255,255,255,0.04)"),
+        backdrop_filter="blur(8px)",
+        align_self="end",
     )
 
-    return rx.box(
+
+def _hero_notification(accent: str, icon: str, title, body, delay: str) -> rx.Component:
+    return rx.hstack(
         rx.box(
-            content,
-            width="100%",
-            margin_x="auto",
-            max_width="1280px",
-            padding_x=["16px", "5vw", "8vw"],
-            padding_y="25px",
+            rx.icon(icon, size=16, color="#fff"),
+            width="36px",
+            height="36px",
+            display="flex",
+            align_items="center",
+            justify_content="center",
+            border_radius="11px",
+            background=accent,
+            flex_shrink="0",
         ),
+        rx.vstack(
+            rx.text(title, size="2", weight="bold", color="var(--gray-12)"),
+            rx.text(body, size="1", color=TEXT_MUTED, line_height="1.5"),
+            spacing="1",
+            align_items="start",
+            min_width="0",
+        ),
+        spacing="3",
+        align="center",
+        width="100%",
+        padding="13px 16px",
+        border_radius="14px",
+        border=f"1px solid {rx.color('gray', 5)}",
         background=rx.color_mode_cond(
-            "linear-gradient(135deg, #fdfcf6 0%, #f8f6ff 45%, #eef2ff 100%)",
-            "linear-gradient(135deg, #111322 0%, #0d0f1c 45%, #0c0d18 100%)",
+            "linear-gradient(135deg, rgba(255,255,255,0.95), rgba(255,255,255,0.82))",
+            "linear-gradient(135deg, rgba(28,28,36,0.92), rgba(20,20,28,0.86))",
         ),
-        width="100vw",
+        backdrop_filter="blur(10px)",
+        box_shadow=rx.color_mode_cond(
+            "0 18px 38px -24px rgba(0,0,0,0.30)",
+            "0 18px 38px -24px rgba(0,0,0,0.85)",
+        ),
         style={
-            "position": "relative",
-            "left": "50%",
-            "right": "50%",
-            "marginLeft": "-50vw",
-            "marginRight": "-50vw",
-            "width": "100vw",
-            "maxWidth": "100vw",
+            "animation": "cdn_float 6.5s ease-in-out infinite",
+            "animationDelay": delay,
         },
     )
 
 
-def feature_card(title: str, desc: str, icon: str, note: str | None = None) -> rx.Component:
-    title_row = (
-        rx.vstack(
-            rx.heading(title, size="5", as_="h3"),
-            rx.text(note, size="1", color=TEXT_MUTED),
-            spacing="1",
-            align_items="start",
-        )
-        if note
-        else rx.heading(title, size="5")
+def hero_section() -> rx.Component:
+    headline = rx.heading(
+        AuthState.t["hero_heading"],
+        as_="h1",
+        size="9",
+        weight="bold",
+        line_height="1.05",
+        letter_spacing="-0.02em",
     )
-    return rx.box(
-        rx.hstack(
-            rx.box(
-                rx.icon(icon, size=18, color=ACCENT_DARK),
-                padding="12px",
-                background_color=f"{ACCENT}2b",
-                border_radius="14px",
+    subtitle = rx.text(
+        AuthState.t["hero_subtitle"],
+        size="4",
+        color=rx.color_mode_cond("rgba(20,20,20,0.74)", "rgba(245,245,245,0.78)"),
+        line_height="1.75",
+        max_width="600px",
+    )
+    cta = rx.hstack(
+        rx.link(
+            rx.button(
+                rx.icon("bell", size=16),
+                AuthState.t["hero_cta_primary"],
+                size="3",
+                background=ACCENT,
+                color="#111",
+                border=f"1px solid {ACCENT_DARK}",
+                cursor="pointer",
+                padding="0 22px",
+                _hover={"background": ACCENT_DARK, "color": "#fff"},
             ),
-            rx.vstack(
-                title_row,
-                rx.text(desc, size="3", color=TEXT_MUTED, line_height="1.6"),
-                spacing="2",
-                align_items="start",
+            href="/login",
+            underline="none",
+        ),
+        rx.link(
+            rx.button(
+                AuthState.t["hero_cta_secondary"],
+                rx.icon("arrow-right", size=16),
+                size="3",
+                variant="ghost",
+                color="var(--gray-12)",
+                cursor="pointer",
+            ),
+            href="/governance",
+            underline="none",
+        ),
+        spacing="3",
+        wrap="wrap",
+        align="center",
+    )
+
+    notif_stack = rx.vstack(
+        _live_pill(),
+        _hero_notification(REWARD_COLOR, "wallet", AuthState.t["home_preview_reward_title"], AuthState.t["home_preview_reward_body"], "0s"),
+        _hero_notification(DREP_COLOR, "vote", AuthState.t["home_preview_drep_title"], AuthState.t["home_preview_drep_body"], "1.4s"),
+        _hero_notification(POOL_COLOR, "bell", AuthState.t["home_preview_pool_title"], AuthState.t["home_preview_pool_body"], "2.8s"),
+        spacing="3",
+        align_items="stretch",
+        width="100%",
+        max_width="420px",
+    )
+
+    return rx.box(
+        rx.box(class_name="cdn-hero-grid"),
+        rx.box(class_name="cdn-hero-glow"),
+        _shell(
+            rx.flex(
+                rx.vstack(
+                    headline,
+                    subtitle,
+                    cta,
+                    spacing="6",
+                    align_items="start",
+                    flex="1",
+                    min_width="0",
+                    max_width="640px",
+                ),
+                rx.box(
+                    notif_stack,
+                    flex="0 0 auto",
+                    display=["none", "none", "block"],
+                ),
+                direction={"base": "column", "md": "row"},
+                align="center",
+                spacing="8",
                 width="100%",
             ),
-            spacing="3",
-            align="start",
-            width="100%",
+            padding_y=["72px", "96px", "120px"],
+            position="relative",
         ),
-        padding="18px",
-        border_radius="18px",
-        background=rx.color_mode_cond("rgba(255,255,255,0.95)", "rgba(15,15,25,0.92)"),
-        border=f"1px solid {rx.color('gray', 5)}",
-        box_shadow="0 18px 40px -28px rgba(0,0,0,0.15)",
+        position="relative",
+        background=rx.color_mode_cond(
+            "linear-gradient(180deg, #fefcf2 0%, #fafbf6 100%)",
+            "linear-gradient(180deg, #0c0d12 0%, #101117 100%)",
+        ),
+        width="100%",
+        overflow="hidden",
+        border_bottom=f"1px solid {rx.color('gray', 4)}",
+    )
+
+
+# ---------- Notification features -----------------------------------------
+
+def _section_heading(kicker, title, subtitle, kicker_color: str = ACCENT_DARK) -> rx.Component:
+    return rx.vstack(
+        rx.text(kicker, size="2", weight="bold", color=kicker_color, letter_spacing="0.14em"),
+        rx.heading(title, as_="h2", size="7", weight="bold", line_height="1.2", max_width="720px"),
+        rx.text(subtitle, size="3", color=TEXT_MUTED, line_height="1.7", max_width="720px"),
+        spacing="3",
+        align_items="start",
         width="100%",
     )
 
 
-def feature_section() -> rx.Component:
-    items = [
-        (AuthState.t["feature_catalyst_title"], AuthState.t["feature_catalyst_desc"], "search", "開発中"),
-        (AuthState.t["feature_governance_title"], AuthState.t["feature_governance_desc"], "layers", "2026年実装"),
-        (AuthState.t["feature_staking_title"], AuthState.t["feature_staking_desc"], "sparkles", "2026年実装"),
-    ]
-    return rx.container(
+def _feature_card(icon: str, accent: str, title, desc) -> rx.Component:
+    return rx.box(
         rx.vstack(
-            rx.heading(AuthState.t["feature_section_title"], size="6", as_="h2", weight="bold"),
-            rx.text(AuthState.t["feature_section_subtitle"], size="3", color=TEXT_MUTED),
-            rx.hstack(
-                *[feature_card(title, desc, icon, note) for title, desc, icon, note in items],
-                flex_direction=["column", "column", "row"],
+            rx.box(
+                rx.icon(icon, size=22, color=accent),
+                width="46px",
+                height="46px",
+                display="flex",
+                align_items="center",
+                justify_content="center",
+                border_radius="12px",
+                background=f"{accent}1f",
+                border=f"1px solid {accent}33",
+            ),
+            rx.heading(title, size="4", as_="h3", weight="bold"),
+            rx.text(desc, size="2", color=TEXT_MUTED, line_height="1.7"),
+            spacing="3",
+            align_items="start",
+            width="100%",
+        ),
+        class_name="cdn-soft-card",
+        padding="26px",
+        border=f"1px solid {rx.color('gray', 5)}",
+        border_radius="18px",
+        background=rx.color_mode_cond("rgba(255,255,255,0.78)", "rgba(255,255,255,0.03)"),
+        height="100%",
+        _hover={
+            "border_color": accent,
+            "box_shadow": f"0 22px 48px -32px {accent}80",
+        },
+    )
+
+
+def notifications_section() -> rx.Component:
+    return _shell(
+        rx.vstack(
+            _section_heading(
+                AuthState.t["feature_section_kicker"],
+                AuthState.t["feature_section_title"],
+                AuthState.t["feature_section_subtitle"],
+            ),
+            rx.grid(
+                _feature_card(
+                    "wallet", REWARD_COLOR,
+                    AuthState.t["feature_reward_title"],
+                    AuthState.t["feature_reward_desc"],
+                ),
+                _feature_card(
+                    "vote", DREP_COLOR,
+                    AuthState.t["feature_drep_title"],
+                    AuthState.t["feature_drep_desc"],
+                ),
+                _feature_card(
+                    "bell", POOL_COLOR,
+                    AuthState.t["feature_pool_title"],
+                    AuthState.t["feature_pool_desc"],
+                ),
+                columns={"base": "1", "md": "3"},
                 spacing="4",
                 width="100%",
             ),
-            spacing="4",
+            spacing="7",
             width="100%",
         ),
-        max_width="1280px",
-        width="100%",
-        padding_x="6",
-        padding_y="32px",
+        padding_y=["64px", "80px", "96px"],
     )
 
 
-def roadmap_card(quarter: str, items: list[str]) -> rx.Component:
+# ---------- Channels strip -------------------------------------------------
+
+def _channel_card(brand_color: str, name: str, body, icon_node: rx.Component) -> rx.Component:
     return rx.box(
         rx.vstack(
             rx.hstack(
-                rx.badge(quarter, variant="solid", color_scheme="yellow", radius="full", size="2", color="#111"),
-                rx.text("リリース予定", size="2", color=TEXT_MUTED),
-                spacing="2",
+                rx.box(
+                    icon_node,
+                    width="44px",
+                    height="44px",
+                    display="flex",
+                    align_items="center",
+                    justify_content="center",
+                    border_radius="12px",
+                    background=f"{brand_color}1a",
+                    border=f"1px solid {brand_color}33",
+                ),
+                rx.heading(name, size="4", as_="h3", weight="bold"),
+                spacing="3",
                 align="center",
+                width="100%",
             ),
-            rx.vstack(
-                *[
-                    rx.hstack(rx.icon("check", size=14, color=ACCENT_DARK), rx.text(item, size="3"), spacing="2")
-                    for item in items
-                ],
-                spacing="2",
-                align_items="start",
-            ),
+            rx.text(body, size="2", color=TEXT_MUTED, line_height="1.7"),
             spacing="3",
             align_items="start",
             width="100%",
         ),
-        padding="18px",
-        border_radius="16px",
-        width="100%",
-        background=rx.color_mode_cond("rgba(255,255,255,0.96)", "rgba(15,15,25,0.92)"),
+        class_name="cdn-soft-card",
+        padding="22px",
         border=f"1px solid {rx.color('gray', 5)}",
-        box_shadow="0 18px 40px -28px rgba(0,0,0,0.18)",
-        align_items="start",
+        border_radius="18px",
+        background=rx.color_mode_cond("rgba(255,255,255,0.78)", "rgba(255,255,255,0.03)"),
+        height="100%",
     )
 
 
-def roadmap_entry(quarter: str, items: list[str], align_left: bool) -> rx.Component:
-    card = roadmap_card(quarter, items)
-    marker = rx.box(
-        width="14px",
-        height="14px",
-        background_color=ACCENT,
-        border_radius="9999px",
-        border=f"2px solid {ACCENT_DARK}",
-        box_shadow="0 0 0 10px rgba(255, 207, 0, 0.12)",
-        margin_top="15px",
+def channels_section() -> rx.Component:
+    line_icon = rx.box(
+        rx.image(src="/line-icon.png", width="22px", height="22px", object_fit="contain"),
     )
+    tg_icon = rx.icon("send", size=22, color=TG_BRAND)
+    mail_icon = rx.icon("mail", size=22, color=MAIL_BRAND)
 
-    return rx.vstack(
-        card,
-        marker,
-        spacing="2",
-        align_items="center",
-        width="100%",
-    )
-
-
-def roadmap_section() -> rx.Component:
-    roadmap = {
-        "2026 Q1": ["ウォレットログイン", "マイページ", "お気に入り", "英語対応"],
-        "2026 Q2": ["ガバナンスアクション閲覧", "DRepリスト", "DRep委任管理"],
-        "2026 Q3": ["ステーキング管理", "プールモニタリング"],
-        "2026 Q4": ["シークレット"],
-    }
-    roadmap_items = list(roadmap.items())
-    return rx.container(
-        rx.vstack(
-            rx.text("ロードマップ", size="6", weight="bold"),
-            rx.text("クォーターごとの主要マイルストーン", size="3", color=TEXT_MUTED),
-            rx.box(
-                rx.vstack(
-                    *[
-                        roadmap_entry(quarter, items, align_left=idx % 2 == 0)
-                        for idx, (quarter, items) in enumerate(roadmap_items)
-                    ],
-                    spacing="5",
+    return rx.box(
+        _shell(
+            rx.vstack(
+                _section_heading(
+                    "CHANNELS",
+                    AuthState.t["home_preview_channel_label"],
+                    AuthState.t["home_preview_footer"],
+                ),
+                rx.grid(
+                    _channel_card(
+                        LINE_BRAND, "LINE",
+                        AuthState.t["home_channel_line_desc"],
+                        line_icon,
+                    ),
+                    _channel_card(
+                        TG_BRAND, "Telegram",
+                        AuthState.t["home_channel_telegram_desc"],
+                        tg_icon,
+                    ),
+                    _channel_card(
+                        MAIL_BRAND, "Email",
+                        AuthState.t["home_channel_email_desc"],
+                        mail_icon,
+                    ),
+                    columns={"base": "1", "sm": "2", "md": "3"},
+                    spacing="4",
                     width="100%",
                 ),
+                spacing="7",
                 width="100%",
-                position="relative",
-                padding_y="10",
-                padding_x={"base": "2", "md": "0"},
-                _before={
-                    "content": "''",
-                    "position": "absolute",
-                    "left": "50%",
-                    "top": "0",
-                    "bottom": "0",
-                    "width": "2px",
-                    "background": rx.color_mode_cond(
-                        "linear-gradient(180deg, rgba(20,20,20,0), rgba(20,20,20,0.28), rgba(20,20,20,0))",
-                        "linear-gradient(180deg, rgba(255,255,255,0), rgba(255,255,255,0.32), rgba(255,255,255,0))",
-                    ),
-                    "transform": "translateX(-1px)",
-                    "opacity": "0.9",
-                },
             ),
-            spacing="5",
-            width="100%",
+            padding_y=["64px", "80px", "96px"],
         ),
-        max_width="1280px",
+        background=rx.color_mode_cond(
+            "linear-gradient(180deg, var(--gray-2) 0%, transparent 100%)",
+            "linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 100%)",
+        ),
         width="100%",
-        padding_x="6",
-        padding_y="32px",
     )
 
 
-def updates_section() -> rx.Component:
-    updates = [
-        "2025/12/28　リニューアル！",
-        "2025/12/28　Fund15 提案データ反映",
-    ]
-    return rx.container(
-        rx.accordion.root(
-            rx.accordion.item(
-                header=rx.accordion.trigger(
-                    rx.hstack(
-                        rx.icon("history", size=16, color=ACCENT_DARK),
-                        rx.text("最新アップデート", size="3"),
-                        spacing="2",
-                        align="center",
-                    )
-                ),
-                content=rx.accordion.content(
-                    rx.vstack(
-                        *[
-                            rx.hstack(
-                                rx.box(width="6px", height="6px", border_radius="999px", background_color=ACCENT_DARK),
-                                rx.text(item, size="3", color=TEXT_MUTED),
-                                spacing="2",
-                                align="center",
-                            )
-                            for item in updates
-                        ],
-                        spacing="2",
-                        align_items="start",
-                        padding_top="6px",
-                    )
-                ),
-                value="updates",
+# ---------- 3-step setup ---------------------------------------------------
+
+def _step(num: int, title, body) -> rx.Component:
+    return rx.vstack(
+        rx.hstack(
+            rx.text(
+                f"0{num}",
+                size="6",
+                weight="bold",
+                color=ACCENT_DARK,
+                letter_spacing="-0.02em",
+                line_height="1",
             ),
-            type="single",
-            collapsible=True,
-            width="100%",
-            variant="soft",
+            rx.box(width="32px", height="2px", background=ACCENT, align_self="center"),
+            spacing="3",
+            align="center",
         ),
-        max_width="1280px",
-        width="100%",
-        padding_x="6",
-        padding_y="12px",
+        rx.heading(title, size="4", as_="h3", weight="bold"),
+        rx.text(body, size="2", color=TEXT_MUTED, line_height="1.7"),
+        spacing="3",
+        align_items="start",
+        padding="24px",
+        border=f"1px solid {rx.color('gray', 5)}",
+        border_radius="18px",
+        background=rx.color_mode_cond("rgba(255,255,255,0.78)", "rgba(255,255,255,0.03)"),
+        height="100%",
     )
 
 
-@template(route="/", title="カルダノガバナンス日本語ポータル | Cardanoism ", on_load=WarmupState.warm_up_only)
+def setup_section() -> rx.Component:
+    return _shell(
+        rx.vstack(
+            _section_heading(
+                "GET STARTED",
+                AuthState.t["home_setup_title"],
+                AuthState.t["home_setup_subtitle"],
+            ),
+            rx.link(
+                rx.button(
+                    AuthState.t["home_setup_cta"],
+                    rx.icon("arrow-right", size=16),
+                    size="3",
+                    background=ACCENT,
+                    color="#111",
+                    border=f"1px solid {ACCENT_DARK}",
+                    cursor="pointer",
+                    padding="0 20px",
+                    _hover={"background": ACCENT_DARK, "color": "#fff"},
+                ),
+                href="/mypage?tab=notification",
+                underline="none",
+            ),
+            rx.grid(
+                _step(1, AuthState.t["home_step_account_title"], AuthState.t["home_step_account_body"]),
+                _step(2, AuthState.t["home_step_stake_title"], AuthState.t["home_step_stake_body"]),
+                _step(3, AuthState.t["home_step_channel_title"], AuthState.t["home_step_channel_body"]),
+                columns={"base": "1", "md": "3"},
+                spacing="4",
+                width="100%",
+            ),
+            spacing="6",
+            width="100%",
+            align_items="start",
+        ),
+        padding_y=["64px", "80px", "96px"],
+    )
+
+
+# ---------- Explore other tools -------------------------------------------
+
+def _explore_link(icon: str, label, href: str) -> rx.Component:
+    return rx.link(
+        rx.hstack(
+            rx.icon(icon, size=16, color=ACCENT_DARK),
+            rx.text(label, size="3", weight="medium", color="var(--gray-12)"),
+            rx.spacer(),
+            rx.icon("arrow-right", size=15, color=TEXT_MUTED),
+            spacing="3",
+            align="center",
+            width="100%",
+            padding="16px 20px",
+            border=f"1px solid {rx.color('gray', 5)}",
+            border_radius="14px",
+            background=rx.color_mode_cond("rgba(255,255,255,0.7)", "rgba(255,255,255,0.025)"),
+            class_name="cdn-soft-card",
+            _hover={"border_color": ACCENT_DARK},
+        ),
+        href=href,
+        underline="none",
+        width="100%",
+    )
+
+
+def explore_section() -> rx.Component:
+    return rx.box(
+        _shell(
+            rx.vstack(
+                _section_heading(
+                    "EXPLORE",
+                    AuthState.t["home_explore_title"],
+                    AuthState.t["home_explore_subtitle"],
+                ),
+                rx.grid(
+                    _explore_link("layers", AuthState.t["home_explore_governance"], "/governance"),
+                    _explore_link("users", AuthState.t["home_explore_drep"], "/governance/drep"),
+                    _explore_link("search", AuthState.t["home_explore_catalyst"], "/catalyst"),
+                    columns={"base": "1", "sm": "3"},
+                    spacing="3",
+                    width="100%",
+                ),
+                spacing="6",
+                width="100%",
+            ),
+            padding_y=["64px", "80px", "96px"],
+        ),
+        background=rx.color_mode_cond("var(--gray-2)", "rgba(255,255,255,0.02)"),
+        width="100%",
+        border_top=f"1px solid {rx.color('gray', 4)}",
+    )
+
+
+@template(route="/", title="Cardanoism | カルダノをもっと身近に", on_load=WarmupState.warm_up_only)
 def index() -> rx.Component:
     return rx.box(
-        rx.html(HEADINGS_FONT_CSS),
+        rx.html(HOME_CSS),
         hero_section(),
-        feature_section(),
-        roadmap_section(),
-        updates_section(),
-        spacing="6",
-        width="100vw",
+        notifications_section(),
+        channels_section(),
+        setup_section(),
+        explore_section(),
+        width="100%",
         max_width="100%",
     )
