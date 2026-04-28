@@ -18,6 +18,7 @@ Cardanoism の MariaDB スキーマ定義。
 | 005 | `005_dreps.sql` | dreps |
 | 006 | `006_treasury.sql` | treasury_snapshot / treasury_withdrawal / ncl_active |
 | 007 | `007_fiat_rate.sql` | fiat_rate |
+| 008 | `008_pools.sql` | pools |
 
 ## 適用例
 

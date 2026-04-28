@@ -680,6 +680,42 @@ def get_drep_metadata_batch(drep_ids: list[str]) -> list[dict]:
     return out
 
 
+# ============================================================
+# プール（SPO）関連
+# ============================================================
+
+# /pool_info も /drep_info 同様に POST のペイロード制限が厳しい。実測 50 件は OK だが安全に 25。
+POOL_BATCH_SIZE = 25
+
+
+def get_pool_list() -> list[dict]:
+    """全プールの最小情報（pool_id_bech32, pool_id_hex, ticker, pool_status, retiring_epoch 等）を返す。
+    Koios GET はデフォルト 1000 件上限なので offset で全件取得するまでループ。
+    """
+    all_out: list[dict] = []
+    limit = 1000
+    offset = 0
+    while True:
+        data = _get("/pool_list", {"limit": limit, "offset": offset}, timeout=20.0)
+        if not data or not isinstance(data, list):
+            break
+        all_out.extend(data)
+        if len(data) < limit:
+            break
+        offset += limit
+    return all_out
+
+
+def get_pool_info_batch(pool_ids: list[str]) -> list[dict]:
+    """複数プールの詳細情報を一括取得（25 件チャンク + 413 自動分割）。"""
+    if not pool_ids:
+        return []
+    out: list[dict] = []
+    for chunk in _chunks(pool_ids, POOL_BATCH_SIZE):
+        out.extend(_post_split_on_413("/pool_info", "_pool_bech32_ids", chunk))
+    return out
+
+
 def get_proposal_title(proposal_tx_hash: str, proposal_index: int = 0) -> str | None:
     """
     ガバナンスアクションのタイトルを取得する。

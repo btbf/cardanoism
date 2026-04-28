@@ -1265,6 +1265,93 @@ def _extract_drep_meta(meta_row: dict) -> dict:
     }
 
 
+def _extract_pool_meta(info: dict) -> dict:
+    """Koios /pool_info の meta_json から ticker / 名称 / 説明 / homepage を取り出す。"""
+    meta = info.get("meta_json") or {}
+    return {
+        "ticker":      _extract_str(meta.get("ticker")),
+        "pool_name":   _extract_str(meta.get("name")),
+        "description": _extract_str(meta.get("description")) or None,
+        "homepage":    _extract_str(meta.get("homepage")) or None,
+    }
+
+
+def _extract_str(value) -> str:
+    """{"@value": "..."} 形式と文字列の両方に対応して文字列を返す。"""
+    if isinstance(value, dict):
+        return str(value.get("@value") or "").strip()
+    return str(value or "").strip()
+
+
+def check_pool_sync():
+    """
+    Koios から全プールの情報を取得して DB にキャッシュする。
+    - /pool_list: 全プールの最小情報（status / ticker / retiring_epoch 等）
+    - /pool_info: 詳細（pledge / margin / live_stake / saturation / blocks / メタデータ）
+    """
+    from cardanoism.backend.koios import (
+        KOIOS_BASE_URL, get_pool_list, get_pool_info_batch,
+    )
+    from cardanoism.backend.pool_db import bulk_upsert_pools
+
+    logger.info("プール同期 開始 (network=%s, url=%s)", _koios_network(), KOIOS_BASE_URL)
+
+    pools = get_pool_list()
+    if not pools:
+        logger.warning("プール一覧が取得できませんでした")
+        return
+    logger.info("プール一覧: %d 件", len(pools))
+
+    # retired はメタデータが薄い & 同期コスト高なので /pool_info の対象から外す。
+    # ただし pool_list 由来の最小情報（status / retiring_epoch）は upsert しておく。
+    target_ids = [
+        p["pool_id_bech32"]
+        for p in pools
+        if p.get("pool_id_bech32") and p.get("pool_status") != "retired"
+    ]
+    logger.info("/pool_info 対象: %d 件", len(target_ids))
+
+    info_map = {i["pool_id_bech32"]: i for i in get_pool_info_batch(target_ids)}
+
+    records: list[dict] = []
+    for p in pools:
+        pid = p.get("pool_id_bech32")
+        if not pid:
+            continue
+        info = info_map.get(pid, {})
+        meta = _extract_pool_meta(info)
+
+        records.append({
+            "pool_id_bech32":   pid,
+            "pool_id_hex":      info.get("pool_id_hex") or p.get("pool_id_hex"),
+            "pool_status":      p.get("pool_status") or info.get("pool_status"),
+            "active_epoch_no":  info.get("active_epoch_no"),
+            "retiring_epoch":   p.get("retiring_epoch") or info.get("retiring_epoch"),
+            "op_cert":          info.get("op_cert"),
+            "op_cert_counter":  info.get("op_cert_counter"),
+            "vrf_key_hash":     info.get("vrf_key_hash"),
+            "pledge":           info.get("pledge"),
+            "margin":           info.get("margin"),
+            "fixed_cost":       info.get("fixed_cost"),
+            "active_stake":     info.get("active_stake"),
+            "live_stake":       info.get("live_stake"),
+            "live_pledge":      info.get("live_pledge"),
+            "live_delegators":  info.get("live_delegators"),
+            "live_saturation":  info.get("live_saturation"),
+            "sigma":            info.get("sigma"),
+            "block_count":      info.get("block_count"),
+            "reward_addr":      info.get("reward_addr"),
+            "owners":           info.get("owners"),
+            "relays":           info.get("relays"),
+            "meta_url":         info.get("meta_url") or p.get("meta_url"),
+            "meta_hash":        info.get("meta_hash") or p.get("meta_hash"),
+            **meta,
+        })
+
+    inserted = bulk_upsert_pools(records)
+    logger.info("プール同期 完了: %d / %d 件 upsert", inserted, len(records))
+
+
 def check_drep_sync():
     """
     Koios から全 DRep の情報を取得して DB にキャッシュする。
@@ -1772,7 +1859,7 @@ def main():
     parser.add_argument(
         "--event",
         default="all",
-        choices=["all", "pool", "drep", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync"],
+        choices=["all", "pool", "drep", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync"],
         help="実行するイベントグループ",
     )
     parser.add_argument(
@@ -1848,6 +1935,8 @@ def main():
         check_fiat_sync()
     if args.event in ("all", "drep_sync"):
         check_drep_sync()
+    if args.event in ("all", "pool_sync"):
+        check_pool_sync()
     if args.event in ("all", "vote_sync"):
         check_vote_sync()
     if args.event in ("all", "summary_sync"):
