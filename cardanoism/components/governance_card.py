@@ -300,124 +300,153 @@ def _withdrawal_entry_row(entry) -> rx.Component:
     )
 
 
-def _mini_bar(label, yes_pct, threshold_pct, status, applicable) -> rx.Component:
-    """一覧カード用の投票ミニカラム（ラベル/%が上・プログレスバーが下の縦積み）。"""
-    yes_color = rx.match(
-        status,
-        ("passed", "var(--green-9)"),
-        ("failed", "var(--red-9)"),
-        "var(--gray-9)",
-    )
+def _mini_donut(label, yes_pct, no_pct, abstain_pct, threshold_pct, status, donut_bg, applicable) -> rx.Component:
+    """一覧カード用のミニドーナツ（YES/NO/Abstain を一目で把握できる円グラフ）。"""
     yes_text_color = rx.match(
         status,
         ("passed", "var(--green-11)"),
         ("failed", "var(--red-11)"),
-        "var(--gray-11)",
+        "var(--gray-12)",
     )
 
-    normal = rx.vstack(
-        rx.hstack(
-            rx.text(label, size="1", color="var(--gray-10)", style={"fontSize": "10px"}),
-            rx.spacer(),
-            rx.text(yes_pct, size="1", weight="bold", color=yes_text_color, style={"fontSize": "10px"}),
-            rx.text("%", size="1", color="var(--gray-10)", style={"fontSize": "9px"}),
-            rx.cond(
-                threshold_pct != "",
-                rx.text(
-                    "/" + threshold_pct + "%",
-                    style={"fontSize": "9px", "color": "var(--gray-9)", "marginLeft": "2px"},
-                ),
-                rx.fragment(),
-            ),
-            spacing="0",
-            align="baseline",
-            width="100%",
-        ),
+    donut = rx.box(
         rx.box(
-            rx.box(
-                width=yes_pct + "%",
-                height="100%",
-                background=yes_color,
-                border_radius="4px",
-                transition="width 0.3s",
+            width="56px",
+            height="56px",
+            border_radius="50%",
+            background=donut_bg,
+            transition="background 0.3s ease",
+        ),
+        rx.center(
+            rx.hstack(
+                rx.text(yes_pct, weight="bold", color=yes_text_color, style={"fontSize": "11px"}),
+                rx.text("%", style={"fontSize": "9px", "color": "var(--gray-10)"}),
+                spacing="0", align="baseline",
             ),
-            rx.cond(
-                threshold_pct != "",
-                rx.box(
-                    style={
-                        "position": "absolute",
-                        "left": threshold_pct + "%",
-                        "top": "-3px",
-                        "bottom": "-3px",
-                        "width": "2px",
-                        "background": "var(--gray-12)",
-                    },
-                ),
-                rx.fragment(),
+            position="absolute",
+            top="50%", left="50%",
+            transform="translate(-50%, -50%)",
+            width="36px", height="36px",
+            border_radius="50%",
+            background="var(--gray-2)",
+        ),
+        position="relative",
+        width="56px",
+        height="56px",
+        flex_shrink="0",
+    )
+
+    detail = rx.vstack(
+        rx.text(label, weight="bold", color="var(--gray-12)", style={"fontSize": "11px"}),
+        rx.cond(
+            threshold_pct != "",
+            rx.hstack(
+                rx.text(AuthState.t["gov_vote_threshold_label"], style={"fontSize": "9px", "color": "var(--gray-10)"}),
+                rx.text(threshold_pct + "%", style={"fontSize": "10px", "color": "var(--gray-12)", "fontWeight": "500"}),
+                spacing="1", align="baseline",
+            ),
+            rx.fragment(),
+        ),
+        rx.hstack(
+            rx.box(width="6px", height="6px", background="var(--green-9)", border_radius="1px", flex_shrink="0"),
+            rx.text("Yes", style={"fontSize": "9px", "color": "var(--gray-10)"}),
+            rx.text(yes_pct + "%", style={"fontSize": "10px", "color": "var(--green-11)", "fontWeight": "600"}),
+            spacing="1", align="baseline",
+        ),
+        rx.hstack(
+            rx.box(width="6px", height="6px", background="var(--red-9)", border_radius="1px", flex_shrink="0"),
+            rx.text("No", style={"fontSize": "9px", "color": "var(--gray-10)"}),
+            rx.text(no_pct + "%", style={"fontSize": "10px", "color": "var(--red-11)", "fontWeight": "600"}),
+            spacing="1", align="baseline",
+        ),
+        spacing="0",
+        align="start",
+        flex="1",
+        min_width="0",
+    )
+
+    normal = rx.hstack(
+        donut,
+        detail,
+        spacing="2",
+        align="center",
+        flex="1",
+        min_width="150px",
+    )
+
+    disabled = rx.hstack(
+        rx.box(
+            rx.center(
+                rx.icon("ban", size=18, color="var(--gray-8)"),
+                position="absolute",
+                top="50%", left="50%",
+                transform="translate(-50%, -50%)",
+                width="36px", height="36px",
+                border_radius="50%",
+                background="var(--gray-2)",
             ),
             position="relative",
-            width="100%",
-            height="8px",
-            background="var(--gray-6)",
-            border_radius="4px",
-            border=f"1px solid {rx.color('gray', 7)}",
+            width="56px",
+            height="56px",
+            border_radius="50%",
+            background="var(--gray-4)",
+            flex_shrink="0",
+            style={"opacity": "0.6"},
         ),
-        spacing="1",
+        rx.vstack(
+            rx.text(label, weight="bold", color="var(--gray-9)", style={"fontSize": "11px"}),
+            rx.text(AuthState.t["gov_vote_not_applicable"], style={"fontSize": "9px", "color": "var(--gray-9)"}),
+            spacing="0",
+            align="start",
+            flex="1",
+            min_width="0",
+        ),
+        spacing="2",
+        align="center",
         flex="1",
-        min_width="110px",
-    )
-
-    disabled = rx.vstack(
-        rx.hstack(
-            rx.text(label, size="1", color="var(--gray-9)", style={"fontSize": "10px"}),
-            rx.spacer(),
-            rx.text("—", size="1", color="var(--gray-8)", style={"fontSize": "10px"}),
-            spacing="0", align="baseline", width="100%",
-        ),
-        rx.box(
-            width="100%",
-            height="8px",
-            background="var(--gray-6)",
-            border_radius="4px",
-            border=f"1px solid {rx.color('gray', 7)}",
-            style={"opacity": "0.5"},
-        ),
-        spacing="1",
-        flex="1",
-        min_width="110px",
+        min_width="150px",
     )
 
     return rx.cond(applicable == "no", disabled, normal)
 
 
 def _vote_summary_inline(action: Dict[str, Any]) -> rx.Component:
-    """一覧カード用のコンパクト投票サマリ（3ロール横並び）。voting_summary なしなら非表示。"""
+    """一覧カード用のコンパクト投票サマリ（3ロールのミニドーナツ横並び）。voting_summary なしなら非表示。"""
     return rx.cond(
         action["has_voting_summary"].to(str) != "",
         rx.hstack(
-            _mini_bar(
+            _mini_donut(
                 AuthState.t["gov_voter_drep"],
                 action["drep_yes_pct"].to(str),
+                action["drep_no_pct"].to(str),
+                action["drep_abstain_pct"].to(str),
                 action["drep_threshold_pct"].to(str),
                 action["drep_status"].to(str),
+                action["drep_donut_bg"].to(str),
                 action["drep_applicable"].to(str),
             ),
-            _mini_bar(
+            _mini_donut(
                 AuthState.t["gov_voter_cc"],
                 action["cc_yes_pct"].to(str),
+                action["cc_no_pct"].to(str),
+                action["cc_abstain_pct"].to(str),
                 action["cc_threshold_pct"].to(str),
                 action["cc_status"].to(str),
+                action["cc_donut_bg"].to(str),
                 action["cc_applicable"].to(str),
             ),
-            _mini_bar(
+            _mini_donut(
                 AuthState.t["gov_voter_spo"],
                 action["pool_yes_pct"].to(str),
+                action["pool_no_pct"].to(str),
+                action["pool_abstain_pct"].to(str),
                 action["pool_threshold_pct"].to(str),
                 action["pool_status"].to(str),
+                action["pool_donut_bg"].to(str),
                 action["pool_applicable"].to(str),
             ),
             spacing="3",
-            align="start",
+            align="center",
             wrap="wrap",
             width="100%",
         ),
@@ -1315,9 +1344,9 @@ def ga_list_card(action: Dict[str, Any]) -> rx.Component:
             _withdrawal_inline(action),
             _vote_summary_inline(action),
             rx.cond(
-                _has_any_text("abstract_ja", "abstract", action),
+                _has_any_text("abstract_ja_card", "abstract_card", action),
                 rx.text(
-                    _localized_text("abstract_ja", "abstract", action),
+                    _localized_text("abstract_ja_card", "abstract_card", action),
                     size="3",
                     line_height="1.6",
                     text_wrap="wrap",
@@ -1386,9 +1415,9 @@ def ga_grid_card(action: Dict[str, Any]) -> rx.Component:
         _withdrawal_inline(action),
         _vote_summary_inline(action),
         rx.cond(
-            _has_any_text("abstract_ja", "abstract", action),
+            _has_any_text("abstract_ja_card", "abstract_card", action),
             rx.text(
-                _localized_text("abstract_ja", "abstract", action),
+                _localized_text("abstract_ja_card", "abstract_card", action),
                 size="2",
                 color="var(--gray-12)",
                 line_height="1.6",

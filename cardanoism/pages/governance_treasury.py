@@ -175,6 +175,17 @@ class TreasuryState(rx.State):
     def simulation_active(self) -> bool:
         return len(self.simulation_proposal_ids) > 0
 
+    @rx.var
+    def show_select_all_button(self) -> bool:
+        """アクティブ提案が存在し、かつ未選択のものが残っている場合に True。"""
+        active_ids = {
+            p["proposal_id"] for p in self.proposals
+            if p.get("is_active") == "1" and p.get("proposal_id")
+        }
+        if not active_ids:
+            return False
+        return not active_ids.issubset(set(self.simulation_proposal_ids))
+
     # NCL 枠残り（シミュレーション額も減算して動的に反映）
     @rx.var
     def remaining_lovelace(self) -> int:
@@ -396,6 +407,13 @@ class TreasuryState(rx.State):
     def clear_simulation(self):
         self.simulation_proposal_ids = []
 
+    def select_all_active(self):
+        """すべてのアクティブ提案をシミュレーション対象に選択する。"""
+        self.simulation_proposal_ids = [
+            p["proposal_id"] for p in self.proposals
+            if p.get("is_active") == "1" and p.get("proposal_id")
+        ]
+
 
 def _shorten_stake(addr: str) -> str:
     if not addr:
@@ -442,31 +460,31 @@ def _breadcrumb() -> rx.Component:
 
 
 def _balance_card() -> rx.Component:
+    """残高は1行（折り返しあり）に圧縮し、エポック情報は右端に配置。"""
     return rx.box(
-        rx.vstack(
+        rx.flex(
             rx.hstack(
-                rx.icon("landmark", size=18, color="var(--amber-11)"),
-                rx.text(AuthState.t["treasury_balance_title"], size="3", weight="bold"),
-                spacing="2",
-                align="center",
+                rx.icon("landmark", size=16, color="var(--amber-11)"),
+                rx.text(AuthState.t["treasury_balance_title"], size="2", weight="bold"),
+                spacing="2", align="center", flex_shrink="0",
             ),
             rx.hstack(
-                rx.text(TreasuryState.balance_ada_display, size="8", weight="bold", color="var(--amber-11)"),
-                rx.text("ADA", size="4", color="var(--gray-11)"),
-                spacing="2",
-                align="baseline",
-                wrap="wrap",
+                rx.text(TreasuryState.balance_ada_display, size="6", weight="bold", color="var(--amber-11)"),
+                rx.text("ADA", size="2", color="var(--gray-11)"),
+                _fiat_inline(TreasuryState.balance_jpy_display, TreasuryState.balance_usd_display, size="2"),
+                spacing="2", align="baseline", wrap="wrap",
             ),
-            _fiat_inline(TreasuryState.balance_jpy_display, TreasuryState.balance_usd_display, size="3"),
+            rx.spacer(),
             rx.text(
                 AuthState.t["treasury_epoch_label"] + " " + TreasuryState.current_epoch.to_string(),
-                size="2",
-                color="var(--gray-10)",
+                size="1", color="var(--gray-10)", flex_shrink="0",
             ),
-            spacing="2",
-            align="start",
+            wrap="wrap",
+            align="center",
+            spacing="3",
+            width="100%",
         ),
-        padding="20px",
+        padding="10px 16px",
         border=f"1px solid {rx.color('gray', 4)}",
         border_radius="12px",
         background="var(--gray-2)",
@@ -474,63 +492,148 @@ def _balance_card() -> rx.Component:
     )
 
 
+def _ncl_swatch(background: str) -> rx.Component:
+    return rx.box(
+        width="8px", height="8px",
+        background=background,
+        border_radius="2px",
+        flex_shrink="0",
+    )
+
+
+def _ncl_breakdown_row(
+    label_key: str,
+    swatch: rx.Component,
+    ada_var,
+    jpy_var,
+    usd_var,
+    pct_var,
+    accent_color: str,
+) -> rx.Component:
+    """ブレイクダウン1行（凡例 + ラベル(min幅でカラム揃え) + ADA + パーセント + 法定通貨）。"""
+    return rx.hstack(
+        swatch,
+        rx.box(
+            rx.text(AuthState.t[label_key], size="1", color="var(--gray-11)", weight="medium"),
+            min_width="100px",
+            flex_shrink="0",
+        ),
+        rx.text(ada_var, size="2", weight="bold"),
+        rx.text("ADA", size="1", color="var(--gray-10)"),
+        rx.text("(" + pct_var + "%)", size="1", color=accent_color, weight="medium"),
+        _fiat_inline(jpy_var, usd_var, size="1"),
+        spacing="2",
+        align="baseline",
+        wrap="wrap",
+    )
+
+
 def _ncl_card() -> rx.Component:
+    spent_swatch = _ncl_swatch("var(--amber-9)")
+    pending_swatch = _ncl_swatch("var(--violet-9)")
+    sim_swatch = _ncl_swatch(
+        "repeating-linear-gradient(45deg, var(--green-9), var(--green-9) 3px, var(--green-10) 3px, var(--green-10) 6px)"
+    )
+
     return rx.box(
         rx.vstack(
-            rx.hstack(
-                rx.icon("gauge", size=18, color="var(--blue-11)"),
-                rx.text(AuthState.t["ncl_title"], size="3", weight="bold"),
-                spacing="2",
-                align="center",
-            ),
-            # 採用している提案情報
-            rx.cond(
-                TreasuryState.ncl_proposal_id != "",
+            # ── ヘッダー：タイトル + 採用提案 + 期間 + 説明ツールチップ ──
+            rx.flex(
                 rx.hstack(
-                    rx.icon("file-check-2", size=14, color="var(--green-10)"),
-                    rx.link(
-                        TreasuryState.ncl_title,
-                        href="/governance/" + TreasuryState.ncl_proposal_id,
-                        size="2",
-                        color_scheme="amber",
+                    rx.icon("gauge", size=16, color="var(--blue-11)"),
+                    rx.text(AuthState.t["ncl_title"], size="2", weight="bold"),
+                    rx.tooltip(
+                        rx.icon("info", size=14, color="var(--gray-9)", style={"cursor": "help"}),
+                        content=AuthState.t["ncl_description"],
                     ),
-                    rx.badge(
-                        "DRep " + TreasuryState.ncl_drep_yes_pct_display + "%",
-                        color_scheme="green",
-                        variant="soft",
-                    ),
-                    spacing="2", align="center", wrap="wrap",
+                    spacing="2", align="center", flex_shrink="0",
                 ),
+                rx.cond(
+                    TreasuryState.ncl_proposal_id != "",
+                    rx.hstack(
+                        rx.icon("file-check-2", size=12, color="var(--green-10)"),
+                        rx.link(
+                            TreasuryState.ncl_title,
+                            href="/governance/" + TreasuryState.ncl_proposal_id,
+                            size="1",
+                            color_scheme="amber",
+                        ),
+                        rx.badge(
+                            "DRep " + TreasuryState.ncl_drep_yes_pct_display + "%",
+                            color_scheme="green",
+                            variant="soft",
+                            size="1",
+                        ),
+                        spacing="1", align="center",
+                    ),
+                    rx.fragment(),
+                ),
+                rx.spacer(),
+                rx.hstack(
+                    rx.text(AuthState.t["ncl_period_label"], size="1", color="var(--gray-10)"),
+                    rx.text(TreasuryState.ncl_period_start_display, size="1", color="var(--gray-12)"),
+                    rx.text("〜", size="1", color="var(--gray-10)"),
+                    rx.text(TreasuryState.ncl_period_end_display, size="1", color="var(--gray-12)"),
+                    spacing="1", align="center", flex_shrink="0",
+                ),
+                wrap="wrap",
+                align="center",
+                spacing="3",
+                width="100%",
             ),
+            # ── プログレスバー（残りをバー中央に / 上限をバー右端外に表示） ──
             rx.hstack(
-                rx.text(AuthState.t["ncl_period_label"], size="2", color="var(--gray-10)"),
-                rx.text(TreasuryState.ncl_period_start_display, size="2", color="var(--gray-12)"),
-                rx.text("〜", size="2", color="var(--gray-10)"),
-                rx.text(TreasuryState.ncl_period_end_display, size="2", color="var(--gray-12)"),
-                spacing="2", align="center", wrap="wrap",
-            ),
-            # プログレスバー + ドーナツチャート
-            rx.hstack(
-                # バー（4層：済み / 確定 / シミュレーション / 残り）
                 rx.box(
                     rx.hstack(
+                        # 引き出し済み
                         rx.box(
                             width=TreasuryState.ncl_spent_pct.to_string() + "%",
                             height="100%",
                             background="linear-gradient(90deg, var(--amber-9), var(--orange-10))",
                             transition="width 0.5s ease",
+                            flex_shrink="0",
                         ),
+                        # 引き出し確定
                         rx.box(
                             width=TreasuryState.ncl_pending_pct.to_string() + "%",
                             height="100%",
                             background="linear-gradient(90deg, var(--violet-9), var(--purple-10))",
                             transition="width 0.5s ease",
+                            flex_shrink="0",
                         ),
+                        # シミュレーション
                         rx.box(
                             width=TreasuryState.simulation_pct.to_string() + "%",
                             height="100%",
                             background="repeating-linear-gradient(45deg, var(--green-9), var(--green-9) 6px, var(--green-10) 6px, var(--green-10) 12px)",
                             transition="width 0.5s ease",
+                            flex_shrink="0",
+                        ),
+                        # 残り（テキスト入りセグメント）
+                        rx.center(
+                            rx.hstack(
+                                rx.text(
+                                    AuthState.t["ncl_remaining_label"],
+                                    size="1", color="var(--gray-11)", weight="medium",
+                                ),
+                                rx.text(
+                                    TreasuryState.ncl_remaining_ada_display,
+                                    size="2", weight="bold", color="var(--gray-12)",
+                                ),
+                                rx.text("ADA", size="1", color="var(--gray-11)"),
+                                rx.text(
+                                    "(" + TreasuryState.ncl_remaining_pct_display + "%)",
+                                    size="1", color="var(--gray-10)",
+                                ),
+                                spacing="1", align="baseline",
+                                white_space="nowrap",
+                            ),
+                            width=TreasuryState.ncl_remaining_pct.to_string() + "%",
+                            height="100%",
+                            background="var(--gray-3)",
+                            transition="width 0.5s ease",
+                            overflow="hidden",
+                            flex_shrink="0",
                         ),
                         spacing="0",
                         width="100%",
@@ -538,184 +641,82 @@ def _ncl_card() -> rx.Component:
                         align="stretch",
                     ),
                     width="100%",
-                    height="14px",
-                    background="var(--gray-4)",
+                    height="30px",
+                    background="var(--gray-3)",
                     border_radius="9999px",
                     overflow="hidden",
+                    border=f"1px solid {rx.color('gray', 5)}",
                     flex="1",
                     min_width="0",
                 ),
-                # ドーナツ（残り％を中央に表示）
-                rx.box(
-                    # 外側の円グラフ（conic-gradient）
-                    rx.box(
-                        width="110px",
-                        height="110px",
-                        border_radius="50%",
-                        background=TreasuryState.ncl_donut_gradient,
-                        transition="background 0.5s ease",
-                    ),
-                    # 中央の穴（ラベル + 残り%）
-                    rx.center(
-                        rx.vstack(
+                # 上限（バー右端の外側に配置）
+                rx.hstack(
+                    rx.text("/", size="4", color="var(--gray-9)"),
+                    rx.vstack(
+                        rx.hstack(
                             rx.text(
-                                AuthState.t["ncl_legend_remaining"],
-                                size="1", color="var(--gray-10)",
+                                AuthState.t["ncl_limit_label"],
+                                size="1", color="var(--gray-11)", weight="medium",
                             ),
-                            rx.hstack(
-                                rx.text(
-                                    TreasuryState.ncl_remaining_pct_display,
-                                    size="6", weight="bold", color="var(--gray-12)",
-                                ),
-                                rx.text("%", size="2", color="var(--gray-11)"),
-                                spacing="0", align="baseline",
+                            rx.text(
+                                TreasuryState.ncl_limit_ada_display,
+                                size="3", weight="bold", color="var(--amber-11)",
                             ),
-                            spacing="0", align="center",
+                            rx.text("ADA", size="1", color="var(--amber-11)"),
+                            spacing="1", align="baseline",
                         ),
-                        position="absolute",
-                        top="50%", left="50%",
-                        transform="translate(-50%, -50%)",
-                        width="78px", height="78px",
-                        border_radius="50%",
-                        background="var(--gray-2)",
+                        _fiat_inline(
+                            TreasuryState.ncl_limit_jpy_display,
+                            TreasuryState.ncl_limit_usd_display,
+                            size="1",
+                        ),
+                        spacing="0", align="start",
                     ),
-                    position="relative",
-                    width="110px",
-                    height="110px",
-                    flex_shrink="0",
+                    spacing="2", align="center", flex_shrink="0",
                 ),
-                spacing="4",
+                spacing="2",
                 align="center",
                 width="100%",
             ),
-            # 凡例
-            rx.hstack(
-                rx.hstack(
-                    rx.box(width="10px", height="10px", background="var(--amber-9)", border_radius="2px"),
-                    rx.text(AuthState.t["ncl_legend_spent"], size="1", color="var(--gray-10)"),
-                    spacing="1", align="center",
+            # ── 内訳（縦リスト：済み / 確定 / シミュレーション） ──
+            rx.vstack(
+                _ncl_breakdown_row(
+                    "ncl_spent_label", spent_swatch,
+                    TreasuryState.ncl_spent_ada_display,
+                    TreasuryState.ncl_spent_jpy_display,
+                    TreasuryState.ncl_spent_usd_display,
+                    TreasuryState.ncl_spent_pct_display,
+                    "var(--amber-11)",
                 ),
-                rx.hstack(
-                    rx.box(width="10px", height="10px", background="var(--violet-9)", border_radius="2px"),
-                    rx.text(AuthState.t["ncl_legend_pending"], size="1", color="var(--gray-10)"),
-                    spacing="1", align="center",
-                ),
-                rx.hstack(
-                    rx.box(
-                        width="10px", height="10px",
-                        background="repeating-linear-gradient(45deg, var(--green-9), var(--green-9) 3px, var(--green-10) 3px, var(--green-10) 6px)",
-                        border_radius="2px",
-                    ),
-                    rx.text(AuthState.t["ncl_legend_simulation"], size="1", color="var(--gray-10)"),
-                    spacing="1", align="center",
-                ),
-                rx.hstack(
-                    rx.box(width="10px", height="10px", background="var(--gray-4)", border_radius="2px", border=f"1px solid {rx.color('gray', 6)}"),
-                    rx.text(AuthState.t["ncl_legend_remaining"], size="1", color="var(--gray-10)"),
-                    spacing="1", align="center",
-                ),
-                spacing="3", wrap="wrap",
-            ),
-            rx.hstack(
-                rx.vstack(
-                    rx.hstack(
-                        rx.box(width="8px", height="8px", background="var(--violet-9)", border_radius="2px"),
-                        rx.text(AuthState.t["ncl_pending_label"], size="2", weight="bold", color="var(--gray-12)"),
-                        spacing="2", align="center",
-                    ),
-                    rx.hstack(
-                        rx.text(TreasuryState.ncl_pending_ada_display, size="5", weight="bold"),
-                        rx.text("ADA", size="2", color="var(--gray-11)"),
-                        spacing="1", align="baseline",
-                    ),
-                    _fiat_inline(TreasuryState.ncl_pending_jpy_display, TreasuryState.ncl_pending_usd_display, size="1"),
-                    rx.text(TreasuryState.ncl_pending_pct_display + "%", size="1", color="var(--violet-11)", weight="medium"),
-                    spacing="1", align="start",
-                ),
-                rx.vstack(
-                    rx.hstack(
-                        rx.box(width="8px", height="8px", background="var(--amber-9)", border_radius="2px"),
-                        rx.text(AuthState.t["ncl_spent_label"], size="2", weight="bold", color="var(--gray-12)"),
-                        spacing="2", align="center",
-                    ),
-                    rx.hstack(
-                        rx.text(TreasuryState.ncl_spent_ada_display, size="5", weight="bold"),
-                        rx.text("ADA", size="2", color="var(--gray-11)"),
-                        spacing="1", align="baseline",
-                    ),
-                    _fiat_inline(TreasuryState.ncl_spent_jpy_display, TreasuryState.ncl_spent_usd_display, size="1"),
-                    rx.text(TreasuryState.ncl_spent_pct_display + "%", size="1", color="var(--amber-11)", weight="medium"),
-                    spacing="1", align="start",
+                _ncl_breakdown_row(
+                    "ncl_pending_label", pending_swatch,
+                    TreasuryState.ncl_pending_ada_display,
+                    TreasuryState.ncl_pending_jpy_display,
+                    TreasuryState.ncl_pending_usd_display,
+                    TreasuryState.ncl_pending_pct_display,
+                    "var(--violet-11)",
                 ),
                 rx.cond(
                     TreasuryState.simulation_active,
-                    rx.vstack(
-                        rx.hstack(
-                            rx.box(
-                                width="8px", height="8px",
-                                background="repeating-linear-gradient(45deg, var(--green-9), var(--green-9) 3px, var(--green-10) 3px, var(--green-10) 6px)",
-                                border_radius="2px",
-                            ),
-                            rx.text(AuthState.t["ncl_simulation_label"], size="2", weight="bold", color="var(--gray-12)"),
-                            spacing="2", align="center",
-                        ),
-                        rx.hstack(
-                            rx.text(TreasuryState.simulation_ada_display, size="5", weight="bold"),
-                            rx.text("ADA", size="2", color="var(--gray-11)"),
-                            spacing="1", align="baseline",
-                        ),
-                        _fiat_inline(TreasuryState.simulation_jpy_display, TreasuryState.simulation_usd_display, size="1"),
-                        rx.text(TreasuryState.simulation_pct_display + "%", size="1", color="var(--green-11)", weight="medium"),
-                        spacing="1", align="start",
+                    _ncl_breakdown_row(
+                        "ncl_simulation_label", sim_swatch,
+                        TreasuryState.simulation_ada_display,
+                        TreasuryState.simulation_jpy_display,
+                        TreasuryState.simulation_usd_display,
+                        TreasuryState.simulation_pct_display,
+                        "var(--green-11)",
                     ),
                     rx.fragment(),
                 ),
-                rx.vstack(
-                    rx.text(AuthState.t["ncl_remaining_and_limit_label"], size="2", weight="bold", color="var(--gray-12)"),
-                    rx.hstack(
-                        rx.text(TreasuryState.ncl_remaining_ada_display, size="4", weight="medium", color="var(--gray-10)"),
-                        rx.text("/", size="4", color="var(--gray-9)"),
-                        rx.text(TreasuryState.ncl_limit_ada_display, size="7", weight="bold", color="var(--amber-11)"),
-                        rx.text("ADA", size="3", color="var(--amber-11)"),
-                        spacing="1", align="baseline", wrap="wrap",
-                    ),
-                    rx.cond(
-                        AuthState.language == "en",
-                        rx.cond(
-                            TreasuryState.ncl_limit_usd_display != "",
-                            rx.text(
-                                "(≈ ",
-                                TreasuryState.ncl_remaining_usd_display,
-                                " / ",
-                                TreasuryState.ncl_limit_usd_display,
-                                ")",
-                                size="2", color="var(--gray-10)",
-                            ),
-                            rx.fragment(),
-                        ),
-                        rx.cond(
-                            TreasuryState.ncl_limit_jpy_display != "",
-                            rx.text(
-                                "(≈ ",
-                                TreasuryState.ncl_remaining_jpy_display,
-                                " / ",
-                                TreasuryState.ncl_limit_jpy_display,
-                                ")",
-                                size="2", color="var(--gray-10)",
-                            ),
-                            rx.fragment(),
-                        ),
-                    ),
-                    spacing="1", align="start",
-                ),
-                spacing="6", wrap="wrap", width="100%", padding_top="8px",
+                spacing="1",
+                align="start",
+                width="100%",
             ),
-            rx.text(AuthState.t["ncl_description"], size="1", color="var(--gray-10)"),
-            spacing="3",
+            spacing="2",
             align="start",
             width="100%",
         ),
-        padding="20px",
+        padding="12px 16px",
         border=f"1px solid {rx.color('gray', 4)}",
         border_radius="12px",
         background="var(--gray-2)",
@@ -848,12 +849,25 @@ def _proposals_tab_content() -> rx.Component:
                 rx.text(AuthState.t["ncl_simulation_hint"], size="1", color="var(--gray-10)"),
                 rx.spacer(),
                 rx.cond(
+                    TreasuryState.show_select_all_button,
+                    rx.button(
+                        rx.icon("check-check", size=14),
+                        AuthState.t["ncl_simulation_select_all"],
+                        on_click=TreasuryState.select_all_active,
+                        variant="soft",
+                        color_scheme="green",
+                        size="1",
+                        cursor="pointer",
+                    ),
+                    rx.fragment(),
+                ),
+                rx.cond(
                     TreasuryState.simulation_active,
                     rx.button(
                         AuthState.t["ncl_simulation_clear"],
                         on_click=TreasuryState.clear_simulation,
                         variant="soft",
-                        color_scheme="green",
+                        color_scheme="gray",
                         size="1",
                         cursor="pointer",
                     ),
@@ -992,11 +1006,11 @@ def governance_treasury_page() -> rx.Component:
                             width="100%",
                             color_scheme="amber",
                         ),
-                        spacing="4",
+                        spacing="3",
                         width="100%",
                     ),
                 ),
-                spacing="4",
+                spacing="3",
                 width="100%",
             ),
             width="100%",

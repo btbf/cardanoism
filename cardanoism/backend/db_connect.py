@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import sys
 import json
 import mariadb
@@ -9,6 +10,39 @@ from contextlib import contextmanager
 from time import perf_counter
 import reflex as rx
 import dataclasses
+
+# 概要冒頭の URL／リンクブロックを除去するための正規表現群。
+# 順に適用 → 変化が無くなるまでループするので、複数パターンが連続していても剥がせる。
+_LEADING_LINK_PATTERNS = [
+    # **... URL/markdown link ...**  （太字内に URL 含むブロック。例: "**Proposal as pdf: [...](...)**"）
+    re.compile(r"^\s*\*\*[^*\n]*?(?:https?://|\]\()[^*\n]*?\*\*\s*", re.IGNORECASE),
+    # *... URL/markdown link ...*    （斜体内に URL 含むブロック）
+    re.compile(r"^\s*\*[^*\n]*?(?:https?://|\]\()[^*\n]*?\*\s*", re.IGNORECASE),
+    # **label** [text](url)          （太字ラベル + 直後のマークダウンリンク）
+    re.compile(r"^\s*\*\*[^*\n]+?\*\*\s*\[[^\]\n]*\]\([^)\s]+\)\s*", re.IGNORECASE),
+    # **label** url                  （太字ラベル + 直後の素 URL）
+    re.compile(r"^\s*\*\*[^*\n]+?\*\*\s*https?://\S+\s*", re.IGNORECASE),
+    # [text](url)                    （素のマークダウンリンク。短いラベル + コロンが先行する場合も許容）
+    re.compile(r"^\s*(?:[^\[\n]{0,60}?:\s*)?\[[^\]\n]*\]\([^)\s]+\)\s*", re.IGNORECASE),
+    # 素の URL                        （短いラベル + コロンが先行する場合も許容）
+    re.compile(r"^\s*(?:[\w][^\n:]{0,60}?:\s*)?https?://\S+\s*", re.IGNORECASE),
+]
+
+
+def _strip_leading_urls(text: str) -> str:
+    """文字列の先頭にある URL ／マークダウンリンクブロックを取り除く。
+    "**Proposal as pdf: [URL](URL)** 本文..." のような典型ケース、および複数連続パターンに対応する。
+    GA 一覧カードで abstract 冒頭の URL/リンクが line-clamp 領域を食い潰す問題を回避する用途。
+    """
+    if not text:
+        return text
+    while True:
+        prev = text
+        for pat in _LEADING_LINK_PATTERNS:
+            text = pat.sub("", text, count=1)
+        if text == prev:
+            break
+    return text.lstrip()
 
 logger = logging.getLogger(__name__)
 # Ensure debug logs appear even if the app does not configure logging.
@@ -1342,6 +1376,9 @@ def _format_ga_row(row: Dict[str, Any], fiat_rate: Dict[str, float] | None = Non
 
     # title / abstract / motivation / rationale は UI で AuthState.language に基づき ja/en 分岐する。
     # DB 側で事前に *_display を決め打ちすると言語切替が効かなくなるので、原文カラムをそのまま渡す。
+    # 一覧カード用には冒頭 URL を取り除いた縮約版を別フィールドで持つ（詳細表示は原文のまま）。
+    row["abstract_card"]    = _strip_leading_urls(str(row.get("abstract") or ""))
+    row["abstract_ja_card"] = _strip_leading_urls(str(row.get("abstract_ja") or ""))
 
     refs_raw = row.get("references_json")
     if "references_list" not in row:
