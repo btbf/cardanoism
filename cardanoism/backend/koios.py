@@ -61,13 +61,13 @@ KOIOS_BASE_URL = _NETWORK_URLS.get(_network, _NETWORK_URLS["mainnet"])
 logger.info("Koios ネットワーク: %s (%s)", _network, KOIOS_BASE_URL)
 
 
-def _post(endpoint: str, payload: dict) -> list | dict | None:
+def _post(endpoint: str, payload: dict, timeout: float = 10.0) -> list | dict | None:
     _rate_limiter.acquire()
     try:
         resp = requests.post(
             f"{KOIOS_BASE_URL}{endpoint}",
             json=payload,
-            timeout=10,
+            timeout=timeout,
         )
         if resp.status_code != 200:
             logger.warning("Koios API error %s: %s", resp.status_code, endpoint)
@@ -586,11 +586,11 @@ def get_drep_list() -> list[dict]:
 DREP_BATCH_SIZE = 25
 
 
-def _post_split_on_413(endpoint: str, key: str, ids: list[str]) -> list[dict]:
+def _post_split_on_413(endpoint: str, key: str, ids: list[str], timeout: float = 10.0) -> list[dict]:
     """POST して 413 などで None が返った場合、ペイロードを半分に分割して再帰リトライ。"""
     if not ids:
         return []
-    data = _post(endpoint, {key: ids})
+    data = _post(endpoint, {key: ids}, timeout=timeout)
     if isinstance(data, list):
         return data
     # 取得失敗（413 等）: 1 件まで縮めても失敗する場合は諦める
@@ -598,7 +598,7 @@ def _post_split_on_413(endpoint: str, key: str, ids: list[str]) -> list[dict]:
         logger.warning("Koios %s: id=%s の取得を断念", endpoint, ids[0] if ids else "?")
         return []
     mid = len(ids) // 2
-    return _post_split_on_413(endpoint, key, ids[:mid]) + _post_split_on_413(endpoint, key, ids[mid:])
+    return _post_split_on_413(endpoint, key, ids[:mid], timeout=timeout) + _post_split_on_413(endpoint, key, ids[mid:], timeout=timeout)
 
 
 def get_drep_info_batch(drep_ids: list[str]) -> list[dict]:
@@ -684,8 +684,10 @@ def get_drep_metadata_batch(drep_ids: list[str]) -> list[dict]:
 # プール（SPO）関連
 # ============================================================
 
-# /pool_info も /drep_info 同様に POST のペイロード制限が厳しい。実測 50 件は OK だが安全に 25。
-POOL_BATCH_SIZE = 25
+# /pool_info は Koios 側で live_stake / saturation / 累計ブロック等の集計が走るため重い。
+# 25 件バッチでは 60 秒タイムアウトに収まらないケースが多発するため 10 件に絞る。
+# 失敗時はさらに半分ずつ分割（_post_split_on_413）するので保険は効く。
+POOL_BATCH_SIZE = 10
 
 
 def get_pool_list() -> list[dict]:
@@ -706,13 +708,24 @@ def get_pool_list() -> list[dict]:
     return all_out
 
 
-def get_pool_info_batch(pool_ids: list[str]) -> list[dict]:
-    """複数プールの詳細情報を一括取得（25 件チャンク + 413 自動分割）。"""
+def get_pool_info_batch(pool_ids: list[str], timeout: float = 60.0) -> list[dict]:
+    """複数プールの詳細情報を一括取得（10 件チャンク + 413 自動分割）。
+    /pool_info は live_stake / saturation / 累計ブロック等を集計するため Koios 側で重い。
+    """
     if not pool_ids:
         return []
+    total_chunks = (len(pool_ids) + POOL_BATCH_SIZE - 1) // POOL_BATCH_SIZE
+    logger.info("/pool_info フェッチ開始: %d 件 / %d チャンク (バッチ=%d, timeout=%.0fs)",
+                len(pool_ids), total_chunks, POOL_BATCH_SIZE, timeout)
     out: list[dict] = []
+    done_chunks = 0
     for chunk in _chunks(pool_ids, POOL_BATCH_SIZE):
-        out.extend(_post_split_on_413("/pool_info", "_pool_bech32_ids", chunk))
+        out.extend(_post_split_on_413("/pool_info", "_pool_bech32_ids", chunk, timeout=timeout))
+        done_chunks += 1
+        # 25 チャンクごと（= 250 件処理ごと）にログ
+        if done_chunks % 25 == 0 or done_chunks == total_chunks:
+            logger.info("/pool_info 進捗: %d / %d チャンク完了 (%d 件取得済み)",
+                        done_chunks, total_chunks, len(out))
     return out
 
 

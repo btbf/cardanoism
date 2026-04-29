@@ -22,7 +22,10 @@ notify_worker.py
 import os
 import sys
 import argparse
+import json
 import logging
+import socket
+import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 
@@ -1266,7 +1269,10 @@ def _extract_drep_meta(meta_row: dict) -> dict:
 
 
 def _extract_pool_meta(info: dict) -> dict:
-    """Koios /pool_info の meta_json から ticker / 名称 / 説明 / homepage を取り出す。"""
+    """Koios /pool_info の meta_json から ticker / 名称 / 説明 / homepage を取り出す。
+    Koios の meta_json には extended フィールドが含まれないので extended は別途
+    meta_url を直接フェッチして抽出する（_fetch_pool_extended_via_meta_url）。
+    """
     meta = info.get("meta_json") or {}
     return {
         "ticker":      _extract_str(meta.get("ticker")),
@@ -1276,11 +1282,243 @@ def _extract_pool_meta(info: dict) -> dict:
     }
 
 
+def _coerce_url(value) -> str | None:
+    """文字列 / {"@value": "..."} のいずれにも対応して http(s) URL を返す。"""
+    if isinstance(value, dict):
+        value = value.get("@value")
+    if not isinstance(value, str):
+        return None
+    v = value.strip()
+    if not v.startswith(("http://", "https://")):
+        return None
+    return v[:1024]
+
+
+def _coerce_handle(value, max_len: int = 128) -> str | None:
+    """social handle を正規化（先頭の @ を除去、長さ上限）。"""
+    if isinstance(value, dict):
+        value = value.get("@value")
+    if not isinstance(value, str):
+        return None
+    v = value.strip().lstrip("@").strip()
+    if not v:
+        return None
+    return v[:max_len]
+
+
+def _coerce_text(value, max_len: int = 4000) -> str | None:
+    """テキストフィールドを正規化（空チェック + 長さ上限）。"""
+    if isinstance(value, dict):
+        value = value.get("@value")
+    if not isinstance(value, str):
+        return None
+    v = value.strip()
+    if not v:
+        return None
+    return v[:max_len]
+
+
+def _fetch_pool_extended(extended_url: str | None) -> dict | None:
+    """CIP-6 / POM の extended metadata を取得し、UI で使う項目だけ抜き出して返す。
+
+    抽出キー:
+      icon_url        : info.url_png_icon_64x64 (なければ info.url_png_logo / body.url_png_icon_64x64)
+      logo_url        : info.url_png_logo
+      about           : info.about.me
+      twitter_handle  : info.social.twitter_handle
+      telegram_handle : info.social.telegram_handle
+      youtube_handle  : info.social.youtube_handle
+      github_handle   : info.social.github_handle
+    取得失敗 / 1 つも値が無い場合は None。
+    """
+    if not extended_url or not isinstance(extended_url, str):
+        return None
+    if not extended_url.startswith(("http://", "https://")):
+        return None
+    try:
+        resp = requests.get(extended_url, timeout=5)
+        if resp.status_code != 200:
+            return None
+        body = resp.json()
+    except Exception:
+        return None
+    if not isinstance(body, dict):
+        return None
+    info = body.get("info") if isinstance(body.get("info"), dict) else {}
+    social = info.get("social") if isinstance(info.get("social"), dict) else {}
+    about = info.get("about") if isinstance(info.get("about"), dict) else {}
+
+    icon = (
+        _coerce_url(info.get("url_png_icon_64x64"))
+        or _coerce_url(info.get("url_png_logo"))
+        or _coerce_url(body.get("url_png_icon_64x64"))
+    )
+    logo = _coerce_url(info.get("url_png_logo"))
+    out = {
+        "icon_url":        icon,
+        "logo_url":        logo,
+        "about":           _coerce_text(about.get("me")),
+        "twitter_handle":  _coerce_handle(social.get("twitter_handle")),
+        "telegram_handle": _coerce_handle(social.get("telegram_handle")),
+        "youtube_handle":  _coerce_handle(social.get("youtube_handle"), max_len=255),
+        "github_handle":   _coerce_handle(social.get("github_handle")),
+    }
+    # すべて None なら呼び出し側で判定しやすいように None を返す
+    if not any(v for v in out.values()):
+        return None
+    return out
+
+
+def _fetch_pool_extended_via_meta_url(meta_url: str | None) -> dict | None:
+    """meta_url を直接フェッチし、basic metadata に extended URL があればそれも辿って
+    アイコン/ロゴ/about/social を抽出した dict を返す。
+    extended が無い、もしくは取得失敗時は None。
+    """
+    if not meta_url or not isinstance(meta_url, str):
+        return None
+    if not meta_url.startswith(("http://", "https://")):
+        return None
+    try:
+        resp = requests.get(meta_url, timeout=5)
+        if resp.status_code != 200:
+            return None
+        body = resp.json()
+    except Exception:
+        return None
+    if not isinstance(body, dict):
+        return None
+    ext = body.get("extended")
+    if isinstance(ext, dict):
+        ext = ext.get("@value")
+    if not isinstance(ext, str):
+        return None
+    ext = ext.strip()
+    if not ext.startswith(("http://", "https://")):
+        return None
+    return _fetch_pool_extended(ext[:1024])
+
+
+def _fetch_extended_data_parallel(meta_urls: dict[str, str], workers: int = 16) -> dict[str, dict]:
+    """{pool_id: meta_url} を並列でフェッチ。各タスクは meta_url → extended URL → 抽出 を連続実行する。
+    返り値: {pool_id: extracted_dict}（icon_url / logo_url / about / *_handle）。
+    """
+    if not meta_urls:
+        return {}
+    out: dict[str, dict] = {}
+    logger.info("extended metadata フェッチ開始: %d 件 (workers=%d) — meta_url 直叩き", len(meta_urls), workers)
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(_fetch_pool_extended_via_meta_url, url): pid for pid, url in meta_urls.items()}
+        done = 0
+        for fut in as_completed(futs):
+            pid = futs[fut]
+            try:
+                data = fut.result()
+            except Exception:
+                data = None
+            if data:
+                out[pid] = data
+            done += 1
+            if done % 500 == 0:
+                logger.info("extended metadata: %d / %d 完了 (回収 %d)", done, len(meta_urls), len(out))
+    icon_count = sum(1 for d in out.values() if d.get("icon_url"))
+    social_count = sum(1 for d in out.values() if any(d.get(k) for k in ("twitter_handle", "telegram_handle", "youtube_handle", "github_handle")))
+    logger.info("extended metadata フェッチ完了: %d 件 (icons=%d, social=%d)", len(out), icon_count, social_count)
+    return out
+
+
 def _extract_str(value) -> str:
     """{"@value": "..."} 形式と文字列の両方に対応して文字列を返す。"""
     if isinstance(value, dict):
         return str(value.get("@value") or "").strip()
     return str(value or "").strip()
+
+
+# ============================================================
+# リレー疎通確認 (TCP connect)
+# ============================================================
+
+def _tcp_check(host: str, port: int, timeout: float = 3.0) -> bool:
+    """指定ホスト:ポートへ TCP コネクトを試みて成功すれば True。"""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except (OSError, ValueError):
+        return False
+
+
+def _check_single_relay(relay: dict, timeout: float = 3.0) -> bool:
+    """単一リレーへの疎通確認。ipv4 / ipv6 / dns に対応。SRV のみ等は False（確認不能=OFF）。"""
+    if not isinstance(relay, dict):
+        return False
+    port = relay.get("port")
+    try:
+        port = int(port) if port is not None else None
+    except (TypeError, ValueError):
+        return False
+    if not port or not (0 < port < 65536):
+        return False
+    raw_host = relay.get("ipv4") or relay.get("ipv6") or relay.get("dns")
+    if not isinstance(raw_host, str):
+        return False
+    host = raw_host.strip()
+    if not host:
+        return False
+    return _tcp_check(host, port, timeout=timeout)
+
+
+def _check_pool_relays(relays_value, timeout: float = 3.0) -> bool:
+    """プールのリレー疎通確認。1件でも疎通成功で True を返す（複数リレーは冗長構成のため）。
+    relays が空 / 取得失敗 / 全リレー疎通NG は False。
+    """
+    if relays_value is None:
+        return False
+    if isinstance(relays_value, str):
+        try:
+            relays = json.loads(relays_value)
+        except (TypeError, ValueError):
+            return False
+    else:
+        relays = relays_value
+    if not isinstance(relays, list) or not relays:
+        return False
+    for relay in relays:
+        if _check_single_relay(relay, timeout=timeout):
+            return True
+    return False
+
+
+def check_pool_relay_alive(workers: int = 32, timeout: float = 3.0):
+    """全 active プールのリレーに TCP 疎通確認を行い、relay_alive を一括更新する。"""
+    from cardanoism.backend.pool_db import get_pools_with_relays, bulk_update_relay_alive
+
+    pools = get_pools_with_relays(only_active=True)
+    if not pools:
+        logger.warning("リレー疎通確認: 対象プールがありません")
+        return
+    logger.info("リレー疎通確認 開始: %d 件 (workers=%d, timeout=%.1fs)", len(pools), workers, timeout)
+
+    results: list[tuple] = []
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {
+            ex.submit(_check_pool_relays, p.get("relays"), timeout): p["pool_id_bech32"]
+            for p in pools
+        }
+        done = 0
+        for fut in as_completed(futs):
+            pid = futs[fut]
+            try:
+                alive = fut.result()
+            except Exception:
+                alive = False
+            results.append((pid, bool(alive)))
+            done += 1
+            if done % 500 == 0:
+                alive_so_far = sum(1 for _, a in results if a)
+                logger.info("リレー疎通確認: %d / %d 完了 (alive=%d)", done, len(pools), alive_so_far)
+
+    bulk_update_relay_alive(results)
+    alive_count = sum(1 for _, a in results if a)
+    logger.info("リレー疎通確認 完了: %d / %d 件 ALIVE", alive_count, len(results))
 
 
 def check_pool_sync():
@@ -1313,13 +1551,32 @@ def check_pool_sync():
 
     info_map = {i["pool_id_bech32"]: i for i in get_pool_info_batch(target_ids)}
 
+    # 各プールの基本フィールド (ticker / name / homepage 等) を抽出。
+    # extended は Koios meta_json には乗らないので、meta_url を直叩きするための URL も集める。
+    pool_meta_cache: dict[str, dict] = {}
+    meta_url_targets: dict[str, str] = {}
+    for p in pools:
+        pid = p.get("pool_id_bech32")
+        if not pid:
+            continue
+        info = info_map.get(pid, {})
+        pool_meta_cache[pid] = _extract_pool_meta(info)
+        url = info.get("meta_url") or p.get("meta_url")
+        if url:
+            meta_url_targets[pid] = url
+    logger.info("meta_url 対象: %d 件 (extended は meta_url を直接フェッチして抽出)", len(meta_url_targets))
+
+    # meta_url → (extended があれば) extended URL → icon/logo/about/social を1タスクで連続取得
+    extended_map = _fetch_extended_data_parallel(meta_url_targets)
+
     records: list[dict] = []
     for p in pools:
         pid = p.get("pool_id_bech32")
         if not pid:
             continue
         info = info_map.get(pid, {})
-        meta = _extract_pool_meta(info)
+        meta = pool_meta_cache.get(pid) or _extract_pool_meta(info)
+        ext = extended_map.get(pid) or {}
 
         records.append({
             "pool_id_bech32":   pid,
@@ -1328,7 +1585,7 @@ def check_pool_sync():
             "active_epoch_no":  info.get("active_epoch_no"),
             "retiring_epoch":   p.get("retiring_epoch") or info.get("retiring_epoch"),
             "op_cert":          info.get("op_cert"),
-            "op_cert_counter":  info.get("op_cert_counter"),
+            "op_cert_counter": info.get("op_cert_counter"),
             "vrf_key_hash":     info.get("vrf_key_hash"),
             "pledge":           info.get("pledge"),
             "margin":           info.get("margin"),
@@ -1345,11 +1602,18 @@ def check_pool_sync():
             "relays":           info.get("relays"),
             "meta_url":         info.get("meta_url") or p.get("meta_url"),
             "meta_hash":        info.get("meta_hash") or p.get("meta_hash"),
+            "pool_icon_url":    ext.get("icon_url"),
+            "pool_logo_url":    ext.get("logo_url"),
+            "extended_about":   ext.get("about"),
+            "twitter_handle":   ext.get("twitter_handle"),
+            "telegram_handle":  ext.get("telegram_handle"),
+            "youtube_handle":   ext.get("youtube_handle"),
+            "github_handle":    ext.get("github_handle"),
             **meta,
         })
 
     inserted = bulk_upsert_pools(records)
-    logger.info("プール同期 完了: %d / %d 件 upsert", inserted, len(records))
+    logger.info("プール同期 完了: %d / %d 件 upsert (extended=%d)", inserted, len(records), len(extended_map))
 
 
 def check_drep_sync():
@@ -1859,7 +2123,7 @@ def main():
     parser.add_argument(
         "--event",
         default="all",
-        choices=["all", "pool", "drep", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync"],
+        choices=["all", "pool", "drep", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync"],
         help="実行するイベントグループ",
     )
     parser.add_argument(
@@ -1937,6 +2201,8 @@ def main():
         check_drep_sync()
     if args.event in ("all", "pool_sync"):
         check_pool_sync()
+    if args.event in ("all", "relay_check"):
+        check_pool_relay_alive()
     if args.event in ("all", "vote_sync"):
         check_vote_sync()
     if args.event in ("all", "summary_sync"):

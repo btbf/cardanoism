@@ -10,52 +10,47 @@
 CREATE TABLE IF NOT EXISTS pools (
     pool_id_bech32   VARCHAR(64)  PRIMARY KEY,
     pool_id_hex      VARCHAR(64)  DEFAULT NULL,
-
-    -- 基本ステータス
-    pool_status      VARCHAR(32)  DEFAULT NULL,             -- registered / retiring / retired
+    pool_status      VARCHAR(32)  DEFAULT NULL,
     active_epoch_no  INT          DEFAULT NULL,
     retiring_epoch   INT          DEFAULT NULL,
     op_cert          VARCHAR(128) DEFAULT NULL,
     op_cert_counter  INT          DEFAULT NULL,
     vrf_key_hash     VARCHAR(128) DEFAULT NULL,
-
-    -- 経済パラメータ
-    pledge           BIGINT       DEFAULT 0,                -- 約定ステーク (lovelace)
-    margin           DECIMAL(7,6) DEFAULT NULL,             -- 変動手数料 (0.0 - 1.0)
-    fixed_cost       BIGINT       DEFAULT 0,                -- 固定手数料 (lovelace)
-
-    -- ステーク状態
-    active_stake     BIGINT       DEFAULT 0,                -- アクティブステーク (lovelace)
-    live_stake       BIGINT       DEFAULT 0,                -- 現在のステーク (lovelace)
-    live_pledge      BIGINT       DEFAULT 0,                -- 現在のプレッジ (lovelace)
-    live_delegators  INT          DEFAULT 0,                -- 委任者数
-    live_saturation  DECIMAL(7,4) DEFAULT NULL,             -- 飽和率 (0.0 - 1.0+, > 1 で過飽和)
-    sigma            DECIMAL(12,10) DEFAULT NULL,           -- 当該プールのアクティブステーク比率
-
-    -- ブロック生成
-    block_count      INT          DEFAULT 0,                -- 累計ブロック生成数
-
-    -- アドレス情報
+    pledge           BIGINT       DEFAULT 0,
+    margin           DECIMAL(7,6) DEFAULT NULL,
+    fixed_cost       BIGINT       DEFAULT 0,
+    active_stake     BIGINT       DEFAULT 0,
+    live_stake       BIGINT       DEFAULT 0,
+    live_pledge      BIGINT       DEFAULT 0,
+    live_delegators  INT          DEFAULT 0,
+    live_saturation  DECIMAL(7,4) DEFAULT NULL,
+    sigma            DECIMAL(12,10) DEFAULT NULL,
+    block_count      INT          DEFAULT 0,
     reward_addr      VARCHAR(255) DEFAULT NULL,
-    owners           LONGTEXT     DEFAULT NULL,             -- JSON 配列
-    relays           LONGTEXT     DEFAULT NULL,             -- JSON 配列
-
-    -- メタデータ (CIP-6)
+    owners           LONGTEXT     DEFAULT NULL,
+    relays           LONGTEXT     DEFAULT NULL,
     meta_url         TEXT         DEFAULT NULL,
-    meta_hash        VARCHAR(64)  DEFAULT NULL,
+    meta_hash        VARCHAR(128) DEFAULT NULL,
     ticker           VARCHAR(64)  DEFAULT NULL,
     pool_name        VARCHAR(255) DEFAULT NULL,
     description      TEXT         DEFAULT NULL,
     homepage         TEXT         DEFAULT NULL,
-
+    pool_icon_url    TEXT         DEFAULT NULL,
+    pool_logo_url    TEXT         DEFAULT NULL,
+    extended_about   TEXT         DEFAULT NULL,
+    twitter_handle   VARCHAR(128) DEFAULT NULL,
+    telegram_handle  VARCHAR(128) DEFAULT NULL,
+    youtube_handle   VARCHAR(255) DEFAULT NULL,
+    github_handle    VARCHAR(128) DEFAULT NULL,
+    relay_alive      TINYINT(1)   DEFAULT NULL,
+    relay_checked_at DATETIME     DEFAULT NULL,
     fetched_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-
-    KEY idx_live_stake     (live_stake DESC),
-    KEY idx_active_stake   (active_stake DESC),
-    KEY idx_status         (pool_status),
-    KEY idx_ticker         (ticker),
-    KEY idx_saturation     (live_saturation),
-    KEY idx_block_count    (block_count DESC),
-    KEY idx_delegators     (live_delegators DESC)
+    KEY idx_live_stake (live_stake),
+    KEY idx_active_stake (active_stake),
+    KEY idx_status (pool_status),
+    KEY idx_ticker (ticker),
+    KEY idx_saturation (live_saturation),
+    KEY idx_block_count (block_count),
+    KEY idx_delegators (live_delegators)
 );

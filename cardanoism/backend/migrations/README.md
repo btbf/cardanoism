@@ -19,6 +19,13 @@ Cardanoism の MariaDB スキーマ定義。
 | 006 | `006_treasury.sql` | treasury_snapshot / treasury_withdrawal / ncl_active |
 | 007 | `007_fiat_rate.sql` | fiat_rate |
 | 008 | `008_pools.sql` | pools |
+| 009 | `009_pools_icon.sql` | pools.pool_icon_url 追加 (ALTER) |
+| 010 | `010_pools_meta_hash.sql` | pools.meta_hash を VARCHAR(128) に拡張 (ALTER) |
+| 011 | `011_pools_extended.sql` | pools に extended metadata 由来カラムを追加 (logo / about / social) |
+| 012 | `012_pools_relay_check.sql` | pools にリレー疎通結果カラムを追加 (relay_alive / relay_checked_at) |
+| 013 | `013_recent_blocks.sql` | recent_blocks（直近100件のブロック履歴） |
+| 014 | `014_mempool_state.sql` | mempool_state（id=1 固定の Ogmios mempool スナップショット） |
+| 015 | `015_recent_blocks_size.sql` | recent_blocks に block_size (bytes) を追加 (ALTER) |
 
 ## 適用例
 

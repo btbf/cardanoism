@@ -18,11 +18,13 @@ cardano-node → Ogmios (ws://localhost:1337) → 本スクリプト
   pip install websockets>=12.0
 """
 import asyncio
+import hashlib
 import json
 import logging
 import os
 import sys
 import argparse
+from datetime import datetime, timezone
 
 import websockets
 
@@ -40,6 +42,8 @@ from notify_worker import (
 from cardanoism.backend import line_flex
 from cardanoism.backend.mail_notify import build_html, build_text
 from cardanoism.backend.koios import get_proposal_title, get_pool_name, get_pool_epoch_stats, get_pool_apy
+from cardanoism.backend.recent_blocks_db import insert_block, trim_old_blocks
+from cardanoism.backend.mempool_db import upsert_mempool_state
 
 logger = logging.getLogger("ogmios_listener")
 
@@ -74,6 +78,65 @@ _GA_TYPE_MAP_EN = {
 
 def _epoch_from_slot(slot: int) -> int:
     return slot // _EPOCH_LENGTHS.get(KOIOS_NETWORK, 432_000)
+
+
+# ブロック記録の TRIM 頻度（毎ブロックではなくこの間隔で古い行を削除）
+_BLOCK_TRIM_INTERVAL = 50
+_block_count_since_trim = 0
+
+
+def _pool_id_hex_from_issuer(block: dict) -> str | None:
+    """Praos ブロックの issuer.verificationKey (cold key) から blake2b-224 で pool_id_hex を算出。"""
+    issuer = block.get("issuer") or {}
+    vkey_hex = issuer.get("verificationKey") if isinstance(issuer, dict) else None
+    if not vkey_hex or not isinstance(vkey_hex, str):
+        return None
+    try:
+        vkey_bytes = bytes.fromhex(vkey_hex.strip())
+    except (ValueError, TypeError):
+        return None
+    if not vkey_bytes:
+        return None
+    return hashlib.blake2b(vkey_bytes, digest_size=28).hexdigest()
+
+
+def _record_recent_block(block: dict, current_epoch: int) -> None:
+    """recent_blocks テーブルに 1 ブロック書き込み + 周期的に古い行を TRIM。失敗は静かにログだけ。"""
+    global _block_count_since_trim
+    try:
+        height = block.get("height")
+        if height is None:
+            return
+        slot = block.get("slot", 0)
+        block_hash = block.get("id", "")
+        tx_count = len(block.get("transactions") or [])
+        pool_id_hex = _pool_id_hex_from_issuer(block)
+        # ブロックサイズ (bytes) — Ogmios v6 は block.size.bytes
+        size_obj = block.get("size") or {}
+        block_size = int(size_obj.get("bytes") or 0) if isinstance(size_obj, dict) else 0
+        # block_time は現在時刻で代用（Ogmios 受信ラグは < 1秒で実用上問題ない）
+        block_time = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        insert_block(
+            block_height=int(height),
+            block_hash=str(block_hash),
+            slot_no=int(slot),
+            epoch_no=int(current_epoch),
+            block_time=block_time,
+            pool_id_hex=pool_id_hex,
+            tx_count=tx_count,
+            block_size=block_size,
+        )
+        _block_count_since_trim += 1
+        if _block_count_since_trim >= _BLOCK_TRIM_INTERVAL:
+            try:
+                deleted = trim_old_blocks(keep=100)
+                if deleted:
+                    logger.debug("recent_blocks TRIM: %d 件削除", deleted)
+            finally:
+                _block_count_since_trim = 0
+    except Exception as e:
+        logger.debug("recent_blocks 書き込み失敗: %s", e)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -493,6 +556,9 @@ def _process_block(block: dict, prev_epoch: int) -> int:
     for tx in block.get("transactions", []):
         _process_tx(tx)
 
+    # ライブブロック一覧用に記録（ダッシュボード /staking で表示）
+    _record_recent_block(block, current_epoch)
+
     _save_cursor(slot, block_id)
     return current_epoch
 
@@ -543,6 +609,51 @@ def _fetch_tip(ogmios_url: str) -> tuple[int, str]:
     slot, block_id = tip["slot"], tip["id"]
     logger.info("networkSynchronization: %s, tip slot=%d network=%s", sync, slot, KOIOS_NETWORK)
     return slot, block_id
+
+
+async def _run_mempool_poller(ogmios_url: str, interval: float = 1.0) -> None:
+    """Ogmios の Mempool Monitoring プロトコルを 1 秒間隔で叩いて mempool_state を更新する。
+    UI 側も 1 秒 polling なので、画面表示は実質リアルタイム（最大ラグ ~1秒）。
+    Chain-Sync とは別 WebSocket 接続で並走させる。
+
+    フロー: acquireMempool → sizeOfMempool → releaseMempool
+    """
+    while True:
+        try:
+            async with websockets.connect(ogmios_url, ping_interval=30) as ws:
+                logger.info("mempool poller 起動 (interval=%.1fs)", interval)
+                while True:
+                    # 1) acquire（スナップショット取得）
+                    await ws.send(json.dumps({"jsonrpc": "2.0", "method": "acquireMempool"}))
+                    json.loads(await ws.recv())
+
+                    # 2) sizeOfMempool（容量と件数を取得）
+                    await ws.send(json.dumps({"jsonrpc": "2.0", "method": "sizeOfMempool"}))
+                    resp = json.loads(await ws.recv())
+                    result = resp.get("result", {}) if isinstance(resp, dict) else {}
+                    tx_count = (result.get("transactions") or {}).get("count", 0)
+                    cur_size = (result.get("currentSize") or {}).get("bytes", 0)
+                    max_cap  = (result.get("maxCapacity") or {}).get("bytes")
+
+                    try:
+                        upsert_mempool_state(
+                            tx_count=int(tx_count or 0),
+                            byte_size=int(cur_size or 0),
+                            capacity_bytes=int(max_cap) if max_cap is not None else None,
+                        )
+                    except Exception as e:
+                        logger.warning("mempool_state 書き込み失敗: %s", e)
+
+                    # 3) release（次回 acquire のために解放）
+                    await ws.send(json.dumps({"jsonrpc": "2.0", "method": "releaseMempool"}))
+                    json.loads(await ws.recv())
+
+                    await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning("mempool poller エラー、5秒後に再接続: %s", e)
+            await asyncio.sleep(5)
 
 
 async def _run(ogmios_url: str, from_tip: bool = False) -> None:
@@ -614,7 +725,13 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
-    asyncio.run(_run(args.ogmios_url, from_tip=args.from_tip))
+    async def _run_all() -> None:
+        await asyncio.gather(
+            _run(args.ogmios_url, from_tip=args.from_tip),
+            _run_mempool_poller(args.ogmios_url),
+        )
+
+    asyncio.run(_run_all())
 
 
 if __name__ == "__main__":

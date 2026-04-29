@@ -31,7 +31,9 @@ def upsert_pool(data: dict[str, Any]) -> None:
                 active_stake, live_stake, live_pledge, live_delegators,
                 live_saturation, sigma, block_count,
                 reward_addr, owners, relays,
-                meta_url, meta_hash, ticker, pool_name, description, homepage
+                meta_url, meta_hash, ticker, pool_name, description, homepage,
+                pool_icon_url, pool_logo_url, extended_about,
+                twitter_handle, telegram_handle, youtube_handle, github_handle
             ) VALUES (
                 ?, ?,
                 ?, ?, ?,
@@ -40,7 +42,9 @@ def upsert_pool(data: dict[str, Any]) -> None:
                 ?, ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?,
-                ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?,
+                ?, ?, ?,
+                ?, ?, ?, ?
             )
             ON DUPLICATE KEY UPDATE
                 pool_id_hex      = VALUES(pool_id_hex),
@@ -68,7 +72,14 @@ def upsert_pool(data: dict[str, Any]) -> None:
                 ticker           = VALUES(ticker),
                 pool_name        = VALUES(pool_name),
                 description      = VALUES(description),
-                homepage         = VALUES(homepage)
+                homepage         = VALUES(homepage),
+                pool_icon_url    = COALESCE(VALUES(pool_icon_url),    pool_icon_url),
+                pool_logo_url    = COALESCE(VALUES(pool_logo_url),    pool_logo_url),
+                extended_about   = COALESCE(VALUES(extended_about),   extended_about),
+                twitter_handle   = COALESCE(VALUES(twitter_handle),   twitter_handle),
+                telegram_handle  = COALESCE(VALUES(telegram_handle),  telegram_handle),
+                youtube_handle   = COALESCE(VALUES(youtube_handle),   youtube_handle),
+                github_handle    = COALESCE(VALUES(github_handle),    github_handle)
             """,
             (
                 data.get("pool_id_bech32"),
@@ -93,11 +104,18 @@ def upsert_pool(data: dict[str, Any]) -> None:
                 _json_or_none(data.get("owners")),
                 _json_or_none(data.get("relays")),
                 data.get("meta_url"),
-                data.get("meta_hash"),
+                _truncate(data.get("meta_hash"), 128),
                 _truncate(data.get("ticker"), 64),
                 _truncate(data.get("pool_name"), 255),
                 data.get("description"),
                 data.get("homepage"),
+                data.get("pool_icon_url"),
+                data.get("pool_logo_url"),
+                data.get("extended_about"),
+                _truncate(data.get("twitter_handle"), 128),
+                _truncate(data.get("telegram_handle"), 128),
+                _truncate(data.get("youtube_handle"), 255),
+                _truncate(data.get("github_handle"), 128),
             ),
         )
         conn.commit()
@@ -178,23 +196,40 @@ def get_pools(
     sort: str = "stake_desc",
     limit: int = 30,
     offset: int = 0,
+    random_seed: int | None = None,
 ) -> list[dict]:
-    """SPO 一覧。search は ticker / pool_name / pool_id_bech32 の部分一致。"""
+    """SPO 一覧。search は ticker / pool_name / pool_id_bech32 の部分一致。
+
+    sort="random" のときは random_seed を MariaDB の RAND(seed) に渡す。
+    呼び出し側でセッション内固定の seed を渡すことでページングが安定する。
+    """
     where = ["1=1"]
     params: list = []
     if only_active:
         # registered と retiring (これから退役) は表示する。retired は除外。
         where.append("(pool_status IS NULL OR pool_status <> 'retired')")
     if search:
-        where.append("(ticker LIKE ? OR pool_name LIKE ? OR pool_id_bech32 LIKE ?)")
+        where.append("(ticker LIKE ? OR pool_name LIKE ?)")
         sv = f"%{search}%"
-        params.extend([sv, sv, sv])
-    order = _SORT_CLAUSES.get(sort, _SORT_CLAUSES["stake_desc"])
+        params.extend([sv, sv])
+
+    if sort == "random":
+        # int キャストで SQL インジェクションを防ぐ（識別子位置のため ? バインドが効かない）
+        seed = int(random_seed) if random_seed is not None else 0
+        base_order = f"RAND({seed}), pool_id_bech32"
+    else:
+        base_order = _SORT_CLAUSES.get(sort, _SORT_CLAUSES["stake_desc"])
+    # リレー応答なし (relay_alive = 0) のプールを最下位へ。未確認 (NULL) は alive 扱いにして上位に残す。
+    order = f"COALESCE(relay_alive, 1) DESC, {base_order}"
+
     sql = (
         "SELECT pool_id_bech32, pool_id_hex, pool_status, active_epoch_no, retiring_epoch, "
         "pledge, margin, fixed_cost, "
         "active_stake, live_stake, live_pledge, live_delegators, live_saturation, sigma, block_count, "
-        "ticker, pool_name, description, homepage, meta_url, updated_at "
+        "ticker, pool_name, description, homepage, pool_icon_url, pool_logo_url, "
+        "extended_about, twitter_handle, telegram_handle, youtube_handle, github_handle, "
+        "relay_alive, relay_checked_at, "
+        "meta_url, updated_at "
         "FROM pools "
         f"WHERE {' AND '.join(where)} "
         f"ORDER BY {order} "
@@ -211,9 +246,9 @@ def count_pools(search: str = "", only_active: bool = True) -> int:
     if only_active:
         where.append("(pool_status IS NULL OR pool_status <> 'retired')")
     if search:
-        where.append("(ticker LIKE ? OR pool_name LIKE ? OR pool_id_bech32 LIKE ?)")
+        where.append("(ticker LIKE ? OR pool_name LIKE ?)")
         sv = f"%{search}%"
-        params.extend([sv, sv, sv])
+        params.extend([sv, sv])
     sql = f"SELECT COUNT(*) AS cnt FROM pools WHERE {' AND '.join(where)}"
     with get_db() as (cursor, _):
         cursor.execute(sql, params)
@@ -230,11 +265,37 @@ def get_pool(pool_id_bech32: str) -> dict | None:
 
 def get_top_pools(limit: int = 20) -> list[dict]:
     """live_stake 上位プール（ダッシュボードの飽和率バー用）。"""
-    return get_pools(only_active=True, sort="stake_desc", limit=limit, offset=0)
+    return get_pools(only_active=True, sort="stake_desc", limit=limit, offset=0, random_seed=None)
 
 
-def get_network_summary() -> dict:
+def get_pools_with_relays(only_active: bool = True) -> list[dict]:
+    """リレー疎通確認用に pool_id_bech32 と relays JSON だけ返す。"""
+    where = "(pool_status IS NULL OR pool_status <> 'retired')" if only_active else "1=1"
+    with get_db() as (cursor, _):
+        cursor.execute(f"SELECT pool_id_bech32, relays FROM pools WHERE {where}")
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def bulk_update_relay_alive(updates: list[tuple]) -> int:
+    """[(pool_id_bech32, alive_bool), ...] を一括で UPDATE。relay_checked_at も同時更新。"""
+    if not updates:
+        return 0
+    with get_db() as (cursor, conn):
+        for pid, alive in updates:
+            cursor.execute(
+                "UPDATE pools SET relay_alive = ?, relay_checked_at = NOW() WHERE pool_id_bech32 = ?",
+                (1 if alive else 0, pid),
+            )
+        conn.commit()
+    return len(updates)
+
+
+def get_network_summary(saturated_threshold_lovelace: int | None = None) -> dict:
     """ダッシュボード用のネットワーク集計。
+
+    saturated_threshold_lovelace: 「飽和判定」とみなす live_stake の閾値 (lovelace)。
+      None の場合は飽和プール数 = 0 を返す（呼び出し側でソフトキャップ取得に失敗した時用のフォールバック）。
+      通常はソフトキャップ÷500の 80% を渡す（= 1プール飽和点の 80% を超えたものを「警戒以上」とする）。
 
     返却:
       {
@@ -245,9 +306,10 @@ def get_network_summary() -> dict:
         "total_live_stake": 全プール live_stake 合計 (lovelace),
         "total_active_stake": 全プール active_stake 合計 (lovelace),
         "total_delegators": 全プール委任者数の合計,
-        "saturated_pools":  live_saturation > 0.8 のプール数,
+        "saturated_pools":  saturated_threshold_lovelace を超える live_stake を持つプール数,
       }
     """
+    threshold = int(saturated_threshold_lovelace) if saturated_threshold_lovelace else 0
     with get_db() as (cursor, _):
         cursor.execute(
             """
@@ -259,9 +321,10 @@ def get_network_summary() -> dict:
                 COALESCE(SUM(CASE WHEN pool_status IS NULL OR pool_status <> 'retired' THEN live_stake   ELSE 0 END), 0) AS total_live_stake,
                 COALESCE(SUM(CASE WHEN pool_status IS NULL OR pool_status <> 'retired' THEN active_stake ELSE 0 END), 0) AS total_active_stake,
                 COALESCE(SUM(CASE WHEN pool_status IS NULL OR pool_status <> 'retired' THEN live_delegators ELSE 0 END), 0) AS total_delegators,
-                SUM(CASE WHEN live_saturation IS NOT NULL AND live_saturation > 0.8 THEN 1 ELSE 0 END) AS saturated_pools
+                SUM(CASE WHEN ? > 0 AND live_stake > ? THEN 1 ELSE 0 END) AS saturated_pools
             FROM pools
-            """
+            """,
+            (threshold, threshold),
         )
         row = cursor.fetchone() or {}
         return {k: int(v or 0) for k, v in dict(row).items()}
