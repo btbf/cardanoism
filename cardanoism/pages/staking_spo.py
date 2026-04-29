@@ -6,6 +6,7 @@ staking_spo.py
 """
 from __future__ import annotations
 
+import json
 import logging
 import random
 from typing import Any
@@ -17,7 +18,7 @@ from cardanoism.backend.auth_state import AuthState
 from cardanoism.backend.fiat_db import get_fiat_rate
 from cardanoism.backend.koios import get_totals
 from cardanoism.backend.pool_db import get_pools, count_pools
-from cardanoism.backend.price import format_ada
+from cardanoism.backend.price import format_ada, format_ada_short_ja, format_ada_short_en
 from cardanoism.components.staking_nav import staking_subnav
 
 # Cardano プロトコル定数（staking.py と同期）
@@ -100,6 +101,8 @@ class StakingSPOState(rx.State):
                 live_stake = int(r.get("live_stake") or 0)
                 pledge = int(r.get("live_pledge") or 0)
                 fixed_cost = int(r.get("fixed_cost") or 0)
+                stake_ada_int = live_stake // 1_000_000
+                pledge_ada_int = pledge // 1_000_000
                 margin_raw = r.get("margin")
                 margin_pct = float(margin_raw) * 100.0 if margin_raw is not None else 0.0
 
@@ -120,6 +123,20 @@ class StakingSPOState(rx.State):
                     relay_state = "alive"
                 else:
                     relay_state = "dead"
+
+                # 直近5エポックのブロック履歴 (JSON 配列)
+                history_raw = r.get("block_history_5ep")
+                history_counts: list[int] = []
+                if history_raw:
+                    try:
+                        parsed = json.loads(history_raw) if isinstance(history_raw, str) else history_raw
+                        if isinstance(parsed, list):
+                            history_counts = [int(x) for x in parsed[:5]]
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        history_counts = []
+                while len(history_counts) < 5:
+                    history_counts.append(0)
+                history_total = sum(history_counts)
 
                 # ソーシャルハンドルから外部リンク URL を組み立てる（既に URL ならそのまま）
                 tw = str(r.get("twitter_handle") or "").strip()
@@ -144,8 +161,14 @@ class StakingSPOState(rx.State):
                     "telegram_url":    telegram_url,
                     "youtube_url":     youtube_url,
                     "github_url":      github_url,
+                    # フル表記（カンマ区切り、ツールチップ用）
                     "stake_ada":       format_ada(live_stake, integer=True) if live_stake else "0",
                     "pledge_ada":      format_ada(pledge, integer=True) if pledge else "0",
+                    # 短縮表記 (JA: 万/億 / EN: K/M/B)
+                    "stake_ada_ja":    format_ada_short_ja(stake_ada_int),
+                    "stake_ada_en":    format_ada_short_en(stake_ada_int),
+                    "pledge_ada_ja":   format_ada_short_ja(pledge_ada_int),
+                    "pledge_ada_en":   format_ada_short_en(pledge_ada_int),
                     "fixed_cost_ada":  format_ada(fixed_cost, integer=True) if fixed_cost else "0",
                     "margin_pct":      f"{margin_pct:.2f}",
                     "saturation_pct":  f"{sat_pct:.1f}",
@@ -157,6 +180,8 @@ class StakingSPOState(rx.State):
                     "is_retiring":     "1" if status == "retiring" else "",
                     "retiring_epoch":  str(retiring_epoch) if retiring_epoch is not None else "",
                     "relay_state":     relay_state,
+                    # 直近5エポックのブロック生成数 (合計)
+                    "history_total":   str(history_total),
                 })
             self.pools = out
             self.total_items = total
@@ -272,41 +297,47 @@ def _saturation_bar(p) -> rx.Component:
 
 
 def _relay_status(state) -> rx.Component:
-    """リレー稼働状況のピル状バッジ。alive=緑+波紋アニメ / dead=赤 / unknown=非表示。"""
+    """リレー稼働状況のピル状バッジ。alive=緑+波紋アニメ / dead=赤 / unknown=非表示。
+    シャドウとサイズを少し強めて、メトリクスグリッド内で目を引くように。
+    """
     return rx.match(
         state,
         ("alive", rx.hstack(
             rx.box(
-                width="8px",
-                height="8px",
+                width="9px",
+                height="9px",
                 border_radius="999px",
                 background="var(--green-10)",
                 flex_shrink="0",
                 style={"animation": "cdn_relay_pulse 1.6s ease-in-out infinite"},
             ),
-            rx.text(AuthState.t["staking_badge_alive"], size="1", weight="bold", color="var(--green-11)"),
+            rx.text(AuthState.t["staking_badge_alive"], size="1", weight="bold", color="var(--green-12)",
+                    style={"whiteSpace": "nowrap"}),
             spacing="2",
             align="center",
-            padding="3px 10px 3px 8px",
+            padding="4px 12px 4px 10px",
             border_radius="999px",
             background="var(--green-3)",
-            border="1px solid var(--green-7)",
+            border="1px solid var(--green-8)",
+            style={"boxShadow": "0 1px 3px rgba(34,197,94,0.18)"},
         )),
         ("dead", rx.hstack(
             rx.box(
-                width="8px",
-                height="8px",
+                width="9px",
+                height="9px",
                 border_radius="999px",
                 background="var(--red-10)",
                 flex_shrink="0",
             ),
-            rx.text(AuthState.t["staking_badge_dead"], size="1", weight="bold", color="var(--red-11)"),
+            rx.text(AuthState.t["staking_badge_dead"], size="1", weight="bold", color="var(--red-12)",
+                    style={"whiteSpace": "nowrap"}),
             spacing="2",
             align="center",
-            padding="3px 10px 3px 8px",
+            padding="4px 12px 4px 10px",
             border_radius="999px",
             background="var(--red-3)",
-            border="1px solid var(--red-7)",
+            border="1px solid var(--red-8)",
+            style={"boxShadow": "0 1px 3px rgba(239,68,68,0.18)"},
         )),
         rx.fragment(),
     )
@@ -379,8 +410,6 @@ def _pool_card(p) -> rx.Component:
         _social_link(p["telegram_url"], rx.icon("send",    size=14, color="#2AABEE")),
         _social_link(p["youtube_url"],  rx.icon("youtube", size=14, color="#FF0000")),
         _social_link(p["github_url"],   rx.icon("github",  size=14, color="var(--gray-12)")),
-        # 稼働状態バッジ（リレー TCP 疎通確認の結果）— ドット + 縁取りピルで目立たせる
-        _relay_status(p["relay_state"]),
         rx.cond(
             p["is_retiring"] != "",
             rx.badge(AuthState.t["staking_badge_retiring"], color_scheme="red", variant="soft"),
@@ -434,19 +463,38 @@ def _pool_card(p) -> rx.Component:
     )
 
     metrics = rx.box(
-        _metric(AuthState.t["staking_metric_stake"], p["stake_ada"], "ADA", emphasis=True),
-        _metric(AuthState.t["staking_metric_pledge"], p["pledge_ada"], "ADA"),
+        _ada_metric_with_tooltip(
+            AuthState.t["staking_metric_stake"],
+            p["stake_ada_ja"], p["stake_ada_en"], p["stake_ada"],
+            emphasis=True,
+        ),
+        _ada_metric_with_tooltip(
+            AuthState.t["staking_metric_pledge"],
+            p["pledge_ada_ja"], p["pledge_ada_en"], p["pledge_ada"],
+        ),
         _metric(AuthState.t["staking_metric_margin"], p["margin_pct"], "%"),
         _metric(AuthState.t["staking_metric_fixed_cost"], p["fixed_cost_ada"], "ADA"),
         _metric(AuthState.t["staking_metric_delegators"], p["delegators"], ""),
         _metric(AuthState.t["staking_metric_blocks"], p["block_count"], ""),
+        _metric(AuthState.t["staking_metric_recent5ep"], p["history_total"], "", emphasis=True),
+        # リレー稼働状況をメトリクスグリッドの 8 番目のセルに配置（ピル自体に「リレー〜」と入っているので別ラベル不要）
+        rx.box(
+            _relay_status(p["relay_state"]),
+            style={
+                "display": "flex",
+                "alignItems": "center",
+                "justifyContent": "flex-start",
+                "minWidth": "0",
+                "minHeight": "28px",
+            },
+        ),
         width="100%",
         style={
             "display": "grid",
             "gap": "12px",
             "gridTemplateColumns": "repeat(2, minmax(0, 1fr))",
             "@media (min-width: 1024px)": {
-                "gridTemplateColumns": "repeat(6, minmax(0, 1fr))",
+                "gridTemplateColumns": "repeat(8, minmax(0, 1fr))",
             },
         },
     )
@@ -498,6 +546,27 @@ def _pool_card(p) -> rx.Component:
         width="100%",
         _hover={"background": "var(--gray-3)"},
         transition="background 0.15s",
+    )
+
+
+def _ada_metric_with_tooltip(label, value_ja, value_en, full_value, emphasis: bool = False) -> rx.Component:
+    """ADA メトリクスを言語別の短縮表記で表示し、マウスホバー時にフル数値の tooltip を出す。"""
+    value_color = "var(--amber-11)" if emphasis else "var(--gray-12)"
+    display_value = rx.cond(AuthState.language == "en", value_en, value_ja)
+    return rx.tooltip(
+        rx.box(
+            rx.text(label, size="1", color="var(--gray-10)", weight="medium"),
+            rx.hstack(
+                rx.text(display_value, size="3", weight="bold", color=value_color,
+                        style={"wordBreak": "break-all"}),
+                rx.text("ADA", size="1", color="var(--gray-10)"),
+                spacing="1", align="baseline",
+            ),
+            style={"display": "flex", "flexDirection": "column",
+                   "alignItems": "start", "minWidth": "0",
+                   "cursor": "help"},
+        ),
+        content=full_value + " ADA",
     )
 
 

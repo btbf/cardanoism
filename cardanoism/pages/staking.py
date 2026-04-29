@@ -27,8 +27,9 @@ from cardanoism.components.staking_nav import staking_subnav
 # Cardano プロトコル定数
 MAX_SUPPLY_LOVELACE = 45_000_000_000 * 1_000_000  # 45B ADA
 OPTIMAL_POOL_COUNT_K = 500
-# maxBlockBodySize (現行 mainnet): 90112 bytes ≒ 88 KB
-MAX_BLOCK_BODY_SIZE_BYTES = 90_112
+# Cardano protocol params (mainnet): maxBlockBodySize=90112 + maxBlockHeaderSize=1100 = 91212
+# Ogmios の block.size.bytes はヘッダ + ボディの全体サイズを返すので、ヘッダ込みの上限と比較する。
+MAX_BLOCK_TOTAL_SIZE_BYTES = 91_212
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +147,8 @@ class StakingDashboardState(rx.State):
             logger.warning("get_mempool_state failed: %s", e)
 
         try:
-            rows = get_recent_blocks(limit=24)
+            # mempool 1 セル + ブロック 34 = 合計 35 セル (7 列 × 5 段にぴったり収まる)
+            rows = get_recent_blocks(limit=34)
         except Exception as e:
             logger.warning("get_recent_blocks failed: %s", e)
             return
@@ -165,7 +167,7 @@ class StakingDashboardState(rx.State):
             tx_count = int(r.get("tx_count") or 0)
             block_size = int(r.get("block_size") or 0)
             block_size_kb = f"{block_size / 1024:.1f}" if block_size else "0"
-            fullness_pct = (block_size / MAX_BLOCK_BODY_SIZE_BYTES * 100.0) if block_size else 0.0
+            fullness_pct = (block_size / MAX_BLOCK_TOTAL_SIZE_BYTES * 100.0) if block_size else 0.0
             fullness_pct_clamped = max(0.0, min(100.0, fullness_pct))
             block_hash = str(r.get("block_hash") or "")
             block_hash_short = (block_hash[:10] + "..." + block_hash[-6:]) if len(block_hash) > 18 else block_hash
@@ -225,18 +227,32 @@ class StakingDashboardState(rx.State):
         ogmios_listener 側も 1 秒で書き込むので、合計ラグは最大 ~1秒。
         Reflex が State 更新を WebSocket でクライアントに push するため、
         ブラウザは即座に新しい値を受け取る = 体感リアルタイム。
+
+        各ループ反復で例外を捕まえて継続するので、一時的な DB エラー等で
+        ポーリングが死なない（停止すると UI のリアルタイム性が失われるため）。
         """
+        # 二重起動ガード（同一セッションで既に走っているなら抜ける）
         async with self:
             if self.polling:
                 return
             self.polling = True
         try:
             while True:
-                await asyncio.sleep(1)
-                async with self:
-                    self._fetch_live_blocks()
+                try:
+                    await asyncio.sleep(1)
+                    async with self:
+                        self._fetch_live_blocks()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as inner:
+                    logger.warning("polling 反復で例外（継続）: %s", inner)
+                    # 短く待って次のループへ
+                    await asyncio.sleep(2)
+        except asyncio.CancelledError:
+            logger.info("start_live_polling キャンセル受信")
+            raise
         except Exception as e:
-            logger.warning("start_live_polling 終了: %s", e)
+            logger.warning("start_live_polling 異常終了: %s", e)
         finally:
             async with self:
                 self.polling = False
@@ -372,10 +388,12 @@ DASHBOARD_CSS = """
 }
 
 .cdn-cubes-grid {
-  --gap-x: 28px;
-  --gap-y: 32px;
+  --gap-x: 20px;
+  --gap-y: 40px;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  /* 7 列 × 5 段でぴったり 35 セル。各キューブ最大 140px。 */
+  grid-template-columns: repeat(7, minmax(0, 140px));
+  justify-content: center;
   gap: var(--gap-y) var(--gap-x);
   width: 100%;
   padding: 14px 14px 0 0;
@@ -486,6 +504,19 @@ DASHBOARD_CSS = """
   flex-direction: column;
 }
 
+/* Mempool 専用の「流れ込む」インジケータ — チェーンではなく右方向の動きで
+   "これから次のブロックに tx が入る" を表現する */
+@keyframes cdn_mempool_flow {
+  0%, 100% { transform: translateY(-50%) translateX(-6px); opacity: 0.4; }
+  50%      { transform: translateY(-50%) translateX(4px);  opacity: 1; }
+}
+.cdn-conn-mempool {
+  /* "次の (アンバー) ブロックへ流れ込む" を示唆するため、矢印は流入先のアンバー系で目立たせる */
+  color: var(--amber-10);
+  filter: drop-shadow(0 0 6px rgba(245,158,11,0.65)) drop-shadow(0 1px 2px rgba(0,0,0,0.3));
+  animation: cdn_mempool_flow 1.4s ease-in-out infinite !important;
+}
+
 /* 色テーマ — 段ごとにハッキリ違う色相。1段目アンバー → 5段目インディゴで暖色→寒色へ。 */
 .cdn-cube-block {
   /* 1段目（最新）: アンバー */
@@ -558,11 +589,11 @@ DASHBOARD_CSS = """
 @media (max-width: 768px) {
   /* スマホは 1 カラム縦並び。Mempool 最上段、その下に新しいブロック順 */
   .cdn-cubes-grid {
-    grid-template-columns: minmax(0, 280px);
+    grid-template-columns: minmax(0, 170px);
     justify-content: center;
     --gap-x: 0;
-    --gap-y: 20px;
-    padding: 14px;
+    --gap-y: 16px;
+    padding: 12px;
   }
   /* ジグザグ配置を無効化、DOM 順 (mempool → 新→古) で並べる */
   .cdn-cubes-grid > * {
@@ -580,7 +611,7 @@ DASHBOARD_CSS = """
 
 # ジグザグ（ブストロフェドン）配置: 偶数行は左→右、奇数行は右→左
 # idx=0 が Mempool (左上)、idx=1 以降が新しい順のブロック
-COLS = 5
+COLS = 7
 
 
 def _grid_position(idx: int, cols: int = COLS) -> tuple[int, int]:
@@ -609,6 +640,24 @@ def _connector_direction(idx: int, total: int, cols: int = COLS) -> str:
         return "down"
     going_right = (row % 2 == 0)
     return "right" if going_right else "left"
+
+
+def _mempool_flow_node(direction) -> rx.Component:
+    """Mempool から次のブロックへの "流れ込む" インジケータ。
+    チェーンアイコンではなく chevrons-right で「これから tx がブロックに入る」感を表現。
+    """
+    return rx.match(
+        direction,
+        ("right", rx.box(
+            rx.icon("chevrons-right", size=44, stroke_width=3.5),
+            class_name="cdn-conn cdn-conn-mempool cdn-conn-right",
+        )),
+        ("down", rx.box(
+            rx.icon("chevrons-down", size=44, stroke_width=3.5),
+            class_name="cdn-conn cdn-conn-mempool cdn-conn-down",
+        )),
+        rx.fragment(),
+    )
 
 
 def _connector_node(direction) -> rx.Component:
@@ -734,7 +783,7 @@ def _mempool_cube() -> rx.Component:
             ),
             class_name="cdn-cube-content",
         ),
-        _connector_node(StakingDashboardState.mempool_connector),
+        _mempool_flow_node(StakingDashboardState.mempool_connector),
         class_name="cdn-cube cdn-cube-mempool",
         key="__mempool__",
         style={

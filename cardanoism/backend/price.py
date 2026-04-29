@@ -98,6 +98,48 @@ def format_usd_short(amount: float | int | None) -> str:
     return f"${v:,.2f}"
 
 
+def format_ada_short_ja(ada: int) -> str:
+    """ADA 整数値を日本語の単位（万 / 億）で短縮表記。
+    例: 174,832 → "17.5万" / 17,483,200 → "1,748万" / 174,832,000 → "1.75億"
+    """
+    if ada is None:
+        return "-"
+    try:
+        n = int(ada)
+    except (TypeError, ValueError):
+        return "-"
+    if n < 10_000:
+        return f"{n:,}"
+    if n < 100_000_000:
+        man = n / 10_000
+        if man >= 1000:
+            return f"{int(man):,}万"
+        return f"{man:.1f}万"
+    oku = n / 100_000_000
+    if oku >= 100:
+        return f"{int(oku):,}億"
+    return f"{oku:.2f}億"
+
+
+def format_ada_short_en(ada: int) -> str:
+    """ADA 整数値を英語圏の単位（K/M/B）で短縮表記。
+    例: 174,832 → "174.8K" / 17,483,200 → "17.5M" / 1,748,320,000 → "1.75B"
+    """
+    if ada is None:
+        return "-"
+    try:
+        n = int(ada)
+    except (TypeError, ValueError):
+        return "-"
+    if n < 1_000:
+        return f"{n:,}"
+    if n < 1_000_000:
+        return f"{n / 1_000:.1f}K"
+    if n < 1_000_000_000:
+        return f"{n / 1_000_000:.2f}M"
+    return f"{n / 1_000_000_000:.2f}B"
+
+
 def format_ada(lovelace: int | None, integer: bool = False) -> str:
     """
     ADA 金額を省略せず整形する。
