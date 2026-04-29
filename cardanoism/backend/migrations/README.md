@@ -27,6 +27,7 @@ Cardanoism の MariaDB スキーマ定義。
 | 014 | `014_mempool_state.sql` | mempool_state（id=1 固定の Ogmios mempool スナップショット） |
 | 015 | `015_recent_blocks_size.sql` | recent_blocks に block_size (bytes) を追加 (ALTER) |
 | 016 | `016_pools_block_history.sql` | pools に block_history_5ep (直近5エポックのブロック数) を追加 (ALTER) |
+| 017 | `017_governance_ai_analysis.sql` | governance_ai_analysis（GA AI 分析結果 + ジョブステート） |
 
 ## 適用例
 

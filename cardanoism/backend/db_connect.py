@@ -1149,6 +1149,131 @@ class FundListState(rx.State):
 
 # ─── Governance Actions ───────────────────────────────────────────────────────
 
+def _ai_score_color_name(score: int) -> str:
+    """0-100 のスコアから Radix UI のカラー名を返す（コンポーネントの _score_color と同期）。"""
+    if score >= 80:
+        return "green"
+    if score >= 60:
+        return "amber"
+    if score >= 40:
+        return "orange"
+    return "ruby"
+
+
+# VISION 2030 5 Pillar の固定定義
+_PILLAR_KEYS:      tuple[str, ...] = ("I", "A", "G", "C", "E")
+_PILLAR_LABELS_JA: tuple[str, ...] = ("インフラ・研究", "採用と実用性", "ガバナンス", "コミュニティ", "持続可能性")
+_PILLAR_LABELS_EN: tuple[str, ...] = ("Infrastructure", "Adoption & Utility", "Governance", "Community", "Sustainability")
+
+# レーダーチャート SVG の幾何パラメータ
+_RADAR_CX = 175
+_RADAR_CY = 175
+_RADAR_R = 120
+_RADAR_LABEL_R = 150
+
+
+def _polar_xy(cx: float, cy: float, r: float, deg: float) -> tuple[float, float]:
+    import math
+    rad = math.radians(deg)
+    return (cx + r * math.cos(rad), cy + r * math.sin(rad))
+
+
+def build_radar_svg(scores: list[int], labels: list[str]) -> str:
+    """N 軸レーダーチャートの SVG 文字列を生成する。
+    scores: 各軸のスコア (0-100、軸数 = ラベル数 と一致)
+    labels: 各軸のラベル
+    両方が空 / 不一致なら空文字列を返す。
+    """
+    if not scores or not labels or len(scores) != len(labels):
+        return ""
+    n = len(scores)
+    angles = [-90 + (360 / n) * i for i in range(n)]
+
+    parts: list[str] = [
+        '<svg width="350" height="350" viewBox="0 0 350 350" xmlns="http://www.w3.org/2000/svg" '
+        'style="max-width:100%;height:auto;display:block;margin:0 auto;">'
+    ]
+
+    # 4 リング (内側→外側)
+    for ring_pct, op in zip((25, 50, 75, 100), (0.35, 0.5, 0.7, 1.0)):
+        pts = [_polar_xy(_RADAR_CX, _RADAR_CY, _RADAR_R * ring_pct / 100, a) for a in angles]
+        ring_str = " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
+        parts.append(
+            f'<polygon points="{ring_str}" fill="var(--gray-3)" '
+            f'stroke="var(--gray-5)" stroke-width="1" opacity="{op}"/>'
+        )
+
+    # 軸線
+    for a in angles:
+        ex, ey = _polar_xy(_RADAR_CX, _RADAR_CY, _RADAR_R, a)
+        parts.append(
+            f'<line x1="{_RADAR_CX}" y1="{_RADAR_CY}" '
+            f'x2="{ex:.1f}" y2="{ey:.1f}" '
+            f'stroke="var(--gray-5)" stroke-width="1"/>'
+        )
+
+    # データポリゴン + ポイント
+    data_pts = [
+        _polar_xy(_RADAR_CX, _RADAR_CY, _RADAR_R * (max(0, min(100, s)) / 100), a)
+        for s, a in zip(scores, angles)
+    ]
+    polygon_str = " ".join(f"{x:.1f},{y:.1f}" for x, y in data_pts)
+    parts.append(
+        f'<polygon points="{polygon_str}" '
+        'fill="var(--violet-9)" fill-opacity="0.25" '
+        'stroke="var(--violet-10)" stroke-width="2"/>'
+    )
+    for x, y in data_pts:
+        parts.append(
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4" '
+            'fill="var(--violet-11)" stroke="var(--gray-1)" stroke-width="2"/>'
+        )
+
+    # ラベル
+    for a, lab in zip(angles, labels):
+        lx, ly = _polar_xy(_RADAR_CX, _RADAR_CY, _RADAR_LABEL_R, a)
+        if abs(lx - _RADAR_CX) < 1:
+            anchor = "middle"
+        elif lx > _RADAR_CX:
+            anchor = "start"
+        else:
+            anchor = "end"
+        parts.append(
+            f'<text x="{lx:.1f}" y="{ly:.1f}" '
+            f'text-anchor="{anchor}" dominant-baseline="middle" '
+            f'font-size="12" font-weight="600" fill="var(--gray-12)">{lab}</text>'
+        )
+
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def build_gauge_svg(score: int) -> str:
+    """憲法準拠スコア用の半円ゲージ SVG 文字列を生成する。
+    コンポーネント側の demo 描画と State 側 (modal_ai_data['gauge_svg']) の両方から使う。
+    """
+    import math
+    r = 70
+    circumference = math.pi * r
+    score = max(0, min(100, int(score)))
+    progress = circumference * (score / 100)
+    color = _ai_score_color_name(score)
+    return f"""
+        <svg width="180" height="100" viewBox="0 0 180 100" xmlns="http://www.w3.org/2000/svg">
+          <path d="M 20 90 A 70 70 0 0 1 160 90"
+                fill="none" stroke="var(--gray-4)" stroke-width="10" stroke-linecap="round"/>
+          <path d="M 20 90 A 70 70 0 0 1 160 90"
+                fill="none" stroke="var(--{color}-9)" stroke-width="10"
+                stroke-linecap="round"
+                stroke-dasharray="{progress:.1f} {circumference:.1f}"/>
+          <text x="90" y="78" text-anchor="middle"
+                font-size="34" font-weight="700" fill="var(--gray-12)">{score}</text>
+          <text x="90" y="94" text-anchor="middle"
+                font-size="11" fill="var(--gray-10)">/ 100</text>
+        </svg>
+    """
+
+
 _GA_STATUS_SQL = (
     "CASE"
     " WHEN enacted_epoch IS NOT NULL THEN 'enacted'"
@@ -1442,6 +1567,18 @@ class GovernanceState(rx.State):
     # 現行憲法（最新の enacted NewConstitution）
     current_constitution: Dict[str, Any] = {}
 
+    # ── GA AI 分析 ────────────────────────────────────────────────────────────
+    # Phase 1: 憲法準拠（Feature A）の State 接続
+    # Phase 2 で Feature B（pillars / related_kpis）も追加する
+    modal_ai_status: str = ""                    # ""=未ロード / "none"=対象外 / pending / analyzing / analyzed / failed
+    modal_ai_data: Dict[str, str] = {}           # スカラフィールド（score / verdict / summary 等）
+    modal_ai_articles: List[Dict[str, str]] = [] # [{key,label_ja,label_en,score,comment_ja,comment_en,color}]
+    modal_ai_concerns_ja: List[str] = []
+    modal_ai_concerns_en: List[str] = []
+    modal_ai_pillars: List[Dict[str, str]] = []  # Phase 2 で使用
+    modal_ai_related_kpis: List[Dict[str, str]] = []  # Phase 2 で使用
+    modal_ai_last_error: str = ""
+
     # ── WHERE 句構築 ──────────────────────────────────────────────────────────
 
     def _build_where(self) -> tuple[str, list]:
@@ -1614,8 +1751,196 @@ class GovernanceState(rx.State):
                     "has_voted":      "1" if matched else "",
                 })
             self.modal_cc_votes = cc_out
+
+            # AI 分析結果をロード（行が無ければ "none" 状態）
+            self._load_ai_analysis(proposal_id)
         except Exception as e:
             logger.exception("GovernanceState._load_full_action(id=%s): %s", proposal_id, e)
+
+    def retry_ai_analysis(self):
+        """failed 状態の AI 分析を pending に戻して再実行を促す。
+        Phase 3 のリアルタイムワーカーが pending を拾って analyzing → analyzed に進める。
+        """
+        proposal_id = str(self.modal_action.get("proposal_id") or "")
+        if not proposal_id:
+            return
+        try:
+            with get_db() as (cursor, conn):
+                cursor.execute(
+                    """
+                    UPDATE governance_ai_analysis
+                    SET status = 'pending',
+                        worker_id = NULL,
+                        started_at = NULL,
+                        last_error = NULL
+                    WHERE proposal_id = ? AND status = 'failed'
+                    """,
+                    (proposal_id,),
+                )
+                conn.commit()
+            # State を再ロード（pending として表示される）
+            self._load_ai_analysis(proposal_id)
+        except Exception as e:
+            logger.exception("retry_ai_analysis: %s", e)
+
+    def _load_ai_analysis(self, proposal_id: str) -> None:
+        """governance_ai_analysis から分析結果を取得して State に展開する。
+        行が存在しない場合は modal_ai_status='none' をセットして終了。
+        """
+        # 既存値をクリア
+        self.modal_ai_status = ""
+        self.modal_ai_data = {}
+        self.modal_ai_articles = []
+        self.modal_ai_concerns_ja = []
+        self.modal_ai_concerns_en = []
+        self.modal_ai_pillars = []
+        self.modal_ai_related_kpis = []
+        self.modal_ai_last_error = ""
+
+        try:
+            from cardanoism.backend.governance_ai_db import get_analysis
+            row = get_analysis(proposal_id)
+        except Exception as e:
+            logger.exception("_load_ai_analysis: %s", e)
+            return
+
+        if row is None:
+            self.modal_ai_status = "none"
+            return
+
+        status = str(row.get("status") or "")
+        self.modal_ai_status = status
+        self.modal_ai_last_error = str(row.get("last_error") or "")
+
+        # 分析中・キュー待ちの場合は経過秒数も渡す（pending 状態の表示用）
+        enqueued = row.get("enqueued_at")
+        started = row.get("started_at")
+        from datetime import datetime, timezone
+        now = datetime.now()
+        elapsed_pending = ""
+        if status == "pending" and enqueued:
+            try:
+                elapsed_pending = str(max(0, int((now - enqueued).total_seconds())))
+            except Exception:
+                elapsed_pending = ""
+
+        score_raw = row.get("constitution_score")
+        try:
+            score_int = int(score_raw) if score_raw is not None else 0
+        except (TypeError, ValueError):
+            score_int = 0
+        score_color = _ai_score_color_name(score_int)
+
+        # Gauge SVG をサーバ側で生成して State に保存（コンポーネントは rx.html で挿入のみ）
+        gauge_svg = build_gauge_svg(score_int)
+
+        self.modal_ai_data = {
+            "score":        str(score_int),
+            "score_color":  score_color,
+            "verdict_ja":   str(row.get("constitution_verdict_ja") or ""),
+            "verdict_en":   str(row.get("constitution_verdict_en") or ""),
+            "summary_ja":   str(row.get("constitution_summary_ja") or ""),
+            "summary_en":   str(row.get("constitution_summary_en") or ""),
+            "model_id":     str(row.get("model_id") or ""),
+            "gauge_svg":    gauge_svg,
+            "radar_svg_ja": "",
+            "radar_svg_en": "",
+            "elapsed_pending": elapsed_pending,
+        }
+
+        # articles を表示用に整形（color は score から決定）
+        articles_raw = row.get("articles_json") or []
+        articles_out: list[dict[str, str]] = []
+        for a in articles_raw if isinstance(articles_raw, list) else []:
+            if not isinstance(a, dict):
+                continue
+            try:
+                a_score = int(a.get("score") or 0)
+            except (TypeError, ValueError):
+                a_score = 0
+            a_score = max(0, min(10, a_score))
+            articles_out.append({
+                "key":        str(a.get("key") or ""),
+                "label_ja":   str(a.get("label_ja") or ""),
+                "label_en":   str(a.get("label_en") or ""),
+                "score":      str(a_score),
+                "bar_pct":    f"{a_score * 10}%",
+                "comment_ja": str(a.get("comment_ja") or ""),
+                "comment_en": str(a.get("comment_en") or ""),
+                "color":      _ai_score_color_name(a_score * 10),
+            })
+        self.modal_ai_articles = articles_out
+
+        # concerns
+        concerns_ja_raw = row.get("concerns_ja_json") or []
+        concerns_en_raw = row.get("concerns_en_json") or []
+        if isinstance(concerns_ja_raw, list):
+            self.modal_ai_concerns_ja = [str(x) for x in concerns_ja_raw if x]
+        if isinstance(concerns_en_raw, list):
+            self.modal_ai_concerns_en = [str(x) for x in concerns_en_raw if x]
+
+        # Pillars: AI 出力を 5 つの公式 pillar 順に並び替え、ラベルと色を補完
+        pillars_raw = row.get("pillars_json") or []
+        ai_score_by_key: dict[str, int] = {}
+        ai_comments: dict[str, tuple[str, str]] = {}
+        if isinstance(pillars_raw, list):
+            for p in pillars_raw:
+                if not isinstance(p, dict):
+                    continue
+                k = str(p.get("key") or "").upper()
+                if not k:
+                    continue
+                try:
+                    s = int(p.get("score") or 0)
+                except (TypeError, ValueError):
+                    s = 0
+                s = max(0, min(100, s))
+                ai_score_by_key[k] = s
+                ai_comments[k] = (
+                    str(p.get("comment_ja") or ""),
+                    str(p.get("comment_en") or ""),
+                )
+
+        pillars_out: list[dict[str, str]] = []
+        ordered_scores: list[int] = []
+        for k, lab_ja, lab_en in zip(_PILLAR_KEYS, _PILLAR_LABELS_JA, _PILLAR_LABELS_EN):
+            sc = ai_score_by_key.get(k, 0)
+            cj, ce = ai_comments.get(k, ("", ""))
+            pillars_out.append({
+                "key":        k,
+                "label_ja":   lab_ja,
+                "label_en":   lab_en,
+                "score":      str(sc),
+                "comment_ja": cj,
+                "comment_en": ce,
+                "color":      _ai_score_color_name(sc),
+            })
+            ordered_scores.append(sc)
+        self.modal_ai_pillars = pillars_out
+
+        # レーダーチャート SVG をサーバ側で生成して State に保存（言語別）
+        if any(s > 0 for s in ordered_scores):
+            self.modal_ai_data["radar_svg_ja"] = build_radar_svg(ordered_scores, list(_PILLAR_LABELS_JA))
+            self.modal_ai_data["radar_svg_en"] = build_radar_svg(ordered_scores, list(_PILLAR_LABELS_EN))
+        else:
+            self.modal_ai_data["radar_svg_ja"] = ""
+            self.modal_ai_data["radar_svg_en"] = ""
+
+        related_raw = row.get("related_kpis_json") or []
+        if isinstance(related_raw, list):
+            related_out: list[dict[str, str]] = []
+            for k in related_raw:
+                if not isinstance(k, dict):
+                    continue
+                related_out.append({
+                    "name_ja":   str(k.get("name_ja") or ""),
+                    "name_en":   str(k.get("name_en") or ""),
+                    "target":    str(k.get("target") or ""),
+                    "impact":    str(k.get("impact") or "0"),
+                    "comment_ja": str(k.get("comment_ja") or ""),
+                    "comment_en": str(k.get("comment_en") or ""),
+                })
+            self.modal_ai_related_kpis = related_out
 
     # ── ページロード ──────────────────────────────────────────────────────────
 
