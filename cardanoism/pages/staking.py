@@ -22,6 +22,8 @@ from cardanoism.backend.pool_db import get_network_summary
 from cardanoism.backend.price import format_ada, format_jpy_short, format_usd_short
 from cardanoism.backend.recent_blocks_db import get_recent_blocks
 from cardanoism.backend.mempool_db import get_mempool_state
+
+import json as _json
 from cardanoism.components.staking_nav import staking_subnav
 
 # Cardano プロトコル定数
@@ -67,6 +69,13 @@ class StakingDashboardState(rx.State):
     # Mempool キューブの connector 方向（常にブロック数で決まる）
     mempool_connector: str = ""
 
+    # ヒートマップ: アクティブプール全件をブロック生成数で色分け（重い集計なので on_load のみ実行）
+    heatmap_pools: list[dict[str, str]] = []
+    heatmap_count_green:  int = 0
+    heatmap_count_yellow: int = 0
+    heatmap_count_pink:   int = 0
+    heatmap_count_gray:   int = 0
+
     # Mempool 状態（10秒間隔で ogmios_listener が更新、ページ側は 5秒で読みに行く）
     mempool_tx_count: int = 0
     mempool_size_kb: str = "0"
@@ -111,9 +120,56 @@ class StakingDashboardState(rx.State):
             self.total_live_stake_usd = format_usd_short(ada * ada_usd) if ada_usd else ""
 
             self._fetch_live_blocks()
+            self._fetch_heatmap()
         except Exception as e:
             logger.exception("StakingDashboardState._fetch: %s", e)
             self.error = str(e)
+
+    def _fetch_heatmap(self):
+        """全アクティブプールの直近5エポック合計ブロック数を集計し、色分けする。
+        重いので on_load のみ実行（polling では呼ばない）。
+        """
+        try:
+            from cardanoism.backend.pool_db import get_pools_for_heatmap
+            rows = get_pools_for_heatmap()
+        except Exception as e:
+            logger.warning("get_pools_for_heatmap failed: %s", e)
+            return
+
+        out: list[dict[str, str]] = []
+        cnt = {"green": 0, "yellow": 0, "pink": 0, "gray": 0}
+        for r in rows:
+            history_raw = r.get("block_history_5ep")
+            total = 0
+            if history_raw:
+                try:
+                    parsed = _json.loads(history_raw) if isinstance(history_raw, str) else history_raw
+                    if isinstance(parsed, list):
+                        total = sum(int(x or 0) for x in parsed[:5])
+                except (TypeError, ValueError, _json.JSONDecodeError):
+                    total = 0
+            if total >= 50:
+                color = "green"
+            elif total >= 10:
+                color = "yellow"
+            elif total >= 1:
+                color = "pink"
+            else:
+                color = "gray"
+            cnt[color] += 1
+            out.append({
+                "pool_id":  str(r.get("pool_id_bech32") or ""),
+                "ticker":   str(r.get("ticker") or ""),
+                "total":    str(total),
+                "color":    color,
+            })
+        # ブロック数の多い順に並べてヒートマップ上で「活発なプール」が先頭に来るよう
+        out.sort(key=lambda d: (-int(d["total"]), d["pool_id"]))
+        self.heatmap_pools = out
+        self.heatmap_count_green  = cnt["green"]
+        self.heatmap_count_yellow = cnt["yellow"]
+        self.heatmap_count_pink   = cnt["pink"]
+        self.heatmap_count_gray   = cnt["gray"]
 
     def _fetch_live_blocks(self):
         """recent_blocks から直近20件を取得し、新規ブロックに is_new フラグを立てる。
@@ -502,6 +558,41 @@ DASHBOARD_CSS = """
   height: var(--gap-y, 32px);
   transform: translateX(-50%);
   flex-direction: column;
+}
+
+/* プール活動ヒートマップ — アクティブプール全件を色付きの小マスで表示 */
+.cdn-heatmap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10px, 1fr));
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--gray-2);
+  border: 1px solid var(--gray-4);
+}
+.cdn-heatmap-cell {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 1px;
+  transition: transform 0.1s ease, outline 0.1s ease;
+}
+.cdn-heatmap-cell:hover {
+  transform: scale(1.6);
+  outline: 1px solid var(--gray-12);
+  z-index: 2;
+}
+.cdn-heatmap-cell-green  { background: var(--green-9);  }
+.cdn-heatmap-cell-yellow { background: var(--yellow-9); }
+.cdn-heatmap-cell-pink   { background: var(--pink-9);   }
+.cdn-heatmap-cell-gray   { background: var(--gray-6);   }
+/* 凡例用の小さな色見本（cdn-heatmap-cell の 100% 幅を継承させない） */
+.cdn-heatmap-legend-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  display: inline-block;
 }
 
 /* Mempool 専用の「流れ込む」インジケータ — チェーンではなく右方向の動きで
@@ -950,6 +1041,64 @@ def _live_blocks_section() -> rx.Component:
     )
 
 
+def _heatmap_cell(p) -> rx.Component:
+    color_class = rx.match(
+        p["color"],
+        ("green",  "cdn-heatmap-cell cdn-heatmap-cell-green"),
+        ("yellow", "cdn-heatmap-cell cdn-heatmap-cell-yellow"),
+        ("pink",   "cdn-heatmap-cell cdn-heatmap-cell-pink"),
+        "cdn-heatmap-cell cdn-heatmap-cell-gray",
+    )
+    return rx.box(
+        class_name=color_class,
+        custom_attrs={"title": p["ticker"] + " — " + p["total"] + " blocks (last 5 ep)"},
+    )
+
+
+def _heatmap_legend_item(swatch_class: str, label, count) -> rx.Component:
+    return rx.hstack(
+        rx.box(class_name="cdn-heatmap-legend-swatch " + swatch_class),
+        rx.text(label, " (", count.to_string(), ")",
+                size="1", color="var(--gray-11)", weight="medium",
+                style={"whiteSpace": "nowrap"}),
+        spacing="2", align="center", flex_shrink="0",
+    )
+
+
+def _heatmap_section() -> rx.Component:
+    """全アクティブプールを直近5エポックのブロック数で色分けしたヒートマップ。
+    凡例: 50+ 緑 / 10-49 黄 / 1-9 ピンク / 0 グレー。
+    親コンテナ (max-width 1130px) を突き抜けてビューポート全幅まで広げる。
+    """
+    return rx.box(
+        rx.vstack(
+            rx.hstack(
+                rx.heading(AuthState.t["staking_heatmap_title"], size="5", as_="h2"),
+                rx.spacer(),
+                rx.text(AuthState.t["staking_heatmap_subtitle"], size="1", color="var(--gray-10)"),
+                width="100%", align="center", wrap="wrap",
+            ),
+            rx.hstack(
+                _heatmap_legend_item("cdn-heatmap-cell-green",  "50+",   StakingDashboardState.heatmap_count_green),
+                _heatmap_legend_item("cdn-heatmap-cell-yellow", "10-49", StakingDashboardState.heatmap_count_yellow),
+                _heatmap_legend_item("cdn-heatmap-cell-pink",   "1-9",   StakingDashboardState.heatmap_count_pink),
+                _heatmap_legend_item("cdn-heatmap-cell-gray",   "0",     StakingDashboardState.heatmap_count_gray),
+                spacing="4", align="center", wrap="wrap",
+            ),
+            rx.cond(
+                StakingDashboardState.heatmap_pools,
+                rx.box(
+                    rx.foreach(StakingDashboardState.heatmap_pools.to(list[dict[str, str]]), _heatmap_cell),
+                    class_name="cdn-heatmap-grid",
+                ),
+                rx.callout(AuthState.t["staking_heatmap_empty"], icon="info", color_scheme="gray"),
+            ),
+            spacing="3", align_items="stretch", width="100%",
+        ),
+        padding_top="8px", width="100%",
+    )
+
+
 # ─── ページ ────────────────────────────────────────────────────────────────────
 
 
@@ -969,6 +1118,7 @@ def staking_page() -> rx.Component:
                 _hero_stats(),
                 _saturation_info_card(),
                 _live_blocks_section(),
+                _heatmap_section(),
                 spacing="4",
                 width="100%",
             ),

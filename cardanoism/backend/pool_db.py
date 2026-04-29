@@ -312,6 +312,21 @@ def get_pool_ids_for_block_history(only_active: bool = True) -> list[str]:
         return [r["pool_id_bech32"] for r in cursor.fetchall() if r.get("pool_id_bech32")]
 
 
+def get_pools_for_heatmap() -> list[dict]:
+    """ヒートマップ用: アクティブプール全件の pool_id / ticker / block_history_5ep を返す。
+    block_history_5ep は JSON 文字列。呼び出し側で sum を取って合計を出す。
+    """
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT pool_id_bech32, ticker, block_history_5ep
+            FROM pools
+            WHERE pool_status IS NULL OR pool_status <> 'retired'
+            """
+        )
+        return [dict(r) for r in cursor.fetchall()]
+
+
 def get_network_summary(saturated_threshold_lovelace: int | None = None) -> dict:
     """ダッシュボード用のネットワーク集計。
 
