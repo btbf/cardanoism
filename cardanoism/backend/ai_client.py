@@ -29,10 +29,10 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "gpt-5.4-mini"
 
-# gpt-5.4-mini の料金 (USD per 1M tokens)。OpenAI の公式 pricing 確定値で要更新。
-_PRICE_INPUT_PER_MTOK = 0.25
-_PRICE_CACHED_INPUT_PER_MTOK = 0.025
-_PRICE_OUTPUT_PER_MTOK = 2.00
+# gpt-5.4-mini の料金 (USD per 1M tokens) — OpenAI 公式 pricing
+_PRICE_INPUT_PER_MTOK = 0.75
+_PRICE_CACHED_INPUT_PER_MTOK = 0.075
+_PRICE_OUTPUT_PER_MTOK = 4.50
 
 # リトライ設定
 _RETRY_BACKOFFS_SEC: tuple[int, ...] = (5, 10, 20, 40)
