@@ -7,6 +7,7 @@ staking_spo.py
 from __future__ import annotations
 
 import logging
+import random
 from typing import Any
 
 import reflex as rx
@@ -14,9 +15,35 @@ import reflex as rx
 from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.backend.fiat_db import get_fiat_rate
+from cardanoism.backend.koios import get_totals
 from cardanoism.backend.pool_db import get_pools, count_pools
 from cardanoism.backend.price import format_ada
 from cardanoism.components.staking_nav import staking_subnav
+
+# Cardano プロトコル定数（staking.py と同期）
+MAX_SUPPLY_LOVELACE = 45_000_000_000 * 1_000_000
+OPTIMAL_POOL_COUNT_K = 500
+
+
+# リレー稼働状況バッジ用のパルスアニメーション（緑のドットを波紋風に光らせる）
+SPO_CSS = """
+<style>
+@keyframes cdn_relay_pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(34,197,94,0.55);
+    transform: scale(1);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(34,197,94,0);
+    transform: scale(1);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(34,197,94,0);
+    transform: scale(1);
+  }
+}
+</style>
+"""
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +59,12 @@ class StakingSPOState(rx.State):
 
     inputed_value: str = ""
     search_query: str = ""
-    sort: str = "stake_desc"
+    sort: str = "random"
     only_active: bool = True
+    # ランダム並びはセッション内で固定 seed を使うことでページングを安定させる
+    random_seed: int = 0
+    # 1プール飽和点 (lovelace)。on_load で /totals から確定し、_fetch で再利用。
+    saturation_point_lovelace: int = 0
 
     current_page: int = 1
     total_pages: int = 0
@@ -53,6 +84,7 @@ class StakingSPOState(rx.State):
                 sort=self.sort,
                 limit=ITEMS_PER_PAGE,
                 offset=offset,
+                random_seed=self.random_seed,
             )
             total = count_pools(search=self.search_query, only_active=self.only_active)
 
@@ -71,12 +103,33 @@ class StakingSPOState(rx.State):
                 margin_raw = r.get("margin")
                 margin_pct = float(margin_raw) * 100.0 if margin_raw is not None else 0.0
 
-                sat_raw = r.get("live_saturation")
-                sat_pct = float(sat_raw) * 100.0 if sat_raw is not None else 0.0
+                # 自前計算: pool_stake / (ソフトキャップ / 500) × 100
+                if self.saturation_point_lovelace > 0 and live_stake > 0:
+                    sat_pct = live_stake / self.saturation_point_lovelace * 100.0
+                else:
+                    sat_pct = 0.0
                 sat_bar = max(0.0, min(100.0, sat_pct))
 
                 status = str(r.get("pool_status") or "")
                 retiring_epoch = r.get("retiring_epoch")
+                # relay_alive は 0/1/None。None = 未確認、1 = 全リレー疎通OK、0 = 1つでもNG
+                relay_alive_raw = r.get("relay_alive")
+                if relay_alive_raw is None:
+                    relay_state = "unknown"
+                elif int(relay_alive_raw) == 1:
+                    relay_state = "alive"
+                else:
+                    relay_state = "dead"
+
+                # ソーシャルハンドルから外部リンク URL を組み立てる（既に URL ならそのまま）
+                tw = str(r.get("twitter_handle") or "").strip()
+                tg = str(r.get("telegram_handle") or "").strip()
+                yt = str(r.get("youtube_handle") or "").strip()
+                gh = str(r.get("github_handle") or "").strip()
+                twitter_url  = tw  if tw.startswith(("http://", "https://"))  else (f"https://twitter.com/{tw}"   if tw else "")
+                telegram_url = tg  if tg.startswith(("http://", "https://"))  else (f"https://t.me/{tg}"          if tg else "")
+                youtube_url  = yt  if yt.startswith(("http://", "https://"))  else (f"https://youtube.com/{yt}"   if yt else "")
+                github_url   = gh  if gh.startswith(("http://", "https://"))  else (f"https://github.com/{gh}"    if gh else "")
 
                 out.append({
                     "rank":            str(offset + idx + 1),
@@ -84,7 +137,13 @@ class StakingSPOState(rx.State):
                     "pool_id_short":   pool_id_short,
                     "ticker":          str(r.get("ticker") or ""),
                     "pool_name":       str(r.get("pool_name") or ""),
+                    "icon_url":        str(r.get("pool_icon_url") or ""),
                     "homepage":        str(r.get("homepage") or ""),
+                    "about":           str(r.get("extended_about") or "")[:280],
+                    "twitter_url":     twitter_url,
+                    "telegram_url":    telegram_url,
+                    "youtube_url":     youtube_url,
+                    "github_url":      github_url,
                     "stake_ada":       format_ada(live_stake, integer=True) if live_stake else "0",
                     "pledge_ada":      format_ada(pledge, integer=True) if pledge else "0",
                     "fixed_cost_ada":  format_ada(fixed_cost, integer=True) if fixed_cost else "0",
@@ -97,6 +156,7 @@ class StakingSPOState(rx.State):
                     "status":          status,
                     "is_retiring":     "1" if status == "retiring" else "",
                     "retiring_epoch":  str(retiring_epoch) if retiring_epoch is not None else "",
+                    "relay_state":     relay_state,
                 })
             self.pools = out
             self.total_items = total
@@ -113,11 +173,29 @@ class StakingSPOState(rx.State):
         self.error = ""
         self.inputed_value = ""
         self.search_query = ""
-        self.sort = "stake_desc"
+        self.sort = "random"
         self.only_active = True
         self.current_page = 1
+        # 1〜2,147,483,647 の整数 seed をセッション開始時に確定（MariaDB の RAND() に渡す）
+        self.random_seed = random.randint(1, 2_147_483_647)
+        # 飽和点 (= ソフトキャップ / 500) を /totals から確定。失敗時は 0 のまま。
+        try:
+            totals = get_totals() or {}
+            reserves = int(totals.get("reserves") or 0)
+            if reserves > 0:
+                soft_cap = MAX_SUPPLY_LOVELACE - reserves
+                self.saturation_point_lovelace = soft_cap // OPTIMAL_POOL_COUNT_K
+        except Exception as e:
+            logger.warning("get_totals failed: %s", e)
         self._fetch()
         self.load = True
+
+    def reshuffle(self):
+        """ランダム表示の seed を引き直す。"""
+        self.sort = "random"
+        self.random_seed = random.randint(1, 2_147_483_647)
+        self.current_page = 1
+        self._fetch()
 
     def set_input(self, v: str):
         self.inputed_value = v
@@ -193,14 +271,93 @@ def _saturation_bar(p) -> rx.Component:
     )
 
 
+def _relay_status(state) -> rx.Component:
+    """リレー稼働状況のピル状バッジ。alive=緑+波紋アニメ / dead=赤 / unknown=非表示。"""
+    return rx.match(
+        state,
+        ("alive", rx.hstack(
+            rx.box(
+                width="8px",
+                height="8px",
+                border_radius="999px",
+                background="var(--green-10)",
+                flex_shrink="0",
+                style={"animation": "cdn_relay_pulse 1.6s ease-in-out infinite"},
+            ),
+            rx.text(AuthState.t["staking_badge_alive"], size="1", weight="bold", color="var(--green-11)"),
+            spacing="2",
+            align="center",
+            padding="3px 10px 3px 8px",
+            border_radius="999px",
+            background="var(--green-3)",
+            border="1px solid var(--green-7)",
+        )),
+        ("dead", rx.hstack(
+            rx.box(
+                width="8px",
+                height="8px",
+                border_radius="999px",
+                background="var(--red-10)",
+                flex_shrink="0",
+            ),
+            rx.text(AuthState.t["staking_badge_dead"], size="1", weight="bold", color="var(--red-11)"),
+            spacing="2",
+            align="center",
+            padding="3px 10px 3px 8px",
+            border_radius="999px",
+            background="var(--red-3)",
+            border="1px solid var(--red-7)",
+        )),
+        rx.fragment(),
+    )
+
+
+def _social_link(url, icon_node) -> rx.Component:
+    """ソーシャルアイコンの外部リンク。url が空なら描画しない。"""
+    return rx.cond(
+        url != "",
+        rx.link(
+            rx.box(
+                icon_node,
+                width="26px",
+                height="26px",
+                display="flex",
+                align_items="center",
+                justify_content="center",
+                border_radius="999px",
+                background="var(--gray-3)",
+                style={"transition": "background 0.15s, color 0.15s"},
+                _hover={"background": "var(--amber-4)"},
+            ),
+            href=url,
+            is_external=True,
+            underline="none",
+        ),
+        rx.fragment(),
+    )
+
+
 def _pool_card(p) -> rx.Component:
-    rank_badge = rx.center(
-        rx.text("#", p["rank"], size="3", weight="bold", color="var(--gray-11)"),
-        min_width="48px",
-        height="48px",
-        border_radius="10px",
-        background="var(--gray-4)",
-        flex_shrink="0",
+    # アイコンが取れていればそれを表示、なければ # ランク表示にフォールバック
+    icon_or_rank = rx.cond(
+        p["icon_url"] != "",
+        rx.image(
+            src=p["icon_url"],
+            width="48px",
+            height="48px",
+            border_radius="10px",
+            style={"objectFit": "cover"},
+            flex_shrink="0",
+            custom_attrs={"referrerpolicy": "no-referrer", "loading": "lazy"},
+        ),
+        rx.center(
+            rx.text("#", p["rank"], size="3", weight="bold", color="var(--gray-11)"),
+            min_width="48px",
+            height="48px",
+            border_radius="10px",
+            background="var(--gray-4)",
+            flex_shrink="0",
+        ),
     )
     name = rx.hstack(
         rx.cond(
@@ -213,6 +370,17 @@ def _pool_card(p) -> rx.Component:
             rx.text(p["pool_name"], size="3", weight="bold", color="var(--gray-12)"),
             rx.text(AuthState.t["staking_no_name"], size="3", weight="bold", color="var(--gray-10)"),
         ),
+        # ホームページ + ソーシャルアイコン群（プール名の右隣に並べる）
+        _social_link(
+            p["homepage"],
+            rx.icon("house", size=14, color="var(--amber-11)"),
+        ),
+        _social_link(p["twitter_url"],  rx.icon("twitter", size=14, color="#1DA1F2")),
+        _social_link(p["telegram_url"], rx.icon("send",    size=14, color="#2AABEE")),
+        _social_link(p["youtube_url"],  rx.icon("youtube", size=14, color="#FF0000")),
+        _social_link(p["github_url"],   rx.icon("github",  size=14, color="var(--gray-12)")),
+        # 稼働状態バッジ（リレー TCP 疎通確認の結果）— ドット + 縁取りピルで目立たせる
+        _relay_status(p["relay_state"]),
         rx.cond(
             p["is_retiring"] != "",
             rx.badge(AuthState.t["staking_badge_retiring"], color_scheme="red", variant="soft"),
@@ -265,16 +433,22 @@ def _pool_card(p) -> rx.Component:
         spacing="2", align="center",
     )
 
-    metrics = rx.grid(
+    metrics = rx.box(
         _metric(AuthState.t["staking_metric_stake"], p["stake_ada"], "ADA", emphasis=True),
         _metric(AuthState.t["staking_metric_pledge"], p["pledge_ada"], "ADA"),
         _metric(AuthState.t["staking_metric_margin"], p["margin_pct"], "%"),
         _metric(AuthState.t["staking_metric_fixed_cost"], p["fixed_cost_ada"], "ADA"),
         _metric(AuthState.t["staking_metric_delegators"], p["delegators"], ""),
         _metric(AuthState.t["staking_metric_blocks"], p["block_count"], ""),
-        columns={"base": "2", "sm": "3", "md": "6"},
-        spacing="3",
         width="100%",
+        style={
+            "display": "grid",
+            "gap": "12px",
+            "gridTemplateColumns": "repeat(2, minmax(0, 1fr))",
+            "@media (min-width: 1024px)": {
+                "gridTemplateColumns": "repeat(6, minmax(0, 1fr))",
+            },
+        },
     )
 
     saturation_row = rx.hstack(
@@ -284,27 +458,35 @@ def _pool_card(p) -> rx.Component:
         spacing="3", align="center", width="100%",
     )
 
+    about_row = rx.cond(
+        p["about"] != "",
+        rx.text(
+            p["about"],
+            size="1",
+            color="var(--gray-10)",
+            line_height="1.55",
+            style={
+                "display": "-webkit-box",
+                "WebkitLineClamp": "2",
+                "WebkitBoxOrient": "vertical",
+                "overflow": "hidden",
+            },
+        ),
+        rx.fragment(),
+    )
+
     return rx.box(
         rx.vstack(
             rx.hstack(
-                rank_badge,
+                icon_or_rank,
                 rx.vstack(
                     name,
                     pool_id_inline,
                     spacing="1", align_items="start", flex="1", min_width="0",
                 ),
-                rx.cond(
-                    p["homepage"] != "",
-                    rx.link(
-                        rx.icon("external-link", size=15, color="var(--gray-10)"),
-                        href=p["homepage"],
-                        is_external=True,
-                        underline="none",
-                    ),
-                    rx.fragment(),
-                ),
                 spacing="3", align="center", width="100%",
             ),
+            about_row,
             saturation_row,
             metrics,
             spacing="3", align_items="stretch", width="100%",
@@ -324,7 +506,7 @@ def _metric(label, value, unit: str, emphasis: bool = False) -> rx.Component:
     return rx.vstack(
         rx.text(label, size="1", color="var(--gray-10)", weight="medium"),
         rx.hstack(
-            rx.text(value, size="3", weight="bold", color=value_color),
+            rx.text(value, size="3", weight="bold", color=value_color, style={"wordBreak": "break-all"}),
             rx.cond(
                 unit != "",
                 rx.text(unit, size="1", color="var(--gray-10)"),
@@ -333,6 +515,7 @@ def _metric(label, value, unit: str, emphasis: bool = False) -> rx.Component:
             spacing="1", align="baseline",
         ),
         spacing="0", align_items="start",
+        min_width="0",
     )
 
 
@@ -347,9 +530,22 @@ def _filter_bar() -> rx.Component:
             flex="1",
             min_width="0",
         ),
+        rx.cond(
+            StakingSPOState.sort == "random",
+            rx.button(
+                rx.icon("shuffle", size=15),
+                rx.text(AuthState.t["staking_reshuffle"], size="2"),
+                variant="soft",
+                size="3",
+                on_click=StakingSPOState.reshuffle,
+                cursor="pointer",
+            ),
+            rx.fragment(),
+        ),
         rx.select.root(
             rx.select.trigger(),
             rx.select.content(
+                rx.select.item(AuthState.t["staking_sort_random"],          value="random"),
                 rx.select.item(AuthState.t["staking_sort_stake_desc"],      value="stake_desc"),
                 rx.select.item(AuthState.t["staking_sort_pledge_desc"],     value="pledge_desc"),
                 rx.select.item(AuthState.t["staking_sort_saturation_desc"], value="saturation_desc"),
@@ -419,6 +615,7 @@ def staking_spo_page() -> rx.Component:
     return rx.cond(
         StakingSPOState.load,
         rx.box(
+            rx.html(SPO_CSS),
             rx.vstack(
                 _breadcrumb(),
                 staking_subnav("spo"),
