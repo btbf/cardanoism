@@ -42,7 +42,7 @@ from notify_worker import (
 from cardanoism.backend import line_flex
 from cardanoism.backend.mail_notify import build_html, build_text
 from cardanoism.backend.koios import get_proposal_title, get_pool_name, get_pool_epoch_stats, get_pool_apy
-from cardanoism.backend.recent_blocks_db import insert_block, trim_old_blocks
+from cardanoism.backend.recent_blocks_db import insert_block, trim_old_blocks, delete_blocks_after_slot
 from cardanoism.backend.mempool_db import upsert_mempool_state
 
 logger = logging.getLogger("ogmios_listener")
@@ -695,14 +695,27 @@ async def _run(ogmios_url: str, from_tip: bool = False) -> None:
             elif direction == "backward":
                 point = result.get("point", {})
                 if not isinstance(point, dict):
-                    # "origin" 文字列の場合はカーソルをリセット
-                    logger.info("rollback: origin まで巻き戻し")
+                    # "origin" 文字列の場合: カーソル + recent_blocks 全消し
+                    logger.info("rollback: origin まで巻き戻し → recent_blocks 全削除")
+                    try:
+                        deleted = delete_blocks_after_slot(0)
+                        if deleted:
+                            logger.info("rollback: recent_blocks から %d 件削除", deleted)
+                    except Exception as e:
+                        logger.warning("rollback の recent_blocks 削除失敗: %s", e)
                     prev_epoch = -1
                     continue
                 slot = point.get("slot", 0)
                 bid = point.get("id", "")
                 logger.info("rollback: slot=%s", slot)
                 _save_cursor(slot, bid)
+                # rollback point より後 (slot > rollback_slot) のブロックを recent_blocks から削除
+                try:
+                    deleted = delete_blocks_after_slot(int(slot))
+                    if deleted:
+                        logger.info("rollback: slot > %d のブロックを %d 件削除", slot, deleted)
+                except Exception as e:
+                    logger.warning("rollback の recent_blocks 削除失敗: %s", e)
                 if slot:
                     prev_epoch = _epoch_from_slot(slot)
 

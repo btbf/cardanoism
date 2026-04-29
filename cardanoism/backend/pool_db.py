@@ -228,7 +228,7 @@ def get_pools(
         "active_stake, live_stake, live_pledge, live_delegators, live_saturation, sigma, block_count, "
         "ticker, pool_name, description, homepage, pool_icon_url, pool_logo_url, "
         "extended_about, twitter_handle, telegram_handle, youtube_handle, github_handle, "
-        "relay_alive, relay_checked_at, "
+        "relay_alive, relay_checked_at, block_history_5ep, "
         "meta_url, updated_at "
         "FROM pools "
         f"WHERE {' AND '.join(where)} "
@@ -288,6 +288,28 @@ def bulk_update_relay_alive(updates: list[tuple]) -> int:
             )
         conn.commit()
     return len(updates)
+
+
+def bulk_update_block_history(updates: list[tuple]) -> int:
+    """[(pool_id_bech32, json_str), ...] を一括 UPDATE。json_str は "[12,8,15,11,9]" 形式。"""
+    if not updates:
+        return 0
+    with get_db() as (cursor, conn):
+        for pid, history_json in updates:
+            cursor.execute(
+                "UPDATE pools SET block_history_5ep = ? WHERE pool_id_bech32 = ?",
+                (history_json, pid),
+            )
+        conn.commit()
+    return len(updates)
+
+
+def get_pool_ids_for_block_history(only_active: bool = True) -> list[str]:
+    """ブロック履歴フェッチ対象の pool_id_bech32 一覧。"""
+    where = "(pool_status IS NULL OR pool_status <> 'retired')" if only_active else "1=1"
+    with get_db() as (cursor, _):
+        cursor.execute(f"SELECT pool_id_bech32 FROM pools WHERE {where} ORDER BY live_stake DESC")
+        return [r["pool_id_bech32"] for r in cursor.fetchall() if r.get("pool_id_bech32")]
 
 
 def get_network_summary(saturated_threshold_lovelace: int | None = None) -> dict:

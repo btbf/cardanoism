@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS pools (
     github_handle    VARCHAR(128) DEFAULT NULL,
     relay_alive      TINYINT(1)   DEFAULT NULL,
     relay_checked_at DATETIME     DEFAULT NULL,
+    block_history_5ep TEXT        DEFAULT NULL,
     fetched_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     KEY idx_live_stake (live_stake),

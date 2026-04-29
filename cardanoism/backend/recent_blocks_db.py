@@ -25,13 +25,24 @@ def insert_block(
     tx_count: int = 0,
     block_size: int = 0,
 ) -> None:
-    """1ブロックを INSERT IGNORE。block_height 重複は黙って無視（ロールバック耐性）。"""
+    """1ブロックを upsert。同じ block_height で別 hash が来た場合（chain rollback 後の再構築等）
+    全フィールドを上書きして最新状態を維持する。
+    """
     with get_db() as (cursor, conn):
         cursor.execute(
             """
-            INSERT IGNORE INTO recent_blocks
+            INSERT INTO recent_blocks
                 (block_height, block_hash, slot_no, epoch_no, pool_id_hex, block_time, tx_count, block_size)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                block_hash  = VALUES(block_hash),
+                slot_no     = VALUES(slot_no),
+                epoch_no    = VALUES(epoch_no),
+                pool_id_hex = VALUES(pool_id_hex),
+                block_time  = VALUES(block_time),
+                tx_count    = VALUES(tx_count),
+                block_size  = VALUES(block_size),
+                fetched_at  = CURRENT_TIMESTAMP
             """,
             (
                 int(block_height),
@@ -45,6 +56,20 @@ def insert_block(
             ),
         )
         conn.commit()
+
+
+def delete_blocks_after_slot(slot_no: int) -> int:
+    """指定 slot より後 (slot_no > N) のブロックを削除。chain rollback で
+    無効化されたブロックを recent_blocks から取り除くのに使う。返り値は削除件数。
+    """
+    with get_db() as (cursor, conn):
+        cursor.execute(
+            "DELETE FROM recent_blocks WHERE slot_no > ?",
+            (int(slot_no),),
+        )
+        deleted = cursor.rowcount or 0
+        conn.commit()
+    return int(deleted)
 
 
 def trim_old_blocks(keep: int = 100) -> int:

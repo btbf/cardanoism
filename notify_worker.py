@@ -1521,6 +1521,49 @@ def check_pool_relay_alive(workers: int = 32, timeout: float = 3.0):
     logger.info("リレー疎通確認 完了: %d / %d 件 ALIVE", alive_count, len(results))
 
 
+# ============================================================
+# プール ブロック履歴 同期 (直近 5 エポック)
+# ============================================================
+
+def check_pool_block_history(epochs: int = 5):
+    """全 active プールの直近 N エポックのブロック生成数を Koios /pool_history から取得。
+    pools.block_history_5ep に JSON 配列 (newest 順) で保存する。
+    """
+    from cardanoism.backend.koios import get_pool_history
+    from cardanoism.backend.pool_db import get_pool_ids_for_block_history, bulk_update_block_history
+
+    pool_ids = get_pool_ids_for_block_history(only_active=True)
+    if not pool_ids:
+        logger.warning("プールブロック履歴: 対象プールがありません")
+        return
+    logger.info("プールブロック履歴 同期 開始: %d 件 (epochs=%d)", len(pool_ids), epochs)
+
+    updates: list[tuple] = []
+    fetched = 0
+    for pid in pool_ids:
+        try:
+            history = get_pool_history(pid, limit=epochs)
+        except Exception as e:
+            logger.debug("get_pool_history 失敗 pool=%s: %s", pid, e)
+            history = []
+        # block_cnt のみを newest 順で抽出（足りない分は 0 でパディング）
+        counts: list[int] = []
+        for row in history[:epochs]:
+            try:
+                counts.append(int(row.get("block_cnt") or 0))
+            except (TypeError, ValueError):
+                counts.append(0)
+        while len(counts) < epochs:
+            counts.append(0)
+        updates.append((pid, json.dumps(counts)))
+        fetched += 1
+        if fetched % 200 == 0:
+            logger.info("プールブロック履歴: %d / %d フェッチ済み", fetched, len(pool_ids))
+
+    inserted = bulk_update_block_history(updates)
+    logger.info("プールブロック履歴 同期 完了: %d / %d 件 update", inserted, len(pool_ids))
+
+
 def check_pool_sync():
     """
     Koios から全プールの情報を取得して DB にキャッシュする。
@@ -2123,7 +2166,7 @@ def main():
     parser.add_argument(
         "--event",
         default="all",
-        choices=["all", "pool", "drep", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync"],
+        choices=["all", "pool", "drep", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync"],
         help="実行するイベントグループ",
     )
     parser.add_argument(
@@ -2201,6 +2244,8 @@ def main():
         check_drep_sync()
     if args.event in ("all", "pool_sync"):
         check_pool_sync()
+    if args.event in ("all", "pool_block_history_sync"):
+        check_pool_block_history()
     if args.event in ("all", "relay_check"):
         check_pool_relay_alive()
     if args.event in ("all", "vote_sync"):

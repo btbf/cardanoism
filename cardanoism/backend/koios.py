@@ -11,10 +11,31 @@ import time
 import threading
 import logging
 import requests
+from requests.adapters import HTTPAdapter
+
+try:
+    from urllib3.util.retry import Retry
+except ImportError:  # urllib3 v2 互換
+    from urllib3 import Retry  # type: ignore
 
 logger = logging.getLogger(__name__)
 
 KOIOS_BATCH_SIZE = 1000  # Koios POST エンドポイントの上限件数
+
+# 接続再利用用の Session: 同一ホスト宛の TCP 接続を使い回し DNS 解決ストームを防ぐ。
+# urllib3 のリトライで一過性の 5xx / 429 / 接続切断を自動再試行する。
+_session = requests.Session()
+_retry = Retry(
+    total=4,
+    backoff_factor=1.5,                          # 1.5 → 3 → 6 → 12 秒のバックオフ（429 復帰待ち）
+    status_forcelist=(500, 502, 503, 504, 429),
+    allowed_methods=("GET", "POST"),
+    raise_on_status=False,
+    respect_retry_after_header=True,             # サーバー指定の Retry-After を尊重
+)
+_adapter = HTTPAdapter(max_retries=_retry, pool_connections=20, pool_maxsize=40)
+_session.mount("http://", _adapter)
+_session.mount("https://", _adapter)
 
 
 def _chunks(lst: list, n: int):
@@ -25,9 +46,11 @@ def _chunks(lst: list, n: int):
 
 class _RateLimiter:
     """スレッドセーフなスライディングウィンドウ方式レートリミッター。
-    Koios burst limit: 100 req / 10s。安全マージンとして 80/10s に設定。
+    Koios の anonymous tier は sustained では非常に厳しく、5 req/s でも 429 を返すため
+    安全側に倒して 30 req / 10s = 3 req/s に設定する。
+    KOIOS_API_KEY を設定すれば 60 / 10s に上げる（環境変数で動的調整）。
     """
-    def __init__(self, max_calls: int = 80, period: float = 10.0):
+    def __init__(self, max_calls: int = 30, period: float = 10.0):
         self._lock = threading.Lock()
         self._timestamps: list[float] = []
         self._max = max_calls
@@ -48,9 +71,6 @@ class _RateLimiter:
             self._timestamps.append(time.monotonic())
 
 
-_rate_limiter = _RateLimiter()
-
-
 _NETWORK_URLS = {
     "mainnet": "https://api.koios.rest/api/v1",
     "preprod": "https://preprod.koios.rest/api/v1",
@@ -58,41 +78,54 @@ _NETWORK_URLS = {
 }
 _network = os.getenv("KOIOS_NETWORK", "mainnet").lower()
 KOIOS_BASE_URL = _NETWORK_URLS.get(_network, _NETWORK_URLS["mainnet"])
-logger.info("Koios ネットワーク: %s (%s)", _network, KOIOS_BASE_URL)
+
+# Koios API key (任意): 設定すると Authorization: Bearer ヘッダで認証されるためレート制限が緩和される
+# https://api.koios.rest からプロジェクト登録で無料取得可能
+KOIOS_API_KEY = os.getenv("KOIOS_API_KEY", "").strip()
+if KOIOS_API_KEY:
+    _session.headers.update({"Authorization": f"Bearer {KOIOS_API_KEY}"})
+    # 認証付きなら制限が緩いので rate を上げる (60/10s = 6 req/s)
+    _rate_limiter = _RateLimiter(max_calls=60, period=10.0)
+    logger.info("Koios ネットワーク: %s (%s) [API key 認証あり: 6 req/s]", _network, KOIOS_BASE_URL)
+else:
+    _rate_limiter = _RateLimiter()  # デフォルト 30/10s = 3 req/s
+    logger.info("Koios ネットワーク: %s (%s) [anonymous: 3 req/s]", _network, KOIOS_BASE_URL)
+
+
+def _request_with_retry(method: str, endpoint: str, *, params=None, json_body=None, timeout: float):
+    """Session 経由 + アプリ層の追加リトライ。urllib3 のリトライで拾えない接続切断
+    (RemoteDisconnected / NameResolutionError) もここで 3 回まで再試行する。"""
+    last_err = None
+    for attempt in range(3):
+        _rate_limiter.acquire()
+        try:
+            if method == "GET":
+                resp = _session.get(f"{KOIOS_BASE_URL}{endpoint}", params=params, timeout=timeout)
+            else:
+                resp = _session.post(f"{KOIOS_BASE_URL}{endpoint}", json=json_body, timeout=timeout)
+            if resp.status_code != 200:
+                logger.warning("Koios %s error %s: %s", method, resp.status_code, endpoint)
+                return None
+            return resp.json()
+        except (requests.ConnectionError, requests.Timeout) as e:
+            last_err = e
+            sleep_for = 1.0 * (attempt + 1)
+            logger.warning("Koios %s 接続エラー (attempt %d/3, retry in %.1fs): %s",
+                           method, attempt + 1, sleep_for, e)
+            time.sleep(sleep_for)
+        except Exception as e:
+            logger.error("Koios %s exception %s: %s", method, endpoint, e)
+            return None
+    logger.error("Koios %s 諦め (3回失敗) %s: %s", method, endpoint, last_err)
+    return None
 
 
 def _post(endpoint: str, payload: dict, timeout: float = 10.0) -> list | dict | None:
-    _rate_limiter.acquire()
-    try:
-        resp = requests.post(
-            f"{KOIOS_BASE_URL}{endpoint}",
-            json=payload,
-            timeout=timeout,
-        )
-        if resp.status_code != 200:
-            logger.warning("Koios API error %s: %s", resp.status_code, endpoint)
-            return None
-        return resp.json()
-    except Exception as e:
-        logger.error("Koios API exception %s: %s", endpoint, e)
-        return None
+    return _request_with_retry("POST", endpoint, json_body=payload, timeout=timeout)
 
 
 def _get(endpoint: str, params: dict | None = None, timeout: float = 10.0) -> list | dict | None:
-    _rate_limiter.acquire()
-    try:
-        resp = requests.get(
-            f"{KOIOS_BASE_URL}{endpoint}",
-            params=params,
-            timeout=timeout,
-        )
-        if resp.status_code != 200:
-            logger.warning("Koios GET error %s: %s", resp.status_code, endpoint)
-            return None
-        return resp.json()
-    except Exception as e:
-        logger.error("Koios GET exception %s: %s", endpoint, e)
-        return None
+    return _request_with_retry("GET", endpoint, params=params, timeout=timeout)
 
 
 def get_current_epoch() -> int | None:
@@ -706,6 +739,23 @@ def get_pool_list() -> list[dict]:
             break
         offset += limit
     return all_out
+
+
+def get_pool_history(pool_id_bech32: str, limit: int = 5, timeout: float = 10.0) -> list[dict]:
+    """指定プールの履歴をエポック降順で取得（最新 limit 件）。
+    各要素は epoch_no / block_cnt / active_stake / saturation_pct 等を含む。
+    """
+    if not pool_id_bech32:
+        return []
+    params = {
+        "_pool_bech32": pool_id_bech32,
+        "order": "epoch_no.desc",
+        "limit": limit,
+    }
+    data = _get("/pool_history", params, timeout=timeout)
+    if not data or not isinstance(data, list):
+        return []
+    return data
 
 
 def get_pool_info_batch(pool_ids: list[str], timeout: float = 60.0) -> list[dict]:
