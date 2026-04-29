@@ -576,9 +576,49 @@ def _state_loading() -> rx.Component:
     return rx.center(rx.spinner(size="2"), padding="20px", width="100%")
 
 
+def _login_prompt_body() -> rx.Component:
+    """未ログインユーザーに表示する CTA。ログインボタンで login_modal を開く。"""
+    return rx.vstack(
+        rx.box(
+            rx.icon("lock", size=28, color="var(--violet-11)"),
+            padding="12px",
+            background="var(--violet-3)",
+            border_radius="50%",
+            display="inline-flex",
+            align_items="center",
+            justify_content="center",
+        ),
+        rx.text(
+            AuthState.t["ga_ai_login_required_title"],
+            size="3", weight="bold", color="var(--gray-12)",
+        ),
+        rx.text(
+            AuthState.t["ga_ai_login_required_desc"],
+            size="2", color="var(--gray-10)",
+            text_align="center",
+            max_width="420px",
+            line_height="1.6",
+        ),
+        rx.button(
+            rx.icon("log-in", size=14),
+            rx.text(AuthState.t["ga_ai_login_required_btn"], size="2", weight="medium"),
+            color_scheme="violet",
+            size="3",
+            cursor="pointer",
+            on_click=AuthState.open_login_modal,
+        ),
+        spacing="3",
+        align="center",
+        padding="24px 12px",
+        width="100%",
+    )
+
+
 def ai_analysis_section() -> rx.Component:
     """GA 詳細ページの voting summary 直後に配置するセクション。
-    GovernanceState.modal_ai_status を見て 5 状態のいずれかを描画する。
+
+    可視性: ログイン済みユーザーのみ AI 分析を表示。未ログインはログイン CTA を出す。
+    （変更したい場合は AuthState.is_logged_in の rx.cond を外す or 条件を変える）
     """
     body = rx.match(
         GovernanceState.modal_ai_status,
@@ -589,4 +629,10 @@ def ai_analysis_section() -> rx.Component:
         ("failed",    _state_failed()),
         _state_loading(),
     )
-    return _ai_card(body)
+    return _ai_card(
+        rx.cond(
+            AuthState.is_logged_in,
+            body,
+            _login_prompt_body(),
+        )
+    )

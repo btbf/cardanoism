@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import re
@@ -1759,7 +1760,7 @@ class GovernanceState(rx.State):
 
     def retry_ai_analysis(self):
         """failed 状態の AI 分析を pending に戻して再実行を促す。
-        Phase 3 のリアルタイムワーカーが pending を拾って analyzing → analyzed に進める。
+        ga_ai_worker.py が pending を拾って analyzing → analyzed に進める。
         """
         proposal_id = str(self.modal_action.get("proposal_id") or "")
         if not proposal_id:
@@ -1782,6 +1783,32 @@ class GovernanceState(rx.State):
             self._load_ai_analysis(proposal_id)
         except Exception as e:
             logger.exception("retry_ai_analysis: %s", e)
+            return
+        if self.modal_ai_status in ("pending", "analyzing"):
+            return GovernanceState.poll_ai_status
+
+    @rx.event(background=True)
+    async def poll_ai_status(self):
+        """pending / analyzing 中に N 秒間隔で State を更新する背景タスク。
+        - 別 GA に移動した / 終了状態に達した / 上限ポーリング数に達した → 停止
+        - 5 秒間隔で最大 30 分（360 回）ポーリング
+        """
+        async with self:
+            proposal_id = str(self.modal_action.get("proposal_id") or "")
+            if not proposal_id or self.modal_ai_status not in ("pending", "analyzing"):
+                return
+
+        poll_interval = 5
+        max_polls = 360  # 30 分上限
+        for _ in range(max_polls):
+            await asyncio.sleep(poll_interval)
+            async with self:
+                current_pid = str(self.modal_action.get("proposal_id") or "")
+                if current_pid != proposal_id:
+                    return
+                if self.modal_ai_status not in ("pending", "analyzing"):
+                    return
+                self._load_ai_analysis(proposal_id)
 
     def _load_ai_analysis(self, proposal_id: str) -> None:
         """governance_ai_analysis から分析結果を取得して State に展開する。
@@ -2012,10 +2039,13 @@ class GovernanceState(rx.State):
         if proposal_id:
             self._load_full_action(proposal_id)
         self.load = True
+        # AI 分析が進行中なら背景ポーリングを起動
+        if self.modal_ai_status in ("pending", "analyzing"):
+            return GovernanceState.poll_ai_status
 
     async def load_detail_page_with_lang(self):
         """後方互換のため残すが、言語は AuthState.language に一本化されたため初期化処理は不要。"""
-        self.load_detail_page()
+        return self.load_detail_page()
 
     # ── モーダル ──────────────────────────────────────────────────────────────
 
@@ -2028,9 +2058,12 @@ class GovernanceState(rx.State):
         proposal_id = str(action.get("proposal_id", ""))
         self._load_full_action(proposal_id)
         self.modal_loading = False
-        return rx.call_script(
+        events: list = [rx.call_script(
             f"history.pushState(null, '', '/governance/{proposal_id}');"
-        )
+        )]
+        if self.modal_ai_status in ("pending", "analyzing"):
+            events.append(GovernanceState.poll_ai_status)
+        return events
 
     def handle_modal_change(self, open: bool):
         if not open:

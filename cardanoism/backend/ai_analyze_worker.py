@@ -78,23 +78,14 @@ def _load_proposal(proposal_id: str) -> dict | None:
     return dict(row) if row else None
 
 
-def analyze_one(proposal_id: str, *, worker_id: str | None = None) -> bool:
-    """指定された proposal_id を分析し、結果を DB に書き戻す。
+def analyze_claimed(proposal_id: str) -> bool:
+    """既に analyzing 状態でクレーム済みの proposal_id を実際に分析する。
 
-    proposal_id は **既に enqueue されている**こと。
-    内部で claim を試みるため、他ワーカーが先取した場合は False を返して何もしない。
+    内部で claim はしない。常駐ワーカー (ga_ai_worker.py) が
+    governance_ai_db.claim_next で取得した行をこの関数に渡す。
 
-    Returns: 成功時 True / claim 失敗または分析失敗時 False。
+    Returns: 成功時 True / 何かしらの理由で失敗（save_failure 済み）なら False。
     """
-    wid = worker_id or _make_worker_id()
-
-    # claim_next ではなく明示的に proposal_id を指定して analyzing に遷移させる
-    # （analyze_one は単体実行 / 復旧用途、claim_next は通常のキューワーカー用）
-    claimed = _claim_specific(proposal_id, wid)
-    if not claimed:
-        logger.info("analyze_one: %s already claimed by another worker, skip", proposal_id)
-        return False
-
     proposal = _load_proposal(proposal_id)
     if proposal is None:
         msg = f"governance_actions に proposal_id={proposal_id} が見つかりません"
@@ -132,7 +123,7 @@ def analyze_one(proposal_id: str, *, worker_id: str | None = None) -> bool:
         return False
 
     logger.info(
-        "analyze_one done: %s (tokens in=%d/cached=%d out=%d cost=$%.4f)",
+        "analyze_claimed done: %s (tokens in=%d/cached=%d out=%d cost=$%.4f)",
         proposal_id,
         result.tokens_input,
         result.tokens_cached_input,
@@ -140,6 +131,21 @@ def analyze_one(proposal_id: str, *, worker_id: str | None = None) -> bool:
         result.cost_usd,
     )
     return True
+
+
+def analyze_one(proposal_id: str, *, worker_id: str | None = None) -> bool:
+    """指定された proposal_id を単体で分析する（手動実行 / リカバリ用）。
+
+    内部で claim を試みるため、他ワーカーが先取済み or 既に analyzed の場合は
+    False を返して何もしない。常駐ワーカーは claim_next + analyze_claimed を直接
+    呼ぶこと。
+    """
+    wid = worker_id or _make_worker_id()
+
+    if not _claim_specific(proposal_id, wid):
+        logger.info("analyze_one: %s already claimed by another worker, skip", proposal_id)
+        return False
+    return analyze_claimed(proposal_id)
 
 
 def _claim_specific(proposal_id: str, worker_id: str) -> bool:

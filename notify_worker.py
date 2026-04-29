@@ -2158,6 +2158,71 @@ def send_test_event(user_id: int, event: str):
 
 
 # ============================================================
+# GA AI 分析: 初回同期バッチ
+# ============================================================
+
+def check_ga_ai_initial_sync() -> None:
+    """既存 GA に対して AI 分析キューを初期化するバッチ。
+
+    対象（OR 条件で union）:
+      - Active（ratified/enacted/dropped/expired すべて NULL）
+      - Ratified（ratified_epoch IS NOT NULL）
+      - Enacted（enacted_epoch IS NOT NULL）
+      - expiration >= 現在エポック - 6（最近 Expired / Dropped した GA も含める）
+
+    INSERT IGNORE で投入するため、既に行があれば何もしない（再実行安全）。
+    実際の分析は ga_ai_worker.py が pending を拾って進める。
+    """
+    logger.info("=== GA AI 分析 初回同期バッチ 開始 ===")
+
+    try:
+        current_epoch = get_current_epoch()
+    except Exception as e:
+        logger.warning("現在エポック取得失敗 (continue with None): %s", e)
+        current_epoch = None
+
+    epoch_threshold: int | None = None
+    if current_epoch is not None:
+        epoch_threshold = max(0, int(current_epoch) - 6)
+
+    sql = (
+        "SELECT proposal_id FROM governance_actions "
+        "WHERE proposal_id IS NOT NULL AND proposal_id <> '' AND ("
+        "  (ratified_epoch IS NULL AND enacted_epoch IS NULL "
+        "   AND dropped_epoch IS NULL AND expired_epoch IS NULL)"
+        "  OR ratified_epoch IS NOT NULL"
+        "  OR enacted_epoch IS NOT NULL"
+    )
+    params: list = []
+    if epoch_threshold is not None:
+        sql += "  OR expiration >= ?"
+        params.append(epoch_threshold)
+    sql += ")"
+
+    with get_db() as (cursor, _):
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+    proposal_ids = [str(r["proposal_id"]) for r in rows]
+    logger.info("対象 GA: %d 件 (current_epoch=%s, threshold=%s)",
+                len(proposal_ids), current_epoch, epoch_threshold)
+
+    if not proposal_ids:
+        logger.info("対象 GA なし。終了。")
+        return
+
+    try:
+        from cardanoism.backend.governance_ai_db import bulk_enqueue
+        queued = bulk_enqueue(proposal_ids)
+    except Exception as e:
+        logger.exception("bulk_enqueue 失敗: %s", e)
+        return
+
+    logger.info("AI 分析キューに新規 enqueue: %d 件 (既存をスキップ: %d 件)",
+                queued, len(proposal_ids) - queued)
+    logger.info("=== GA AI 分析 初回同期バッチ 完了 ===")
+
+
+# ============================================================
 # エントリポイント
 # ============================================================
 
@@ -2166,7 +2231,7 @@ def main():
     parser.add_argument(
         "--event",
         default="all",
-        choices=["all", "pool", "drep", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync"],
+        choices=["all", "pool", "drep", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync"],
         help="実行するイベントグループ",
     )
     parser.add_argument(
@@ -2259,6 +2324,10 @@ def main():
             fetch_limit=args.fetch_limit,
             translate_limit=args.translate_limit,
         )
+    # GA AI 初回同期は --event ga_ai_initial_sync で明示指定したときのみ実行する
+    # （"all" には含めない: 通常は governance.py 側 enqueue で自動投入されるため）
+    if args.event == "ga_ai_initial_sync":
+        check_ga_ai_initial_sync()
 
     logger.info("完了")
 

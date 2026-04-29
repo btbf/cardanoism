@@ -178,13 +178,22 @@ def _extract_fields(item: dict) -> dict:
 # DB 操作
 # ============================================================
 
-def upsert_proposal(fields: dict):
+def upsert_proposal(fields: dict) -> bool:
     """
     1件を governance_actions に upsert する。
     ON DUPLICATE KEY UPDATE で既存レコードのステータスを更新するが、
     翻訳済みの *_ja カラムは上書きしない（翻訳ロジックが管理する）。
+
+    Returns:
+        新規挿入された場合 True / 既存行が更新された場合 False。
+        呼び出し元はこの戻り値を見て新規 GA のみ AI 分析キューに enqueue する。
     """
     with get_db() as (cursor, conn):
+        cursor.execute(
+            "SELECT 1 FROM governance_actions WHERE proposal_id = ? LIMIT 1",
+            (fields["proposal_id"],),
+        )
+        existed = cursor.fetchone() is not None
         cursor.execute(
             """
             INSERT INTO governance_actions (
@@ -226,6 +235,7 @@ def upsert_proposal(fields: dict):
             ),
         )
         conn.commit()
+    return not existed
 
 
 def fetch_translation_targets(
@@ -377,17 +387,30 @@ def main():
 
     upserted = 0
     errors = 0
+    new_proposal_ids: list[str] = []
     for item in proposals:
         try:
             fields = _extract_fields(item)
             if not fields["proposal_id"]:
                 continue
-            upsert_proposal(fields)
+            is_new = upsert_proposal(fields)
+            if is_new:
+                new_proposal_ids.append(fields["proposal_id"])
             upserted += 1
         except Exception as exc:
             errors += 1
             logger.error("upsert 失敗 proposal_id=%s: %s", item.get("proposal_id", "?"), exc)
-    logger.info("DB upsert 完了: %d 件 (エラー: %d 件)", upserted, errors)
+    logger.info("DB upsert 完了: %d 件 (新規 %d / エラー %d 件)",
+                upserted, len(new_proposal_ids), errors)
+
+    # 新規 GA を AI 分析キューに enqueue。失敗してもメインフローは中断しない。
+    if new_proposal_ids:
+        try:
+            from cardanoism.backend.governance_ai_db import bulk_enqueue
+            queued = bulk_enqueue(new_proposal_ids)
+            logger.info("AI 分析キューに enqueue: %d 件", queued)
+        except Exception as exc:
+            logger.warning("AI enqueue 失敗 (継続): %s", exc)
 
     if args.no_translate:
         logger.info("--no-translate 指定のため翻訳スキップ")
