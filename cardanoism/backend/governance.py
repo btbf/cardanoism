@@ -124,6 +124,56 @@ def _parse_block_time(block_time) -> str | None:
         return None
 
 
+def _extract_action_anchor(item: dict, body: dict) -> tuple[str | None, str | None]:
+    """Koios レスポンスから「action の anchor URL」を抽出する。
+
+    NewConstitution 提案で、実際の憲法本文ドキュメントの URL を取り出す。
+    Koios のバージョンや tag によって構造が変わるため、複数の経路を順に試す:
+      1. item["proposed_action"]["contents"][*]["anchor"]["url"]
+      2. item["anchor"]["url"] (フラット形式)
+      3. meta_json.body.references[] でラベルが "Constitution" 系のもの
+    Returns: (url, hash) どちらか欠ければ None。
+    """
+    proposal_type = (item.get("proposal_type") or "").strip()
+
+    # (1) proposed_action.contents[*].anchor を探す
+    pa = item.get("proposed_action") or {}
+    if isinstance(pa, dict):
+        contents = pa.get("contents")
+        if isinstance(contents, list):
+            for c in contents:
+                if isinstance(c, dict):
+                    anchor = c.get("anchor")
+                    if isinstance(anchor, dict) and anchor.get("url"):
+                        return (
+                            str(anchor.get("url") or "") or None,
+                            str(anchor.get("dataHash") or anchor.get("data_hash") or "") or None,
+                        )
+
+    # (2) item.anchor (フラット形式)
+    anchor = item.get("anchor")
+    if isinstance(anchor, dict) and anchor.get("url"):
+        return (
+            str(anchor.get("url") or "") or None,
+            str(anchor.get("dataHash") or anchor.get("data_hash") or "") or None,
+        )
+
+    # (3) NewConstitution の場合は meta_json.body.references[] から
+    #     "constitution" を含むラベルや type を持つエントリの URI を採用
+    if proposal_type == "NewConstitution":
+        refs = body.get("references") or []
+        if isinstance(refs, list):
+            for r in refs:
+                if not isinstance(r, dict):
+                    continue
+                label = str(r.get("label") or r.get("@type") or "").lower()
+                uri = r.get("uri") or r.get("url")
+                if uri and ("constitution" in label or "憲法" in label):
+                    return (str(uri), None)
+
+    return (None, None)
+
+
 def _extract_fields(item: dict) -> dict:
     """Koios レスポンスの1件を DB カラムに対応するフィールド辞書に変換する。"""
     meta = item.get("meta_json") or {}
@@ -132,6 +182,7 @@ def _extract_fields(item: dict) -> dict:
 
     deposit = item.get("deposit")
     meta_is_valid = item.get("meta_is_valid")
+    action_anchor_url, action_anchor_hash = _extract_action_anchor(item, body)
 
     # TreasuryWithdrawals の引き出し配列（[{amount, stake_address}, ...]）を集計
     withdrawal = item.get("withdrawal")
@@ -171,6 +222,8 @@ def _extract_fields(item: dict) -> dict:
         "motivation":       body.get("motivation") or None,
         "rationale":        body.get("rationale") or None,
         "references_json":  json.dumps(refs, ensure_ascii=False) if refs else None,
+        "action_anchor_url":  action_anchor_url,
+        "action_anchor_hash": action_anchor_hash,
     }
 
 
@@ -202,23 +255,27 @@ def upsert_proposal(fields: dict) -> bool:
                 proposed_epoch, ratified_epoch, enacted_epoch,
                 dropped_epoch, expired_epoch, expiration,
                 block_time, meta_url, meta_hash, meta_is_valid,
-                title, `abstract`, motivation, rationale, references_json
+                title, `abstract`, motivation, rationale, references_json,
+                action_anchor_url, action_anchor_hash
             ) VALUES (
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?, ?,
-                ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?,
+                ?, ?
             )
             ON DUPLICATE KEY UPDATE
-                -- ステータスエポック + 引き出し情報を更新
+                -- ステータスエポック + 引き出し情報 + action anchor を更新
                 ratified_epoch            = VALUES(ratified_epoch),
                 enacted_epoch             = VALUES(enacted_epoch),
                 dropped_epoch             = VALUES(dropped_epoch),
                 expired_epoch             = VALUES(expired_epoch),
                 withdrawal_total_lovelace = VALUES(withdrawal_total_lovelace),
                 withdrawal_json           = VALUES(withdrawal_json),
+                action_anchor_url         = VALUES(action_anchor_url),
+                action_anchor_hash        = VALUES(action_anchor_hash),
                 updated_at                = NOW()
             """,
             (
@@ -232,6 +289,7 @@ def upsert_proposal(fields: dict) -> bool:
                 fields["meta_is_valid"],
                 fields["title"],           fields["abstract"],
                 fields["motivation"],      fields["rationale"],        fields["references_json"],
+                fields.get("action_anchor_url"), fields.get("action_anchor_hash"),
             ),
         )
         conn.commit()

@@ -13,3 +13,4 @@ python-dotenv
 utxorpc
 bech32
 websockets>=12.0
+pypdf

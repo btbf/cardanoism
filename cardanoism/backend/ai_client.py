@@ -168,7 +168,7 @@ Output STRICT JSON with this exact schema (no markdown, no extra text):
     "summary_ja": "総評（2-3 文）",
     "summary_en": "Overall verdict (2-3 sentences)",
     "articles": [
-      {"key": "art2", "label_ja": "第 II 条", "label_en": "Article II", "score": 0-10 integer, "comment_ja": "...", "comment_en": "..."}
+      {"key": "art2", "label_ja": "第 II 条 — ミッション", "label_en": "Article II — Mission", "score": 0-10 integer, "comment_ja": "...", "comment_en": "..."}
     ],
     "concerns_ja": ["懸念点 1", "懸念点 2"],
     "concerns_en": ["Concern 1", "Concern 2"]
@@ -190,6 +190,12 @@ Guidelines:
 - All Japanese fields must be in natural Japanese, not machine translation.
 - Concerns should be concrete and actionable, not generic boilerplate.
 - related_kpis must contain 1-3 entries (the most relevant KPIs only).
+- For "articles": pick 3-6 articles from the constitution that are most relevant to
+  this proposal. Use the EXACT topic title from the constitution text, formatted as
+  "第 N 条 — トピック名" / "Article N — Topic Name" (e.g., "第 II 条 — ミッション" /
+  "Article II — Mission"). Do NOT make up article numbers or titles — use what
+  appears verbatim in the constitution provided.
+- "key" should be a short slug (e.g., "art2", "art3") matching the article number.
 - Output ONLY the JSON object. No markdown fences, no commentary.
 """
 

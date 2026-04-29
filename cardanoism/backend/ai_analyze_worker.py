@@ -21,7 +21,9 @@ import socket
 import time
 
 from cardanoism.backend import ai_client, governance_ai_db
-from cardanoism.backend.constitution_fetcher import fetch_constitution_text
+from cardanoism.backend.constitution_fetcher import (
+    fetch_constitution_text, get_latest_constitution_meta_url,
+)
 from cardanoism.backend.db_connect import get_db
 
 logger = logging.getLogger(__name__)
@@ -29,27 +31,36 @@ logger = logging.getLogger(__name__)
 
 # プロセス内キャッシュ: 憲法本文の取得は数秒かかるため、複数 GA をまとめて
 # 処理する場合に毎回フェッチしないよう同一プロセス内で再利用する。
-_constitution_cache: dict[str, tuple[str, str]] = {}
+# キーは meta_url。新しい NewConstitution が enacted されると DB から
+# 取れる meta_url が変わるので、自動的にキャッシュ無効化される。
+_constitution_cache: dict[str, str] = {}  # {meta_url: text}
 
 
 def _get_constitution_cached() -> tuple[str | None, str | None]:
     """憲法本文を取得（プロセス内キャッシュ）。
+    DB から最新の meta_url を毎回引き、キャッシュキーと比較する。
     Returns: (text, meta_url) または (None, None)。
     """
-    cached = _constitution_cache.get("latest")
-    if cached:
-        return cached
+    latest_url = get_latest_constitution_meta_url()
+    if not latest_url:
+        return None, None
 
-    text, meta_url = fetch_constitution_text()
-    if text and meta_url:
-        _constitution_cache["latest"] = (text, meta_url)
-        return text, meta_url
-    return None, None
+    cached_text = _constitution_cache.get(latest_url)
+    if cached_text:
+        return cached_text, latest_url
+
+    text, used_url = fetch_constitution_text(latest_url)
+    if text and used_url:
+        # 新規 enacted で url が変わった場合、古いエントリを掃除
+        _constitution_cache.clear()
+        _constitution_cache[used_url] = text
+        return text, used_url
+    return None, latest_url
 
 
 def invalidate_constitution_cache() -> None:
-    """新しい NewConstitution が enacted されたタイミング等で呼ぶ。"""
-    _constitution_cache.pop("latest", None)
+    """強制再 fetch したいときに呼ぶ（通常は url 変更で自動無効化される）。"""
+    _constitution_cache.clear()
 
 
 def _make_worker_id() -> str:

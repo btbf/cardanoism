@@ -28,6 +28,7 @@ Cardanoism の MariaDB スキーマ定義。
 | 015 | `015_recent_blocks_size.sql` | recent_blocks に block_size (bytes) を追加 (ALTER) |
 | 016 | `016_pools_block_history.sql` | pools に block_history_5ep (直近5エポックのブロック数) を追加 (ALTER) |
 | 017 | `017_governance_ai_analysis.sql` | governance_ai_analysis（GA AI 分析結果 + ジョブステート） |
+| 018 | `018_governance_actions_action_anchor.sql` | governance_actions に action_anchor_url / action_anchor_hash 追加 (ALTER) |
 
 ## 適用例
 
