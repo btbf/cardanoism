@@ -9,6 +9,7 @@ from typing import Dict, Any
 from cardanoism.backend.db_connect import GovernanceState
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.components.proposal_card import badge_with_dot
+from cardanoism.components.governance_ai_analysis import ai_analysis_section
 from cardanoism import styles
 
 
@@ -1046,6 +1047,8 @@ def governance_detail_body(action: Dict[str, Any]) -> rx.Component:
         _withdrawal_section(action),
         # 投票集計（ドーナツ + CC メンバーリスト）は概要より先に表示。右隣に投票状況へジャンプボタン
         _voting_summary_section(action),
+        # AI 分析セクション（憲法準拠 + VISION 2030 KPI レーダー）
+        ai_analysis_section(),
         rx.cond(
             _has_any_text("abstract_ja", "abstract", action),
             _markdown_section(AuthState.t["gov_section_abstract"], abstract_text),
