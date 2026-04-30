@@ -1583,34 +1583,37 @@ class GovernanceState(rx.State):
     # ── WHERE 句構築 ──────────────────────────────────────────────────────────
 
     def _build_where(self) -> tuple[str, list]:
+        # data_fetch の select_sql は proposal_voting_summary を LEFT JOIN しており、
+        # proposal_type カラムが両テーブルに存在するため `ga.` 接頭辞が必須（ambiguous エラー回避）。
+        # count_sql 側は ga 単独だが、同じ where_sql を使い回すので一貫して prefix を付ける。
         conditions = ["1=1"]
         params: list = []
         if self.inputed_value:
             sv = f"%{self.inputed_value}%"
             conditions.append(
-                "(title LIKE ? OR title_ja LIKE ? OR `abstract` LIKE ? OR abstract_ja LIKE ?)"
+                "(ga.title LIKE ? OR ga.title_ja LIKE ? OR ga.`abstract` LIKE ? OR ga.abstract_ja LIKE ?)"
             )
             params.extend([sv, sv, sv, sv])
         if self.filter_types:
             placeholders = ", ".join(["?"] * len(self.filter_types))
-            conditions.append(f"proposal_type IN ({placeholders})")
+            conditions.append(f"ga.proposal_type IN ({placeholders})")
             params.extend(self.filter_types)
         if self.filter_statuses:
             parts = []
             for s in self.filter_statuses:
                 if s == "active":
                     parts.append(
-                        "(ratified_epoch IS NULL AND enacted_epoch IS NULL"
-                        " AND dropped_epoch IS NULL AND expired_epoch IS NULL)"
+                        "(ga.ratified_epoch IS NULL AND ga.enacted_epoch IS NULL"
+                        " AND ga.dropped_epoch IS NULL AND ga.expired_epoch IS NULL)"
                     )
                 elif s == "ratified":
-                    parts.append("ratified_epoch IS NOT NULL")
+                    parts.append("ga.ratified_epoch IS NOT NULL")
                 elif s == "enacted":
-                    parts.append("enacted_epoch IS NOT NULL")
+                    parts.append("ga.enacted_epoch IS NOT NULL")
                 elif s == "dropped":
-                    parts.append("dropped_epoch IS NOT NULL")
+                    parts.append("ga.dropped_epoch IS NOT NULL")
                 elif s == "expired":
-                    parts.append("expired_epoch IS NOT NULL")
+                    parts.append("ga.expired_epoch IS NOT NULL")
             if parts:
                 conditions.append(f"({' OR '.join(parts)})")
         return " AND ".join(conditions), params

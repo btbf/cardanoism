@@ -25,6 +25,7 @@ from cardanoism.backend.mempool_db import get_mempool_state
 
 import json as _json
 from cardanoism.components.staking_nav import staking_subnav
+from cardanoism.components.login_modal import login_modal
 
 # Cardano プロトコル定数
 MAX_SUPPLY_LOVELACE = 45_000_000_000 * 1_000_000  # 45B ADA
@@ -1319,6 +1320,7 @@ def staking_page() -> rx.Component:
         StakingDashboardState.load,
         rx.box(
             rx.html(DASHBOARD_CSS),
+            login_modal(),
             rx.vstack(
                 _breadcrumb(),
                 staking_subnav("dashboard"),
