@@ -30,6 +30,7 @@ Cardanoism の MariaDB スキーマ定義。
 | 017 | `017_governance_ai_analysis.sql` | governance_ai_analysis（GA AI 分析結果 + ジョブステート） |
 | 018 | `018_governance_actions_action_anchor.sql` | governance_actions に action_anchor_url / action_anchor_hash 追加 (ALTER) |
 | 019 | `019_constitution_cache.sql` | constitution_cache（憲法本文 + 日本語訳キャッシュ、id=1 固定） |
+| 020 | `020_treasury_history.sql` | treasury_history（エポックごとのトレジャリー残高履歴） |
 
 ## 適用例
 

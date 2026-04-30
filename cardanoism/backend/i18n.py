@@ -294,6 +294,9 @@ UI_JA: dict[str, str] = {
     # トレジャリーページ
     "treasury_balance_title": "現在のトレジャリー残高",
     "treasury_epoch_label": "基準エポック:",
+    "treasury_chart_title": "トレジャリー残高の推移（NCL 期間中）",
+    "treasury_chart_epoch_unit": "エポック",
+    "treasury_chart_no_data": "履歴データがまだありません。`notify_worker.py --event treasury_sync` を実行してください。",
     "ncl_title": "Net Change Limit 消化状況",
     "ncl_period_label": "期間:",
     "ncl_spent_label": "引き出し済み",
@@ -708,6 +711,9 @@ UI_EN: dict[str, str] = {
 
     # Treasury page
     "treasury_balance_title": "Current Treasury Balance",
+    "treasury_chart_title": "Treasury Balance Trend (NCL Period)",
+    "treasury_chart_epoch_unit": "epochs",
+    "treasury_chart_no_data": "No history yet. Run `notify_worker.py --event treasury_sync`.",
     "treasury_epoch_label": "Reference Epoch:",
     "ncl_title": "Net Change Limit Usage",
     "ncl_period_label": "Period:",

@@ -1755,12 +1755,15 @@ def check_treasury_sync():
     )
     from cardanoism.backend.treasury_db import (
         upsert_treasury_snapshot,
+        upsert_treasury_history,
+        get_existing_history_epochs,
         insert_treasury_withdrawals,
         upsert_active_ncl,
     )
     logger.info("トレジャリー同期 開始 (network=%s, url=%s)", _koios_network(), KOIOS_BASE_URL)
 
-    # 1) トレジャリー残高
+    # 1) トレジャリー残高（最新スナップショット + 履歴）
+    epoch = None
     try:
         epoch = get_current_epoch()
         totals = get_totals(epoch_no=epoch) if epoch else get_totals()
@@ -1777,6 +1780,30 @@ def check_treasury_sync():
             logger.warning("totals 取得失敗")
     except Exception as e:
         logger.exception("treasury_snapshot 同期失敗: %s", e)
+
+    # 1.5) treasury_history は NCL 期間に基づき同期（後段の NCL fetch 後に実行）。
+    # ここでは仮に直近 12 エポックを最低限同期してフォールバック用データを確保する。
+    try:
+        if epoch:
+            fallback_start = max(0, int(epoch) - 11)
+            fallback_end = int(epoch)
+            existing = get_existing_history_epochs(fallback_start, fallback_end)
+            synced = 0
+            for ep in range(fallback_start, fallback_end + 1):
+                if ep in existing:
+                    continue
+                t = get_totals(epoch_no=ep)
+                if t and t.get("treasury") is not None:
+                    upsert_treasury_history(
+                        epoch_no=int(t.get("epoch_no") or ep),
+                        treasury=int(t["treasury"]),
+                        reserves=int(t["reserves"]) if t.get("reserves") is not None else None,
+                        supply=int(t["supply"]) if t.get("supply") is not None else None,
+                    )
+                    synced += 1
+            logger.info("treasury_history (fallback): 直近 12 エポックのうち %d 件を新規取得", synced)
+    except Exception as e:
+        logger.exception("treasury_history fallback 同期失敗: %s", e)
 
     # 2) 引き出し履歴
     try:
@@ -1800,18 +1827,57 @@ def check_treasury_sync():
         logger.exception("treasury_withdrawal 同期失敗: %s", e)
 
     # 3) NCL
+    ncl_start = None
+    ncl_end = None
     try:
         ncl = fetch_active_ncl(use_cache=False)
         if ncl:
             upsert_active_ncl(ncl)
+            ncl_start = int(ncl["start_epoch"])
+            ncl_end = int(ncl["end_epoch"])
             logger.info(
                 "ncl_active 更新: %s (%d ADA, Ep.%d-%d, DRep %.2f%%)",
-                ncl["title"], ncl["limit_ada"], ncl["start_epoch"], ncl["end_epoch"], ncl["drep_yes_pct"],
+                ncl["title"], ncl["limit_ada"], ncl_start, ncl_end, ncl["drep_yes_pct"],
             )
         else:
             logger.warning("DRep過半数賛成のNCL提案が見つかりません（既存の ncl_active はそのまま）")
     except Exception as e:
         logger.exception("ncl_active 同期失敗: %s", e)
+
+    # 4) NCL 期間の履歴（折れ線グラフ用）。NCL start から現在エポックまでを埋める。
+    # ON DUPLICATE KEY UPDATE で全件更新せず、未取得分だけ Koios call する設計。
+    try:
+        if ncl_start is not None and epoch:
+            range_start = max(0, ncl_start)
+            # 現在エポックを上限。NCL end が未来でも現在以降の履歴は取れない
+            range_end = min(int(epoch), ncl_end if ncl_end is not None else int(epoch))
+            existing = get_existing_history_epochs(range_start, range_end)
+            missing = [ep for ep in range(range_start, range_end + 1) if ep not in existing]
+            # 暴走防止: 1 サイクルで最大 80 件まで
+            CAP = 80
+            if len(missing) > CAP:
+                logger.info(
+                    "treasury_history (NCL範囲): 未取得 %d 件のうち最新 %d 件のみ今回同期",
+                    len(missing), CAP,
+                )
+                missing = missing[-CAP:]
+            synced = 0
+            for ep in missing:
+                t = get_totals(epoch_no=ep)
+                if t and t.get("treasury") is not None:
+                    upsert_treasury_history(
+                        epoch_no=int(t.get("epoch_no") or ep),
+                        treasury=int(t["treasury"]),
+                        reserves=int(t["reserves"]) if t.get("reserves") is not None else None,
+                        supply=int(t["supply"]) if t.get("supply") is not None else None,
+                    )
+                    synced += 1
+            logger.info(
+                "treasury_history (NCL Ep.%d-%d): 新規 %d 件取得（既存 %d 件はスキップ）",
+                range_start, range_end, synced, len(existing),
+            )
+    except Exception as e:
+        logger.exception("treasury_history (NCL範囲) 同期失敗: %s", e)
 
     logger.info("トレジャリー同期 完了")
 

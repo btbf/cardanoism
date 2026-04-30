@@ -22,6 +22,9 @@ from cardanoism.backend.treasury_db import (
     sum_withdrawals_in_epoch_range,
     sum_enacted_withdrawals_in_epoch_range,
     get_treasury_proposals_in_epoch_range,
+    get_treasury_history_recent,
+    get_treasury_history_in_range,
+    build_treasury_chart_svg,
     get_active_ncl,
 )
 from cardanoism.backend.fiat_db import get_fiat_rate
@@ -104,6 +107,10 @@ class TreasuryState(rx.State):
 
     # 引き出し履歴（新しい順）
     withdrawals: List[Dict[str, Any]] = []
+
+    # 直近 N エポックのトレジャリー残高折れ線グラフ SVG
+    treasury_chart_svg: str = ""
+    treasury_chart_epoch_count: int = 0
 
     # NCL 期間内の TreasuryWithdrawals 提案
     proposals: List[Dict[str, Any]] = []
@@ -390,7 +397,40 @@ class TreasuryState(rx.State):
             logger.exception("TreasuryState.on_load: %s", e)
             self.error = str(e)
         finally:
+            self._load_chart()
             self.load = True
+
+    def _load_chart(self) -> None:
+        """トレジャリー残高の折れ線グラフ SVG を State に格納する。
+        NCL 期間が利用可能なら NCL 開始 〜 現在エポックの範囲を、
+        無ければフォールバックで直近 10 エポックを表示する。
+        """
+        history: list[dict] = []
+        try:
+            if self.ncl_available and self.ncl_period_start > 0:
+                # NCL 開始 〜 現在エポック（NCL end が未来なら end も上限）
+                end_ep = self.current_epoch if self.current_epoch > 0 else self.ncl_period_end
+                if end_ep > 0:
+                    history = get_treasury_history_in_range(
+                        self.ncl_period_start, end_ep
+                    )
+            if not history:
+                # フォールバック: 直近 10 エポック
+                history = get_treasury_history_recent(n_epochs=10)
+        except Exception as e:
+            logger.warning("get_treasury_history 失敗: %s", e)
+            self.treasury_chart_svg = ""
+            self.treasury_chart_epoch_count = 0
+            return
+
+        if not history or len(history) < 2:
+            self.treasury_chart_svg = ""
+            self.treasury_chart_epoch_count = 0
+            return
+
+        history = sorted(history, key=lambda r: int(r["epoch_no"]))
+        self.treasury_chart_svg = build_treasury_chart_svg(history)
+        self.treasury_chart_epoch_count = len(history)
 
     def set_active_tab(self, tab: str):
         self.active_tab = tab
@@ -456,6 +496,62 @@ def _breadcrumb() -> rx.Component:
         align="center",
         width="100%",
         padding_top="15px",
+    )
+
+
+# ─── トレジャリー残高 折れ線グラフ ─────────────────────────────────────────────
+
+def _flow_card() -> rx.Component:
+    """直近 N エポックのトレジャリー残高を折れ線グラフで表示する。"""
+    head = rx.hstack(
+        rx.icon("trending-up", size=16, color="var(--amber-11)"),
+        rx.text(AuthState.t["treasury_chart_title"], size="2", weight="bold",
+                color="var(--gray-12)"),
+        rx.spacer(),
+        rx.cond(
+            TreasuryState.treasury_chart_epoch_count > 0,
+            rx.text(
+                TreasuryState.treasury_chart_epoch_count.to_string()
+                + " " + AuthState.t["treasury_chart_epoch_unit"],
+                size="1", color="var(--gray-9)",
+            ),
+            rx.fragment(),
+        ),
+        spacing="2", align="center", width="100%",
+    )
+
+    return rx.cond(
+        TreasuryState.treasury_chart_svg != "",
+        rx.box(
+            rx.vstack(
+                head,
+                rx.box(
+                    rx.html(TreasuryState.treasury_chart_svg),
+                    width="100%",
+                    overflow_x="auto",
+                ),
+                spacing="3",
+                width="100%",
+                align="stretch",
+            ),
+            padding="16px 20px",
+            border=f"1px solid {rx.color('gray', 4)}",
+            border_radius="12px",
+            background="var(--gray-2)",
+            width="100%",
+        ),
+        rx.box(
+            rx.hstack(
+                rx.icon("info", size=14, color="var(--gray-9)"),
+                rx.text(AuthState.t["treasury_chart_no_data"], size="2", color="var(--gray-10)"),
+                spacing="2", align="center",
+            ),
+            padding="12px 16px",
+            border=f"1px dashed {rx.color('gray', 5)}",
+            border_radius="10px",
+            background="var(--gray-2)",
+            width="100%",
+        ),
     )
 
 
@@ -585,14 +681,6 @@ def _ncl_card() -> rx.Component:
             rx.hstack(
                 rx.box(
                     rx.hstack(
-                        # 引き出し済み
-                        rx.box(
-                            width=TreasuryState.ncl_spent_pct.to_string() + "%",
-                            height="100%",
-                            background="linear-gradient(90deg, var(--amber-9), var(--orange-10))",
-                            transition="width 0.5s ease",
-                            flex_shrink="0",
-                        ),
                         # 引き出し確定
                         rx.box(
                             width=TreasuryState.ncl_pending_pct.to_string() + "%",
@@ -678,16 +766,8 @@ def _ncl_card() -> rx.Component:
                 align="center",
                 width="100%",
             ),
-            # ── 内訳（縦リスト：済み / 確定 / シミュレーション） ──
+            # ── 内訳（縦リスト：確定 / シミュレーション） ──
             rx.vstack(
-                _ncl_breakdown_row(
-                    "ncl_spent_label", spent_swatch,
-                    TreasuryState.ncl_spent_ada_display,
-                    TreasuryState.ncl_spent_jpy_display,
-                    TreasuryState.ncl_spent_usd_display,
-                    TreasuryState.ncl_spent_pct_display,
-                    "var(--amber-11)",
-                ),
                 _ncl_breakdown_row(
                     "ncl_pending_label", pending_swatch,
                     TreasuryState.ncl_pending_ada_display,
@@ -959,6 +1039,7 @@ def governance_treasury_page() -> rx.Component:
                     ),
                     rx.vstack(
                         _balance_card(),
+                        _flow_card(),
                         rx.cond(
                             TreasuryState.ncl_available,
                             _ncl_card(),
@@ -968,43 +1049,10 @@ def governance_treasury_page() -> rx.Component:
                                 color_scheme="gray",
                             ),
                         ),
-                        rx.tabs.root(
-                            rx.tabs.list(
-                                rx.tabs.trigger(
-                                    rx.text(
-                                        AuthState.t["treasury_tab_proposals"],
-                                        size="3",
-                                        weight="medium",
-                                        color="var(--gray-12)",
-                                    ),
-                                    value="proposals",
-                                    cursor="pointer",
-                                ),
-                                rx.tabs.trigger(
-                                    rx.text(
-                                        AuthState.t["treasury_tab_history"],
-                                        size="3",
-                                        weight="medium",
-                                        color="var(--gray-12)",
-                                    ),
-                                    value="history",
-                                    cursor="pointer",
-                                ),
-                                size="2",
-                            ),
-                            rx.tabs.content(
-                                rx.box(_proposals_tab_content(), padding_top="16px"),
-                                value="proposals",
-                            ),
-                            rx.tabs.content(
-                                rx.box(_withdrawals_table(), padding_top="16px"),
-                                value="history",
-                            ),
-                            default_value="proposals",
-                            value=TreasuryState.active_tab,
-                            on_change=TreasuryState.set_active_tab,
+                        # 「引き出し履歴」タブ非表示中。proposals だけなのでタブ撤去
+                        rx.box(
+                            _proposals_tab_content(),
                             width="100%",
-                            color_scheme="amber",
                         ),
                         spacing="3",
                         width="100%",
