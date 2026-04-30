@@ -117,7 +117,7 @@ def gov_breadcrumb() -> rx.Component:
     return rx.hstack(
         rx.link(rx.icon("home", size=16), href="/", underline="none", color_scheme="gray"),
         rx.icon("chevron-right", size=14, color="gray"),
-        rx.text(AuthState.t["nav_governance"], size="2", weight="medium"),
+        rx.text(AuthState.t["gov_subnav_actions"], size="2", weight="medium"),
         spacing="2",
         align="center",
         width="100%",
@@ -130,7 +130,8 @@ def gov_breadcrumb_detail() -> rx.Component:
     return rx.hstack(
         rx.link(rx.icon("home", size=16), href="/", underline="none", color_scheme="gray"),
         rx.icon("chevron-right", size=14, color="gray"),
-        rx.link(AuthState.t["nav_governance"], href="/governance", size="2", underline="hover", color_scheme="gray"),
+        rx.link(AuthState.t["gov_subnav_actions"], href="/governance/ga_proposals",
+                size="2", underline="hover", color_scheme="gray"),
         rx.icon("chevron-right", size=14, color="gray"),
         rx.text(AuthState.t["gov_breadcrumb_detail"], size="2", weight="medium"),
         spacing="2",
@@ -256,84 +257,6 @@ def gov_filters() -> rx.Component:
 
 # ─── ヘッダー ──────────────────────────────────────────────────────────────────
 
-def gov_constitution_card() -> rx.Component:
-    """現行憲法（最新の enacted NewConstitution）を一覧ページ上部に表示する。"""
-    cc = GovernanceState.current_constitution
-    title_display = rx.cond(
-        AuthState.language == "en",
-        rx.cond(cc["title"] != "", cc["title"], cc["title_ja"]),
-        rx.cond(cc["title_ja"] != "", cc["title_ja"], cc["title"]),
-    )
-    return rx.cond(
-        GovernanceState.current_constitution,
-        rx.box(
-            rx.vstack(
-                rx.hstack(
-                    rx.icon("scroll-text", size=18, color="var(--amber-11)"),
-                    rx.text(
-                        AuthState.t["gov_current_constitution"],
-                        size="2", weight="bold", color="var(--gray-11)",
-                    ),
-                    rx.badge(
-                        AuthState.t["gov_constitution_in_force"],
-                        color_scheme="violet", variant="soft",
-                    ),
-                    spacing="2", align="center", wrap="wrap",
-                ),
-                rx.text(
-                    title_display,
-                    size="5", weight="bold", color="var(--gray-12)",
-                    style={"wordBreak": "break-word"},
-                ),
-                rx.hstack(
-                    rx.text(AuthState.t["gov_constitution_enacted_label"], size="1", color="var(--gray-10)"),
-                    rx.text("Ep." + cc["enacted_epoch"].to_string(), size="1", weight="medium", color="var(--gray-12)"),
-                    spacing="1", align="baseline",
-                ),
-                rx.hstack(
-                    rx.link(
-                        rx.button(
-                            rx.icon("arrow-right", size=14),
-                            rx.text(AuthState.t["gov_constitution_view_detail"]),
-                            variant="soft", color_scheme="amber", size="2",
-                            cursor="pointer",
-                        ),
-                        href="/governance/" + cc["proposal_id"].to(str),
-                        underline="none",
-                    ),
-                    rx.cond(
-                        cc["meta_url"] != "",
-                        rx.link(
-                            rx.button(
-                                rx.icon("external-link", size=14),
-                                rx.text(AuthState.t["gov_constitution_open_source"]),
-                                variant="outline", size="2",
-                                cursor="pointer",
-                            ),
-                            href=rx.cond(
-                                cc["meta_url"].to(str).startswith("ipfs://"),
-                                "https://ipfs.io/ipfs/" + cc["meta_url"].to(str).replace("ipfs://", ""),
-                                cc["meta_url"].to(str),
-                            ),
-                            is_external=True,
-                            underline="none",
-                        ),
-                        rx.fragment(),
-                    ),
-                    spacing="2", align="center", wrap="wrap",
-                ),
-                spacing="3", align="start", width="100%",
-            ),
-            padding="16px 20px",
-            border=f"1px solid {rx.color('amber', 6)}",
-            border_radius="12px",
-            background="var(--amber-2)",
-            width="100%",
-        ),
-        rx.fragment(),
-    )
-
-
 def gov_header() -> rx.Component:
     return rx.flex(
         rx.flex(
@@ -449,8 +372,8 @@ def gov_pagination() -> rx.Component:
 # ─── ページ ────────────────────────────────────────────────────────────────────
 
 @template(
-    route="/governance",
-    title="ガバナンス | Cardanoism",
+    route="/governance/ga_proposals",
+    title="GA 提案一覧 | Cardanoism",
     on_load=GovernanceState.on_load,
 )
 def governance_page() -> rx.Component:
@@ -473,7 +396,6 @@ def governance_page() -> rx.Component:
             rx.vstack(
                 gov_breadcrumb(),
                 governance_subnav("actions"),
-                gov_constitution_card(),
                 gov_filters(),
                 gov_header(),
                 rx.cond(

@@ -2070,13 +2070,23 @@ class GovernanceState(rx.State):
             self.modal_open = False
             self.modal_action = {}
             self.modal_action_refs = []
-            target = self.last_list_path or "/governance"
+            target = self.last_list_path or "/governance/ga_proposals"
+            # /governance/<id> （GA detail）のときだけ戻る。/governance, /governance/ga_proposals,
+            # /governance/treasury, /governance/drep などの静的ルートは対象外。
             return rx.call_script(
-                "if (window.location.pathname.startsWith('/governance/')"
-                "    && window.location.pathname !== '/governance/') {"
+                "(() => {"
+                "  const p = window.location.pathname;"
+                "  const known = new Set(["
+                "    '/governance', '/governance/',"
+                "    '/governance/ga_proposals', '/governance/ga_proposals/',"
+                "    '/governance/treasury', '/governance/treasury/',"
+                "    '/governance/drep', '/governance/drep/'"
+                "  ]);"
+                "  if (!p.startsWith('/governance/') || known.has(p)) return;"
+                "  if (p.startsWith('/governance/drep/')) return;"
                 "  if (history.state !== null) { history.back(); }"
                 f"  else {{ history.replaceState(null, '', '{target}'); }}"
-                "}"
+                "})();"
             )
 
     def set_view_mode(self, mode: str):

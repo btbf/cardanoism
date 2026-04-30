@@ -21,9 +21,11 @@ PDF 検出時は pypdf でテキスト抽出する（pypdf 未インストール
 """
 from __future__ import annotations
 
+import base64
 import io
 import json
 import logging
+import os
 from typing import Any
 
 import requests
@@ -32,6 +34,27 @@ from cardanoism.backend.db_connect import get_db
 from cardanoism.backend.vote_meta_fetch import _normalize_url_candidates
 
 logger = logging.getLogger(__name__)
+
+
+# Vision OCR のモデル / プロンプト
+_VISION_MODEL = "gpt-5.4-mini"
+_VISION_PROMPT = (
+    "You are a precise document transcription tool. Convert this page image of "
+    "the Cardano Constitution (or related governance document) into clean Markdown.\n\n"
+    "Rules:\n"
+    "- Preserve heading hierarchy: ## for top-level (e.g., 'Preamble', 'Article I'), "
+    "### for sub-sections, #### for further levels.\n"
+    "- Preserve bold (**text**) and italic (*text*) styling visible in the document.\n"
+    "- Preserve numbered lists (1. 2. 3.) and bullet lists (- item).\n"
+    "- Preserve paragraph breaks.\n"
+    "- Skip page numbers, running headers, and footers.\n"
+    "- Skip footnote markers; if footnotes contain meaningful text, place them at "
+    "the end of the page output as a Markdown footnote section.\n"
+    "- Preserve the original language verbatim. Do NOT translate.\n"
+    "- Do NOT add any explanation or commentary.\n"
+    "- Output ONLY the Markdown content. If the page is blank or only contains a "
+    "page number, output an empty string.\n"
+)
 
 
 def get_latest_constitution_meta_url() -> str | None:
@@ -68,29 +91,93 @@ def _looks_like_pdf(content: bytes, content_type: str) -> bool:
     return content[:5] == b"%PDF-"
 
 
-def _extract_pdf_text(pdf_bytes: bytes) -> str:
-    """pypdf で PDF からテキスト抽出。失敗時は空文字。"""
+def _extract_pdf_text_via_pymupdf(pdf_bytes: bytes) -> str:
+    """PyMuPDF でプレーンテキスト抽出（Vision 失敗時のフォールバック）。"""
     try:
-        import pypdf  # type: ignore
+        import pymupdf  # type: ignore
     except ImportError:
-        logger.warning("pypdf が未インストールのため PDF 本文を抽出できません。"
-                       "`pip install pypdf` を実行してください。")
+        logger.warning("pymupdf が未インストール。`pip install pymupdf` を実行してください。")
         return ""
     try:
-        reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
-        chunks: list[str] = []
-        for page in reader.pages:
-            try:
-                t = page.extract_text() or ""
-            except Exception as e:
-                logger.debug("pypdf page.extract_text 失敗: %s", e)
-                t = ""
-            if t.strip():
-                chunks.append(t)
-        return "\n\n".join(chunks).strip()
+        doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+        chunks = [page.get_text() for page in doc]
+        return "\n\n".join(c for c in chunks if c.strip()).strip()
     except Exception as e:
-        logger.warning("pypdf による PDF 解析失敗: %s", e)
+        logger.warning("pymupdf プレーンテキスト抽出失敗: %s", e)
         return ""
+
+
+def _extract_pdf_text_via_vision(pdf_bytes: bytes, *, dpi_scale: float = 2.0) -> str:
+    """OpenAI Vision (gpt-5.4-mini) で PDF を Markdown 化する。
+    PyMuPDF で各ページを PNG にレンダリング → Vision に送って Markdown を返してもらう。
+    1 ページずつ独立に処理し、全ページの結果を改行 2 つで結合。
+    pymupdf 未インストール / API キー未設定時は空文字を返す（caller がフォールバック）。
+    """
+    try:
+        import pymupdf  # type: ignore
+    except ImportError:
+        logger.warning("pymupdf 未インストールのため Vision OCR をスキップ")
+        return ""
+
+    api_key = os.getenv("GPT_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        logger.warning("GPT_API_KEY 未設定のため Vision OCR をスキップ")
+        return ""
+
+    try:
+        from openai import OpenAI  # type: ignore
+    except ImportError:
+        logger.warning("openai SDK 未インストール")
+        return ""
+
+    client = OpenAI(api_key=api_key)
+
+    try:
+        doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+    except Exception as e:
+        logger.warning("pymupdf で PDF を開けませんでした: %s", e)
+        return ""
+
+    total = len(doc)
+    logger.info("Vision OCR 開始: %d ページ", total)
+    out_parts: list[str] = []
+    mat = pymupdf.Matrix(dpi_scale, dpi_scale)
+
+    for page_num in range(total):
+        try:
+            page = doc[page_num]
+            pix = page.get_pixmap(matrix=mat)
+            img_bytes = pix.tobytes("png")
+            b64 = base64.standard_b64encode(img_bytes).decode("ascii")
+            response = client.chat.completions.create(
+                model=_VISION_MODEL,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": _VISION_PROMPT},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{b64}",
+                                "detail": "high",
+                            },
+                        },
+                    ],
+                }],
+                max_completion_tokens=4096,
+            )
+            page_md = (response.choices[0].message.content or "").strip()
+            if page_md:
+                out_parts.append(page_md)
+            logger.info("  Vision OCR: page %d/%d done (%d chars)",
+                        page_num + 1, total, len(page_md))
+        except Exception as e:
+            logger.warning("  Vision OCR page %d/%d failed: %s", page_num + 1, total, e)
+            continue
+
+    result = "\n\n".join(out_parts).strip()
+    logger.info("Vision OCR 完了: total %d chars", len(result))
+    return result
 
 
 # ─── JSON 内本文抽出（フォールバック用） ──────────────────────────────────────
@@ -196,9 +283,15 @@ def _download(url: str, timeout: float) -> tuple[bytes | None, str]:
 def _extract_text(content: bytes, content_type: str) -> str:
     """ダウンロードした bytes からテキストを抽出。
     PDF / JSON / Markdown / プレーンテキスト に対応。
+    PDF は OpenAI Vision で Markdown 化（見出し・太字を保持）。失敗時は
+    pymupdf プレーンテキストにフォールバック。
     """
     if _looks_like_pdf(content, content_type):
-        return _extract_pdf_text(content)
+        text = _extract_pdf_text_via_vision(content)
+        if text:
+            return text
+        logger.info("Vision OCR が空。pymupdf プレーンテキストにフォールバック")
+        return _extract_pdf_text_via_pymupdf(content)
 
     # JSON の場合
     if "json" in (content_type or "").lower() or content[:1] == b"{":

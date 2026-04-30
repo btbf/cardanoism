@@ -196,9 +196,22 @@ UI_JA: dict[str, str] = {
     "gov_ref_no_label": "（ラベルなし）",
 
     # ガバナンス サブナビゲーション
-    "gov_subnav_actions": "アクション一覧",
-    "gov_subnav_drep": "DRep",
+    "gov_subnav_actions": "GA 提案一覧",
+    "gov_subnav_drep": "DRep 一覧",
     "gov_subnav_treasury": "トレジャリー",
+    "gov_subnav_constitution": "Cardano 憲法",
+    # ── /constitution ページ ──
+    "constitution_page_title":         "Cardano 憲法",
+    "constitution_breadcrumb":         "Cardano 憲法",
+    "constitution_enacted_label":      "施行エポック:",
+    "constitution_source_label":       "原典:",
+    "constitution_source_link":        "IPFS で原文を開く",
+    "constitution_lang_toggle_ja":     "日本語訳",
+    "constitution_lang_toggle_en":     "原文 (English)",
+    "constitution_no_translation":     "現在この憲法の日本語訳はキャッシュされていません。",
+    "constitution_no_constitution":    "現行憲法のキャッシュがまだありません。`notify_worker.py --event constitution_sync` を実行してください。",
+    "constitution_translated_at":      "翻訳日時:",
+    "constitution_translation_disclaimer": "AI による参考訳です。法的拘束力のある文書としては原文（英語版）を参照してください。",
 
     # DRepページ
     "drep_search_placeholder": "DRep名または DRep ID を検索...",
@@ -598,9 +611,22 @@ UI_EN: dict[str, str] = {
     "gov_ref_no_label": "(No label)",
 
     # Governance subnav
-    "gov_subnav_actions": "Actions",
+    "gov_subnav_actions": "GA Proposals",
     "gov_subnav_drep": "DReps",
     "gov_subnav_treasury": "Treasury",
+    "gov_subnav_constitution": "Constitution",
+    # ── /constitution page ──
+    "constitution_page_title":         "Cardano Constitution",
+    "constitution_breadcrumb":         "Cardano Constitution",
+    "constitution_enacted_label":      "Enacted epoch:",
+    "constitution_source_label":       "Source:",
+    "constitution_source_link":        "View original on IPFS",
+    "constitution_lang_toggle_ja":     "Japanese translation",
+    "constitution_lang_toggle_en":     "Original (English)",
+    "constitution_no_translation":     "Japanese translation is not cached for the current constitution.",
+    "constitution_no_constitution":    "No constitution is cached yet. Run `notify_worker.py --event constitution_sync`.",
+    "constitution_translated_at":      "Translated at:",
+    "constitution_translation_disclaimer": "AI-generated translation for reference. For legally binding usage, refer to the original (English).",
 
     # DRep page
     "drep_search_placeholder": "Search by DRep name or DRep ID...",

@@ -36,7 +36,7 @@
 | Python 3.10+ | 実行環境 |
 | MariaDB | `governance_ai_analysis` + 既存テーブル |
 | OpenAI API | gpt-5.4-mini |
-| pypdf | 憲法 PDF のテキスト抽出 |
+| pymupdf | 憲法 PDF をページ画像にレンダリング（Vision OCR 入力用） |
 | IPFS gateway | 憲法本文取得（複数 gateway フォールバック） |
 
 ---
@@ -261,7 +261,7 @@ NewConstitution 提案で、実際の憲法本文ドキュメントの URL を�
 3. JSON 内 `body.references[]` で "constitution" ラベル
 
 取得した bytes は Content-Type / マジックバイトで判定して以下のいずれかでテキスト化：
-- PDF: pypdf で抽出
+- PDF: **OpenAI Vision (gpt-5.4-mini) で Markdown 化**（見出し階層 / 太字 / 斜体 / リストを保持）。失敗時は pymupdf プレーンテキストにフォールバック
 - JSON: `body.title / abstract / motivation / rationale` を連結、不足時は references を 1 段辿る
 - Markdown / プレーンテキスト: そのまま
 
@@ -339,7 +339,7 @@ FROM governance_ai_analysis WHERE status='analyzed';
 | 症状 | 原因 | 対処 |
 |------|------|------|
 | `failed` が連発 | `GPT_API_KEY` 未設定 / quota 超過 | API キー / Billing を確認、`--event ga_ai_reanalyze --all` で再キュー |
-| `failed` で `last_error: 憲法本文の取得に失敗` | IPFS gateway 全滅 / `action_anchor_url` 空 | governance.py 再 sync で URL を埋め直す。pypdf 未インストールなら `pip install pypdf` |
+| `failed` で `last_error: 憲法本文の取得に失敗` | IPFS gateway 全滅 / `action_anchor_url` 空 / pymupdf 未インストール / Vision OCR 失敗 | governance.py 再 sync で URL を埋め直す。`pip install pymupdf` を確認。Vision OCR は OpenAI API キーが必要 |
 | pending が処理されない | ga_ai_worker が落ちている | `systemctl status ga-ai-worker` で確認 |
 | analyzing が長時間残っている | プロセスがクラッシュ | 10 分後に reclaim_stale が自動 pending に戻す |
 | 憲法のバージョンが古い | 新しい NewConstitution が enacted した直後 | ga_ai_worker を再起動するか、しばらく待てば in-process キャッシュも自動更新（meta_url が変わるため） |

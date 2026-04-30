@@ -2222,6 +2222,117 @@ def check_ga_ai_initial_sync() -> None:
     logger.info("=== GA AI 分析 初回同期バッチ 完了 ===")
 
 
+def check_constitution_sync() -> None:
+    """最新 enacted NewConstitution の本文を IPFS から取得し、Catalyst でも使われる
+    Translator で日本語訳して constitution_cache に保存する。
+
+    既に同じ proposal_id で翻訳済みなら skip（強制再翻訳したい場合は constitution_cache
+    の id=1 行を削除してから再実行）。
+    """
+    logger.info("=== Constitution sync 開始 ===")
+
+    from cardanoism.backend.constitution_fetcher import fetch_constitution_text
+    from cardanoism.backend.constitution_db import get_constitution, upsert_constitution
+    from cardanoism.backend.governance import build_translator
+
+    # 最新 enacted を引く
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT proposal_id, enacted_epoch
+            FROM governance_actions
+            WHERE proposal_type = 'NewConstitution'
+              AND enacted_epoch IS NOT NULL
+            ORDER BY enacted_epoch DESC
+            LIMIT 1
+            """
+        )
+        row = cursor.fetchone()
+    if not row:
+        logger.warning("enacted NewConstitution が DB に見つかりません")
+        return
+
+    proposal_id = str(row.get("proposal_id") or "")
+    enacted_epoch = row.get("enacted_epoch")
+
+    cached = get_constitution()
+    if (
+        cached
+        and cached.get("proposal_id") == proposal_id
+        and cached.get("translated_text")
+    ):
+        logger.info(
+            "constitution_cache に同じ proposal_id (%s) が既に翻訳済みのためスキップ",
+            proposal_id,
+        )
+        return
+
+    logger.info("憲法本文取得中: proposal_id=%s, enacted_epoch=%s", proposal_id, enacted_epoch)
+    text, source_url = fetch_constitution_text()
+    if not text:
+        logger.error("憲法本文の取得に失敗。IPFS gateway / pymupdf / GPT_API_KEY / action_anchor_url を確認してください")
+        return
+    logger.info("取得 OK: %d 文字 (url=%s)", len(text), source_url)
+
+    # まず原文だけ保存しておく（翻訳が長時間 / 失敗してもキャッシュは残る）
+    upsert_constitution(
+        proposal_id=proposal_id,
+        enacted_epoch=enacted_epoch,
+        source_url=source_url,
+        original_text=text,
+        update_translation=False,
+    )
+
+    # 翻訳（chunk して連続翻訳）
+    logger.info("翻訳開始 (Translator はカタリスト同等エンジン)")
+    translator = build_translator()
+    translated = _translate_constitution_text(translator, text)
+    logger.info("翻訳完了: %d 文字", len(translated))
+
+    upsert_constitution(
+        proposal_id=proposal_id,
+        enacted_epoch=enacted_epoch,
+        source_url=source_url,
+        original_text=text,
+        translated_text=translated,
+        update_translation=True,
+    )
+    logger.info("=== Constitution sync 完了 ===")
+
+
+def _translate_constitution_text(translator, text: str, chunk_chars: int = 4000) -> str:
+    """段落単位で chunk して翻訳する（長文一括は token 制限・失敗時の再試行が辛いため）。
+    chunk_chars 文字程度ごとに区切る。
+    """
+    paragraphs = text.split("\n\n")
+    chunks: list[str] = []
+    cur: list[str] = []
+    cur_len = 0
+    for p in paragraphs:
+        if cur_len + len(p) > chunk_chars and cur:
+            chunks.append("\n\n".join(cur))
+            cur = []
+            cur_len = 0
+        cur.append(p)
+        cur_len += len(p) + 2
+    if cur:
+        chunks.append("\n\n".join(cur))
+
+    out: list[str] = []
+    for i, c in enumerate(chunks, 1):
+        if not c.strip():
+            out.append(c)
+            continue
+        logger.info("  chunk %d/%d (%d chars)", i, len(chunks), len(c))
+        try:
+            translated = translator.translate_overview(c)
+        except Exception as exc:
+            logger.warning("  chunk %d 翻訳失敗 (continue 原文): %s", i, exc)
+            translated = c
+        out.append(translated)
+    return "\n\n".join(out)
+
+
 def check_ga_ai_reanalyze(proposal_id: str | None = None, all_flag: bool = False) -> None:
     """既に analyzed の GA を pending に戻して再分析対象にする。
 
@@ -2264,7 +2375,7 @@ def main():
     parser.add_argument(
         "--event",
         default="all",
-        choices=["all", "pool", "drep", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze"],
+        choices=["all", "pool", "drep", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync"],
         help="実行するイベントグループ",
     )
     parser.add_argument(
@@ -2376,6 +2487,10 @@ def main():
     # GA AI 再分析: --event ga_ai_reanalyze で明示指定（"all" には含めない）
     if args.event == "ga_ai_reanalyze":
         check_ga_ai_reanalyze(proposal_id=args.proposal_id, all_flag=args.all)
+
+    # 憲法同期 + 翻訳: --event constitution_sync で明示指定（"all" には含めない）
+    if args.event == "constitution_sync":
+        check_constitution_sync()
 
     logger.info("完了")
 
