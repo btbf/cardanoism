@@ -168,7 +168,50 @@ def governance_detail_header(action: Dict[str, Any], close_btn=None) -> rx.Compo
         align="center",
     )
 
+    # 投票期限カウントダウン（active / urgent / ended で配色を切り替え）
+    deadline_badge = rx.match(
+        GovernanceState.modal_deadline_status,
+        ("active", rx.box(
+            rx.hstack(
+                rx.icon("timer", size=14, color="white"),
+                rx.text(AuthState.t["gov_deadline_remaining"], size="1", color="white", weight="medium"),
+                rx.text(GovernanceState.modal_deadline_days.to_string(), size="2", weight="bold", color="white"),
+                rx.text(AuthState.t["gov_deadline_days"], size="1", color="white"),
+                spacing="1", align="baseline",
+            ),
+            padding="4px 10px",
+            background="linear-gradient(90deg, var(--blue-9), var(--indigo-9))",
+            border_radius="999px",
+        )),
+        ("urgent", rx.box(
+            rx.hstack(
+                rx.icon("timer", size=14, color="white"),
+                rx.text(AuthState.t["gov_deadline_remaining"], size="1", color="white", weight="medium"),
+                rx.text(GovernanceState.modal_deadline_days.to_string(), size="2", weight="bold", color="white"),
+                rx.text(AuthState.t["gov_deadline_days"], size="1", color="white"),
+                rx.badge(AuthState.t["gov_deadline_urgent"], color_scheme=None,
+                         background_color="var(--ruby-12)", color="white", size="1"),
+                spacing="1", align="baseline",
+            ),
+            padding="4px 10px",
+            background="linear-gradient(90deg, var(--ruby-9), var(--ruby-11))",
+            border_radius="999px",
+            box_shadow="0 0 0 0 rgba(239, 68, 68, 0.7)",
+            animation="cdn_deadline_pulse 1.6s ease-in-out infinite",
+        )),
+        rx.fragment(),
+    )
+
     epoch_row = rx.hstack(
+        rx.html(
+            "<style>"
+            "@keyframes cdn_deadline_pulse {"
+            "  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.55); }"
+            "  70%      { box-shadow: 0 0 0 6px rgba(239,68,68,0); }"
+            "}"
+            "</style>"
+        ),
+        deadline_badge,
         rx.cond(
             action["proposed_epoch"],
             rx.hstack(
@@ -1037,6 +1080,105 @@ def _votes_anchor_button() -> rx.Component:
     )
 
 
+def _user_drep_vote_row(v) -> rx.Component:
+    """1 件の登録ステークアドレス → 委任先 DRep → 投票結果カード。"""
+    drep_name = rx.cond(v["drep_name"] != "", v["drep_name"], v["drep_id"])
+    voted_block = rx.hstack(
+        _vote_badge(v["vote"]),
+        rx.cond(
+            v["rationale_short"] != "",
+            rx.text(
+                v["rationale_short"],
+                size="1", color="var(--gray-10)",
+                line_height="1.5",
+                style={"flex": "1", "minWidth": "0"},
+            ),
+            rx.fragment(),
+        ),
+        spacing="2",
+        align="center",
+        wrap="wrap",
+        width="100%",
+    )
+    not_voted_block = rx.hstack(
+        rx.icon("clock", size=14, color="var(--gray-9)"),
+        rx.text(
+            AuthState.t["gov_user_drep_not_voted"],
+            size="2", color="var(--gray-10)",
+        ),
+        spacing="2",
+        align="center",
+    )
+    return rx.box(
+        rx.vstack(
+            rx.hstack(
+                rx.icon("wallet", size=14, color="var(--amber-11)"),
+                rx.text(v["nickname"], size="2", weight="bold", color="var(--gray-12)"),
+                rx.icon("arrow-right", size=12, color="var(--gray-9)"),
+                rx.icon("user-check", size=12, color="var(--violet-11)"),
+                rx.text(drep_name, size="2", weight="medium", color="var(--gray-12)",
+                        style={"wordBreak": "break-word"}),
+                spacing="2", align="center", wrap="wrap",
+            ),
+            rx.cond(
+                v["has_voted"] != "",
+                voted_block,
+                not_voted_block,
+            ),
+            spacing="2", align="start", width="100%",
+        ),
+        padding="12px 14px",
+        border=f"1px solid {rx.color('gray', 4)}",
+        border_radius="10px",
+        background="var(--gray-2)",
+        width="100%",
+    )
+
+
+def _user_drep_votes_card() -> rx.Component:
+    """ログインユーザーの委任先 DRep の投票一覧。
+    未ログイン時は非表示、ログイン済みで委任先が無ければ案内、ある場合はカードリスト。
+    """
+    head = rx.hstack(
+        rx.icon("user-check", size=18, color="var(--violet-11)"),
+        rx.text(
+            AuthState.t["gov_user_drep_title"],
+            size="3", weight="bold", color="var(--gray-12)",
+        ),
+        spacing="2", align="center", width="100%",
+    )
+
+    list_body = rx.vstack(
+        rx.foreach(GovernanceState.modal_user_drep_votes, _user_drep_vote_row),
+        spacing="2",
+        width="100%",
+        align_items="stretch",
+    )
+
+    return rx.cond(
+        AuthState.is_logged_in,
+        rx.cond(
+            GovernanceState.modal_user_drep_votes.length() > 0,
+            rx.box(
+                rx.vstack(
+                    head,
+                    list_body,
+                    spacing="3",
+                    width="100%",
+                    align_items="stretch",
+                ),
+                padding="16px 20px",
+                border=f"1px solid {rx.color('violet', 5)}",
+                border_radius="12px",
+                background="var(--violet-2)",
+                width="100%",
+            ),
+            rx.fragment(),
+        ),
+        rx.fragment(),
+    )
+
+
 def governance_detail_body(action: Dict[str, Any]) -> rx.Component:
     """本文・参考リンク（モーダルのスクロール部／ページ共通）。言語はグローバル AuthState.language に連動。"""
     abstract_text   = _localized_text("abstract_ja",  "abstract",  action)
@@ -1044,10 +1186,12 @@ def governance_detail_body(action: Dict[str, Any]) -> rx.Component:
     rationale_text  = _localized_text("rationale_ja",  "rationale",  action)
 
     body_sections = rx.vstack(
+        # ログインユーザーの委任先 DRep の投票（最優先で表示）
+        _user_drep_votes_card(),
         _withdrawal_section(action),
         # 投票集計（ドーナツ + CC メンバーリスト）は概要より先に表示。右隣に投票状況へジャンプボタン
         _voting_summary_section(action),
-        # AI 分析セクション（憲法準拠 + VISION 2030 KPI レーダー）
+        # AI 分析セクション
         ai_analysis_section(),
         rx.cond(
             _has_any_text("abstract_ja", "abstract", action),

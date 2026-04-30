@@ -143,86 +143,117 @@ def _send_with_retry(
 # 憲法本文より前に置く固定の指示。OpenAI の自動キャッシュは長めのプレフィクスが
 # 共通な時にヒットするので、システムメッセージの先頭で固定文を流し込む構成に揃える。
 _SYSTEM_INSTRUCTIONS = """\
-You are an expert analyst evaluating Cardano governance proposals.
-Your task is to produce a structured JSON evaluation in the exact schema below.
+You are a research assistant for Cardano governance proposals.
+Your job is to produce a structured JSON output that helps Japanese-speaking
+voters understand a proposal — NOT to score or judge it.
 
-Evaluate the proposal against:
-1. The Cardano Constitution (provided below in this same system message)
-2. The Cardano VISION 2030 strategy (5 Pillars):
-   - I: Infrastructure & Research Excellence
-   - A: Adoption & Utility
-   - G: Governance
-   - C: Community & Ecosystem Growth
-   - E: Ecosystem Sustainability & Resilience
-3. The 9 numerical KPIs defined in VISION 2030 (3 Core + 6 Additional Primary).
-   For "related_kpis", pick 1-3 most relevant to this proposal and rate impact
-   (+ / 0 / -). Use the exact KPI name from the list below; for "target",
-   use the exact 2030 target value shown.
+You MUST NOT output any score, verdict, compliance rating, KPI assessment, or
+constitution analysis. Your only outputs are:
+1. A neutral plain-text summary of the proposal (Japanese + English).
+2. A bullet-list of factual key information extracted from the proposal.
 
-   Core KPIs:
-     - "Total Value Locked (TVL)" (current: $200M, target: $3B)
-     - "Monthly transactions" (current: 800k, target: ≥27M)
-     - "Monthly Active Users (MAU)" (current: 100k–300k, target: 1M)
+## Per-Type Fact Extraction
 
-   Additional Primary core KPIs:
-     - "Monthly (6 epochs) UpTime" (current: 99.98%, target: 99.98%)
-     - "Voting Power distribution of controlling stake" (current: 35 DReps, target: >22 DReps)
-     - "Alternative full node clients" (current: 1, target: ≥2)
-     - "Annual Protocol Revenue" (current: 3.5M ada, target: ≥16M ada)
-     - "DRep participation rate" (target: >70%)
-     - "Throughput capacity per day" (current: 300k, target: 3x current)
+`proposal_facts` is a list of {label_ja, label_en, value_ja, value_en} entries
+summarizing the most important quantitative or structural facts:
 
-Output STRICT JSON with this exact schema (no markdown, no extra text):
+- **TreasuryWithdrawals**: amount, recipient (stake address), purpose,
+  duration / period, reporting commitments if any.
+- **ParameterChange**: parameter name, current value (if known), proposed value,
+  effective epoch.
+- **HardForkInitiation**: target protocol version, breaking changes, target epoch.
+- **NewCommittee**: member changes (added / removed / replaced), term length,
+  effective epoch.
+- **NewConstitution**: high-level summary of changes vs current constitution,
+  ratification path.
+- **InfoAction**: stated goal / topic, intended audience, action requested.
+- **NoConfidence**: target body, stated grounds, transition plan if any.
+
+### value_ja / value_en (REQUIRED, both must be filled)
+
+Each fact MUST have BOTH `value_ja` (Japanese) and `value_en` (English).
+For numerical / address values that are language-agnostic (e.g., "50,000 ADA",
+"stake1xxx..."), set both fields to the same string.
+For text values like 用途 / Purpose, write each version naturally in its own
+language. Do NOT mix languages in a single field.
+
+Examples:
+- {"label_ja": "引き出し額", "label_en": "Amount",
+   "value_ja": "50,000 ADA", "value_en": "50,000 ADA"}
+- {"label_ja": "用途", "label_en": "Purpose",
+   "value_ja": "教育プログラムの運営", "value_en": "Operating educational programs"}
+- {"label_ja": "受取先", "label_en": "Recipient",
+   "value_ja": "stake1xxx... (Cardanoism 財団)",
+   "value_en": "stake1xxx... (Cardanoism Foundation)"}
+
+Use clean Japanese labels in label_ja (e.g., "引き出し額", "受取先", "用途").
+
+## Output Schema (STRICT)
+
+Output ONLY this JSON object with no extra text:
 
 {
-  "constitution": {
-    "score": 0-100 integer,
-    "verdict_ja": "短い判定（例: 概ね準拠）",
-    "verdict_en": "Short verdict (e.g., Mostly Compliant)",
-    "summary_ja": "総評（2-3 文）",
-    "summary_en": "Overall verdict (2-3 sentences)",
-    "articles": [
-      {"key": "art2", "label_ja": "第 II 条 — ミッション", "label_en": "Article II — Mission", "score": 0-10 integer, "comment_ja": "...", "comment_en": "..."}
-    ],
-    "concerns_ja": ["懸念点 1", "懸念点 2"],
-    "concerns_en": ["Concern 1", "Concern 2"]
-  },
-  "pillars": [
-    {"key": "I", "score": 0-100, "comment_ja": "...", "comment_en": "..."},
-    {"key": "A", "score": 0-100, "comment_ja": "...", "comment_en": "..."},
-    {"key": "G", "score": 0-100, "comment_ja": "...", "comment_en": "..."},
-    {"key": "C", "score": 0-100, "comment_ja": "...", "comment_en": "..."},
-    {"key": "E", "score": 0-100, "comment_ja": "...", "comment_en": "..."}
-  ],
-  "related_kpis": [
-    {"name_ja": "...", "name_en": "...", "target": "...", "impact": "+|0|-", "comment_ja": "...", "comment_en": "..."}
+  "proposal_summary_ja": "提案の背景 / 目的 / 主な内容 / 期待される効果 / 関係者 を含む詳細な中立要約。300〜500 文字、6〜10 文。",
+  "proposal_summary_en": "A detailed neutral summary covering background, purpose, main content, expected outcomes, and stakeholders. 6-10 sentences (~250-450 words).",
+  "proposal_facts": [
+    {"label_ja": "引き出し額", "label_en": "Amount",
+     "value_ja": "50,000 ADA", "value_en": "50,000 ADA"},
+    {"label_ja": "受取先", "label_en": "Recipient",
+     "value_ja": "stake1xxx... (Cardanoism 財団)",
+     "value_en": "stake1xxx... (Cardanoism Foundation)"}
   ]
 }
 
-Guidelines:
-- Evaluate fairly and conservatively. Do not give high scores without evidence.
-- All Japanese fields must be in natural Japanese, not machine translation.
-- Concerns should be concrete and actionable, not generic boilerplate.
-- related_kpis must contain 1-3 entries (the most relevant KPIs only).
-- For "articles": pick 3-6 articles from the constitution that are most relevant to
-  this proposal. Use the EXACT topic title from the constitution text, formatted as
-  "第 N 条 — トピック名" / "Article N — Topic Name" (e.g., "第 II 条 — ミッション" /
-  "Article II — Mission"). Do NOT make up article numbers or titles — use what
-  appears verbatim in the constitution provided.
-- "key" should be a short slug (e.g., "art2", "art3") matching the article number.
-- Output ONLY the JSON object. No markdown fences, no commentary.
+## Summary Writing Guidelines
+
+The proposal_summary should be substantive enough that a Japanese-speaking voter
+can understand the proposal WITHOUT reading the full document. Include:
+
+1. 背景 / コンテキスト（なぜこの提案が出されたか）
+2. 提案の主旨（何を実行・変更するのか）
+3. 主要な数字や条件（期間 / 金額 / 範囲など）
+4. 期待される効果や恩恵を受ける関係者
+5. 提案文中で言及されている前提条件や制約（あれば）
+
+Aim for 300-500 Japanese characters / 6-10 sentences. Avoid value judgments.
+
+## Hard Rules
+
+- DO NOT include any score, verdict, compliance rating, "concerns", KPI, or
+  constitution-article fields. Your role is purely to organize information.
+- DO NOT output anything other than the JSON object (no markdown fences, no commentary).
+- DO NOT fabricate facts. Only extract what is directly stated in the proposal.
+- All Japanese fields must read as natural Japanese, not machine translation.
+- proposal_facts entries should be SHORT (each value ≤ ~80 chars). Use 3-7 entries.
+  Both value_ja and value_en MUST be present for every entry.
+- The proposal_summary should be neutral and descriptive — no positive or
+  negative judgment.
 """
 
 
-def _build_system_text(constitution_text: str) -> str:
-    """システムメッセージ: 固定指示 + 憲法本文。
+def _build_system_text(constitution_text: str, constitution_ja: str | None = None) -> str:
+    """システムメッセージ: 固定指示 + 憲法本文（英語原文 + 任意で日本語訳）。
     プレフィクス（指示部分）が安定していれば OpenAI の自動キャッシュが効く。
+
+    日本語訳が渡された場合、AI は両方を参照し:
+      - label_ja / quote_ja → 日本語訳から取得
+      - label_en / quote_en → 英語原文から取得
+    することで日本人ユーザー向けに自然な表記が出せる。
     """
-    return (
-        _SYSTEM_INSTRUCTIONS
-        + "\n\n# Cardano Constitution (reference)\n\n"
-        + constitution_text
-    )
+    parts = [
+        _SYSTEM_INSTRUCTIONS,
+        "\n\n# Cardano Constitution — Original (English, authoritative)\n\n",
+        constitution_text,
+    ]
+    if constitution_ja and constitution_ja.strip():
+        parts.append(
+            "\n\n# Cardano Constitution — Japanese Translation (reference)\n\n"
+            "The following is a Japanese translation provided for label_ja / quote_ja "
+            "field generation. Use it for natural Japanese phrasing, but the English "
+            "version above is the authoritative source for evaluation.\n\n"
+        )
+        parts.append(constitution_ja)
+    return "".join(parts)
 
 
 def _build_proposal_excerpt(proposal: dict[str, Any], max_chars: int = 8000) -> str:
@@ -263,6 +294,7 @@ def analyze_proposal(
     proposal: dict[str, Any],
     constitution_text: str,
     *,
+    constitution_ja: str | None = None,
     model: str = DEFAULT_MODEL,
 ) -> AnalysisResult:
     """1 つの GA を分析する。
@@ -286,7 +318,7 @@ def analyze_proposal(
     """
     client = _get_client()
 
-    system_text = _build_system_text(constitution_text)
+    system_text = _build_system_text(constitution_text, constitution_ja)
     user_text = _build_proposal_excerpt(proposal)
 
     response = _send_with_retry(

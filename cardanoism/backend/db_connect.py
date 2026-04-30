@@ -1150,131 +1150,6 @@ class FundListState(rx.State):
 
 # ─── Governance Actions ───────────────────────────────────────────────────────
 
-def _ai_score_color_name(score: int) -> str:
-    """0-100 のスコアから Radix UI のカラー名を返す（コンポーネントの _score_color と同期）。"""
-    if score >= 80:
-        return "green"
-    if score >= 60:
-        return "amber"
-    if score >= 40:
-        return "orange"
-    return "ruby"
-
-
-# VISION 2030 5 Pillar の固定定義
-_PILLAR_KEYS:      tuple[str, ...] = ("I", "A", "G", "C", "E")
-_PILLAR_LABELS_JA: tuple[str, ...] = ("インフラ・研究", "採用と実用性", "ガバナンス", "コミュニティ", "持続可能性")
-_PILLAR_LABELS_EN: tuple[str, ...] = ("Infrastructure", "Adoption & Utility", "Governance", "Community", "Sustainability")
-
-# レーダーチャート SVG の幾何パラメータ
-_RADAR_CX = 175
-_RADAR_CY = 175
-_RADAR_R = 120
-_RADAR_LABEL_R = 150
-
-
-def _polar_xy(cx: float, cy: float, r: float, deg: float) -> tuple[float, float]:
-    import math
-    rad = math.radians(deg)
-    return (cx + r * math.cos(rad), cy + r * math.sin(rad))
-
-
-def build_radar_svg(scores: list[int], labels: list[str]) -> str:
-    """N 軸レーダーチャートの SVG 文字列を生成する。
-    scores: 各軸のスコア (0-100、軸数 = ラベル数 と一致)
-    labels: 各軸のラベル
-    両方が空 / 不一致なら空文字列を返す。
-    """
-    if not scores or not labels or len(scores) != len(labels):
-        return ""
-    n = len(scores)
-    angles = [-90 + (360 / n) * i for i in range(n)]
-
-    parts: list[str] = [
-        '<svg width="350" height="350" viewBox="0 0 350 350" xmlns="http://www.w3.org/2000/svg" '
-        'style="max-width:100%;height:auto;display:block;margin:0 auto;">'
-    ]
-
-    # 4 リング (内側→外側)
-    for ring_pct, op in zip((25, 50, 75, 100), (0.35, 0.5, 0.7, 1.0)):
-        pts = [_polar_xy(_RADAR_CX, _RADAR_CY, _RADAR_R * ring_pct / 100, a) for a in angles]
-        ring_str = " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
-        parts.append(
-            f'<polygon points="{ring_str}" fill="var(--gray-3)" '
-            f'stroke="var(--gray-5)" stroke-width="1" opacity="{op}"/>'
-        )
-
-    # 軸線
-    for a in angles:
-        ex, ey = _polar_xy(_RADAR_CX, _RADAR_CY, _RADAR_R, a)
-        parts.append(
-            f'<line x1="{_RADAR_CX}" y1="{_RADAR_CY}" '
-            f'x2="{ex:.1f}" y2="{ey:.1f}" '
-            f'stroke="var(--gray-5)" stroke-width="1"/>'
-        )
-
-    # データポリゴン + ポイント
-    data_pts = [
-        _polar_xy(_RADAR_CX, _RADAR_CY, _RADAR_R * (max(0, min(100, s)) / 100), a)
-        for s, a in zip(scores, angles)
-    ]
-    polygon_str = " ".join(f"{x:.1f},{y:.1f}" for x, y in data_pts)
-    parts.append(
-        f'<polygon points="{polygon_str}" '
-        'fill="var(--violet-9)" fill-opacity="0.25" '
-        'stroke="var(--violet-10)" stroke-width="2"/>'
-    )
-    for x, y in data_pts:
-        parts.append(
-            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4" '
-            'fill="var(--violet-11)" stroke="var(--gray-1)" stroke-width="2"/>'
-        )
-
-    # ラベル
-    for a, lab in zip(angles, labels):
-        lx, ly = _polar_xy(_RADAR_CX, _RADAR_CY, _RADAR_LABEL_R, a)
-        if abs(lx - _RADAR_CX) < 1:
-            anchor = "middle"
-        elif lx > _RADAR_CX:
-            anchor = "start"
-        else:
-            anchor = "end"
-        parts.append(
-            f'<text x="{lx:.1f}" y="{ly:.1f}" '
-            f'text-anchor="{anchor}" dominant-baseline="middle" '
-            f'font-size="12" font-weight="600" fill="var(--gray-12)">{lab}</text>'
-        )
-
-    parts.append("</svg>")
-    return "".join(parts)
-
-
-def build_gauge_svg(score: int) -> str:
-    """憲法準拠スコア用の半円ゲージ SVG 文字列を生成する。
-    コンポーネント側の demo 描画と State 側 (modal_ai_data['gauge_svg']) の両方から使う。
-    """
-    import math
-    r = 70
-    circumference = math.pi * r
-    score = max(0, min(100, int(score)))
-    progress = circumference * (score / 100)
-    color = _ai_score_color_name(score)
-    return f"""
-        <svg width="180" height="100" viewBox="0 0 180 100" xmlns="http://www.w3.org/2000/svg">
-          <path d="M 20 90 A 70 70 0 0 1 160 90"
-                fill="none" stroke="var(--gray-4)" stroke-width="10" stroke-linecap="round"/>
-          <path d="M 20 90 A 70 70 0 0 1 160 90"
-                fill="none" stroke="var(--{color}-9)" stroke-width="10"
-                stroke-linecap="round"
-                stroke-dasharray="{progress:.1f} {circumference:.1f}"/>
-          <text x="90" y="78" text-anchor="middle"
-                font-size="34" font-weight="700" fill="var(--gray-12)">{score}</text>
-          <text x="90" y="94" text-anchor="middle"
-                font-size="11" fill="var(--gray-10)">/ 100</text>
-        </svg>
-    """
-
-
 _GA_STATUS_SQL = (
     "CASE"
     " WHEN enacted_epoch IS NOT NULL THEN 'enacted'"
@@ -1568,17 +1443,23 @@ class GovernanceState(rx.State):
     # 現行憲法（最新の enacted NewConstitution）
     current_constitution: Dict[str, Any] = {}
 
-    # ── GA AI 分析 ────────────────────────────────────────────────────────────
-    # Phase 1: 憲法準拠（Feature A）の State 接続
-    # Phase 2 で Feature B（pillars / related_kpis）も追加する
+    # ── GA AI 分析（A 方針: ファクト整理ツール）────────────────────────────────
     modal_ai_status: str = ""                    # ""=未ロード / "none"=対象外 / pending / analyzing / analyzed / failed
-    modal_ai_data: Dict[str, str] = {}           # スカラフィールド（score / verdict / summary 等）
-    modal_ai_articles: List[Dict[str, str]] = [] # [{key,label_ja,label_en,score,comment_ja,comment_en,color}]
-    modal_ai_concerns_ja: List[str] = []
-    modal_ai_concerns_en: List[str] = []
-    modal_ai_pillars: List[Dict[str, str]] = []  # Phase 2 で使用
-    modal_ai_related_kpis: List[Dict[str, str]] = []  # Phase 2 で使用
+    modal_ai_data: Dict[str, str] = {}           # スカラフィールド（summary_ja/en, model_id, elapsed_pending）
+    # AI 抽出の関連憲法条文（スコア無し）。各 entry: key/label_ja/label_en/quote_ja/quote_en/why_relevant_ja/why_relevant_en
+    modal_ai_articles: List[Dict[str, str]] = []
+    # AI 抽出の提案ファクト。各 entry: label_ja/label_en/value
+    modal_ai_facts: List[Dict[str, str]] = []
+    # ルールベース自動チェック。各 entry: label_ja/label_en/status/detail_ja/detail_en
+    modal_ai_rule_checks: List[Dict[str, str]] = []
     modal_ai_last_error: str = ""
+
+    # ── ログインユーザーの委任先 DRep 投票 + 投票期限 ──────────────────────────
+    # 各 entry: nickname / address_short / drep_id / drep_name / vote / rationale / has_voted
+    modal_user_drep_votes: List[Dict[str, str]] = []
+    # 投票期限の残日数 + 状態（"active" / "urgent" / "ended"）
+    modal_deadline_days: int = 0
+    modal_deadline_status: str = ""
 
     # ── WHERE 句構築 ──────────────────────────────────────────────────────────
 
@@ -1698,6 +1579,9 @@ class GovernanceState(rx.State):
                     _attach_voting_summary(formatted, protocol_params)
                     self.modal_action = formatted
 
+                    # 投票期限カウントダウン（日数 / 状態）を計算
+                    self._compute_deadline(formatted)
+
             # 投票一覧を整形して modal_votes にセット
             votes = get_votes_by_proposal(proposal_id)
             votes_out: list[dict] = []
@@ -1761,6 +1645,141 @@ class GovernanceState(rx.State):
         except Exception as e:
             logger.exception("GovernanceState._load_full_action(id=%s): %s", proposal_id, e)
 
+    def _compute_deadline(self, action: Dict[str, Any]) -> None:
+        """proposal の expiration エポックから残日数 / 状態を State に格納する。
+
+        - 既に ratified/enacted/dropped/expired のいずれかなら status='ended'
+        - active で残 7 日以下なら status='urgent'
+        - active で残 8 日以上なら status='active'
+        """
+        # 既に決着済みなら ended
+        for k in ("ratified_epoch", "enacted_epoch", "dropped_epoch", "expired_epoch"):
+            if action.get(k):
+                self.modal_deadline_status = "ended"
+                self.modal_deadline_days = 0
+                return
+
+        expiration = action.get("expiration")
+        if expiration is None:
+            self.modal_deadline_status = ""
+            self.modal_deadline_days = 0
+            return
+
+        try:
+            exp_ep = int(expiration)
+        except (TypeError, ValueError):
+            self.modal_deadline_status = ""
+            self.modal_deadline_days = 0
+            return
+
+        # 現在エポックを Shelley genesis から計算（mainnet 基準）
+        import time
+        SHELLEY_EPOCH = 208
+        SHELLEY_UNIX = 1_596_059_091
+        EPOCH_SECONDS = 432_000  # 5 日
+        current_ep = SHELLEY_EPOCH + (int(time.time()) - SHELLEY_UNIX) // EPOCH_SECONDS
+
+        eps_remaining = exp_ep - int(current_ep)
+        days_remaining = max(0, eps_remaining * 5)
+
+        if eps_remaining <= 0:
+            self.modal_deadline_status = "ended"
+            self.modal_deadline_days = 0
+        elif days_remaining <= 7:
+            self.modal_deadline_status = "urgent"
+            self.modal_deadline_days = days_remaining
+        else:
+            self.modal_deadline_status = "active"
+            self.modal_deadline_days = days_remaining
+
+    @rx.event
+    async def load_user_drep_votes(self):
+        """ログイン中ユーザーの委任先 DRep 投票を modal_user_drep_votes に格納する。
+        cross-state 参照（AuthState.is_logged_in / user_id）が必要なため async event。
+        """
+        proposal_id = str(self.modal_action.get("proposal_id") or "")
+        if not proposal_id:
+            self.modal_user_drep_votes = []
+            return
+
+        # AuthState から user_id を取得
+        try:
+            from cardanoism.backend.auth_state import AuthState
+            auth = await self.get_state(AuthState)
+        except Exception as e:
+            logger.warning("load_user_drep_votes: get_state failed: %s", e)
+            self.modal_user_drep_votes = []
+            return
+
+        if not getattr(auth, "is_logged_in", False) or not getattr(auth, "user_id", 0):
+            self.modal_user_drep_votes = []
+            return
+
+        try:
+            from cardanoism.backend.auth_db import get_stake_addresses
+            addresses = get_stake_addresses(auth.user_id)
+        except Exception as e:
+            logger.warning("load_user_drep_votes: get_stake_addresses failed: %s", e)
+            self.modal_user_drep_votes = []
+            return
+
+        out: list[dict[str, str]] = []
+        for addr in addresses:
+            drep_id = str(addr.get("delegated_drep_id") or "").strip()
+            if not drep_id:
+                continue
+            nickname = str(addr.get("nickname") or "")
+            address = str(addr.get("address") or "")
+            address_short = address if len(address) <= 22 else f"{address[:14]}...{address[-8:]}"
+            drep_name = str(addr.get("delegated_drep_name") or "")
+
+            # proposal_votes で投票を引く
+            try:
+                with get_db() as (cursor, _):
+                    cursor.execute(
+                        """
+                        SELECT vote, rationale, rationale_ja
+                        FROM proposal_votes
+                        WHERE proposal_id = ? AND voter_role = 'DRep' AND voter_id = ?
+                        ORDER BY block_time DESC
+                        LIMIT 1
+                        """,
+                        (proposal_id, drep_id),
+                    )
+                    vote_row = cursor.fetchone()
+            except Exception as e:
+                logger.warning("load_user_drep_votes: query failed: %s", e)
+                vote_row = None
+
+            if vote_row:
+                rationale = (
+                    str(vote_row.get("rationale_ja") or "").strip()
+                    or str(vote_row.get("rationale") or "").strip()
+                )
+                rationale_short = rationale if len(rationale) <= 200 else rationale[:200] + "..."
+                out.append({
+                    "nickname":      nickname,
+                    "address_short": address_short,
+                    "drep_id":       drep_id,
+                    "drep_name":     drep_name,
+                    "vote":          str(vote_row.get("vote") or ""),
+                    "rationale":     rationale,
+                    "rationale_short": rationale_short,
+                    "has_voted":     "1",
+                })
+            else:
+                out.append({
+                    "nickname":      nickname,
+                    "address_short": address_short,
+                    "drep_id":       drep_id,
+                    "drep_name":     drep_name,
+                    "vote":          "",
+                    "rationale":     "",
+                    "rationale_short": "",
+                    "has_voted":     "",
+                })
+        self.modal_user_drep_votes = out
+
     def retry_ai_analysis(self):
         """failed 状態の AI 分析を pending に戻して再実行を促す。
         ga_ai_worker.py が pending を拾って analyzing → analyzed に進める。
@@ -1816,15 +1835,14 @@ class GovernanceState(rx.State):
     def _load_ai_analysis(self, proposal_id: str) -> None:
         """governance_ai_analysis から分析結果を取得して State に展開する。
         行が存在しない場合は modal_ai_status='none' をセットして終了。
+        新スキーマ: ファクト整理ベース（スコア / verdict / KPI なし）。
         """
         # 既存値をクリア
         self.modal_ai_status = ""
         self.modal_ai_data = {}
         self.modal_ai_articles = []
-        self.modal_ai_concerns_ja = []
-        self.modal_ai_concerns_en = []
-        self.modal_ai_pillars = []
-        self.modal_ai_related_kpis = []
+        self.modal_ai_facts = []
+        self.modal_ai_rule_checks = []
         self.modal_ai_last_error = ""
 
         try:
@@ -1844,8 +1862,7 @@ class GovernanceState(rx.State):
 
         # 分析中・キュー待ちの場合は経過秒数も渡す（pending 状態の表示用）
         enqueued = row.get("enqueued_at")
-        started = row.get("started_at")
-        from datetime import datetime, timezone
+        from datetime import datetime
         now = datetime.now()
         elapsed_pending = ""
         if status == "pending" and enqueued:
@@ -1854,123 +1871,60 @@ class GovernanceState(rx.State):
             except Exception:
                 elapsed_pending = ""
 
-        score_raw = row.get("constitution_score")
-        try:
-            score_int = int(score_raw) if score_raw is not None else 0
-        except (TypeError, ValueError):
-            score_int = 0
-        score_color = _ai_score_color_name(score_int)
-
-        # Gauge SVG をサーバ側で生成して State に保存（コンポーネントは rx.html で挿入のみ）
-        gauge_svg = build_gauge_svg(score_int)
-
         self.modal_ai_data = {
-            "score":        str(score_int),
-            "score_color":  score_color,
-            "verdict_ja":   str(row.get("constitution_verdict_ja") or ""),
-            "verdict_en":   str(row.get("constitution_verdict_en") or ""),
-            "summary_ja":   str(row.get("constitution_summary_ja") or ""),
-            "summary_en":   str(row.get("constitution_summary_en") or ""),
-            "model_id":     str(row.get("model_id") or ""),
-            "gauge_svg":    gauge_svg,
-            "radar_svg_ja": "",
-            "radar_svg_en": "",
+            "summary_ja":      str(row.get("constitution_summary_ja") or ""),
+            "summary_en":      str(row.get("constitution_summary_en") or ""),
+            "model_id":        str(row.get("model_id") or ""),
             "elapsed_pending": elapsed_pending,
         }
 
-        # articles を表示用に整形（color は score から決定）
+        # articles: スコア無しの関連条文リスト
         articles_raw = row.get("articles_json") or []
         articles_out: list[dict[str, str]] = []
         for a in articles_raw if isinstance(articles_raw, list) else []:
             if not isinstance(a, dict):
                 continue
-            try:
-                a_score = int(a.get("score") or 0)
-            except (TypeError, ValueError):
-                a_score = 0
-            a_score = max(0, min(10, a_score))
             articles_out.append({
-                "key":        str(a.get("key") or ""),
-                "label_ja":   str(a.get("label_ja") or ""),
-                "label_en":   str(a.get("label_en") or ""),
-                "score":      str(a_score),
-                "bar_pct":    f"{a_score * 10}%",
-                "comment_ja": str(a.get("comment_ja") or ""),
-                "comment_en": str(a.get("comment_en") or ""),
-                "color":      _ai_score_color_name(a_score * 10),
+                "key":              str(a.get("key") or ""),
+                "label_ja":         str(a.get("label_ja") or ""),
+                "label_en":         str(a.get("label_en") or ""),
+                "quote_ja":         str(a.get("quote_ja") or ""),
+                "quote_en":         str(a.get("quote_en") or ""),
+                "why_relevant_ja":  str(a.get("why_relevant_ja") or a.get("comment_ja") or ""),
+                "why_relevant_en":  str(a.get("why_relevant_en") or a.get("comment_en") or ""),
             })
         self.modal_ai_articles = articles_out
 
-        # concerns
-        concerns_ja_raw = row.get("concerns_ja_json") or []
-        concerns_en_raw = row.get("concerns_en_json") or []
-        if isinstance(concerns_ja_raw, list):
-            self.modal_ai_concerns_ja = [str(x) for x in concerns_ja_raw if x]
-        if isinstance(concerns_en_raw, list):
-            self.modal_ai_concerns_en = [str(x) for x in concerns_en_raw if x]
-
-        # Pillars: AI 出力を 5 つの公式 pillar 順に並び替え、ラベルと色を補完
-        pillars_raw = row.get("pillars_json") or []
-        ai_score_by_key: dict[str, int] = {}
-        ai_comments: dict[str, tuple[str, str]] = {}
-        if isinstance(pillars_raw, list):
-            for p in pillars_raw:
-                if not isinstance(p, dict):
-                    continue
-                k = str(p.get("key") or "").upper()
-                if not k:
-                    continue
-                try:
-                    s = int(p.get("score") or 0)
-                except (TypeError, ValueError):
-                    s = 0
-                s = max(0, min(100, s))
-                ai_score_by_key[k] = s
-                ai_comments[k] = (
-                    str(p.get("comment_ja") or ""),
-                    str(p.get("comment_en") or ""),
-                )
-
-        pillars_out: list[dict[str, str]] = []
-        ordered_scores: list[int] = []
-        for k, lab_ja, lab_en in zip(_PILLAR_KEYS, _PILLAR_LABELS_JA, _PILLAR_LABELS_EN):
-            sc = ai_score_by_key.get(k, 0)
-            cj, ce = ai_comments.get(k, ("", ""))
-            pillars_out.append({
-                "key":        k,
-                "label_ja":   lab_ja,
-                "label_en":   lab_en,
-                "score":      str(sc),
-                "comment_ja": cj,
-                "comment_en": ce,
-                "color":      _ai_score_color_name(sc),
+        # proposal_facts: AI 抽出の提案ファクト
+        # 新スキーマ: value_ja / value_en（言語別）。後方互換: 単一 value
+        facts_raw = row.get("proposal_facts_json") or []
+        facts_out: list[dict[str, str]] = []
+        for f in facts_raw if isinstance(facts_raw, list) else []:
+            if not isinstance(f, dict):
+                continue
+            value_legacy = str(f.get("value") or "")
+            facts_out.append({
+                "label_ja": str(f.get("label_ja") or ""),
+                "label_en": str(f.get("label_en") or ""),
+                "value_ja": str(f.get("value_ja") or "") or value_legacy,
+                "value_en": str(f.get("value_en") or "") or value_legacy,
             })
-            ordered_scores.append(sc)
-        self.modal_ai_pillars = pillars_out
+        self.modal_ai_facts = facts_out
 
-        # レーダーチャート SVG をサーバ側で生成して State に保存（言語別）
-        if any(s > 0 for s in ordered_scores):
-            self.modal_ai_data["radar_svg_ja"] = build_radar_svg(ordered_scores, list(_PILLAR_LABELS_JA))
-            self.modal_ai_data["radar_svg_en"] = build_radar_svg(ordered_scores, list(_PILLAR_LABELS_EN))
-        else:
-            self.modal_ai_data["radar_svg_ja"] = ""
-            self.modal_ai_data["radar_svg_en"] = ""
-
-        related_raw = row.get("related_kpis_json") or []
-        if isinstance(related_raw, list):
-            related_out: list[dict[str, str]] = []
-            for k in related_raw:
-                if not isinstance(k, dict):
-                    continue
-                related_out.append({
-                    "name_ja":   str(k.get("name_ja") or ""),
-                    "name_en":   str(k.get("name_en") or ""),
-                    "target":    str(k.get("target") or ""),
-                    "impact":    str(k.get("impact") or "0"),
-                    "comment_ja": str(k.get("comment_ja") or ""),
-                    "comment_en": str(k.get("comment_en") or ""),
-                })
-            self.modal_ai_related_kpis = related_out
+        # rule_checks: ルールベース自動チェック
+        rules_raw = row.get("rule_checks_json") or []
+        rules_out: list[dict[str, str]] = []
+        for r in rules_raw if isinstance(rules_raw, list) else []:
+            if not isinstance(r, dict):
+                continue
+            rules_out.append({
+                "label_ja":  str(r.get("label_ja") or ""),
+                "label_en":  str(r.get("label_en") or ""),
+                "status":    str(r.get("status") or "na"),
+                "detail_ja": str(r.get("detail_ja") or ""),
+                "detail_en": str(r.get("detail_en") or ""),
+            })
+        self.modal_ai_rule_checks = rules_out
 
     # ── ページロード ──────────────────────────────────────────────────────────
 
@@ -2036,15 +1990,17 @@ class GovernanceState(rx.State):
         self.load = False
         self.modal_action = {}
         self.modal_action_refs = []
+        self.modal_user_drep_votes = []
         path = self.router.url.path or ""
         parts = [p for p in path.split("/") if p]
         proposal_id = parts[-1] if parts else ""
         if proposal_id:
             self._load_full_action(proposal_id)
         self.load = True
-        # AI 分析が進行中なら背景ポーリングを起動
+        events: list = [GovernanceState.load_user_drep_votes]
         if self.modal_ai_status in ("pending", "analyzing"):
-            return GovernanceState.poll_ai_status
+            events.append(GovernanceState.poll_ai_status)
+        return events
 
     async def load_detail_page_with_lang(self):
         """後方互換のため残すが、言語は AuthState.language に一本化されたため初期化処理は不要。"""
@@ -2057,13 +2013,14 @@ class GovernanceState(rx.State):
         self.modal_loading = True
         self.modal_action = action
         self.modal_action_refs = []
+        self.modal_user_drep_votes = []
         self.last_list_path = self.router.url.path or ""
         proposal_id = str(action.get("proposal_id", ""))
         self._load_full_action(proposal_id)
         self.modal_loading = False
         events: list = [rx.call_script(
             f"history.pushState(null, '', '/governance/{proposal_id}');"
-        )]
+        ), GovernanceState.load_user_drep_votes]
         if self.modal_ai_status in ("pending", "analyzing"):
             events.append(GovernanceState.poll_ai_status)
         return events

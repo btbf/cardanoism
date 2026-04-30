@@ -33,29 +33,48 @@ logger = logging.getLogger(__name__)
 # 処理する場合に毎回フェッチしないよう同一プロセス内で再利用する。
 # キーは meta_url。新しい NewConstitution が enacted されると DB から
 # 取れる meta_url が変わるので、自動的にキャッシュ無効化される。
-_constitution_cache: dict[str, str] = {}  # {meta_url: text}
+_constitution_cache: dict[str, tuple[str, str]] = {}  # {meta_url: (text_en, text_ja)}
 
 
-def _get_constitution_cached() -> tuple[str | None, str | None]:
+def _get_constitution_cached() -> tuple[str | None, str | None, str | None]:
     """憲法本文を取得（プロセス内キャッシュ）。
-    DB から最新の meta_url を毎回引き、キャッシュキーと比較する。
-    Returns: (text, meta_url) または (None, None)。
+    優先順位:
+      1. constitution_cache テーブル (notify_worker --event constitution_sync 済み)
+         → 原文 + 日本語訳の両方が取れる
+      2. governance_actions の最新 enacted NewConstitution から IPFS フェッチ
+         → 原文のみ、日本語訳は空文字
+    Returns: (text_en, text_ja, source_url) または (None, None, None)。
     """
+    # まず constitution_cache テーブルを見る（翻訳済みなら一発）
+    try:
+        from cardanoism.backend.constitution_db import get_constitution
+        row = get_constitution()
+        if row and row.get("original_text"):
+            url = str(row.get("source_url") or "") or "constitution_cache"
+            text_en = str(row.get("original_text") or "")
+            text_ja = str(row.get("translated_text") or "")
+            cached = _constitution_cache.get(url)
+            if cached and cached == (text_en, text_ja):
+                return text_en, text_ja, url
+            _constitution_cache.clear()
+            _constitution_cache[url] = (text_en, text_ja)
+            return text_en, text_ja, url
+    except Exception as e:
+        logger.warning("constitution_cache 参照失敗 (continue with IPFS): %s", e)
+
+    # フォールバック: IPFS 直フェッチ（日本語訳は無し）
     latest_url = get_latest_constitution_meta_url()
     if not latest_url:
-        return None, None
-
-    cached_text = _constitution_cache.get(latest_url)
-    if cached_text:
-        return cached_text, latest_url
-
+        return None, None, None
+    cached = _constitution_cache.get(latest_url)
+    if cached:
+        return cached[0], cached[1], latest_url
     text, used_url = fetch_constitution_text(latest_url)
     if text and used_url:
-        # 新規 enacted で url が変わった場合、古いエントリを掃除
         _constitution_cache.clear()
-        _constitution_cache[used_url] = text
-        return text, used_url
-    return None, latest_url
+        _constitution_cache[used_url] = (text, "")
+        return text, "", used_url
+    return None, None, latest_url
 
 
 def invalidate_constitution_cache() -> None:
@@ -69,7 +88,7 @@ def _make_worker_id() -> str:
 
 
 def _load_proposal(proposal_id: str) -> dict | None:
-    """governance_actions から AI 分析に必要なフィールドを取得する。"""
+    """governance_actions から AI 分析 + ルールチェックに必要なフィールドを取得する。"""
     with get_db() as (cursor, _):
         cursor.execute(
             """
@@ -78,6 +97,8 @@ def _load_proposal(proposal_id: str) -> dict | None:
                    `abstract`, abstract_ja,
                    motivation, motivation_ja,
                    rationale, rationale_ja,
+                   references_json,
+                   deposit, proposed_epoch,
                    withdrawal_total_lovelace
             FROM governance_actions
             WHERE proposal_id = ?
@@ -104,24 +125,36 @@ def analyze_claimed(proposal_id: str) -> bool:
         governance_ai_db.save_failure(proposal_id, msg)
         return False
 
-    text, meta_url = _get_constitution_cached()
-    if not text:
-        msg = "憲法本文の取得に失敗しました（IPFS gateway 全滅 or 未 enacted）"
-        logger.warning(msg)
-        governance_ai_db.save_failure(proposal_id, msg)
-        return False
+    # 現状の AI 分析（A 方針: ファクト整理ツール）は憲法本文を参照しない。
+    # 提案本文だけから summary + facts を抽出するので Constitution fetch はスキップ。
+    meta_url: str | None = None
 
     try:
-        result = ai_client.analyze_proposal(proposal, text)
+        result = ai_client.analyze_proposal(proposal, "")
     except Exception as e:
         logger.exception("analyze_proposal failed for %s: %s", proposal_id, e)
         governance_ai_db.save_failure(proposal_id, f"{type(e).__name__}: {e}")
         return False
 
+    # 補足ファクト（NCL 上限内チェック等。AI ではなく機械計算で確実に出せる数値情報）
+    try:
+        supplemental = governance_ai_db.compute_supplemental_facts(proposal)
+    except Exception as e:
+        logger.warning("compute_supplemental_facts failed for %s: %s", proposal_id, e)
+        supplemental = []
+
+    # AI が抽出した facts に補足ファクトを末尾に追加する
+    if supplemental:
+        ai_facts = result.payload.get("proposal_facts") or []
+        if not isinstance(ai_facts, list):
+            ai_facts = []
+        result.payload["proposal_facts"] = ai_facts + supplemental
+
     try:
         governance_ai_db.save_result(
             proposal_id,
             result.payload,
+            None,  # rule_checks は撤去（補足ファクトに統合済み）
             constitution_meta_url=meta_url,
             model_id=result.model_id,
             tokens_input=result.tokens_input,

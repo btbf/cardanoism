@@ -128,6 +128,7 @@ def reclaim_stale(now: datetime | None = None) -> int:
 def save_result(
     proposal_id: str,
     payload: dict[str, Any],
+    rule_checks: list[dict[str, Any]] | None,
     *,
     constitution_meta_url: str | None,
     model_id: str,
@@ -135,19 +136,17 @@ def save_result(
     tokens_output: int,
     cost_usd: float,
 ) -> None:
-    """analyze_proposal 成功時の結果を analyzed として書き込む。"""
-    constitution = payload.get("constitution", {}) or {}
-    pillars = payload.get("pillars", []) or []
-    related = payload.get("related_kpis", []) or []
-    articles = constitution.get("articles", []) or []
-    concerns_ja = constitution.get("concerns_ja", []) or []
-    concerns_en = constitution.get("concerns_en", []) or []
-
-    score_raw = constitution.get("score")
-    try:
-        score = max(0, min(100, int(score_raw))) if score_raw is not None else None
-    except (TypeError, ValueError):
-        score = None
+    """analyze_proposal 成功時の結果を analyzed として書き込む。
+    新スキーマ:
+      - constitution_summary_ja/en に proposal_summary を流用
+      - articles_json に AI が抽出した関連条文（スコア無し、引用と理由のみ）
+      - proposal_facts_json に AI 抽出のファクト
+      - rule_checks_json に Python 側で計算したルールチェック結果
+    """
+    summary_ja = str(payload.get("proposal_summary_ja") or "")
+    summary_en = str(payload.get("proposal_summary_en") or "")
+    facts = payload.get("proposal_facts") or []
+    articles = payload.get("articles") or []
 
     with get_db() as (cursor, conn):
         cursor.execute(
@@ -156,16 +155,11 @@ def save_result(
             SET status = 'analyzed',
                 completed_at = NOW(),
                 last_error = NULL,
-                constitution_score      = ?,
-                constitution_verdict_ja = ?,
-                constitution_verdict_en = ?,
                 constitution_summary_ja = ?,
                 constitution_summary_en = ?,
-                articles_json    = ?,
-                concerns_ja_json = ?,
-                concerns_en_json = ?,
-                pillars_json     = ?,
-                related_kpis_json = ?,
+                articles_json       = ?,
+                proposal_facts_json = ?,
+                rule_checks_json    = ?,
                 model_id              = ?,
                 constitution_meta_url = ?,
                 tokens_input  = ?,
@@ -174,16 +168,11 @@ def save_result(
             WHERE proposal_id = ?
             """,
             (
-                score,
-                (constitution.get("verdict_ja") or "")[:64],
-                (constitution.get("verdict_en") or "")[:64],
-                constitution.get("summary_ja") or "",
-                constitution.get("summary_en") or "",
+                summary_ja,
+                summary_en,
                 json.dumps(articles, ensure_ascii=False),
-                json.dumps(concerns_ja, ensure_ascii=False),
-                json.dumps(concerns_en, ensure_ascii=False),
-                json.dumps(pillars, ensure_ascii=False),
-                json.dumps(related, ensure_ascii=False),
+                json.dumps(facts, ensure_ascii=False),
+                json.dumps(rule_checks or [], ensure_ascii=False),
                 str(model_id)[:64],
                 constitution_meta_url,
                 int(tokens_input),
@@ -193,6 +182,53 @@ def save_result(
             ),
         )
         conn.commit()
+
+
+# ─── 5. ルールベースチェック（AI 不使用、決定論的） ────────────────────────────
+
+def compute_supplemental_facts(proposal: dict[str, Any]) -> list[dict[str, str]]:
+    """proposal (governance_actions row) から AI 抽出ファクトに追加する補足情報を生成。
+    AI ではなく機械計算で確実に出せる数値情報を、ファクトリストに紛れ込ませる形で渡す。
+
+    各エントリ: {"label_ja", "label_en", "value"} (proposal_facts と同じ shape)
+
+    現状サポート:
+    - TreasuryWithdrawals: 「NCL 上限内」（引き出し額が NCL 残高にどれだけ占めるか）
+    """
+    out: list[dict[str, str]] = []
+    ptype = (proposal.get("proposal_type") or "").strip()
+
+    if ptype == "TreasuryWithdrawals":
+        try:
+            from cardanoism.backend.treasury_db import get_active_ncl
+            ncl = get_active_ncl()
+        except Exception as e:
+            logger.warning("get_active_ncl failed: %s", e)
+            ncl = None
+
+        wd = proposal.get("withdrawal_total_lovelace") or 0
+        if ncl and wd:
+            try:
+                wd_int = int(wd)
+                limit_ada = int(ncl.get("limit_ada") or 0)
+                limit_lovelace = limit_ada * 1_000_000
+                wd_ada = wd_int // 1_000_000
+                ratio = (wd_int / limit_lovelace * 100.0) if limit_lovelace > 0 else 0.0
+                indicator = "✓" if wd_int <= limit_lovelace else "✗"
+                value_num = f"{indicator}  {wd_ada:,} / {limit_ada:,} ADA  ({ratio:.2f}%)"
+                # 数値部分は両言語共通、ステータス語のみ JA/EN で出し分け
+                status_ja = "上限内" if wd_int <= limit_lovelace else "上限超過"
+                status_en = "Within limit" if wd_int <= limit_lovelace else "OVER LIMIT"
+                out.append({
+                    "label_ja": "NCL 上限内チェック",
+                    "label_en": "NCL Limit Check",
+                    "value_ja": f"{status_ja} — {wd_ada:,} / {limit_ada:,} ADA ({ratio:.2f}%)",
+                    "value_en": f"{status_en} — {wd_ada:,} / {limit_ada:,} ADA ({ratio:.2f}%)",
+                })
+            except (TypeError, ValueError):
+                pass
+
+    return out
 
 
 def save_failure(proposal_id: str, error_message: str) -> None:
@@ -227,8 +263,14 @@ def get_analysis(proposal_id: str) -> dict[str, Any] | None:
         return None
 
     result = dict(row)
-    for key in ("articles_json", "concerns_ja_json", "concerns_en_json",
-                "pillars_json", "related_kpis_json"):
+    # 新スキーマ + 旧スキーマ互換のため、存在する JSON カラム全てをパース
+    for key in (
+        "articles_json", "proposal_facts_json", "rule_checks_json",
+        # 旧スキーマ（migration 021 適用前 / 古い行）
+        "concerns_ja_json", "concerns_en_json", "pillars_json", "related_kpis_json",
+    ):
+        if key not in result:
+            continue
         raw = result.get(key)
         if raw:
             try:
