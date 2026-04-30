@@ -236,6 +236,15 @@ UI_JA: dict[str, str] = {
     # ステーキングページ
     "staking_subnav_dashboard":    "ダッシュボード",
     "staking_subnav_spo":          "SPO一覧",
+    # ── /staking ダッシュボード: 委任セクション ──
+    "staking_my_delegations_title":          "あなたの委任先",
+    "staking_my_delegations_manage":         "管理",
+    "staking_my_delegations_empty":          "ステークアドレスが未登録です。マイページで登録すると委任先がここに表示されます。",
+    "staking_my_delegations_add":            "ステークアドレスを登録",
+    "staking_my_delegations_login_required": "ログインすると登録済みステークアドレスの委任先が表示されます。",
+    "staking_delegation_pool_label":         "委任先プール",
+    "staking_delegation_drep_label":         "委任先 DRep",
+    "staking_delegation_unset":              "未委任",
     "staking_stat_total_stake":    "総ライブステーク",
     "staking_stat_active_pools":   "アクティブプール",
     "staking_stat_total_pools_label": "登録総数",
@@ -654,6 +663,15 @@ UI_EN: dict[str, str] = {
     # Staking page
     "staking_subnav_dashboard":    "Dashboard",
     "staking_subnav_spo":          "SPO List",
+    # ── /staking dashboard: delegation section ──
+    "staking_my_delegations_title":          "Your Delegations",
+    "staking_my_delegations_manage":         "Manage",
+    "staking_my_delegations_empty":          "No stake addresses registered. Add them on My Page to see delegations here.",
+    "staking_my_delegations_add":            "Add stake address",
+    "staking_my_delegations_login_required": "Log in to see delegations of your registered stake addresses.",
+    "staking_delegation_pool_label":         "Pool",
+    "staking_delegation_drep_label":         "DRep",
+    "staking_delegation_unset":              "Not delegated",
     "staking_stat_total_stake":    "Total Live Stake",
     "staking_stat_active_pools":   "Active Pools",
     "staking_stat_total_pools_label": "Registered",

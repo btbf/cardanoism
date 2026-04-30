@@ -69,6 +69,10 @@ class StakingDashboardState(rx.State):
     # Mempool キューブの connector 方向（常にブロック数で決まる）
     mempool_connector: str = ""
 
+    # 委任先プールカード（ログインユーザーの stake_addresses から構築）
+    # 各 entry: format_pool_card_data の戻り値 + nickname / address フィールド
+    user_delegated_pools: list[dict[str, str]] = []
+
     # ヒートマップ: アクティブプール全件をブロック生成数で色分け（重い集計なので on_load のみ実行）
     heatmap_pools: list[dict[str, str]] = []
     heatmap_count_green:  int = 0
@@ -84,7 +88,8 @@ class StakingDashboardState(rx.State):
     mempool_fullness_bar: str = "0.0"
     mempool_updated_label: str = ""
 
-    def _fetch(self):
+    def _fetch_summary(self):
+        """ネットワーク集計とサチュレーション関連を取得する（軽い処理）。"""
         try:
             rate = get_fiat_rate() or {}
             ada_jpy = float(rate.get("ada_jpy") or 0)
@@ -104,7 +109,6 @@ class StakingDashboardState(rx.State):
             except Exception as e:
                 logger.warning("get_totals failed: %s", e)
 
-            # saturated_pools のしきい値は飽和点の 80% を採用（ソフトキャップ取得に失敗したら 0）
             saturated_threshold = int(saturation_lovelace * 0.8) if saturation_lovelace else None
             summary = get_network_summary(saturated_threshold_lovelace=saturated_threshold)
             self.total_pools = int(summary.get("total_pools") or 0)
@@ -118,12 +122,17 @@ class StakingDashboardState(rx.State):
             self.total_live_stake_ada_display = format_ada(total_lovelace, integer=True) if total_lovelace else "0"
             self.total_live_stake_jpy = format_jpy_short(ada * ada_jpy) if ada_jpy else ""
             self.total_live_stake_usd = format_usd_short(ada * ada_usd) if ada_usd else ""
+        except Exception as e:
+            logger.exception("StakingDashboardState._fetch_summary: %s", e)
+            self.error = str(e)
 
+    def _fetch_blocks_data(self):
+        """ライブブロック + ヒートマップ用データを取得する（重い処理 / blocks ページ専用）。"""
+        try:
             self._fetch_live_blocks()
             self._fetch_heatmap()
         except Exception as e:
-            logger.exception("StakingDashboardState._fetch: %s", e)
-            self.error = str(e)
+            logger.exception("StakingDashboardState._fetch_blocks_data: %s", e)
 
     def _fetch_heatmap(self):
         """全アクティブプールの直近5エポック合計ブロック数を集計し、色分けする。
@@ -271,11 +280,94 @@ class StakingDashboardState(rx.State):
         if new_max > prev_max:
             self.latest_known_height = new_max
 
-    def on_load(self):
+    async def on_load_dashboard(self):
+        """/staking 用: 集計 + 委任先プールカード + ブロック / ヒートマップ を一括取得。"""
         self.load = False
         self.error = ""
-        self._fetch()
+        self._fetch_summary()
+        # AuthState から user_id / stake_addresses を取得して委任先プール情報を組み立て
+        auth = await self.get_state(AuthState)
+        if auth.is_logged_in:
+            try:
+                from cardanoism.backend.auth_db import get_stake_addresses
+                addresses = get_stake_addresses(auth.user_id)
+            except Exception as e:
+                logger.warning("get_stake_addresses failed: %s", e)
+                addresses = []
+            self._fetch_user_delegated_pools(addresses)
+        else:
+            self.user_delegated_pools = []
+        self._fetch_blocks_data()
         self.load = True
+
+    def _fetch_user_delegated_pools(self, addresses: list[dict]) -> None:
+        """ユーザーの stake_addresses から委任先プールを fetch して SPO カード形式に整形する。"""
+        from cardanoism.backend.pool_db import get_pool
+        from cardanoism.pages.staking_spo import format_pool_card_data
+
+        out: list[dict[str, str]] = []
+        for idx, addr in enumerate(addresses, start=1):
+            pool_id = str(addr.get("delegated_pool_id") or "").strip()
+            nickname = str(addr.get("nickname") or "")
+            address = str(addr.get("address") or "")
+            entry: dict[str, str]
+            if pool_id:
+                try:
+                    row = get_pool(pool_id)
+                except Exception as e:
+                    logger.warning("get_pool(%s) failed: %s", pool_id, e)
+                    row = None
+                if row:
+                    entry = format_pool_card_data(
+                        row,
+                        saturation_point_lovelace=self.saturation_point_lovelace,
+                        rank=idx,
+                    )
+                else:
+                    # DB に該当プールが見つからない（pool_sync 待ち / ティッカーだけ知ってる）
+                    entry = {
+                        "rank": str(idx),
+                        "pool_id": pool_id,
+                        "pool_id_short": (pool_id[:10] + "..." + pool_id[-8:]) if len(pool_id) > 22 else pool_id,
+                        "ticker": "",
+                        "pool_name": str(addr.get("delegated_pool_name") or ""),
+                        "icon_url": "",
+                        "homepage": "",
+                        "about": "",
+                        "twitter_url": "", "telegram_url": "", "youtube_url": "", "github_url": "",
+                        "stake_ada": "0", "pledge_ada": "0",
+                        "stake_ada_ja": "0", "stake_ada_en": "0",
+                        "pledge_ada_ja": "0", "pledge_ada_en": "0",
+                        "fixed_cost_ada": "0", "margin_pct": "0.00",
+                        "saturation_pct": "0.0", "saturation_bar": "0.0",
+                        "is_saturated": "",
+                        "delegators": "0", "block_count": "0",
+                        "status": "", "is_retiring": "", "retiring_epoch": "",
+                        "relay_state": "unknown", "history_total": "0",
+                    }
+            else:
+                entry = {
+                    "rank": str(idx),
+                    "pool_id": "", "pool_id_short": "",
+                    "ticker": "", "pool_name": "", "icon_url": "",
+                    "homepage": "", "about": "",
+                    "twitter_url": "", "telegram_url": "", "youtube_url": "", "github_url": "",
+                    "stake_ada": "0", "pledge_ada": "0",
+                    "stake_ada_ja": "0", "stake_ada_en": "0",
+                    "pledge_ada_ja": "0", "pledge_ada_en": "0",
+                    "fixed_cost_ada": "0", "margin_pct": "0.00",
+                    "saturation_pct": "0.0", "saturation_bar": "0.0",
+                    "is_saturated": "",
+                    "delegators": "0", "block_count": "0",
+                    "status": "", "is_retiring": "", "retiring_epoch": "",
+                    "relay_state": "unknown", "history_total": "0",
+                }
+            entry["nickname"] = nickname
+            entry["address"] = address
+            entry["has_pool"] = "1" if pool_id else ""
+            out.append(entry)
+        self.user_delegated_pools = out
+
 
     @rx.event(background=True)
     async def start_live_polling(self):
@@ -361,44 +453,6 @@ def _stat_card(icon: str, label, value, sub=None, accent: str = "var(--amber-9)"
         border_radius="10px",
         border=f"1px solid {rx.color('gray', 4)}",
         background="var(--gray-2)",
-        width="100%",
-    )
-
-
-def _hero_stats() -> rx.Component:
-    fiat_sub = rx.cond(
-        AuthState.language == "en",
-        rx.cond(
-            StakingDashboardState.total_live_stake_usd != "",
-            rx.hstack(rx.text("≈", size="1"), rx.text(StakingDashboardState.total_live_stake_usd, size="1"), spacing="1"),
-            rx.fragment(),
-        ),
-        rx.cond(
-            StakingDashboardState.total_live_stake_jpy != "",
-            rx.hstack(rx.text("≈", size="1"), rx.text(StakingDashboardState.total_live_stake_jpy, size="1"), spacing="1"),
-            rx.fragment(),
-        ),
-    )
-    return rx.grid(
-        _stat_card(
-            "coins",
-            AuthState.t["staking_stat_total_stake"],
-            rx.hstack(
-                rx.text(StakingDashboardState.total_live_stake_ada_display, size="5", weight="bold", color="var(--gray-12)"),
-                rx.text("ADA", size="1", color="var(--gray-10)", margin_left="4px"),
-                spacing="0", align="baseline",
-            ),
-            sub=fiat_sub,
-            accent="var(--amber-9)",
-        ),
-        _stat_card(
-            "server",
-            AuthState.t["staking_stat_active_pools"],
-            StakingDashboardState.active_pools.to_string(),
-            accent="var(--blue-9)",
-        ),
-        columns={"base": "1", "sm": "2"},
-        spacing="2",
         width="100%",
     )
 
@@ -1102,10 +1156,163 @@ def _heatmap_section() -> rx.Component:
 # ─── ページ ────────────────────────────────────────────────────────────────────
 
 
+def _user_delegation_card(p) -> rx.Component:
+    """1 件のステークアドレスとその委任先プールカードを上下に並べて表示する。
+    プールカードは SPO 一覧と同じ意匠（_pool_card）を再利用。
+    """
+    from cardanoism.pages.staking_spo import _pool_card
+
+    address_label = rx.hstack(
+        rx.icon("wallet", size=14, color="var(--amber-11)"),
+        rx.text(p["nickname"], size="2", weight="bold", color="var(--gray-12)"),
+        rx.text(
+            p["address"],
+            size="1", color="var(--gray-9)",
+            style={
+                "fontFamily": "var(--code-font-family, ui-monospace, monospace)",
+                "whiteSpace": "nowrap",
+                "overflow": "hidden",
+                "textOverflow": "ellipsis",
+                "maxWidth": "320px",
+            },
+        ),
+        spacing="2", align="center", wrap="wrap", width="100%",
+    )
+
+    body = rx.cond(
+        p["has_pool"] != "",
+        _pool_card(p),
+        rx.box(
+            rx.hstack(
+                rx.icon("info", size=14, color="var(--gray-9)"),
+                rx.text(
+                    AuthState.t["staking_delegation_unset"],
+                    size="2", color="var(--gray-10)",
+                ),
+                spacing="2", align="center",
+            ),
+            padding="14px 18px",
+            border=f"1px dashed {rx.color('gray', 5)}",
+            border_radius="10px",
+            background="var(--gray-2)",
+            width="100%",
+        ),
+    )
+
+    return rx.vstack(
+        address_label,
+        body,
+        spacing="2", align="stretch", width="100%",
+    )
+
+
+def _user_delegation_section() -> rx.Component:
+    """ログインユーザーのステークアドレスとその委任先を表示する。
+    未ログイン: ログイン CTA
+    アドレス未登録: 登録への導線
+    """
+    head = rx.hstack(
+        rx.icon("wallet", size=16, color="var(--amber-11)"),
+        rx.text(
+            AuthState.t["staking_my_delegations_title"],
+            size="3", weight="bold", color="var(--gray-12)",
+        ),
+        rx.spacer(),
+        rx.cond(
+            AuthState.is_logged_in,
+            rx.link(
+                rx.button(
+                    rx.icon("settings", size=14),
+                    rx.text(AuthState.t["staking_my_delegations_manage"], size="1"),
+                    variant="soft",
+                    color_scheme="amber",
+                    size="1",
+                    cursor="pointer",
+                ),
+                href="/mypage?tab=stake",
+                underline="none",
+            ),
+            rx.fragment(),
+        ),
+        spacing="2", align="center", width="100%",
+    )
+
+    logged_out_body = rx.vstack(
+        rx.icon("lock", size=22, color="var(--gray-9)"),
+        rx.text(
+            AuthState.t["staking_my_delegations_login_required"],
+            size="2", color="var(--gray-10)", text_align="center",
+        ),
+        rx.button(
+            rx.icon("log-in", size=14),
+            rx.text(AuthState.t["ga_ai_login_required_btn"], size="2"),
+            color_scheme="amber",
+            cursor="pointer",
+            on_click=AuthState.open_login_modal,
+        ),
+        spacing="2",
+        align="center",
+        padding="20px",
+    )
+
+    empty_body = rx.vstack(
+        rx.icon("wallet-minimal", size=22, color="var(--gray-9)"),
+        rx.text(
+            AuthState.t["staking_my_delegations_empty"],
+            size="2", color="var(--gray-10)", text_align="center",
+        ),
+        rx.link(
+            rx.button(
+                rx.icon("plus", size=14),
+                rx.text(AuthState.t["staking_my_delegations_add"], size="2"),
+                color_scheme="amber",
+                cursor="pointer",
+            ),
+            href="/mypage?tab=stake",
+            underline="none",
+        ),
+        spacing="2",
+        align="center",
+        padding="20px",
+    )
+
+    list_body = rx.vstack(
+        rx.foreach(StakingDashboardState.user_delegated_pools, _user_delegation_card),
+        spacing="4",
+        width="100%",
+        align="stretch",
+    )
+
+    body = rx.cond(
+        AuthState.is_logged_in,
+        rx.cond(
+            StakingDashboardState.user_delegated_pools.length() == 0,
+            empty_body,
+            list_body,
+        ),
+        logged_out_body,
+    )
+
+    return rx.box(
+        rx.vstack(
+            head,
+            body,
+            spacing="3",
+            width="100%",
+            align="stretch",
+        ),
+        padding="16px 20px",
+        border=f"1px solid {rx.color('gray', 4)}",
+        border_radius="12px",
+        background="var(--gray-1)",
+        width="100%",
+    )
+
+
 @template(
     route="/staking",
     title="ステーキング | Cardanoism",
-    on_load=StakingDashboardState.on_load,
+    on_load=StakingDashboardState.on_load_dashboard,
 )
 def staking_page() -> rx.Component:
     return rx.cond(
@@ -1115,8 +1322,8 @@ def staking_page() -> rx.Component:
             rx.vstack(
                 _breadcrumb(),
                 staking_subnav("dashboard"),
-                _hero_stats(),
                 _saturation_info_card(),
+                _user_delegation_section(),
                 _live_blocks_section(),
                 _heatmap_section(),
                 spacing="4",

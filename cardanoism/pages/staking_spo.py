@@ -54,6 +54,101 @@ ITEMS_PER_PAGE = 30
 # ─── State ────────────────────────────────────────────────────────────────────
 
 
+def format_pool_card_data(
+    r: dict,
+    *,
+    saturation_point_lovelace: int = 0,
+    rank: int = 0,
+) -> dict[str, str]:
+    """pools テーブルの 1 レコードを SPO カード描画用の文字列 dict に整形する。
+    /staking/spo の SPO 一覧と /staking ダッシュボードの委任先カードで共有する。
+    """
+    pool_id = str(r.get("pool_id_bech32") or "")
+    if len(pool_id) > 22:
+        pool_id_short = f"{pool_id[:10]}...{pool_id[-8:]}"
+    else:
+        pool_id_short = pool_id
+
+    live_stake = int(r.get("live_stake") or 0)
+    pledge = int(r.get("live_pledge") or 0)
+    fixed_cost = int(r.get("fixed_cost") or 0)
+    stake_ada_int = live_stake // 1_000_000
+    pledge_ada_int = pledge // 1_000_000
+    margin_raw = r.get("margin")
+    margin_pct = float(margin_raw) * 100.0 if margin_raw is not None else 0.0
+
+    if saturation_point_lovelace > 0 and live_stake > 0:
+        sat_pct = live_stake / saturation_point_lovelace * 100.0
+    else:
+        sat_pct = 0.0
+    sat_bar = max(0.0, min(100.0, sat_pct))
+
+    status = str(r.get("pool_status") or "")
+    retiring_epoch = r.get("retiring_epoch")
+    relay_alive_raw = r.get("relay_alive")
+    if relay_alive_raw is None:
+        relay_state = "unknown"
+    elif int(relay_alive_raw) == 1:
+        relay_state = "alive"
+    else:
+        relay_state = "dead"
+
+    history_raw = r.get("block_history_5ep")
+    history_counts: list[int] = []
+    if history_raw:
+        try:
+            parsed = json.loads(history_raw) if isinstance(history_raw, str) else history_raw
+            if isinstance(parsed, list):
+                history_counts = [int(x) for x in parsed[:5]]
+        except (TypeError, ValueError, json.JSONDecodeError):
+            history_counts = []
+    while len(history_counts) < 5:
+        history_counts.append(0)
+    history_total = sum(history_counts)
+
+    tw = str(r.get("twitter_handle") or "").strip()
+    tg = str(r.get("telegram_handle") or "").strip()
+    yt = str(r.get("youtube_handle") or "").strip()
+    gh = str(r.get("github_handle") or "").strip()
+    twitter_url  = tw  if tw.startswith(("http://", "https://"))  else (f"https://twitter.com/{tw}"   if tw else "")
+    telegram_url = tg  if tg.startswith(("http://", "https://"))  else (f"https://t.me/{tg}"          if tg else "")
+    youtube_url  = yt  if yt.startswith(("http://", "https://"))  else (f"https://youtube.com/{yt}"   if yt else "")
+    github_url   = gh  if gh.startswith(("http://", "https://"))  else (f"https://github.com/{gh}"    if gh else "")
+
+    return {
+        "rank":            str(rank),
+        "pool_id":         pool_id,
+        "pool_id_short":   pool_id_short,
+        "ticker":          str(r.get("ticker") or ""),
+        "pool_name":       str(r.get("pool_name") or ""),
+        "icon_url":        str(r.get("pool_icon_url") or ""),
+        "homepage":        str(r.get("homepage") or ""),
+        "about":           str(r.get("extended_about") or "")[:280],
+        "twitter_url":     twitter_url,
+        "telegram_url":    telegram_url,
+        "youtube_url":     youtube_url,
+        "github_url":      github_url,
+        "stake_ada":       format_ada(live_stake, integer=True) if live_stake else "0",
+        "pledge_ada":      format_ada(pledge, integer=True) if pledge else "0",
+        "stake_ada_ja":    format_ada_short_ja(stake_ada_int),
+        "stake_ada_en":    format_ada_short_en(stake_ada_int),
+        "pledge_ada_ja":   format_ada_short_ja(pledge_ada_int),
+        "pledge_ada_en":   format_ada_short_en(pledge_ada_int),
+        "fixed_cost_ada":  format_ada(fixed_cost, integer=True) if fixed_cost else "0",
+        "margin_pct":      f"{margin_pct:.2f}",
+        "saturation_pct":  f"{sat_pct:.1f}",
+        "saturation_bar":  f"{sat_bar:.1f}",
+        "is_saturated":    "1" if sat_pct >= 100.0 else ("warn" if sat_pct >= 80.0 else ""),
+        "delegators":      str(int(r.get("live_delegators") or 0)),
+        "block_count":     str(int(r.get("block_count") or 0)),
+        "status":          status,
+        "is_retiring":     "1" if status == "retiring" else "",
+        "retiring_epoch":  str(retiring_epoch) if retiring_epoch is not None else "",
+        "relay_state":     relay_state,
+        "history_total":   str(history_total),
+    }
+
+
 class StakingSPOState(rx.State):
     load: bool = False
     error: str = ""
@@ -91,98 +186,11 @@ class StakingSPOState(rx.State):
 
             out: list[dict[str, str]] = []
             for idx, r in enumerate(rows):
-                pool_id = str(r.get("pool_id_bech32") or "")
-                # スマホ用の短縮表示（先頭 10 + ... + 末尾 8）
-                if len(pool_id) > 22:
-                    pool_id_short = f"{pool_id[:10]}...{pool_id[-8:]}"
-                else:
-                    pool_id_short = pool_id
-
-                live_stake = int(r.get("live_stake") or 0)
-                pledge = int(r.get("live_pledge") or 0)
-                fixed_cost = int(r.get("fixed_cost") or 0)
-                stake_ada_int = live_stake // 1_000_000
-                pledge_ada_int = pledge // 1_000_000
-                margin_raw = r.get("margin")
-                margin_pct = float(margin_raw) * 100.0 if margin_raw is not None else 0.0
-
-                # 自前計算: pool_stake / (ソフトキャップ / 500) × 100
-                if self.saturation_point_lovelace > 0 and live_stake > 0:
-                    sat_pct = live_stake / self.saturation_point_lovelace * 100.0
-                else:
-                    sat_pct = 0.0
-                sat_bar = max(0.0, min(100.0, sat_pct))
-
-                status = str(r.get("pool_status") or "")
-                retiring_epoch = r.get("retiring_epoch")
-                # relay_alive は 0/1/None。None = 未確認、1 = 全リレー疎通OK、0 = 1つでもNG
-                relay_alive_raw = r.get("relay_alive")
-                if relay_alive_raw is None:
-                    relay_state = "unknown"
-                elif int(relay_alive_raw) == 1:
-                    relay_state = "alive"
-                else:
-                    relay_state = "dead"
-
-                # 直近5エポックのブロック履歴 (JSON 配列)
-                history_raw = r.get("block_history_5ep")
-                history_counts: list[int] = []
-                if history_raw:
-                    try:
-                        parsed = json.loads(history_raw) if isinstance(history_raw, str) else history_raw
-                        if isinstance(parsed, list):
-                            history_counts = [int(x) for x in parsed[:5]]
-                    except (TypeError, ValueError, json.JSONDecodeError):
-                        history_counts = []
-                while len(history_counts) < 5:
-                    history_counts.append(0)
-                history_total = sum(history_counts)
-
-                # ソーシャルハンドルから外部リンク URL を組み立てる（既に URL ならそのまま）
-                tw = str(r.get("twitter_handle") or "").strip()
-                tg = str(r.get("telegram_handle") or "").strip()
-                yt = str(r.get("youtube_handle") or "").strip()
-                gh = str(r.get("github_handle") or "").strip()
-                twitter_url  = tw  if tw.startswith(("http://", "https://"))  else (f"https://twitter.com/{tw}"   if tw else "")
-                telegram_url = tg  if tg.startswith(("http://", "https://"))  else (f"https://t.me/{tg}"          if tg else "")
-                youtube_url  = yt  if yt.startswith(("http://", "https://"))  else (f"https://youtube.com/{yt}"   if yt else "")
-                github_url   = gh  if gh.startswith(("http://", "https://"))  else (f"https://github.com/{gh}"    if gh else "")
-
-                out.append({
-                    "rank":            str(offset + idx + 1),
-                    "pool_id":         pool_id,
-                    "pool_id_short":   pool_id_short,
-                    "ticker":          str(r.get("ticker") or ""),
-                    "pool_name":       str(r.get("pool_name") or ""),
-                    "icon_url":        str(r.get("pool_icon_url") or ""),
-                    "homepage":        str(r.get("homepage") or ""),
-                    "about":           str(r.get("extended_about") or "")[:280],
-                    "twitter_url":     twitter_url,
-                    "telegram_url":    telegram_url,
-                    "youtube_url":     youtube_url,
-                    "github_url":      github_url,
-                    # フル表記（カンマ区切り、ツールチップ用）
-                    "stake_ada":       format_ada(live_stake, integer=True) if live_stake else "0",
-                    "pledge_ada":      format_ada(pledge, integer=True) if pledge else "0",
-                    # 短縮表記 (JA: 万/億 / EN: K/M/B)
-                    "stake_ada_ja":    format_ada_short_ja(stake_ada_int),
-                    "stake_ada_en":    format_ada_short_en(stake_ada_int),
-                    "pledge_ada_ja":   format_ada_short_ja(pledge_ada_int),
-                    "pledge_ada_en":   format_ada_short_en(pledge_ada_int),
-                    "fixed_cost_ada":  format_ada(fixed_cost, integer=True) if fixed_cost else "0",
-                    "margin_pct":      f"{margin_pct:.2f}",
-                    "saturation_pct":  f"{sat_pct:.1f}",
-                    "saturation_bar":  f"{sat_bar:.1f}",
-                    "is_saturated":    "1" if sat_pct >= 100.0 else ("warn" if sat_pct >= 80.0 else ""),
-                    "delegators":      str(int(r.get("live_delegators") or 0)),
-                    "block_count":     str(int(r.get("block_count") or 0)),
-                    "status":          status,
-                    "is_retiring":     "1" if status == "retiring" else "",
-                    "retiring_epoch":  str(retiring_epoch) if retiring_epoch is not None else "",
-                    "relay_state":     relay_state,
-                    # 直近5エポックのブロック生成数 (合計)
-                    "history_total":   str(history_total),
-                })
+                out.append(format_pool_card_data(
+                    r,
+                    saturation_point_lovelace=self.saturation_point_lovelace,
+                    rank=offset + idx + 1,
+                ))
             self.pools = out
             self.total_items = total
             self.total_pages = max(1, (total + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
