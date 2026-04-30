@@ -240,6 +240,74 @@ def get_analysis(proposal_id: str) -> dict[str, Any] | None:
     return result
 
 
+def requeue(proposal_id: str) -> bool:
+    """1 件の analysis を pending に戻して再分析対象にする（status 不問）。
+    行が存在しなければ INSERT IGNORE で新規作成する。
+    Returns: 行を pending に戻した（or 新規作成した）なら True。
+    """
+    with get_db() as (cursor, conn):
+        # 行が無ければ作る
+        cursor.execute(
+            "INSERT IGNORE INTO governance_ai_analysis (proposal_id, status) VALUES (?, 'pending')",
+            (str(proposal_id),),
+        )
+        inserted = cursor.rowcount or 0
+        # 既存行を pending に戻す（INSERT IGNORE が効かなかった場合）
+        cursor.execute(
+            """
+            UPDATE governance_ai_analysis
+            SET status = 'pending',
+                worker_id = NULL,
+                started_at = NULL,
+                completed_at = NULL,
+                last_error = NULL
+            WHERE proposal_id = ?
+            """,
+            (str(proposal_id),),
+        )
+        updated = cursor.rowcount or 0
+        conn.commit()
+    return (inserted > 0) or (updated > 0)
+
+
+def requeue_all(*, only_analyzed: bool = True, active_only: bool = True) -> int:
+    """analyzed 行を pending に戻す（status 不問なら only_analyzed=False）。
+
+    active_only=True (デフォルト) の場合、governance_actions と JOIN し、
+    Active な提案 (ratified/enacted/dropped/expired すべて NULL) だけに絞る。
+    既に決着済みの古い GA を再分析するのは無駄なので、通常はこの動作を使う。
+
+    分析中（analyzing）の行は active_only=False でも触らない（only_analyzed=False
+    と組み合わせた場合のみ全 status を初期化）。
+
+    Returns: 影響を受けた件数。
+    """
+    status_clause = "aia.status = 'analyzed'" if only_analyzed else "1=1"
+    active_clause = (
+        "ga.ratified_epoch IS NULL "
+        "AND ga.enacted_epoch IS NULL "
+        "AND ga.dropped_epoch IS NULL "
+        "AND ga.expired_epoch IS NULL"
+        if active_only else "1=1"
+    )
+    sql = f"""
+        UPDATE governance_ai_analysis aia
+        JOIN governance_actions ga ON ga.proposal_id = aia.proposal_id
+        SET aia.status = 'pending',
+            aia.worker_id = NULL,
+            aia.started_at = NULL,
+            aia.completed_at = NULL,
+            aia.last_error = NULL
+        WHERE {status_clause}
+          AND ({active_clause})
+    """
+    with get_db() as (cursor, conn):
+        cursor.execute(sql)
+        affected = cursor.rowcount or 0
+        conn.commit()
+    return int(affected)
+
+
 def list_pending_count() -> int:
     """現在 pending / analyzing 状態にある分析件数（UI のキュー表示用）。"""
     with get_db() as (cursor, _):

@@ -164,7 +164,20 @@ cron で定期実行する独立スクリプト。計算値・履歴値・キャ
 
 セットアップ詳細: [`docs/koios-polling-backend.md`](docs/koios-polling-backend.md)
 
-### 3-3. 共通実装
+### 3-3. GA AI 分析（`ga_ai_worker.py`）
+
+OpenAI gpt-5.4-mini で GA を分析する常駐ワーカー。憲法準拠スコア + VISION 2030 5 pillar 評価 + 関連 KPI（10 個から 1〜3 個ピック）を JSON 出力し `governance_ai_analysis` に保存。
+
+**自動 trigger**: `governance.py` の Koios sync が新規 GA を `governance_actions` に INSERT したタイミングで `bulk_enqueue` → ワーカーが pending を拾って処理。
+
+**CLI コマンド**:
+- `python notify_worker.py --event ga_ai_initial_sync` — 初回投入（Active / Ratified / Enacted / 直近 6 エポック）
+- `python notify_worker.py --event ga_ai_reanalyze --proposal-id <id>` — 単一 GA を再分析（status 不問）
+- `python notify_worker.py --event ga_ai_reanalyze --all` — Active な analyzed 全件を再分析
+
+セットアップ詳細: [`docs/ga-ai-analysis-backend.md`](docs/ga-ai-analysis-backend.md)
+
+### 3-4. 共通実装
 
 - 状態管理: `notification_check_state` テーブル
 - 重複送信防止: `notification_log` テーブル（`dedup_key` で判定）

@@ -2222,6 +2222,39 @@ def check_ga_ai_initial_sync() -> None:
     logger.info("=== GA AI 分析 初回同期バッチ 完了 ===")
 
 
+def check_ga_ai_reanalyze(proposal_id: str | None = None, all_flag: bool = False) -> None:
+    """既に analyzed の GA を pending に戻して再分析対象にする。
+
+    Args:
+        proposal_id: 単一 GA を対象に再分析する場合に指定。
+        all_flag:    True なら status='analyzed' の全行を再分析対象にする。
+
+    どちらも指定しなかった / 両方指定した場合は何もしない。
+    """
+    if proposal_id and all_flag:
+        logger.error("--proposal-id と --all は同時指定できません")
+        return
+    if not proposal_id and not all_flag:
+        logger.error("--proposal-id <id> または --all のどちらかを指定してください")
+        return
+
+    from cardanoism.backend.governance_ai_db import requeue, requeue_all
+
+    if proposal_id:
+        logger.info("=== GA AI 再分析: %s ===", proposal_id)
+        ok = requeue(proposal_id)
+        if ok:
+            logger.info("pending に戻しました。ga_ai_worker が次サイクルで再分析します。")
+        else:
+            logger.warning("再分析対象に変更できませんでした (proposal_id 確認してください)")
+        return
+
+    logger.info("=== GA AI 再分析: Active な analyzed 全件 ===")
+    n = requeue_all(only_analyzed=True, active_only=True)
+    logger.info("%d 件を pending に戻しました（Active な GA のみ対象）。"
+                " ga_ai_worker が順次再分析します。", n)
+
+
 # ============================================================
 # エントリポイント
 # ============================================================
@@ -2231,7 +2264,7 @@ def main():
     parser.add_argument(
         "--event",
         default="all",
-        choices=["all", "pool", "drep", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync"],
+        choices=["all", "pool", "drep", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze"],
         help="実行するイベントグループ",
     )
     parser.add_argument(
@@ -2271,6 +2304,17 @@ def main():
         type=int,
         default=100,
         help="vote_rationale_sync で OpenAI 翻訳する最大件数（0 で無制限）",
+    )
+    parser.add_argument(
+        "--proposal-id",
+        metavar="PROPOSAL_ID",
+        help="ga_ai_reanalyze で対象を 1 件に絞るときに指定する proposal_id",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="ga_ai_reanalyze で Active かつ analyzed の GA 全件を再分析対象にする"
+             "（Ratified / Enacted / Dropped / Expired は対象外）",
     )
     args = parser.parse_args()
 
@@ -2328,6 +2372,10 @@ def main():
     # （"all" には含めない: 通常は governance.py 側 enqueue で自動投入されるため）
     if args.event == "ga_ai_initial_sync":
         check_ga_ai_initial_sync()
+
+    # GA AI 再分析: --event ga_ai_reanalyze で明示指定（"all" には含めない）
+    if args.event == "ga_ai_reanalyze":
+        check_ga_ai_reanalyze(proposal_id=args.proposal_id, all_flag=args.all)
 
     logger.info("完了")
 

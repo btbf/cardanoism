@@ -154,9 +154,23 @@ Evaluate the proposal against:
    - G: Governance
    - C: Community & Ecosystem Growth
    - E: Ecosystem Sustainability & Resilience
-3. The 10 numerical KPIs defined in VISION 2030 (TVL, Monthly Tx, MAU, UpTime,
-   DRep distribution, Alt full nodes, Annual Protocol Revenue, DRep participation,
-   Throughput) - pick 1-3 most relevant and rate impact (+ / 0 / -).
+3. The 9 numerical KPIs defined in VISION 2030 (3 Core + 6 Additional Primary).
+   For "related_kpis", pick 1-3 most relevant to this proposal and rate impact
+   (+ / 0 / -). Use the exact KPI name from the list below; for "target",
+   use the exact 2030 target value shown.
+
+   Core KPIs:
+     - "Total Value Locked (TVL)" (current: $200M, target: $3B)
+     - "Monthly transactions" (current: 800k, target: ≥27M)
+     - "Monthly Active Users (MAU)" (current: 100k–300k, target: 1M)
+
+   Additional Primary core KPIs:
+     - "Monthly (6 epochs) UpTime" (current: 99.98%, target: 99.98%)
+     - "Voting Power distribution of controlling stake" (current: 35 DReps, target: >22 DReps)
+     - "Alternative full node clients" (current: 1, target: ≥2)
+     - "Annual Protocol Revenue" (current: 3.5M ada, target: ≥16M ada)
+     - "DRep participation rate" (target: >70%)
+     - "Throughput capacity per day" (current: 300k, target: 3x current)
 
 Output STRICT JSON with this exact schema (no markdown, no extra text):
 
