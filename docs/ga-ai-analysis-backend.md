@@ -1,6 +1,13 @@
 # GA AI 分析バックエンド 設定方法
 
-ガバナンスアクション（GA）に対して **OpenAI gpt-5.4-mini** で「Cardano 憲法準拠スコア」と「VISION 2030 評価」を自動生成する常駐ワーカー `ga_ai_worker.py` のセットアップと CLI コマンド。
+ガバナンスアクション（GA）の中身をユーザーが理解するのを助ける**ファクト整理ツール**。
+**OpenAI gpt-5.4-mini** を使って提案の中立的な要約とキーファクトを抽出し、
+TreasuryWithdrawals の場合は機械計算による NCL 上限内チェックを補足表示する。
+
+> **設計方針**: AI に評価 / スコアリング / 判定をさせない。AI は情報整理だけを担当し、
+> 「準拠しているか」「賛成すべきか」といった判断はユーザーに委ねる。
+> 過去には憲法準拠スコアや VISION 2030 KPI レーダーを実装していたが、
+> AI 判定のブレが大きく信頼性が低いため A 方針（ファクト整理）に転換した。
 
 ```
         cron / 自動 trigger
@@ -15,13 +22,18 @@
                   ga_ai_worker.py (常駐)
                           │
                           ├─ claim_next で atomic 取得 (status=analyzing)
-                          ├─ 憲法本文を IPFS から取得 (PDF/JSON/Markdown 自動判定)
-                          ├─ OpenAI gpt-5.4-mini で分析
+                          ├─ ai_client.analyze_proposal で AI 抽出
+                          │   - proposal_summary_ja / _en（300〜500 文字、6〜10 文）
+                          │   - proposal_facts (label_ja/en + value_ja/en の配列)
+                          ├─ compute_supplemental_facts で機械計算ファクト追加
+                          │   - TreasuryWithdrawals の NCL 上限内チェック
                           └─ save_result で結果保存 (status=analyzed)
                           ↓
               GA 詳細ページ (/governance/<id>)
                   - GovernanceState.modal_ai_* に展開
                   - pending/analyzing 中は poll_ai_status が 5 秒ごとに再ロード
+                  - ログインユーザーには委任先 DRep 投票カードも表示
+                  - 投票期限カウントダウンバッジを header に表示
 ```
 
 リアルタイムバックエンド（Ogmios）と Koios ポーリングバックエンドとは独立した第 3 のデーモン。
@@ -35,9 +47,7 @@
 | Linux ホスト | systemd で常駐 |
 | Python 3.10+ | 実行環境 |
 | MariaDB | `governance_ai_analysis` + 既存テーブル |
-| OpenAI API | gpt-5.4-mini |
-| pymupdf | 憲法 PDF をページ画像にレンダリング（Vision OCR 入力用） |
-| IPFS gateway | 憲法本文取得（複数 gateway フォールバック） |
+| OpenAI API | gpt-5.4-mini（憲法本文は読まないので Vision OCR は不要） |
 
 ---
 
@@ -58,34 +68,20 @@
 ```bash
 mysql -h $DB_HOST -u $DB_USER -p$DB_PASS $DB_NAME < cardanoism/backend/migrations/017_governance_ai_analysis.sql
 mysql -h $DB_HOST -u $DB_USER -p$DB_PASS $DB_NAME < cardanoism/backend/migrations/018_governance_actions_action_anchor.sql
+mysql -h $DB_HOST -u $DB_USER -p$DB_PASS $DB_NAME < cardanoism/backend/migrations/021_governance_ai_analysis_facts.sql
 ```
+
+021 は旧スキーマ（スコア / verdict / pillars / KPI 関連カラム）を撤去し、
+新スキーマ（`proposal_facts_json`）を追加する。
+021 適用後は既存データに互換性が無いため、`TRUNCATE TABLE governance_ai_analysis;` で初期化推奨。
 
 ### 3-2. 依存パッケージ
 
 ```bash
-pip install -r requirements.txt   # openai と pypdf を含む
+pip install -r requirements.txt   # openai を含む
 ```
 
-### 3-3. 既存 GA を sync して action_anchor_url を埋める
-
-`action_anchor_url` カラムは 018 で追加されたため、既存の GA では NULL のまま。以下を 1 度実行して全 GA を再 sync する：
-
-```bash
-python -m cardanoism.backend.governance --no-translate
-```
-
-確認：
-
-```sql
-SELECT proposal_id, enacted_epoch, action_anchor_url
-FROM governance_actions
-WHERE proposal_type='NewConstitution' AND enacted_epoch IS NOT NULL
-ORDER BY enacted_epoch DESC LIMIT 1;
-```
-
-`action_anchor_url` に IPFS URL が入っていれば成功。
-
-### 3-4. 初回バッチ
+### 3-3. 初回バッチ
 
 既存の Active / 直近 6 エポック以内の GA を一括で AI 分析キューに投入：
 
@@ -93,7 +89,7 @@ ORDER BY enacted_epoch DESC LIMIT 1;
 python notify_worker.py --event ga_ai_initial_sync
 ```
 
-### 3-5. 常駐ワーカー起動
+### 3-4. 常駐ワーカー起動
 
 ```bash
 # テスト起動（フォアグラウンド）
@@ -176,7 +172,7 @@ python notify_worker.py --event ga_ai_reanalyze --all
 
 対象は `status='analyzed' かつ Active な GA` のみ。Ratified / Enacted / Dropped / Expired は対象外（既決着分は再分析しない）。
 
-憲法改訂やプロンプト改善で評価をやり直したいときに使う。
+プロンプト改善や仕様変更で評価をやり直したいときに使う。
 
 ### 5-3. ワーカー起動
 
@@ -195,7 +191,7 @@ SIGINT / SIGTERM で graceful shutdown（drain 中のジョブを完了してか
 
 ## 6. データモデル
 
-### 6-1. `governance_ai_analysis`（migration 017）
+### 6-1. `governance_ai_analysis`（migration 017 + 021）
 
 | カラム | 型 | 説明 |
 |---|---|---|
@@ -206,21 +202,51 @@ SIGINT / SIGTERM で graceful shutdown（drain 中のジョブを完了してか
 | `completed_at` | DATETIME | analyzed/failed 遷移時刻 |
 | `attempts` | INT | 試行回数 |
 | `last_error` | TEXT | 失敗時のエラー文 |
-| `constitution_score` | TINYINT | 憲法準拠スコア (0-100) |
-| `constitution_verdict_*` | VARCHAR(64) | 短評（JA/EN） |
-| `constitution_summary_*` | TEXT | 総評（JA/EN） |
-| `articles_json` | TEXT | 条文ごとの整合性 JSON |
-| `concerns_*_json` | TEXT | 懸念点リスト JSON（JA/EN） |
-| `pillars_json` | TEXT | 5 pillar 評価 JSON |
-| `related_kpis_json` | TEXT | 関連 KPI JSON |
+| `constitution_summary_ja` | TEXT | AI 生成の提案要約（300〜500 文字 / 6〜10 文） |
+| `constitution_summary_en` | TEXT | 英語版要約 |
+| `articles_json` | TEXT | （現状未使用、将来再導入の余地として残置） |
+| `proposal_facts_json` | TEXT | AI 抽出のキーファクト + 機械計算ファクト |
+| `rule_checks_json` | TEXT | （現状未使用、proposal_facts_json に統合済み） |
 | `model_id` | VARCHAR(64) | 使用モデル ID |
-| `constitution_meta_url` | TEXT | 分析時に使った憲法 URL |
+| `constitution_meta_url` | TEXT | （現状 NULL、AI は憲法本文を読まないため） |
 | `tokens_input` / `tokens_output` | INT | トークン使用量 |
 | `cost_usd` | DECIMAL(10,6) | 概算コスト |
 
-### 6-2. `governance_actions.action_anchor_url`（migration 018）
+### 6-2. `proposal_facts_json` の中身
 
-NewConstitution 提案で、実際の憲法本文ドキュメントの URL を保存する。`meta_url`（提案メタデータ JSON）とは別物。
+```json
+[
+  {
+    "label_ja": "引き出し額",
+    "label_en": "Amount",
+    "value_ja": "50,000 ADA",
+    "value_en": "50,000 ADA"
+  },
+  {
+    "label_ja": "受取先",
+    "label_en": "Recipient",
+    "value_ja": "stake1xxx... (Cardanoism 財団)",
+    "value_en": "stake1xxx... (Cardanoism Foundation)"
+  },
+  {
+    "label_ja": "用途",
+    "label_en": "Purpose",
+    "value_ja": "教育プログラムの運営",
+    "value_en": "Operating educational programs"
+  },
+  {
+    "label_ja": "NCL 上限内チェック",
+    "label_en": "NCL Limit Check",
+    "value_ja": "上限内 — 50,000 / 350,000,000 ADA (0.01%)",
+    "value_en": "Within limit — 50,000 / 350,000,000 ADA (0.01%)"
+  }
+]
+```
+
+末尾のエントリ（NCL 上限内チェック）は `compute_supplemental_facts()` が
+追加する**機械計算ファクト**で、AI 出力ではない。
+TreasuryWithdrawals 提案で `governance_actions.withdrawal_total_lovelace` と
+`ncl_active.limit_ada` を比較して算出する。
 
 ---
 
@@ -245,42 +271,25 @@ NewConstitution 提案で、実際の憲法本文ドキュメントの URL を�
 
 - **pending → analyzing**: `claim_next` が atomic UPDATE で取得（同時実行で 1 ワーカーだけ成功）
 - **analyzing → analyzed**: `save_result` 成功
-- **analyzing → failed**: `save_failure`（IPFS 取得失敗 / OpenAI API エラー / 等）
+- **analyzing → failed**: `save_failure`（OpenAI API エラー / DB エラー / 等）
 - **analyzing → pending（自動）**: 10 分以上 analyzing が続いた行を `reclaim_stale` がリセット（クラッシュ復旧）
 - **failed / analyzed → pending**: 手動再分析（CLI または UI の再試行ボタン）
 
 ---
 
-## 8. 憲法ソース
-
-`constitution_fetcher.py` が DB から最新 enacted NewConstitution を引き、本文を取得する。
-
-優先順：
-1. `action_anchor_url`（実際の憲法本文 PDF / Markdown）
-2. `meta_url`（提案メタデータ JSON、フォールバック）
-3. JSON 内 `body.references[]` で "constitution" ラベル
-
-取得した bytes は Content-Type / マジックバイトで判定して以下のいずれかでテキスト化：
-- PDF: **OpenAI Vision (gpt-5.4-mini) で Markdown 化**（見出し階層 / 太字 / 斜体 / リストを保持）。失敗時は pymupdf プレーンテキストにフォールバック
-- JSON: `body.title / abstract / motivation / rationale` を連結、不足時は references を 1 段辿る
-- Markdown / プレーンテキスト: そのまま
-
-同一プロセス内では URL をキーに in-process キャッシュ。新憲法 enact で URL が変われば自動的にキャッシュ無効化。
-
-IPFS gateway フォールバック: `ipfs.io` / `dweb.link` / `gateway.pinata.cloud` / `cloudflare-ipfs.com` の順。
-
----
-
-## 9. プロンプト構造
+## 8. プロンプト構造
 
 OpenAI Chat Completions API:
 
 ```
 [system]
-固定指示 (5 Pillars 説明 / 9 KPIs リスト / JSON スキーマ / ガイドライン)
+You are a research assistant for Cardano governance proposals.
+Your job is to produce a structured JSON output that helps Japanese-speaking
+voters understand a proposal — NOT to score or judge it.
 
-# Cardano Constitution (reference)
-<憲法全文> ← cache_control 相当（OpenAI 自動キャッシュ）
+(GA タイプ別のファクト抽出ガイド)
+(出力スキーマ: proposal_summary_ja/en + proposal_facts[])
+(要約は 300-500 文字 / 6-10 文の中立記述)
 
 [user]
 # Title / Type / Abstract / Motivation / Rationale / Withdrawal
@@ -289,9 +298,16 @@ OpenAI Chat Completions API:
 
 `response_format={"type":"json_object"}` で JSON 出力を強制。
 
+### 重要なルール
+
+- AI に憲法本文は渡さない（コスト削減 + ブレ防止）
+- スコア / verdict / KPI / 憲法評価は出力させない
+- proposal_facts は **value_ja と value_en の両方を必須**で出力させる
+- 中立的な記述のみ。賛否の判断は禁止
+
 ---
 
-## 10. コスト目安（gpt-5.4-mini）
+## 9. コスト目安（gpt-5.4-mini）
 
 | 項目 | 単価（USD per 1M tokens） |
 |---|---|
@@ -299,16 +315,33 @@ OpenAI Chat Completions API:
 | Cached input | $0.075 |
 | Output | $4.50 |
 
-1 GA あたり想定（入力 ~5K tok / 4K キャッシュ + 出力 ~1K tok）：
+1 GA あたり想定（入力 ~3K tok（cache 1.5K + 非 cache 1.5K）+ 出力 ~1.5K tok）：
 
 ```
-非キャッシュ入力 1K × $0.75 / 1M = $0.00075
-キャッシュヒット 4K × $0.075 / 1M = $0.0003
-出力          1K × $4.50  / 1M = $0.0045
-                             合計  $0.0056 ≒ 0.85 円
+非キャッシュ入力 1.5K × $0.75 / 1M = $0.001125
+キャッシュヒット 1.5K × $0.075 / 1M = $0.0001125
+出力           1.5K × $4.50  / 1M = $0.00675
+                              合計  ≒ $0.008 (≒ 1.2 円)
 ```
 
-50 件初回バックフィル → 約 $0.28（≒ 42 円）。
+50 件初回バックフィル → 約 $0.4（≒ 60 円）。
+
+> 旧仕様（憲法本文 + 5 pillar + KPI 評価）に比べて入力 token が大幅に減ったため
+> 1 GA あたりのコストはむしろ若干上がる傾向（出力に要約 + facts を多めに出すため）。
+> 全体としては安価で運用できる。
+
+---
+
+## 10. UI への露出（参考）
+
+GA 詳細ページ `/governance/<id>` の AI 分析セクションは：
+
+- **提案の概要（AI 要約）**: `proposal_summary_ja/en` を中立記述で表示
+- **提案の中身**: `proposal_facts_json` を表組みでリスト表示
+  - 末尾の NCL 上限内チェックは機械計算ファクトとして混在表示
+- **AI 補足の免責文**: 「AI による参考情報です」を末尾に小さく表示
+
+可視性: ログインユーザーのみ。未ログインはログイン CTA を出す（`AuthState.is_logged_in` でガード）。
 
 ---
 
@@ -338,8 +371,21 @@ FROM governance_ai_analysis WHERE status='analyzed';
 
 | 症状 | 原因 | 対処 |
 |------|------|------|
-| `failed` が連発 | `GPT_API_KEY` 未設定 / quota 超過 | API キー / Billing を確認、`--event ga_ai_reanalyze --all` で再キュー |
-| `failed` で `last_error: 憲法本文の取得に失敗` | IPFS gateway 全滅 / `action_anchor_url` 空 / pymupdf 未インストール / Vision OCR 失敗 | governance.py 再 sync で URL を埋め直す。`pip install pymupdf` を確認。Vision OCR は OpenAI API キーが必要 |
+| `failed` が連発 | `GPT_API_KEY` 未設定 / quota 超過 / OpenAI API ダウン | API キー / Billing を確認、`--event ga_ai_reanalyze --all` で再キュー |
 | pending が処理されない | ga_ai_worker が落ちている | `systemctl status ga-ai-worker` で確認 |
 | analyzing が長時間残っている | プロセスがクラッシュ | 10 分後に reclaim_stale が自動 pending に戻す |
-| 憲法のバージョンが古い | 新しい NewConstitution が enacted した直後 | ga_ai_worker を再起動するか、しばらく待てば in-process キャッシュも自動更新（meta_url が変わるため） |
+| 値が一部空白 | proposal の rationale / abstract が空 / 短すぎ | AI が抽出できる情報が無い。提案者のメタデータ品質に依存 |
+| 英語表示時に日本語が混じる | 旧スキーマで生成された行（単一 `value` のみ） | TRUNCATE して再分析すれば新スキーマ（`value_ja` / `value_en`）になる |
+| NCL 上限内チェックが出ない | `treasury_sync` 未実行で `ncl_active` が空 / TreasuryWithdrawals 以外の提案 | `python notify_worker.py --event treasury_sync` 実行 |
+
+---
+
+## 13. 関連実装
+
+- `cardanoism/backend/ai_client.py` — OpenAI API ラッパー、プロンプト定義
+- `cardanoism/backend/ai_analyze_worker.py` — `analyze_claimed()` 本体ロジック
+- `cardanoism/backend/governance_ai_db.py` — DB CRUD + `compute_supplemental_facts()`
+- `cardanoism/backend/db_connect.py` — `GovernanceState._load_ai_analysis()` で State に展開
+- `cardanoism/components/governance_ai_analysis.py` — UI コンポーネント
+- `ga_ai_worker.py` — 常駐ワーカーエントリポイント
+- `notify_worker.py --event ga_ai_initial_sync / ga_ai_reanalyze` — CLI コマンド

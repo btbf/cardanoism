@@ -166,7 +166,10 @@ cron で定期実行する独立スクリプト。計算値・履歴値・キャ
 
 ### 3-3. GA AI 分析（`ga_ai_worker.py`）
 
-OpenAI gpt-5.4-mini で GA を分析する常駐ワーカー。憲法準拠スコア + VISION 2030 5 pillar 評価 + 関連 KPI（10 個から 1〜3 個ピック）を JSON 出力し `governance_ai_analysis` に保存。
+OpenAI gpt-5.4-mini で GA の**ファクト整理**をする常駐ワーカー。スコアや判定は出さず、提案の中立的な要約と主要ファクト（label_ja/en + value_ja/en）を JSON 出力し `governance_ai_analysis` に保存。TreasuryWithdrawals の場合は機械計算による NCL 上限内チェックも追加表示する。
+
+> **設計方針**: AI には判定をさせない。情報整理だけ任せて判断はユーザーに委ねる。
+> 過去の憲法準拠スコア / VISION 2030 KPI レーダー実装は AI 判定のブレが大きく信頼性が低いため廃止し、A 方針（ファクト整理）に転換した。
 
 **自動 trigger**: `governance.py` の Koios sync が新規 GA を `governance_actions` に INSERT したタイミングで `bulk_enqueue` → ワーカーが pending を拾って処理。
 
