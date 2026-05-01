@@ -1409,35 +1409,50 @@ def governance_modal() -> rx.Component:
 
 # ─── 一覧カード ────────────────────────────────────────────────────────────────
 
-def _card_footer(action: Dict[str, Any]) -> rx.Component:
-    """エポック・デポジット情報（カードフッター）。"""
+def _date_chips(action: Dict[str, Any]) -> rx.Component:
+    """提案エポック / 期限エポックを上部バッジ列に並べるための小チップ。"""
+    proposed_chip = rx.cond(
+        action["proposed_epoch"],
+        rx.hstack(
+            rx.icon("calendar", size=12, color="var(--gray-9)"),
+            rx.text(AuthState.t["gov_proposed_epoch_label"], size="1", color="var(--gray-10)"),
+            rx.text(action["proposed_epoch_display"], size="1", color="var(--gray-11)"),
+            spacing="1",
+            align="center",
+            style={
+                "padding": "2px 8px",
+                "borderRadius": "999px",
+                "background": "var(--gray-3)",
+                "border": "1px solid var(--gray-4)",
+                "whiteSpace": "nowrap",
+            },
+        ),
+        rx.fragment(),
+    )
+    expiration_chip = rx.cond(
+        action["expiration"],
+        rx.hstack(
+            rx.icon("timer", size=12, color="var(--gray-9)"),
+            rx.text(AuthState.t["gov_expiration_label"], size="1", color="var(--gray-10)"),
+            rx.text(action["expiration_display"], size="1", color="var(--gray-11)"),
+            spacing="1",
+            align="center",
+            style={
+                "padding": "2px 8px",
+                "borderRadius": "999px",
+                "background": "var(--gray-3)",
+                "border": "1px solid var(--gray-4)",
+                "whiteSpace": "nowrap",
+            },
+        ),
+        rx.fragment(),
+    )
     return rx.hstack(
-        rx.cond(
-            action["proposed_epoch"],
-            rx.hstack(
-                rx.icon("calendar", size=14, color="var(--gray-9)"),
-                rx.text(action["proposed_epoch_display"], size="2", color="var(--gray-10)"),
-                spacing="1",
-                align="center",
-            ),
-            rx.fragment(),
-        ),
-        rx.cond(
-            action["expiration"],
-            rx.hstack(
-                rx.icon("timer", size=14, color="var(--gray-8)"),
-                rx.text(AuthState.t["gov_expiration_label"], size="2", color="var(--gray-10)"),
-                rx.text(action["expiration_display"], size="2", color="var(--gray-10)"),
-                spacing="1",
-                align="center",
-            ),
-            rx.fragment(),
-        ),
-        justify="start",
+        proposed_chip,
+        expiration_chip,
+        spacing="2",
         align="center",
-        spacing="3",
         wrap="wrap",
-        width="100%",
     )
 
 
@@ -1469,9 +1484,11 @@ def _ga_fav_btn_list(action: Dict[str, Any]) -> rx.Component:
 def ga_list_card(action: Dict[str, Any]) -> rx.Component:
     content = rx.hstack(
         rx.vstack(
+            # ── 上部: ステータス / タイプ バッジ + 日付チップ ──
             rx.hstack(
                 ga_status_badge(action),
                 ga_type_badge(action),
+                _date_chips(action),
                 spacing="2",
                 wrap="wrap",
                 align="center",
@@ -1489,7 +1506,6 @@ def ga_list_card(action: Dict[str, Any]) -> rx.Component:
                 class_name="ga-title proposal-title",
             ),
             _withdrawal_inline(action),
-            _vote_summary_inline(action),
             rx.cond(
                 _has_any_text("abstract_ja_card", "abstract_card", action),
                 rx.text(
@@ -1503,7 +1519,8 @@ def ga_list_card(action: Dict[str, Any]) -> rx.Component:
                 ),
                 rx.fragment(),
             ),
-            _card_footer(action),
+            # ── 一番下: 投票状況（DRep/CC/SPO ミニドーナツ） ──
+            _vote_summary_inline(action),
             spacing="3",
             flex="1",
             min_width="0",
@@ -1533,10 +1550,12 @@ def ga_list_card(action: Dict[str, Any]) -> rx.Component:
 
 def ga_grid_card(action: Dict[str, Any]) -> rx.Component:
     content_block = rx.vstack(
+        # ── 上部: バッジ + 日付チップ + お気に入りボタン ──
         rx.hstack(
             rx.hstack(
                 ga_status_badge(action),
                 ga_type_badge(action),
+                _date_chips(action),
                 spacing="2",
                 wrap="wrap",
                 align="center",
@@ -1560,7 +1579,6 @@ def ga_grid_card(action: Dict[str, Any]) -> rx.Component:
             class_name="ga-title proposal-title",
         ),
         _withdrawal_inline(action),
-        _vote_summary_inline(action),
         rx.cond(
             _has_any_text("abstract_ja_card", "abstract_card", action),
             rx.text(
@@ -1580,7 +1598,8 @@ def ga_grid_card(action: Dict[str, Any]) -> rx.Component:
     return rx.card(
         rx.vstack(
             content_block,
-            _card_footer(action),
+            # ── 一番下: 投票状況 ──
+            _vote_summary_inline(action),
             spacing="3",
             width="100%",
             height="100%",

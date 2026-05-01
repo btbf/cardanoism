@@ -34,6 +34,10 @@ class ConstitutionState(rx.State):
     constitution_fetched_at: str = ""
     constitution_translated_at: str = ""
     constitution_loaded: bool = False
+    # 提案タイトル（例: "Cardano Blockchain Ecosystem Constitution v1.1"）
+    constitution_title: str = ""
+    # タイトルから抽出したバージョン文字列（例: "v1.1"）。見つからなければ空文字
+    constitution_version_label: str = ""
 
     lang_mode: str = "auto"
 
@@ -46,10 +50,40 @@ class ConstitutionState(rx.State):
         self.constitution_translated_text = ""
         self.constitution_fetched_at = ""
         self.constitution_translated_at = ""
+        self.constitution_title = ""
+        self.constitution_version_label = ""
         try:
             row = get_constitution()
         except Exception:
             row = None
+
+        # 最新 enacted NewConstitution の提案タイトルからバージョン文字列を抽出
+        try:
+            import re
+            from cardanoism.backend.db_connect import get_db
+            with get_db() as (cursor, _):
+                cursor.execute(
+                    """
+                    SELECT title, title_ja FROM governance_actions
+                    WHERE proposal_type = 'NewConstitution'
+                      AND enacted_epoch IS NOT NULL
+                    ORDER BY enacted_epoch DESC LIMIT 1
+                    """
+                )
+                r = cursor.fetchone()
+            if r:
+                title_en = str(r.get("title") or "")
+                title_ja = str(r.get("title_ja") or "")
+                self.constitution_title = title_en or title_ja
+                # 提案タイトルから "v1.0" / "v2" / "Version 1.1" 系のパターンを抽出
+                source = (title_en + " " + title_ja).strip()
+                m = re.search(r"\b[vV]\s*(\d+(?:\.\d+)?)", source)
+                if not m:
+                    m = re.search(r"\bversion\s+(\d+(?:\.\d+)?)", source, re.IGNORECASE)
+                if m:
+                    self.constitution_version_label = "v" + m.group(1)
+        except Exception:
+            pass
         if row:
             self.constitution_proposal_id = str(row.get("proposal_id") or "")
             try:
@@ -84,9 +118,11 @@ class ConstitutionState(rx.State):
 # ─── パンくず ──────────────────────────────────────────────────────────────────
 
 def _breadcrumb() -> rx.Component:
-    # /governance がそのまま憲法ページなので、中間に「ガバナンス」を入れず 2 階層構成にする
     return rx.hstack(
         rx.link(rx.icon("home", size=16), href="/", underline="none", color_scheme="gray"),
+        rx.icon("chevron-right", size=14, color="gray"),
+        rx.link(AuthState.t["nav_governance"], href="/governance",
+                size="2", underline="hover", color_scheme="gray"),
         rx.icon("chevron-right", size=14, color="gray"),
         rx.text(AuthState.t["constitution_breadcrumb"], size="2", weight="medium"),
         spacing="2", align="center", width="100%",
@@ -104,6 +140,14 @@ def _header() -> rx.Component:
                 rx.text(
                     AuthState.t["constitution_page_title"],
                     size="6", weight="bold", color="var(--gray-12)",
+                ),
+                rx.cond(
+                    ConstitutionState.constitution_version_label != "",
+                    rx.badge(
+                        ConstitutionState.constitution_version_label,
+                        color_scheme="amber", variant="solid", radius="full", size="2",
+                    ),
+                    rx.fragment(),
                 ),
                 rx.badge(
                     AuthState.t["gov_constitution_in_force"],
@@ -270,7 +314,7 @@ def _empty_state() -> rx.Component:
 # ─── ページ本体 ────────────────────────────────────────────────────────────────
 
 @template(
-    route="/governance",
+    route="/governance/constitution",
     title="Cardano 憲法 | Cardanoism",
     on_load=ConstitutionState.on_load,
 )

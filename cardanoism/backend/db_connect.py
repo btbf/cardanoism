@@ -1201,9 +1201,15 @@ _KOIOS_NETWORK = os.getenv("KOIOS_NETWORK", "mainnet").lower()
 _EPOCH_DURATION = timedelta(seconds=_EPOCH_SECONDS.get(_KOIOS_NETWORK, 432_000))
 
 
+# 日付表示は JST に固定（日本人ユーザー想定）
+_DISPLAY_TZ = timezone(timedelta(hours=9))
+_DISPLAY_TZ_LABEL = "JST"
+
+
 def _epoch_to_display(epoch, ref_epoch, ref_dt: datetime | None) -> str:
-    """エポック番号を 'Ep.NNN（YYYY/MM/DD）' 形式に変換する。
-    ref_epoch/ref_dt（block_time）を基準に差分×エポック長で日付を算出する。
+    """エポック番号を 'Ep.NNN（YYYY/MM/DD JST）' 形式に変換する。
+    ref_epoch/ref_dt（block_time, UTC）を基準に差分×エポック長で日付を算出し、
+    JST に変換した上で TZ 略語を付与する。
     """
     if epoch is None:
         return ""
@@ -1211,7 +1217,10 @@ def _epoch_to_display(epoch, ref_epoch, ref_dt: datetime | None) -> str:
         n = int(epoch)
         if ref_dt is not None and ref_epoch is not None:
             dt = ref_dt + _EPOCH_DURATION * (n - int(ref_epoch))
-            return f"Ep.{n}（{dt.strftime('%Y/%m/%d')}）"
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            dt_local = dt.astimezone(_DISPLAY_TZ)
+            return f"Ep.{n}（{dt_local.strftime('%Y/%m/%d')} {_DISPLAY_TZ_LABEL}）"
         return f"Ep.{n}"
     except (ValueError, TypeError):
         return str(epoch)
@@ -2030,15 +2039,15 @@ class GovernanceState(rx.State):
             self.modal_open = False
             self.modal_action = {}
             self.modal_action_refs = []
-            target = self.last_list_path or "/governance/ga_proposals"
-            # /governance/<id> （GA detail）のときだけ戻る。/governance, /governance/ga_proposals,
+            target = self.last_list_path or "/governance"
+            # /governance/<id> （GA detail）のときだけ戻る。/governance, /governance/constitution,
             # /governance/treasury, /governance/drep などの静的ルートは対象外。
             return rx.call_script(
                 "(() => {"
                 "  const p = window.location.pathname;"
                 "  const known = new Set(["
                 "    '/governance', '/governance/',"
-                "    '/governance/ga_proposals', '/governance/ga_proposals/',"
+                "    '/governance/constitution', '/governance/constitution/',"
                 "    '/governance/treasury', '/governance/treasury/',"
                 "    '/governance/drep', '/governance/drep/'"
                 "  ]);"

@@ -146,7 +146,7 @@ UI_JA: dict[str, str] = {
     "gov_section_voting_summary": "投票集計",
     # ── AI 分析セクション ──
     "ga_ai_section_title":    "AI 分析",
-    "ga_ai_section_subtitle": "提案の中身を自動整理し、関連憲法条文と判定可能な項目を可視化",
+    "ga_ai_section_subtitle": "提案の中身を自動整理",
     "ga_ai_state_none":       "この提案は AI 分析対象外です（Active / 直近 6 エポック以内の提案のみ分析されます）",
     "ga_ai_state_pending_title":         "AI 判断中...",
     "ga_ai_state_pending_desc_prefix":   "提出を検知してから",
@@ -577,7 +577,7 @@ UI_EN: dict[str, str] = {
     "gov_section_voting_summary": "Voting Summary",
     # ── AI Analysis section ──
     "ga_ai_section_title":    "AI Analysis",
-    "ga_ai_section_subtitle": "Auto-extraction of proposal facts, relevant constitution articles, and rule-based checks",
+    "ga_ai_section_subtitle": "Auto-organized proposal facts",
     "ga_ai_state_none":       "This proposal is outside the AI analysis scope (only Active / proposals within the last 6 epochs are analyzed).",
     "ga_ai_state_pending_title":         "AI evaluation pending...",
     "ga_ai_state_pending_desc_prefix":   "Detected",

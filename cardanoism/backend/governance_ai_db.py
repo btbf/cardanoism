@@ -200,7 +200,9 @@ def compute_supplemental_facts(proposal: dict[str, Any]) -> list[dict[str, str]]
 
     if ptype == "TreasuryWithdrawals":
         try:
-            from cardanoism.backend.treasury_db import get_active_ncl
+            from cardanoism.backend.treasury_db import (
+                get_active_ncl, sum_enacted_withdrawals_in_epoch_range,
+            )
             ncl = get_active_ncl()
         except Exception as e:
             logger.warning("get_active_ncl failed: %s", e)
@@ -212,18 +214,45 @@ def compute_supplemental_facts(proposal: dict[str, Any]) -> list[dict[str, str]]
                 wd_int = int(wd)
                 limit_ada = int(ncl.get("limit_ada") or 0)
                 limit_lovelace = limit_ada * 1_000_000
+                ncl_start = int(ncl.get("start_epoch") or 0)
+                ncl_end = int(ncl.get("end_epoch") or 0)
+
+                # NCL 期間内に既に enacted 済みの TreasuryWithdrawals 合計（= 引き出し確定額）
+                # 自分自身が既に enacted であってもこの計算には含む（実態と一致）
+                enacted_lovelace = sum_enacted_withdrawals_in_epoch_range(ncl_start, ncl_end)
+                # この提案が未 enacted ならまだ確定額に含まれていない → 残額計算は単純に
+                # 「NCL 上限 - 既存 enacted 合計」となる
+                # この提案が既に enacted なら自分の額も enacted_lovelace に含まれているので
+                # 自分の額を一旦差し戻して「他の提案で消化した残り」を計算する
+                self_enacted = (
+                    proposal.get("enacted_epoch") is not None
+                )
+                committed = enacted_lovelace - (wd_int if self_enacted else 0)
+                remaining = max(0, limit_lovelace - committed)
+
                 wd_ada = wd_int // 1_000_000
-                ratio = (wd_int / limit_lovelace * 100.0) if limit_lovelace > 0 else 0.0
-                indicator = "✓" if wd_int <= limit_lovelace else "✗"
-                value_num = f"{indicator}  {wd_ada:,} / {limit_ada:,} ADA  ({ratio:.2f}%)"
-                # 数値部分は両言語共通、ステータス語のみ JA/EN で出し分け
-                status_ja = "上限内" if wd_int <= limit_lovelace else "上限超過"
-                status_en = "Within limit" if wd_int <= limit_lovelace else "OVER LIMIT"
+                limit_ada_disp = limit_lovelace // 1_000_000
+                committed_ada = committed // 1_000_000
+                remaining_ada = remaining // 1_000_000
+                ratio_to_remaining = (wd_int / remaining * 100.0) if remaining > 0 else 0.0
+                in_remaining = wd_int <= remaining
+
+                indicator_ja = "残額内" if in_remaining else "残額超過"
+                indicator_en = "Within remaining" if in_remaining else "EXCEEDS REMAINING"
+
+                value_ja = (
+                    f"{indicator_ja} — 本提案 {wd_ada:,} ADA / NCL 残 {remaining_ada:,} ADA"
+                    f"（上限 {limit_ada_disp:,} − 確定 {committed_ada:,} ADA, 占有率 {ratio_to_remaining:.2f}%）"
+                )
+                value_en = (
+                    f"{indicator_en} — Proposal {wd_ada:,} ADA / NCL remaining {remaining_ada:,} ADA"
+                    f" (limit {limit_ada_disp:,} − committed {committed_ada:,} ADA, share {ratio_to_remaining:.2f}%)"
+                )
                 out.append({
-                    "label_ja": "NCL 上限内チェック",
-                    "label_en": "NCL Limit Check",
-                    "value_ja": f"{status_ja} — {wd_ada:,} / {limit_ada:,} ADA ({ratio:.2f}%)",
-                    "value_en": f"{status_en} — {wd_ada:,} / {limit_ada:,} ADA ({ratio:.2f}%)",
+                    "label_ja": "NCL 残額内チェック",
+                    "label_en": "NCL Remaining Check",
+                    "value_ja": value_ja,
+                    "value_en": value_en,
                 })
             except (TypeError, ValueError):
                 pass

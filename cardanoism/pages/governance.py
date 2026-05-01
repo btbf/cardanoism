@@ -130,7 +130,7 @@ def gov_breadcrumb_detail() -> rx.Component:
     return rx.hstack(
         rx.link(rx.icon("home", size=16), href="/", underline="none", color_scheme="gray"),
         rx.icon("chevron-right", size=14, color="gray"),
-        rx.link(AuthState.t["gov_subnav_actions"], href="/governance/ga_proposals",
+        rx.link(AuthState.t["gov_subnav_actions"], href="/governance",
                 size="2", underline="hover", color_scheme="gray"),
         rx.icon("chevron-right", size=14, color="gray"),
         rx.text(AuthState.t["gov_breadcrumb_detail"], size="2", weight="medium"),
@@ -372,7 +372,7 @@ def gov_pagination() -> rx.Component:
 # ─── ページ ────────────────────────────────────────────────────────────────────
 
 @template(
-    route="/governance/ga_proposals",
+    route="/governance",
     title="GA 提案一覧 | Cardanoism",
     on_load=GovernanceState.on_load,
 )

@@ -52,15 +52,15 @@ def governance_subnav(active: str) -> rx.Component:
     """ガバナンス共通のサブナビゲーション。
 
     Args:
-        active: 現在のタブ（"constitution" | "treasury" | "actions" | "drep"）
+        active: 現在のタブ（"actions" | "treasury" | "drep" | "constitution"）
 
-    並び順: 憲法 → トレジャリー → GA 提案一覧 → DRep 一覧
+    並び順: GA 提案一覧 → トレジャリー → DRep 一覧 → Cardano 憲法
     """
     return rx.hstack(
-        _pill(AuthState.t["gov_subnav_constitution"], "/governance", "scroll-text", active == "constitution"),
+        _pill(AuthState.t["gov_subnav_actions"], "/governance", "gavel", active == "actions"),
         _pill(AuthState.t["gov_subnav_treasury"], "/governance/treasury", "landmark", active == "treasury"),
-        _pill(AuthState.t["gov_subnav_actions"], "/governance/ga_proposals", "gavel", active == "actions"),
         _pill(AuthState.t["gov_subnav_drep"], "/governance/drep", "users", active == "drep"),
+        _pill(AuthState.t["gov_subnav_constitution"], "/governance/constitution", "scroll-text", active == "constitution"),
         spacing="2",
         wrap="wrap",
         width="100%",
