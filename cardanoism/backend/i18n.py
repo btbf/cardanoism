@@ -388,6 +388,61 @@ UI_JA: dict[str, str] = {
     "home_explore_drep": "DRepを探す",
     "home_explore_catalyst": "Catalystを見る",
 
+    # ── 新ホーム: Live Stats Bar ─────────────────────────────
+    "home_stats_kicker":         "LIVE NETWORK",
+    "home_stats_treasury":       "トレジャリー残高",
+    "home_stats_active_ga":      "投票中ガバナンスアクション",
+    "home_stats_dreps":          "有効DRep",
+    "home_stats_blocks":         "直近 24h ブロック",
+
+    # ── 新ホーム: Feature Showcase ──────────────────────────
+    "home_features_kicker":      "FEATURES",
+    "home_features_title":       "ガバナンス参加を加速する 6 つの機能",
+    "home_features_subtitle":    "登録したステークアドレスを起点に、提案の理解から投票判断まで一気通貫でサポートします。",
+
+    "home_f_ai_title":           "AI による提案の自動整理",
+    "home_f_ai_desc":            "GA 提案を中立的に要約し、引き出し額・受取先・期間などのキーファクトを自動抽出。",
+    "home_f_drep_title":         "委任先 DRep の投票表示",
+    "home_f_drep_desc":          "登録ステークアドレスから委任先 DRep を引き、各 GA への投票結果と理由を一目で確認。",
+    "home_f_constitution_title": "Cardano 憲法 完全日本語訳",
+    "home_f_constitution_desc":  "施行中の最新バージョンの原文と日本語訳を並列表示。改訂時も自動追従します。",
+    "home_f_treasury_title":     "トレジャリー残高グラフ",
+    "home_f_treasury_desc":      "NCL 期間中のエポック別残高推移と引き出し履歴を可視化。",
+    "home_f_notify_title":       "リアルタイム通知",
+    "home_f_notify_desc":        "報酬・DRep 投票・プール変化を LINE / Telegram / Email で即時配信。",
+    "home_f_ga_title":           "ガバナンスアクション日本語化",
+    "home_f_ga_desc":            "提出された全 GA のタイトル・本文・条件をリアルタイムで日本語化し、原文と並列で表示。",
+
+    # ── 新ホーム: Constitution Highlight ────────────────────
+    "home_constitution_kicker":     "CARDANO CONSTITUTION",
+    "home_constitution_title":      "Cardano 憲法を完全日本語化",
+    "home_constitution_subtitle":   "原文 (English) と AI 翻訳を並列表示。最新版に自動追従。",
+    "home_constitution_cta":        "憲法を読む",
+    "home_constitution_version_label": "現在施行中",
+    "home_constitution_preview_doc_title": "Cardano 憲法",
+    "home_constitution_preview_article_en":  "Article II — Mission",
+    "home_constitution_preview_quote_en":    "Cardano shall be a public, permissionless blockchain ...",
+    "home_constitution_preview_article_ja":  "第 II 条 — ミッション",
+    "home_constitution_preview_quote_ja":    "Cardano は誰でも参加できるパブリック・パーミッションレスなブロックチェーンであり…",
+
+    # ── 新ホーム: Final CTA ────────────────────────────────
+    "home_final_cta_title":      "今日から始めよう",
+    "home_final_cta_subtitle":   "ログインしてステークアドレスを登録するだけ。無料プランからすぐに使い始められます。",
+    "home_final_cta_button":     "無料で始める",
+
+    # ── 新ホーム: LINE 通知 mock ──────────────────────────
+    "home_line_mock_official":   "公式アカウント",
+    "home_line_mock_today":      "今日",
+    "home_line_mock_msg1_title": "🗳️ 新しいガバナンスアクション",
+    "home_line_mock_msg1_body":  "Treasury Withdrawal #4283 が提出されました。投票期限まで 5 日。",
+    "home_line_mock_msg1_time":  "9:41",
+    "home_line_mock_msg2_title": "💰 エポック報酬の入金",
+    "home_line_mock_msg2_body":  "Epoch 542 の報酬 123.45 ADA があなたのアドレスに入金されました。",
+    "home_line_mock_msg2_time":  "9:42",
+    "home_line_mock_msg3_title": "🔔 委任先 DRep が投票",
+    "home_line_mock_msg3_body":  "Cardano Foundation が GA #4280 に Yes を投票しました。",
+    "home_line_mock_msg3_time":  "9:43",
+
     # タブ
     "tab_favorites": "お気に入り",
     "tab_profile": "プロフィール",
@@ -819,6 +874,61 @@ UI_EN: dict[str, str] = {
     "home_explore_governance": "View governance",
     "home_explore_drep": "Find DReps",
     "home_explore_catalyst": "View Catalyst",
+
+    # ── New home: Live Stats ──
+    "home_stats_kicker":         "LIVE NETWORK",
+    "home_stats_treasury":       "Treasury",
+    "home_stats_active_ga":      "Active GAs",
+    "home_stats_dreps":          "Active DReps",
+    "home_stats_blocks":         "Blocks (24h)",
+
+    # ── New home: Feature Showcase ──
+    "home_features_kicker":      "FEATURES",
+    "home_features_title":       "Six tools to accelerate your governance participation",
+    "home_features_subtitle":    "From understanding proposals to making your vote decision — Cardanoism guides you end-to-end based on your registered stake addresses.",
+
+    "home_f_ai_title":           "AI proposal summary",
+    "home_f_ai_desc":            "Neutral 6–10 sentence summaries plus auto-extracted key facts (amount, recipient, period, etc.).",
+    "home_f_drep_title":         "Your DRep's vote",
+    "home_f_drep_desc":          "Look up how your delegated DRep voted on each GA, including their rationale.",
+    "home_f_constitution_title": "Cardano Constitution in Japanese",
+    "home_f_constitution_desc":  "Current ratified version shown side-by-side: original English + Japanese translation.",
+    "home_f_treasury_title":     "Treasury balance chart",
+    "home_f_treasury_desc":      "Per-epoch treasury balance trend across the active NCL period, plus withdrawal history.",
+    "home_f_notify_title":       "Real-time notifications",
+    "home_f_notify_desc":        "Push rewards, DRep votes, and pool changes via LINE / Telegram / Email.",
+    "home_f_ga_title":           "Governance actions in Japanese",
+    "home_f_ga_desc":            "Every submitted GA's title, body, and conditions translated to Japanese in real time, shown side-by-side with the original.",
+
+    # ── New home: Constitution Highlight ──
+    "home_constitution_kicker":     "CARDANO CONSTITUTION",
+    "home_constitution_title":      "Read the Cardano Constitution in Japanese",
+    "home_constitution_subtitle":   "Original English alongside AI-translated Japanese. Always synced to the latest enacted version.",
+    "home_constitution_cta":        "Open the Constitution",
+    "home_constitution_version_label": "Currently in force",
+    "home_constitution_preview_doc_title": "Cardano Constitution",
+    "home_constitution_preview_article_en":  "Article II — Mission",
+    "home_constitution_preview_quote_en":    "Cardano shall be a public, permissionless blockchain ...",
+    "home_constitution_preview_article_ja":  "第 II 条 — ミッション",
+    "home_constitution_preview_quote_ja":    "Cardano は誰でも参加できるパブリック・パーミッションレスなブロックチェーンであり…",
+
+    # ── New home: Final CTA ──
+    "home_final_cta_title":      "Get started today",
+    "home_final_cta_subtitle":   "Just log in and add your stake address. Get started on the free plan.",
+    "home_final_cta_button":     "Get started — free",
+
+    # ── New home: LINE notification mock ──
+    "home_line_mock_official":   "Official account",
+    "home_line_mock_today":      "Today",
+    "home_line_mock_msg1_title": "🗳️ New governance action",
+    "home_line_mock_msg1_body":  "Treasury Withdrawal #4283 has been submitted. 5 days until the voting deadline.",
+    "home_line_mock_msg1_time":  "9:41",
+    "home_line_mock_msg2_title": "💰 Epoch reward received",
+    "home_line_mock_msg2_body":  "Epoch 542 reward of 123.45 ADA has been credited to your address.",
+    "home_line_mock_msg2_time":  "9:42",
+    "home_line_mock_msg3_title": "🔔 Your DRep voted",
+    "home_line_mock_msg3_body":  "Cardano Foundation voted Yes on GA #4280.",
+    "home_line_mock_msg3_time":  "9:43",
 
     # Tabs
     "tab_favorites": "Favorites",
