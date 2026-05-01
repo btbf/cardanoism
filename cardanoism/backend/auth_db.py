@@ -278,10 +278,74 @@ def remove_notification_channel(user_id: int, channel_type: str) -> None:
 def get_stake_addresses(user_id: int) -> list:
     with get_db() as (cursor, _):
         cursor.execute(
-            "SELECT id, address, wallet_address, nickname, role, delegated_drep_id, delegated_drep_name, delegated_pool_id, delegated_pool_name, created_at FROM stake_addresses WHERE user_id = ? ORDER BY created_at ASC",
+            "SELECT id, address, wallet_address, nickname, role, "
+            "delegated_drep_id, delegated_drep_name, "
+            "delegated_pool_id, delegated_pool_name, "
+            "verified, verified_at, created_at "
+            "FROM stake_addresses WHERE user_id = ? ORDER BY created_at ASC",
             (user_id,),
         )
         return [dict(row) for row in cursor.fetchall() if row is not None]
+
+
+def mark_stake_address_verified(user_id: int, stake_address: str) -> bool:
+    """ウォレット署名検証に成功した stake address を verified=1 に更新。"""
+    with get_db() as (cursor, conn):
+        cursor.execute(
+            "UPDATE stake_addresses SET verified = 1, verified_at = NOW() "
+            "WHERE user_id = ? AND address = ?",
+            (user_id, stake_address),
+        )
+        ok = cursor.rowcount > 0
+        conn.commit()
+        return ok
+
+
+# ── ウォレット検証用 nonce ──────────────────────────────────
+
+def issue_verification_nonce(
+    user_id: int, stake_address: str, nonce: str, ttl_seconds: int = 300
+) -> None:
+    """nonce を DB に保存する (TTL 5 分)。"""
+    with get_db() as (cursor, conn):
+        cursor.execute(
+            "INSERT INTO wallet_verification_nonces "
+            "(user_id, stake_address, nonce, expires_at) "
+            "VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL ? SECOND))",
+            (user_id, stake_address, nonce, ttl_seconds),
+        )
+        conn.commit()
+
+
+def consume_verification_nonce(user_id: int, stake_address: str, nonce: str) -> bool:
+    """有効な nonce を 1 回限り使用する。OK なら True、失敗なら False。"""
+    with get_db() as (cursor, conn):
+        cursor.execute(
+            "SELECT id FROM wallet_verification_nonces "
+            "WHERE user_id = ? AND stake_address = ? AND nonce = ? "
+            "  AND used = 0 AND expires_at > NOW() "
+            "LIMIT 1",
+            (user_id, stake_address, nonce),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return False
+        cursor.execute(
+            "UPDATE wallet_verification_nonces SET used = 1 WHERE id = ?",
+            (row["id"],),
+        )
+        conn.commit()
+        return True
+
+
+def cleanup_expired_nonces() -> None:
+    """期限切れ nonce を物理削除 (起動時 / バッチで適宜呼ぶ)。"""
+    with get_db() as (cursor, conn):
+        cursor.execute(
+            "DELETE FROM wallet_verification_nonces "
+            "WHERE expires_at < DATE_SUB(NOW(), INTERVAL 1 DAY)"
+        )
+        conn.commit()
 
 
 def add_stake_address(user_id: int, address: str, nickname: str, wallet_address: str | None = None) -> str:

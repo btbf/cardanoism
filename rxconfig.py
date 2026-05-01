@@ -10,5 +10,7 @@ config = rx.Config(
         rx.plugins.SitemapPlugin(),
         rx.plugins.TailwindV4Plugin(),
     ],
+    # Phase 1+2 のウォレット接続は raw CIP-30 + 自前 bech32 実装で完結 (npm 依存ゼロ)。
+    # Phase 3 (トランザクション構築) で Lucid Evolution / MeshSDK のいずれかを導入予定。
     show_built_with_reflex=False,
 )

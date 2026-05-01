@@ -1,5 +1,10 @@
 import reflex as rx
 from cardanoism.backend.auth_state import AuthState
+from cardanoism.backend.wallet_state import WalletState
+from cardanoism.components.wallet_button import (
+    wallet_connector_mount,
+    wallet_status,
+)
 
 ACCENT = "#ffcf00"
 ACCENT_DARK = "#c7a300"
@@ -168,6 +173,17 @@ def navbar_icons() -> rx.Component:
             rx.hstack(
                 lang_toggle(),
                 divider,
+                # 接続中のみウォレットピルとそれに対応する仕切り線を表示
+                rx.cond(
+                    WalletState.connected,
+                    rx.hstack(
+                        wallet_status(),
+                        divider,
+                        spacing="3",
+                        align="center",
+                    ),
+                    rx.fragment(),
+                ),
                 auth_section(),
                 spacing="3",
                 align="center",
@@ -233,6 +249,8 @@ def navbar_icons() -> rx.Component:
     )
 
     return rx.box(
+        # 不可視: ウォレット接続 React 本体 (auto_reconnect / イベント橋渡しのため常時マウント)
+        wallet_connector_mount(),
         desktop_nav,
         mobile_nav,
         padding_x="1.5em",

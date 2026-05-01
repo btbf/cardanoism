@@ -1,0 +1,12 @@
+pyproject.toml
+cardanoism_wallet/__init__.py
+cardanoism_wallet/wallet_connector.py
+cardanoism_wallet.egg-info/PKG-INFO
+cardanoism_wallet.egg-info/SOURCES.txt
+cardanoism_wallet.egg-info/dependency_links.txt
+cardanoism_wallet.egg-info/requires.txt
+cardanoism_wallet.egg-info/top_level.txt
+cardanoism_wallet/web/package.json
+cardanoism_wallet/web/src/WalletConnector.jsx
+cardanoism_wallet/web/src/walletAdapter.js
+cardanoism_wallet/web/src/walletRegistry.js
