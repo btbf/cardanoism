@@ -15,3 +15,6 @@ cardanoism/backend/proposals_export.csv
 /node_modules/
 uv.lock
 .claude/settings.local.json
+*.egg-info/
+build/
+dist/

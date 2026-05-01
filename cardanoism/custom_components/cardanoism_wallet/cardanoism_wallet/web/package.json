@@ -1,9 +1,0 @@
-{
-  "name": "cardanoism-wallet-web",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Front-end assets for the Cardanoism wallet connector custom component (raw CIP-30 + bech32). Lucid Evolution is intentionally deferred to Phase 3 (transaction building).",
-  "dependencies": {
-    "bech32": "^2.0.0"
-  }
-}
