@@ -117,14 +117,16 @@ def ensure_warm():
         _warmed_up = True
 
 def get_fund_options() -> List[Dict[str, str]]:
-    """Fetch fund select options (value=id, label=label) from funds_new."""
+    """Fetch fund select options (value=id, label=label) from funds_new.
+    Fund 15 はカタリストページから一旦非表示にする。
+    """
     try:
         with get_db() as (cursor, _):
             cursor.execute(
                 """
                 SELECT id, label
                 FROM funds_new
-                WHERE label IN ('Fund 12', 'Fund 13', 'Fund 14', 'Fund 15')
+                WHERE label IN ('Fund 12', 'Fund 13', 'Fund 14')
                 ORDER BY launched_at DESC
                 """
             )
@@ -311,6 +313,7 @@ def fetch_funds() -> List[Dict[str, Any]]:
                     FROM proposals_new
                     WHERE fund_uuid IS NOT NULL
                 )
+                  AND (label IS NULL OR label <> 'Fund 15')
                 ORDER BY launched_at DESC
                 """
             )
@@ -675,6 +678,8 @@ class AppState(rx.State):
         
             where_conditions: List[str] = ["1=1"]
             params: List[Any] = []
+            # Fund 15 はカタリストページから非表示にする（一時的措置）
+            where_conditions.append("(f.label IS NULL OR f.label <> 'Fund 15')")
             if self.fund_ids:
                 clause, clause_params = self._build_in_clause("p.fund_uuid", self.fund_ids)
                 where_conditions.append(clause)

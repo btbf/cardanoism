@@ -168,7 +168,6 @@ def _catalyst_list() -> rx.Component:
                     rx.select.item("Fund 12", value="Fund 12"),
                     rx.select.item("Fund 13", value="Fund 13"),
                     rx.select.item("Fund 14", value="Fund 14"),
-                    rx.select.item("Fund 15", value="Fund 15"),
                 ),
                 size="2",
                 value=AuthState.favorites_fund_filter,
