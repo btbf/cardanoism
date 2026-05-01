@@ -160,15 +160,7 @@ def governance_detail_header(action: Dict[str, Any], close_btn=None) -> rx.Compo
         width="100%",
     )
 
-    badge_row = rx.hstack(
-        ga_status_badge(action),
-        ga_type_badge(action),
-        spacing="2",
-        wrap="wrap",
-        align="center",
-    )
-
-    # 投票期限カウントダウン（active / urgent / ended で配色を切り替え）
+    # 投票期限カウントダウン（上部 badge_row と同じ高さ・スタイルで揃える）
     deadline_badge = rx.match(
         GovernanceState.modal_deadline_status,
         ("active", rx.box(
@@ -177,11 +169,14 @@ def governance_detail_header(action: Dict[str, Any], close_btn=None) -> rx.Compo
                 rx.text(AuthState.t["gov_deadline_remaining"], size="1", color="white", weight="medium"),
                 rx.text(GovernanceState.modal_deadline_days.to_string(), size="2", weight="bold", color="white"),
                 rx.text(AuthState.t["gov_deadline_days"], size="1", color="white"),
-                spacing="1", align="baseline",
+                spacing="1", align="center",
             ),
-            padding="4px 10px",
+            padding="3px 10px",
             background="linear-gradient(90deg, var(--blue-9), var(--indigo-9))",
             border_radius="999px",
+            display="inline-flex",
+            align_items="center",
+            line_height="1",
         )),
         ("urgent", rx.box(
             rx.hstack(
@@ -191,18 +186,21 @@ def governance_detail_header(action: Dict[str, Any], close_btn=None) -> rx.Compo
                 rx.text(AuthState.t["gov_deadline_days"], size="1", color="white"),
                 rx.badge(AuthState.t["gov_deadline_urgent"], color_scheme=None,
                          background_color="var(--ruby-12)", color="white", size="1"),
-                spacing="1", align="baseline",
+                spacing="1", align="center",
             ),
-            padding="4px 10px",
+            padding="3px 10px",
             background="linear-gradient(90deg, var(--ruby-9), var(--ruby-11))",
             border_radius="999px",
             box_shadow="0 0 0 0 rgba(239, 68, 68, 0.7)",
             animation="cdn_deadline_pulse 1.6s ease-in-out infinite",
+            display="inline-flex",
+            align_items="center",
+            line_height="1",
         )),
         rx.fragment(),
     )
 
-    epoch_row = rx.hstack(
+    badge_row = rx.hstack(
         rx.html(
             "<style>"
             "@keyframes cdn_deadline_pulse {"
@@ -211,7 +209,15 @@ def governance_detail_header(action: Dict[str, Any], close_btn=None) -> rx.Compo
             "}"
             "</style>"
         ),
+        ga_status_badge(action),
+        ga_type_badge(action),
         deadline_badge,
+        spacing="2",
+        wrap="wrap",
+        align="center",
+    )
+
+    epoch_row = rx.hstack(
         rx.cond(
             action["proposed_epoch"],
             rx.hstack(
@@ -1083,17 +1089,78 @@ def _votes_anchor_button() -> rx.Component:
 def _user_drep_vote_row(v) -> rx.Component:
     """1 件の登録ステークアドレス → 委任先 DRep → 投票結果カード。"""
     drep_name = rx.cond(v["drep_name"] != "", v["drep_name"], v["drep_id"])
+
+    # 全文ダイアログ: 概要をクリックすると開く
+    full_rationale_dialog = rx.dialog.root(
+        rx.dialog.trigger(
+            rx.box(
+                rx.text(
+                    v["rationale_short"],
+                    size="1", color="var(--gray-10)",
+                    line_height="1.5",
+                    style={
+                        "wordBreak": "break-word",
+                        "cursor": "pointer",
+                        "transition": "color 0.15s",
+                    },
+                    _hover={"color": "var(--gray-12)"},
+                ),
+                rx.hstack(
+                    rx.icon("maximize-2", size=10, color="var(--amber-11)"),
+                    rx.text(
+                        AuthState.t["gov_vote_rationale_view"],
+                        size="1", color="var(--amber-11)", weight="medium",
+                    ),
+                    spacing="1", align="center",
+                    style={"marginTop": "4px"},
+                ),
+                style={"flex": "1", "minWidth": "0", "cursor": "pointer"},
+            ),
+        ),
+        rx.dialog.content(
+            rx.dialog.title(AuthState.t["gov_vote_rationale_title"]),
+            rx.vstack(
+                rx.hstack(
+                    rx.icon("user-check", size=14, color="var(--violet-11)"),
+                    rx.text(drep_name, size="2", weight="medium"),
+                    _vote_badge(v["vote"]),
+                    spacing="2", align="center", wrap="wrap",
+                ),
+                rx.divider(),
+                rx.text(
+                    v["rationale"],
+                    size="2", color="var(--gray-12)",
+                    style={"whiteSpace": "pre-wrap", "lineHeight": "1.6"},
+                ),
+                # 閉じるボタンを右下に配置
+                rx.flex(
+                    rx.dialog.close(
+                        rx.button(
+                            AuthState.t["gov_vote_rationale_close"],
+                            variant="soft",
+                            size="2",
+                            cursor="pointer",
+                        ),
+                    ),
+                    justify="end",
+                    width="100%",
+                ),
+                spacing="3", align="start", width="100%",
+            ),
+            max_width=["95vw", "95vw", "680px"],
+        ),
+    )
+
     voted_block = rx.hstack(
         _vote_badge(v["vote"]),
         rx.cond(
             v["rationale_short"] != "",
+            full_rationale_dialog,
             rx.text(
-                v["rationale_short"],
-                size="1", color="var(--gray-10)",
-                line_height="1.5",
-                style={"flex": "1", "minWidth": "0"},
+                AuthState.t["gov_user_drep_no_rationale"],
+                size="1", color="var(--gray-9)",
+                style={"fontStyle": "italic"},
             ),
-            rx.fragment(),
         ),
         spacing="2",
         align="center",
