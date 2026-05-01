@@ -14,7 +14,7 @@ import logging
 
 import reflex as rx
 
-from cardanoism.backend import auth_db
+from cardanoism.backend import auth_db, pool_search
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.backend.wallet_verify import (
     build_message,
@@ -66,6 +66,8 @@ class WalletState(rx.State):
     reward_address: str = ""
     used_addresses: list[str] = []
     network_id: int = 1
+    # 接続中アドレスの現在の委任先 pool_id_bech32 (ステーキングページで強調表示用)
+    current_delegated_pool_id: str = ""
 
     # ブートストラップ済みフラグ (二重発火防止)
     bootstrapped: bool = False
@@ -83,6 +85,15 @@ class WalletState(rx.State):
     _verify_message: str = ""
     _verify_nonce: str = ""
 
+    # ── Phase 3: 委任切替 (確認ダイアログ) ──────────────
+    delegate_dialog_open: bool = False
+    # ステーキングページの SPO カードから渡される対象プール情報
+    delegate_target_pool: dict = {}
+    # 現在委任中のプール情報 (current_delegated_pool_id から引いたもの)
+    delegate_current_pool: dict = {}
+    delegating: bool = False
+    last_delegate_tx_hash: str = ""
+
     # ── 派生プロパティ ──────────────────────────────
     @rx.var
     def reward_address_short(self) -> str:
@@ -96,6 +107,7 @@ class WalletState(rx.State):
     def wallet_label(self) -> str:
         labels = {
             "eternl":      "Eternl",
+            "lace":        "Lace",
             "yoroi":       "Yoroi",
             "typhoncip30": "Typhon",
             "tokeo":       "Tokeo",
@@ -231,6 +243,14 @@ class WalletState(rx.State):
                 self.network_id = 1
             self.connected = True
             self.error = ""
+
+            # この reward_address の現在の委任先を引き当てる
+            self.current_delegated_pool_id = ""
+            for a in (auth.stake_addresses or []):
+                if str(a.get("address", "")) == reward_address:
+                    self.current_delegated_pool_id = str(a.get("delegated_pool_id") or "")
+                    break
+
             return rx.toast.success(f"{self.wallet_label} に接続しました")
         except Exception as e:  # noqa: BLE001
             logger.exception("connect_result parse error")
@@ -244,6 +264,7 @@ class WalletState(rx.State):
         self.wallet_name = ""
         self.reward_address = ""
         self.used_addresses = []
+        self.current_delegated_pool_id = ""
         return rx.call_script(
             "(async () => { await window.cardanoismWallet.disconnect(); return true; })()"
         )
@@ -286,7 +307,7 @@ class WalletState(rx.State):
         # ニックネーム未入力ならウォレット名を仮置き (後でユーザが変更可)
         if not auth.new_stake_nickname:
             wallet_label_map = {
-                "eternl": "Eternl", "yoroi": "Yoroi",
+                "eternl": "Eternl", "lace": "Lace", "yoroi": "Yoroi",
                 "typhoncip30": "Typhon", "tokeo": "Tokeo", "vespr": "VESPR",
             }
             wallet_key = str(result.get("wallet", ""))
@@ -400,3 +421,125 @@ class WalletState(rx.State):
         except Exception as e:  # noqa: BLE001
             logger.exception("verify_result unexpected error")
             return rx.toast.error(f"検証中に予期せぬエラー: {e}")
+
+    # ── Phase 3: 委任切替 (SPO カードから直接呼ぶ確認フロー) ──
+
+    @rx.event
+    async def request_delegate_to_pool(self, pool_id_bech32: str):
+        """ステーキングページの SPO カードから「委任する」を押した時の入口。
+        対象プールを取得し、ウォレット接続済みなら確認ダイアログを開く。
+        """
+        pool_id_bech32 = (pool_id_bech32 or "").strip()
+        if not pool_id_bech32 or not pool_id_bech32.startswith("pool"):
+            return rx.toast.error("無効な SPO です")
+
+        auth = await self.get_state(AuthState)
+        if not auth.user_id:
+            return rx.toast.error("ログインが必要です")
+
+        if not self.connected:
+            return rx.toast.error(
+                "ウォレットが未接続です。マイページのステークアドレスタブから接続してください。",
+                duration=8000,
+            )
+
+        try:
+            info = pool_search.get_pool_by_bech32(pool_id_bech32)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("get_pool_by_bech32 failed: %s", e)
+            info = {}
+        if not info:
+            return rx.toast.error("対象 SPO の情報が見つかりません")
+
+        # 現在委任中プールの情報も取得 (あれば)
+        current_info: dict = {}
+        if self.current_delegated_pool_id and self.current_delegated_pool_id != pool_id_bech32:
+            try:
+                current_info = pool_search.get_pool_by_bech32(
+                    self.current_delegated_pool_id
+                ) or {}
+            except Exception as e:  # noqa: BLE001
+                logger.warning("current pool fetch failed: %s", e)
+                current_info = {}
+
+        self.delegate_target_pool = info
+        self.delegate_current_pool = current_info
+        self.last_delegate_tx_hash = ""
+        self.delegate_dialog_open = True
+
+    @rx.event
+    def close_delegate_dialog(self):
+        self.delegate_dialog_open = False
+        self.delegate_target_pool = {}
+        self.delegate_current_pool = {}
+
+    @rx.event
+    def on_delegate_dialog_open_change(self, is_open: bool):
+        """Radix Dialog の open 変化を受ける。閉じる時だけ state クリーンアップ。"""
+        if not is_open and self.delegate_dialog_open:
+            self.delegate_dialog_open = False
+            self.delegate_target_pool = {}
+            self.delegate_current_pool = {}
+
+    @rx.event
+    async def submit_delegation(self):
+        """確認ダイアログから委任 tx を組み立てて wallet で署名 → submit する。"""
+        if self.delegating:
+            return
+        if not self.connected:
+            return rx.toast.error("ウォレットが接続されていません")
+
+        pool_id = str((self.delegate_target_pool or {}).get("pool_id_bech32", "")).strip()
+        if not pool_id or not pool_id.startswith("pool"):
+            return rx.toast.error("有効な SPO が選択されていません")
+
+        auth = await self.get_state(AuthState)
+        if not auth.user_id:
+            return rx.toast.error("ログインが必要です")
+
+        # 接続中の reward が登録済みアドレスのいずれかと一致することを確認
+        registered = [
+            str(a.get("address", "")) for a in (auth.stake_addresses or [])
+        ]
+        if self.reward_address not in registered:
+            return rx.toast.error(
+                "接続中ウォレットのアドレスが登録されていません。"
+                "マイページで登録 + 接続してから再度お試しください。"
+            )
+
+        # network 推定 (network_id: 0=testnet, 1=mainnet)
+        network_name = "Mainnet" if self.network_id == 1 else "Preprod"
+
+        self.delegating = True
+        return rx.call_script(
+            _js_call(
+                "window.cardanoismWallet.delegateToPool("
+                f"{json.dumps(pool_id)}, {json.dumps(network_name)})"
+            ),
+            callback=WalletState.delegation_result,
+        )
+
+    @rx.event
+    def delegation_result(self, result: dict):
+        self.delegating = False
+        if not isinstance(result, dict):
+            return rx.toast.error("委任 tx の結果が不正です")
+        if "__error" in result:
+            msg = str(result["__error"])
+            logger.warning("delegation tx failed: %s", msg)
+            return rx.toast.error(f"委任に失敗しました: {msg}", duration=8000)
+        tx_hash = str(result.get("tx_hash", ""))
+        if not tx_hash:
+            return rx.toast.error("tx_hash が取得できませんでした")
+        self.last_delegate_tx_hash = tx_hash
+        # 楽観的に委任先を更新 (実反映は次の Koios 同期で確定)
+        new_pool_id = str((self.delegate_target_pool or {}).get("pool_id_bech32", ""))
+        if new_pool_id:
+            self.current_delegated_pool_id = new_pool_id
+        self.delegate_dialog_open = False
+        self.delegate_target_pool = {}
+        self.delegate_current_pool = {}
+        return rx.toast.success(
+            f"委任 tx を送信しました: {tx_hash[:10]}…{tx_hash[-6:]}",
+            duration=10000,
+        )

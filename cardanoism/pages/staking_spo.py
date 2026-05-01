@@ -15,11 +15,13 @@ import reflex as rx
 
 from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
+from cardanoism.backend.wallet_state import WalletState
 from cardanoism.backend.fiat_db import get_fiat_rate
 from cardanoism.backend.koios import get_totals
 from cardanoism.backend.pool_db import get_pools, count_pools
 from cardanoism.backend.price import format_ada, format_ada_short_ja, format_ada_short_en
 from cardanoism.components.staking_nav import staking_subnav
+from cardanoism.components.delegation_dialog import delegation_dialog
 
 # Cardano プロトコル定数（staking.py と同期）
 MAX_SUPPLY_LOVELACE = 45_000_000_000 * 1_000_000
@@ -306,46 +308,68 @@ def _saturation_bar(p) -> rx.Component:
 
 def _relay_status(state) -> rx.Component:
     """リレー稼働状況のピル状バッジ。alive=緑+波紋アニメ / dead=赤 / unknown=非表示。
-    シャドウとサイズを少し強めて、メトリクスグリッド内で目を引くように。
+    pool_id_inline (size="1") と並ぶインライン要素なのでコンパクトに。
     """
     return rx.match(
         state,
         ("alive", rx.hstack(
             rx.box(
-                width="9px",
-                height="9px",
+                width="7px",
+                height="7px",
                 border_radius="999px",
                 background="var(--green-10)",
                 flex_shrink="0",
                 style={"animation": "cdn_relay_pulse 1.6s ease-in-out infinite"},
             ),
-            rx.text(AuthState.t["staking_badge_alive"], size="1", weight="bold", color="var(--green-12)",
-                    style={"whiteSpace": "nowrap"}),
-            spacing="2",
+            rx.text(
+                AuthState.t["staking_badge_alive"],
+                color="var(--green-12)",
+                style={
+                    "fontSize": "11px",
+                    "fontWeight": "700",
+                    "lineHeight": "1.0",
+                    "whiteSpace": "nowrap",
+                },
+            ),
+            spacing="1",
             align="center",
-            padding="4px 12px 4px 10px",
+            padding="3px 8px 3px 7px",
             border_radius="999px",
             background="var(--green-3)",
-            border="1px solid var(--green-8)",
-            style={"boxShadow": "0 1px 3px rgba(34,197,94,0.18)"},
+            border="1px solid var(--green-7)",
+            style={
+                "display": "inline-flex",
+                "flexShrink": "0",
+            },
         )),
         ("dead", rx.hstack(
             rx.box(
-                width="9px",
-                height="9px",
+                width="7px",
+                height="7px",
                 border_radius="999px",
                 background="var(--red-10)",
                 flex_shrink="0",
             ),
-            rx.text(AuthState.t["staking_badge_dead"], size="1", weight="bold", color="var(--red-12)",
-                    style={"whiteSpace": "nowrap"}),
-            spacing="2",
+            rx.text(
+                AuthState.t["staking_badge_dead"],
+                color="var(--red-12)",
+                style={
+                    "fontSize": "11px",
+                    "fontWeight": "700",
+                    "lineHeight": "1.0",
+                    "whiteSpace": "nowrap",
+                },
+            ),
+            spacing="1",
             align="center",
-            padding="4px 12px 4px 10px",
+            padding="3px 8px 3px 7px",
             border_radius="999px",
             background="var(--red-3)",
-            border="1px solid var(--red-8)",
-            style={"boxShadow": "0 1px 3px rgba(239,68,68,0.18)"},
+            border="1px solid var(--red-7)",
+            style={
+                "display": "inline-flex",
+                "flexShrink": "0",
+            },
         )),
         rx.fragment(),
     )
@@ -453,7 +477,9 @@ def _pool_card(p) -> rx.Component:
             },
             _hover={"color": "var(--gray-12)"},
         ),
-        spacing="1", align="center",
+        # コピーボタンの右隣にリレー稼働状況バッジ
+        _relay_status(p["relay_state"]),
+        spacing="2", align="center", wrap="wrap",
     )
 
     sat_label = rx.hstack(
@@ -468,6 +494,106 @@ def _pool_card(p) -> rx.Component:
             ),
         ),
         spacing="2", align="center",
+    )
+
+    # 委任状態の判定:
+    #   - 接続中ウォレットの現在委任先 == このカードのプール: 「委任中」 (緑バッジ、クリック不可)
+    #   - 接続中: 「委任する」 (amber)
+    #   - 未接続: 「委任する」 (gray, disabled)
+    is_currently_delegated = (
+        WalletState.connected
+        & (WalletState.current_delegated_pool_id == p["pool_id"])
+    )
+    # 委任中の amber バッジ (リレー緑バッジと色で区別、サイズは揃える)
+    delegated_badge = rx.hstack(
+        rx.icon("circle-check", size=11, color="var(--amber-11)"),
+        rx.text(
+            AuthState.t["delegate_btn_currently"],
+            size="1", weight="bold", color="var(--amber-12)",
+            style={"whiteSpace": "nowrap"},
+        ),
+        spacing="2",
+        align="center",
+        padding="4px 12px 4px 10px",
+        border_radius="999px",
+        background="var(--amber-3)",
+        border="1px solid var(--amber-8)",
+        cursor="default",
+        style={
+            "boxShadow": "0 1px 3px rgba(245,158,11,0.18)",
+            "display": "inline-flex",
+            "flexShrink": "0",
+        },
+    )
+    # 接続中: amber アウトライン (ゴースト風)。アクション要素なのでバッジより大きめ
+    delegate_active = rx.el.button(
+        rx.icon("zap", size=14, color="var(--amber-11)"),
+        rx.text(
+            AuthState.t["delegate_btn"],
+            color="var(--amber-12)",
+            style={
+                "fontSize": "13px",
+                "fontWeight": "700",
+                "lineHeight": "1.0",
+                "whiteSpace": "nowrap",
+            },
+        ),
+        on_click=WalletState.request_delegate_to_pool(p["pool_id"]),
+        cursor="pointer",
+        style={
+            "display": "inline-flex",
+            "alignItems": "center",
+            "gap": "6px",
+            "padding": "8px 16px",
+            "borderRadius": "999px",
+            "background": "transparent",
+            "border": "1.5px solid var(--amber-8)",
+            "transition": "background 0.15s ease, border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease",
+            "flexShrink": "0",
+            "boxShadow": "0 1px 2px rgba(0,0,0,0.04)",
+        },
+        _hover={
+            "background": "var(--amber-3)",
+            "border_color": "var(--amber-10)",
+            "transform": "translateY(-1px)",
+            "box_shadow": "0 4px 10px -2px rgba(245,158,11,0.25)",
+        },
+    )
+    # 未接続: 控えめグレー (active と同寸法でレイアウトずれを防ぐ)
+    delegate_disabled = rx.hstack(
+        rx.icon("zap", size=14, color="var(--gray-9)"),
+        rx.text(
+            AuthState.t["delegate_btn"],
+            color="var(--gray-10)",
+            style={
+                "fontSize": "13px",
+                "fontWeight": "600",
+                "lineHeight": "1.0",
+                "whiteSpace": "nowrap",
+            },
+        ),
+        spacing="2",
+        align="center",
+        padding="8px 16px",
+        border_radius="999px",
+        background="var(--gray-3)",
+        border="1.5px solid var(--gray-6)",
+        cursor="not-allowed",
+        style={
+            "opacity": "0.7",
+            "display": "inline-flex",
+            "flexShrink": "0",
+        },
+    )
+
+    delegate_button = rx.cond(
+        is_currently_delegated,
+        delegated_badge,
+        rx.cond(
+            WalletState.connected,
+            delegate_active,
+            delegate_disabled,
+        ),
     )
 
     metrics = rx.box(
@@ -485,9 +611,9 @@ def _pool_card(p) -> rx.Component:
         _metric(AuthState.t["staking_metric_delegators"], p["delegators"], ""),
         _metric(AuthState.t["staking_metric_blocks"], p["block_count"], ""),
         _metric(AuthState.t["staking_metric_recent5ep"], p["history_total"], "", emphasis=True),
-        # リレー稼働状況をメトリクスグリッドの 8 番目のセルに配置（ピル自体に「リレー〜」と入っているので別ラベル不要）
+        # 委任ボタン (8 番目のセル)
         rx.box(
-            _relay_status(p["relay_state"]),
+            delegate_button,
             style={
                 "display": "flex",
                 "alignItems": "center",
@@ -609,13 +735,36 @@ def _filter_bar() -> rx.Component:
         ),
         rx.cond(
             StakingSPOState.sort == "random",
-            rx.button(
-                rx.icon("shuffle", size=15),
-                rx.text(AuthState.t["staking_reshuffle"], size="2"),
-                variant="soft",
-                size="3",
+            rx.el.button(
+                rx.icon("shuffle", size=14, color="var(--gray-12)"),
+                rx.text(
+                    AuthState.t["staking_reshuffle"],
+                    color="var(--gray-12)",
+                    style={
+                        "fontSize": "13px",
+                        "fontWeight": "600",
+                        "letterSpacing": "0.02em",
+                    },
+                ),
                 on_click=StakingSPOState.reshuffle,
                 cursor="pointer",
+                style={
+                    "display": "inline-flex",
+                    "alignItems": "center",
+                    "gap": "8px",
+                    "padding": "9px 18px",
+                    "borderRadius": "999px",
+                    "background": "transparent",
+                    "border": "1px solid var(--gray-6)",
+                    "transition": "background 0.15s ease, border-color 0.15s ease, transform 0.15s ease",
+                    "lineHeight": "1.0",
+                    "flexShrink": "0",
+                },
+                _hover={
+                    "background": rx.color_mode_cond("var(--gray-3)", "rgba(255,255,255,0.04)"),
+                    "border_color": "var(--gray-8)",
+                    "transform": "translateY(-1px)",
+                },
             ),
             rx.fragment(),
         ),
@@ -693,6 +842,8 @@ def staking_spo_page() -> rx.Component:
         StakingSPOState.load,
         rx.box(
             rx.html(SPO_CSS),
+            # 委任確認モーダル (1 ページに 1 度だけマウント)
+            delegation_dialog(),
             rx.vstack(
                 _breadcrumb(),
                 staking_subnav("spo"),

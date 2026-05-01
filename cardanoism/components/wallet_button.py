@@ -34,6 +34,7 @@ _WALLET_CSS = """
 # (key, label, platform_hint)
 _WALLET_DEFS: list[tuple[str, str, str]] = [
     ("eternl",      "Eternl", "PC / Mobile"),
+    ("lace",        "Lace",   "PC / Mobile"),
     ("yoroi",       "Yoroi",  "PC / Mobile"),
     ("typhoncip30", "Typhon", "PC"),
     ("tokeo",       "Tokeo",  "PC / Mobile"),
@@ -362,7 +363,7 @@ def wallet_connect_pill(addr) -> rx.Component:
     )
 
     # 接続状態に応じた表示
-    # - 接続中: ウォレット名バッジ + (未検証なら検証ボタン)
+    # - 接続中: ウォレット名バッジ + (未検証なら検証ボタン / 検証済みなら省略)
     # - 未接続: ウォレット接続ボタン (picker)
     connection_part = rx.cond(
         is_this_connected,

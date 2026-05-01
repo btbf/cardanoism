@@ -305,6 +305,23 @@ UI_JA: dict[str, str] = {
     "staking_badge_alive":         "リレー稼働中",
     "staking_badge_dead":          "リレー応答なし",
 
+    # 委任 (Phase 3): SPO カードのボタン + 委任ダイアログ
+    "delegate_btn":                "委任する",
+    "delegate_btn_currently":      "委任中",
+    "delegate_modal_title":        "この SPO に委任しますか？",
+    "delegate_modal_desc":         "下記の内容で委任 tx を作成し、ウォレットで署名・送信します。",
+    "delegate_label_wallet":       "委任ウォレット",
+    "delegate_label_current":      "現在の委任先",
+    "delegate_label_new_target":   "委任変更先",
+    "delegate_label_first_target": "委任先 (新規)",
+    "delegate_label_saturation":   "飽和率",
+    "delegate_label_delegators":   "委任者",
+    "delegate_pool_unnamed":       "（名称未設定）",
+    "delegate_fee_note":           "Cardano ネットワーク手数料 (約 0.17 ADA) がかかります。ステークキー未登録の場合は別途デポジット 2 ADA が必要 (返却可)。",
+    "delegate_btn_cancel":         "キャンセル",
+    "delegate_btn_submit":         "委任 tx を送信",
+    "delegate_btn_submitting":     "送信中…",
+
     # トレジャリーページ
     "treasury_balance_title": "現在のトレジャリー残高",
     "treasury_epoch_label": "基準エポック:",
@@ -791,6 +808,23 @@ UI_EN: dict[str, str] = {
     "staking_badge_retiring":      "Retiring",
     "staking_badge_alive":         "Relay online",
     "staking_badge_dead":          "Relay offline",
+
+    # Delegation (Phase 3): SPO card button + dialog
+    "delegate_btn":                "Delegate",
+    "delegate_btn_currently":      "Delegated",
+    "delegate_modal_title":        "Delegate to this SPO?",
+    "delegate_modal_desc":         "Build a delegation transaction with the info below and sign / submit via your wallet.",
+    "delegate_label_wallet":       "Delegating wallet",
+    "delegate_label_current":      "Currently delegated to",
+    "delegate_label_new_target":   "New delegation",
+    "delegate_label_first_target": "Delegation target (new)",
+    "delegate_label_saturation":   "Saturation",
+    "delegate_label_delegators":   "Delegators",
+    "delegate_pool_unnamed":       "(Unnamed)",
+    "delegate_fee_note":           "Cardano network fee (~0.17 ADA) applies. If your stake key is not yet registered, a 2 ADA deposit (refundable) is also required.",
+    "delegate_btn_cancel":         "Cancel",
+    "delegate_btn_submit":         "Submit delegation tx",
+    "delegate_btn_submitting":     "Submitting…",
 
     # Treasury page
     "treasury_balance_title": "Current Treasury Balance",
