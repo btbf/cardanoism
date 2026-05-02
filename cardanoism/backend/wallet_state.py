@@ -482,19 +482,41 @@ class WalletState(rx.State):
             self.delegate_current_pool = {}
 
     @rx.event
-    def submit_delegation(self):
-        """確認ダイアログから委任 tx を送信する (Phase 3 実装予定 / 現在スタブ)。
+    async def submit_delegation(self):
+        """確認ダイアログから委任 tx を組み立て、wallet で署名して送信する。
 
-        TODO: Phase 3 で MeshSDK or Lucid Evolution を使った tx 構築を別ブランチで実装。
-        現状は UI フローだけ完成しており、ボタン押下時は info toast を返すのみ。
+        サーバ側で pycardano が unsigned tx を構築 (/api/tx/pool_delegation)、
+        フロント側で wallet.signTx + submitTx を実行する方式。
         """
-        return [
-            rx.toast.info(
-                "委任機能は現在開発中です (近日対応予定)。",
-                duration=6000,
-            ),
-            WalletState.close_delegate_dialog,
+        if self.delegating:
+            return
+        if not self.connected:
+            return rx.toast.error("ウォレットが接続されていません")
+
+        pool_id = str((self.delegate_target_pool or {}).get("pool_id_bech32", "")).strip()
+        if not pool_id or not pool_id.startswith("pool"):
+            return rx.toast.error("有効な SPO が選択されていません")
+
+        auth = await self.get_state(AuthState)
+        if not auth.user_id:
+            return rx.toast.error("ログインが必要です")
+
+        registered = [
+            str(a.get("address", "")) for a in (auth.stake_addresses or [])
         ]
+        if self.reward_address not in registered:
+            return rx.toast.error(
+                "接続中ウォレットのアドレスが登録されていません。"
+                "マイページで登録 + 接続してから再度お試しください。"
+            )
+
+        self.delegating = True
+        return rx.call_script(
+            _js_call(
+                f"window.cardanoismWallet.delegateToPool({json.dumps(pool_id)})"
+            ),
+            callback=WalletState.delegation_result,
+        )
 
     @rx.event
     def delegation_result(self, result: dict):
