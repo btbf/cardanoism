@@ -193,7 +193,11 @@ python3 -m venv .venv
 # `websockets>=12.0` が必要
 ```
 
-### 5-2. 環境変数（`/opt/cardanoism/.env`）
+### 5-2. シークレット管理 (Infisical)
+
+`.env` ではなく **Infisical** で集中管理する。本番 (mainnet) / テストネット (preview) を environment スコープで分離。
+
+必要な secret 一覧:
 
 | 変数 | 必須 | 説明 |
 |------|:---:|------|
@@ -201,21 +205,33 @@ python3 -m venv .venv
 | `KOIOS_NETWORK` | ✅ | `mainnet` / `preprod` / `preview`（Ogmios `/health` から自動検出可） |
 | `CARDANOISM_URL` | ✅ | サイト URL（通知メッセージ内のリンク用） |
 | `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASS` / `DB_NAME` | ✅ | MariaDB 接続情報 |
-| `LINE_CHANNEL_ACCESS_TOKEN` | ⚠️ | LINE 通知を使う場合 |
+| `LINE_MESSAGING_TOKEN` | ⚠️ | LINE 通知を使う場合（Messaging API チャンネルアクセストークン） |
 | `MAIL_SMTP_HOST` / `MAIL_SMTP_PORT` / `MAIL_SMTP_USER` / `MAIL_SMTP_PASSWORD` / `MAIL_FROM_NAME` | ⚠️ | メール通知を使う場合 |
 | `TELEGRAM_BOT_TOKEN` | ⚠️ | Telegram 通知を使う場合 |
 | `KOIOS_API_KEY` | 任意 | Koios の認証キー（DRep 投票時のタイトル補完・プール実績取得に使用） |
+
+VPS 側で Infisical CLI をインストールし、Machine Identity (Service Token) を発行して非対話認証する:
+
+```bash
+# CLI インストール
+curl -1sLf https://artifacts-cli.infisical.com/setup.deb.sh | sudo -E bash
+sudo apt install -y infisical
+
+# Service Token を保存 (Infisical Web UI → Project → Access Control → Machine Identities で発行)
+sudo install -m 0600 /dev/stdin /etc/cardanoism/infisical.token <<< "<TOKEN>"
+sudo chown cardanoism:cardanoism /etc/cardanoism/infisical.token
+```
 
 ### 5-3. 起動方法
 
 ```bash
 cd /opt/cardanoism
-.venv/bin/python ogmios_listener.py
-# または引数指定
-.venv/bin/python ogmios_listener.py --ogmios-url ws://127.0.0.1:1337
+infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- \
+    .venv/bin/python ogmios_listener.py
 
-# 既存DBがありgenesisから再生したくない場合（推奨: 初回起動時）
-.venv/bin/python ogmios_listener.py --from-tip
+# 初回起動時のみ tip から再開
+infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- \
+    .venv/bin/python ogmios_listener.py --from-tip
 ```
 
 `--from-tip` は **初回起動時のみ** に使う。tip からカーソルを設定し、ジェネシスからの再生をスキップする。2回目以降は `notification_check_state` の `ogmios_last_slot` から自動再開するため不要。
@@ -234,8 +250,8 @@ Requires=ogmios.service
 Type=simple
 User=cardanoism
 WorkingDirectory=/opt/cardanoism
-EnvironmentFile=/opt/cardanoism/.env
-ExecStart=/opt/cardanoism/.venv/bin/python ogmios_listener.py
+# Infisical Service Token をファイル経由で読み込む (Token 自体は環境変数として漏らさない)
+ExecStart=/usr/bin/bash -c '/usr/local/bin/infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- /opt/cardanoism/.venv/bin/python ogmios_listener.py'
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -244,6 +260,8 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 ```
+
+> preview テストネット用の listener を別途立てるときは `--env=preview` に変更し、別 unit (`ogmios-listener-preview.service`) として登録する。
 
 ```bash
 sudo systemctl daemon-reload
@@ -267,9 +285,9 @@ Ogmios `nextBlock` は `direction: "backward"` で網羅的にロールバック
 
 ## 7. ネットワーク切替（preprod / preview）
 
-`OGMIOS_URL` を切り替えれば `ogmios_listener.py` は `/health` の `network` フィールドから自動検出する。`KOIOS_NETWORK` 環境変数を明示する場合はそちらが優先される。
+Infisical で `mainnet` / `preview` environment を分けているので、systemd unit の `--env=` フラグだけ書き換えれば network 別の secret に切り替わる。`ogmios_listener.py` 自体は Ogmios `/health` の `network` フィールドから自動検出するため、コード側に変更は不要。
 
-cardano-node / Ogmios 側はネットワークごとに別の config 一式が必要。preprod の場合は `environments/preprod/config.json` を使い、別 systemd ユニットを立てる構成を推奨。
+cardano-node / Ogmios 側はネットワークごとに別の config 一式が必要。preprod の場合は `environments/preprod/config.json` を使い、別 systemd ユニット (`cardano-node-preprod.service`) を立てる構成を推奨。
 
 ---
 

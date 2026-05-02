@@ -15,13 +15,11 @@ import reflex as rx
 
 from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
-from cardanoism.backend.wallet_state import WalletState
 from cardanoism.backend.fiat_db import get_fiat_rate
 from cardanoism.backend.koios import get_totals
 from cardanoism.backend.pool_db import get_pools, count_pools
 from cardanoism.backend.price import format_ada, format_ada_short_ja, format_ada_short_en
 from cardanoism.components.staking_nav import staking_subnav
-from cardanoism.components.delegation_dialog import delegation_dialog
 
 # Cardano プロトコル定数（staking.py と同期）
 MAX_SUPPLY_LOVELACE = 45_000_000_000 * 1_000_000
@@ -496,77 +494,14 @@ def _pool_card(p) -> rx.Component:
         spacing="2", align="center",
     )
 
-    # 委任状態の判定:
-    #   - 接続中ウォレットの現在委任先 == このカードのプール: 「委任中」 (緑バッジ、クリック不可)
-    #   - 接続中: 「委任する」 (amber)
-    #   - 未接続: 「委任する」 (gray, disabled)
-    is_currently_delegated = (
-        WalletState.connected
-        & (WalletState.current_delegated_pool_id == p["pool_id"])
-    )
-    # 委任中の amber バッジ (リレー緑バッジと色で区別、サイズは揃える)
-    delegated_badge = rx.hstack(
-        rx.icon("circle-check", size=11, color="var(--amber-11)"),
+    # 委任機能は近日実装予定 — 委任アイコン (zap) + 文言で関連性を明示
+    delegate_button = rx.hstack(
+        rx.icon("zap", size=12, color="var(--gray-9)"),
         rx.text(
-            AuthState.t["delegate_btn_currently"],
-            size="1", weight="bold", color="var(--amber-12)",
-            style={"whiteSpace": "nowrap"},
-        ),
-        spacing="2",
-        align="center",
-        padding="4px 12px 4px 10px",
-        border_radius="999px",
-        background="var(--amber-3)",
-        border="1px solid var(--amber-8)",
-        cursor="default",
-        style={
-            "boxShadow": "0 1px 3px rgba(245,158,11,0.18)",
-            "display": "inline-flex",
-            "flexShrink": "0",
-        },
-    )
-    # 接続中: amber アウトライン (ゴースト風)。アクション要素なのでバッジより大きめ
-    delegate_active = rx.el.button(
-        rx.icon("zap", size=14, color="var(--amber-11)"),
-        rx.text(
-            AuthState.t["delegate_btn"],
-            color="var(--amber-12)",
-            style={
-                "fontSize": "13px",
-                "fontWeight": "700",
-                "lineHeight": "1.0",
-                "whiteSpace": "nowrap",
-            },
-        ),
-        on_click=WalletState.request_delegate_to_pool(p["pool_id"]),
-        cursor="pointer",
-        style={
-            "display": "inline-flex",
-            "alignItems": "center",
-            "gap": "6px",
-            "padding": "8px 16px",
-            "borderRadius": "999px",
-            "background": "transparent",
-            "border": "1.5px solid var(--amber-8)",
-            "transition": "background 0.15s ease, border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease",
-            "flexShrink": "0",
-            "boxShadow": "0 1px 2px rgba(0,0,0,0.04)",
-        },
-        _hover={
-            "background": "var(--amber-3)",
-            "border_color": "var(--amber-10)",
-            "transform": "translateY(-1px)",
-            "box_shadow": "0 4px 10px -2px rgba(245,158,11,0.25)",
-        },
-    )
-    # 未接続: 控えめグレー (active と同寸法でレイアウトずれを防ぐ)
-    delegate_disabled = rx.hstack(
-        rx.icon("zap", size=14, color="var(--gray-9)"),
-        rx.text(
-            AuthState.t["delegate_btn"],
+            AuthState.t["delegate_btn_coming_soon"],
             color="var(--gray-10)",
             style={
-                "fontSize": "13px",
+                "fontSize": "12px",
                 "fontWeight": "600",
                 "lineHeight": "1.0",
                 "whiteSpace": "nowrap",
@@ -574,26 +509,16 @@ def _pool_card(p) -> rx.Component:
         ),
         spacing="2",
         align="center",
-        padding="8px 16px",
+        padding="6px 14px",
         border_radius="999px",
         background="var(--gray-3)",
-        border="1.5px solid var(--gray-6)",
-        cursor="not-allowed",
+        border=f"1px dashed {rx.color('gray', 7)}",
+        cursor="default",
         style={
-            "opacity": "0.7",
+            "opacity": "0.85",
             "display": "inline-flex",
             "flexShrink": "0",
         },
-    )
-
-    delegate_button = rx.cond(
-        is_currently_delegated,
-        delegated_badge,
-        rx.cond(
-            WalletState.connected,
-            delegate_active,
-            delegate_disabled,
-        ),
     )
 
     metrics = rx.box(
@@ -657,7 +582,7 @@ def _pool_card(p) -> rx.Component:
         rx.fragment(),
     )
 
-    # ── ヘッダー: プール名 / ID / 概要 (明るめ背景) ─────────
+    # ── ヘッダー: プール名 / ID / 概要 (明るい白ベース) ─────
     header_section = rx.box(
         rx.vstack(
             rx.hstack(
@@ -673,11 +598,11 @@ def _pool_card(p) -> rx.Component:
             spacing="3", align_items="stretch", width="100%",
         ),
         padding="16px 18px 14px 18px",
-        background=rx.color_mode_cond("white", "rgba(255,255,255,0.04)"),
+        background=rx.color_mode_cond("white", "rgba(255,255,255,0.05)"),
         width="100%",
     )
 
-    # ── ボディ: 飽和率 + メトリクス (やや暗め背景で数値ゾーンを区別) ──
+    # ── ボディ: 飽和率 + メトリクス (淡いグレーで読みやすさ重視) ──
     body_section = rx.box(
         rx.vstack(
             saturation_row,
@@ -685,8 +610,8 @@ def _pool_card(p) -> rx.Component:
             spacing="3", align_items="stretch", width="100%",
         ),
         padding="14px 18px 16px 18px",
-        background=rx.color_mode_cond("var(--gray-3)", "rgba(0,0,0,0.18)"),
-        border_top=f"1px solid {rx.color('gray', 4)}",
+        background=rx.color_mode_cond("var(--gray-2)", "rgba(255,255,255,0.015)"),
+        border_top=f"1px solid {rx.color('gray', 5)}",
         width="100%",
     )
 
@@ -694,17 +619,23 @@ def _pool_card(p) -> rx.Component:
         header_section,
         body_section,
         border_radius="12px",
-        border=f"1px solid {rx.color('gray', 4)}",
+        border=f"1px solid {rx.color('gray', 5)}",
         overflow="hidden",  # 角の丸みで内側の背景を綺麗にクリップ
         width="100%",
+        # デフォルトでも軽いシャドウを付けてカードのエッジを浮かせる
+        box_shadow=rx.color_mode_cond(
+            "0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04)",
+            "0 1px 3px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.20)",
+        ),
         _hover={
-            "border_color": rx.color("gray", 6),
+            "border_color": rx.color("amber", 8),
+            "transform": "translateY(-1px)",
             "box_shadow": rx.color_mode_cond(
-                "0 4px 14px -4px rgba(0,0,0,0.08)",
-                "0 4px 14px -4px rgba(0,0,0,0.40)",
+                "0 8px 22px -6px rgba(15,23,42,0.16), 0 4px 10px -4px rgba(245,158,11,0.18)",
+                "0 8px 22px -6px rgba(0,0,0,0.55), 0 4px 10px -4px rgba(245,158,11,0.22)",
             ),
         },
-        style={"transition": "border-color 0.15s, box-shadow 0.15s"},
+        style={"transition": "border-color 0.15s, box-shadow 0.18s, transform 0.18s"},
     )
 
 
@@ -867,8 +798,6 @@ def staking_spo_page() -> rx.Component:
         StakingSPOState.load,
         rx.box(
             rx.html(SPO_CSS),
-            # 委任確認モーダル (1 ページに 1 度だけマウント)
-            delegation_dialog(),
             rx.vstack(
                 _breadcrumb(),
                 staking_subnav("spo"),
@@ -883,7 +812,7 @@ def staking_spo_page() -> rx.Component:
                     StakingSPOState.pools,
                     rx.vstack(
                         rx.foreach(StakingSPOState.pools.to(list[dict[str, str]]), _pool_card),
-                        spacing="2", width="100%",
+                        spacing="3", width="100%",
                     ),
                     rx.callout(AuthState.t["staking_no_pools"], icon="info", color_scheme="gray"),
                 ),

@@ -14,7 +14,7 @@ systemd 等で常駐させる想定。SIGINT / SIGTERM で graceful shutdown。
   python ga_ai_worker.py [--poll-interval 20] [--concurrency 3]
 
 依存:
-  ANTHROPIC_API_KEY ではなく GPT_API_KEY (or OPENAI_API_KEY) を使う。
+  ANTHROPIC_API_KEY ではなく GPT_API_KEY を使う。
 """
 from __future__ import annotations
 

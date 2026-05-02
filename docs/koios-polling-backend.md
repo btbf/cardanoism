@@ -84,7 +84,11 @@ done
 
 詳細は `cardanoism/backend/migrations/README.md`。
 
-### 3-3. 環境変数（`/opt/cardanoism/.env`）
+### 3-3. シークレット管理 (Infisical)
+
+`.env` ではなく **Infisical** で集中管理する。`mainnet` / `preview` environment ごとに secret を分離し、cron / systemd 起動時に CLI が `os.environ` に注入する。
+
+必要な secret 一覧:
 
 | 変数 | 必須 | 説明 |
 |------|:---:|------|
@@ -92,15 +96,15 @@ done
 | `CARDANOISM_URL` | ✅ | サイト URL（通知メッセージ内のリンク） |
 | `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASS` / `DB_NAME` | ✅ | MariaDB 接続情報 |
 | `KOIOS_API_KEY` | 任意 | Koios 認証キー（rate limit 緩和） |
-| `LINE_CHANNEL_ACCESS_TOKEN` | ⚠️ | LINE 通知 |
+| `LINE_MESSAGING_TOKEN` | ⚠️ | LINE 通知（Messaging API チャンネルアクセストークン） |
 | `MAIL_SMTP_HOST` / `MAIL_SMTP_PORT` / `MAIL_SMTP_USER` / `MAIL_SMTP_PASSWORD` | ⚠️ | メール通知 |
 | `MAIL_FROM_NAME` | 任意 | 送信者表示名（既定: `Cardanoism`） |
 | `TELEGRAM_BOT_TOKEN` | ⚠️ | Telegram 通知 |
-| `OPENAI_API_KEY` | 任意 | 投票理由翻訳（`vote_rationale_sync`） |
+| `GPT_API_KEY` | 任意 | OpenAI API キー（投票理由翻訳 `vote_rationale_sync` で使用） |
 
 ⚠️ は通知チャンネルを使う場合のみ必須。最低 1 つは設定。
 
-`notify_worker.py` 起動時に `cardanoism/.env` を `dotenv` で自動ロードする。systemd / cron 経由なら `EnvironmentFile=/opt/cardanoism/.env` 等で同等のロードを行う構成にしてもよい。
+VPS への CLI / Service Token セットアップは `docs/realtime-notification-backend.md` 5-2 と共通。cron では `infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- python notify_worker.py ...` の形でラップする。
 
 ---
 
@@ -113,42 +117,49 @@ done
 SHELL=/bin/bash
 WORKDIR=/opt/cardanoism
 PY=/opt/cardanoism/.venv/bin/python
+INF=/usr/local/bin/infisical
+TOKEN_FILE=/etc/cardanoism/infisical.token
+# Infisical の env スコープを切り替えるなら ENV=preview に変更
+ENV=mainnet
+RUN="$INF run --env=$ENV --token=$(cat $TOKEN_FILE) --"
 
 # ── 通知 ─────────────────────────────────────────────
 # プール系（saturation / pledge / reward）
-*/30 * * * *  cardanoism cd $WORKDIR && $PY notify_worker.py --event pool         >> /var/log/cardanoism/notify.log 2>&1
+*/30 * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event pool         >> /var/log/cardanoism/notify.log 2>&1
 
 # DRep 系（status_change）
-*/30 * * * *  cardanoism cd $WORKDIR && $PY notify_worker.py --event drep         >> /var/log/cardanoism/notify.log 2>&1
+*/30 * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event drep         >> /var/log/cardanoism/notify.log 2>&1
 
 # 委任リマインダー（pool / drep）
-0    * * * *  cardanoism cd $WORKDIR && $PY notify_worker.py --event reminder     >> /var/log/cardanoism/notify.log 2>&1
+0    * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event reminder     >> /var/log/cardanoism/notify.log 2>&1
 
 # トレジャリー引き出し提案の enacted 検知
-0    * * * *  cardanoism cd $WORKDIR && $PY notify_worker.py --event treasury     >> /var/log/cardanoism/notify.log 2>&1
+0    * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event treasury     >> /var/log/cardanoism/notify.log 2>&1
 
 # ── キャッシュ同期 ───────────────────────────────────
 # トレジャリー残高・履歴・NCL
-*/15 * * * *  cardanoism cd $WORKDIR && $PY notify_worker.py --event treasury_sync >> /var/log/cardanoism/sync.log 2>&1
+*/15 * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event treasury_sync >> /var/log/cardanoism/sync.log 2>&1
 
 # 法定通貨レート（CoinGecko）
-*/10 * * * *  cardanoism cd $WORKDIR && $PY notify_worker.py --event fiat_sync     >> /var/log/cardanoism/sync.log 2>&1
+*/10 * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event fiat_sync     >> /var/log/cardanoism/sync.log 2>&1
 
 # DRep 一覧・メタデータ
-0    */2 * * * cardanoism cd $WORKDIR && $PY notify_worker.py --event drep_sync    >> /var/log/cardanoism/sync.log 2>&1
+0    */2 * * * cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event drep_sync    >> /var/log/cardanoism/sync.log 2>&1
 
 # 投票履歴（GA 詳細用）
-*/30 * * * *  cardanoism cd $WORKDIR && $PY notify_worker.py --event vote_sync     >> /var/log/cardanoism/sync.log 2>&1
+*/30 * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event vote_sync     >> /var/log/cardanoism/sync.log 2>&1
 
 # 投票集計
-*/30 * * * *  cardanoism cd $WORKDIR && $PY notify_worker.py --event summary_sync  >> /var/log/cardanoism/sync.log 2>&1
+*/30 * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event summary_sync  >> /var/log/cardanoism/sync.log 2>&1
 
 # プロトコルパラメータ・CC メンバー
-0    */6 * * * cardanoism cd $WORKDIR && $PY notify_worker.py --event params_sync  >> /var/log/cardanoism/sync.log 2>&1
+0    */6 * * * cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event params_sync  >> /var/log/cardanoism/sync.log 2>&1
 
 # 投票理由の翻訳（OpenAI、無料枠の上限注意）
-0    */4 * * * cardanoism cd $WORKDIR && $PY notify_worker.py --event vote_rationale_sync >> /var/log/cardanoism/sync.log 2>&1
+0    */4 * * * cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event vote_rationale_sync >> /var/log/cardanoism/sync.log 2>&1
 ```
+
+cron は `$()` を直接展開できないため、`$RUN` 変数を組み立てる際に `$(cat ...)` を頭に出している点に注意。動かない場合は `--token-file=$TOKEN_FILE` 指定に切替えるか、wrapper script を用意する。
 
 ```bash
 sudo mkdir -p /var/log/cardanoism
