@@ -221,7 +221,10 @@ class AuthState(rx.State):
         if self._lang_manually_set or self.is_logged_in:
             return
         detected = "ja" if (browser_lang or "").lower().startswith("ja") else "en"
-        self.language = detected
+        # 同値ならスキップ — 代入すると t (@rx.var) が無効化されて全 i18n 依存
+        # コンポーネントが再レンダーされる (= 2 秒遅れの flicker の原因)
+        if self.language != detected:
+            self.language = detected
 
     def detect_browser_language(self):
         if self._lang_manually_set or self.is_logged_in:
