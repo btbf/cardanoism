@@ -35,7 +35,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from dotenv import load_dotenv
-load_dotenv(PROJECT_ROOT / "cardanoism" / ".env", override=True)
+# シークレットは Infisical CLI で注入。.env は fallback (Infisical 値を上書きしない)。
+load_dotenv(PROJECT_ROOT / "cardanoism" / ".env", override=False)
 
 from cardanoism.backend.db_connect import get_db
 from cardanoism.backend.koios import _get

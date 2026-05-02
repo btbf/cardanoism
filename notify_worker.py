@@ -31,9 +31,10 @@ from datetime import datetime, timezone, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# .env を明示的にロード（他モジュールの import より先に実行する必要がある）
+# シークレットは Infisical CLI (`infisical run -- python notify_worker.py ...`) で注入する。
+# .env は fallback としてのみ読み込み、Infisical 注入値を上書きしない。
 from dotenv import load_dotenv
-load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cardanoism", ".env"), override=True)
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cardanoism", ".env"), override=False)
 
 from cardanoism.backend.db_connect import get_db
 from cardanoism.backend.koios import (

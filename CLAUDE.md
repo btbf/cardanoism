@@ -201,24 +201,50 @@ SMTP 経由でメールを送信するヘルパー。
 
 ---
 
-## 5. 環境変数
+## 5. シークレット管理 (Infisical)
+
+`.env` は廃止し、**Infisical** で集中管理する。`.infisical.json` (workspaceId / defaultEnvironment) はリポジトリにコミット、secret 本体は Infisical 側のみ。
+
+**environment スコープ**:
+- `local`  : Windows ローカル開発用 (default)
+- `mainnet`: 本番 VPS (mainnet)
+- `preview`: テストネット VPS (preview)
+
+**ローカル開発の起動コマンド**:
+
+```bash
+# Reflex 起動
+infisical run -- reflex run
+
+# 別 environment を使う場合
+infisical run --env=preview -- reflex run
+
+# notify_worker / ga_ai_worker 等の単発実行
+infisical run -- python notify_worker.py --event vote_sync
+```
+
+> 素の `reflex run` だと `os.getenv` が空を返して起動失敗する。必ず `infisical run --` でラップする。
+
+**VPS (systemd / cron) の運用**:
+
+VPS では Machine Identity (Service Token) で非対話認証する。詳細は `docs/realtime-notification-backend.md` 5-2。
+
+**管理対象 secret**:
 
 | 変数 | 説明 | デフォルト |
 |------|------|----------|
 | `KOIOS_NETWORK` | Koios ネットワーク（mainnet / preprod / preview） | `mainnet` |
+| `KOIOS_API_KEY` | Koios 認証キー（rate limit 緩和、任意） | - |
+| `OGMIOS_URL` | Ogmios WebSocket URL（リアルタイム通知用） | `ws://109.123.231.103:1337` |
 | `CARDANOISM_URL` | サイトの URL（通知メール内リンク等に使用） | `https://cardanoism.com` |
-| `LINE_CLIENT_ID` | LINE OAuth クライアント ID | - |
-| `LINE_CLIENT_SECRET` | LINE OAuth クライアントシークレット | - |
-| `LINE_REDIRECT_URI` | LINE OAuth コールバック URI | - |
-| `LINE_CHANNEL_ACCESS_TOKEN` | LINE Messaging API チャンネルアクセストークン | - |
-| `GOOGLE_CLIENT_ID` | Google OAuth クライアント ID | - |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth クライアントシークレット | - |
-| `GOOGLE_REDIRECT_URI` | Google OAuth コールバック URI | - |
-| `MAIL_SMTP_HOST` | SMTP サーバーホスト | - |
-| `MAIL_SMTP_PORT` | SMTP ポート（587=STARTTLS, 465=SSL） | `587` |
-| `MAIL_SMTP_USER` | SMTP ユーザー（送信元アドレス） | - |
-| `MAIL_SMTP_PASSWORD` | SMTP パスワード | - |
-| `MAIL_FROM_NAME` | 送信者表示名 | `Cardanoism` |
+| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASS` / `DB_NAME` | MariaDB 接続情報 | - |
+| `LINE_CLIENT_ID` / `LINE_CLIENT_SECRET` / `LINE_REDIRECT_URI` | LINE OAuth | - |
+| `LINE_MESSAGING_TOKEN` | LINE Messaging API（通知用） | - |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | Google OAuth | - |
+| `MAIL_SMTP_HOST` / `MAIL_SMTP_PORT` / `MAIL_SMTP_USER` / `MAIL_SMTP_PASSWORD` / `MAIL_FROM_NAME` | SMTP メール | - |
+| `TELEGRAM_BOT_TOKEN` | Telegram 通知 | - |
+| `GPT_API_KEY` | OpenAI API キー（GA AI 分析・投票理由翻訳） | - |
+| `OPENAI_MODEL` | OpenAI モデル名 | `gpt-4o-mini` |
 | `EPOCH_CHECK_WINDOW_MIN` | エポック切り替わりウィンドウ（分）。0=常に実行 | `0` |
 
 ---

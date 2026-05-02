@@ -51,11 +51,13 @@ TreasuryWithdrawals の場合は機械計算による NCL 上限内チェック�
 
 ---
 
-## 2. 環境変数
+## 2. シークレット (Infisical)
+
+`.env` ではなく **Infisical** で管理する。`mainnet` / `preview` environment ごとに切替。詳細セットアップは `docs/realtime-notification-backend.md` 5-2 を参照。
 
 | 変数 | 説明 | デフォルト |
 |------|------|----------|
-| `GPT_API_KEY` | OpenAI API キー（`OPENAI_API_KEY` でも可） | - |
+| `GPT_API_KEY` | OpenAI API キー | - |
 | `KOIOS_NETWORK` | mainnet / preprod / preview | `mainnet` |
 | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME` | MariaDB 接続情報 | - |
 
@@ -107,8 +109,7 @@ After=mysql.service network.target
 Type=simple
 User=cardanoism
 WorkingDirectory=/path/to/cardanoism
-EnvironmentFile=/path/to/cardanoism/.env
-ExecStart=/usr/bin/python /path/to/cardanoism/ga_ai_worker.py
+ExecStart=/usr/bin/bash -c '/usr/local/bin/infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- /path/to/cardanoism/.venv/bin/python /path/to/cardanoism/ga_ai_worker.py'
 Restart=always
 RestartSec=10
 
