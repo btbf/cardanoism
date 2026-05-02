@@ -9,5 +9,19 @@ dependencies = [
     "mariadb>=1.1.14",
     "openai>=2.8.0",
     "playwright>=1.57.0",
+    "python-dotenv>=1.0.0",
     "reflex==0.8.19",
+    "cardanoism-wallet",
+    # FastAPI / Starlette — telegram_bot.py / line_auth.py / api_transformer で使用
+    "fastapi>=0.110.0",
+    "starlette>=0.36.0",
+    # HTTP / HTML パース — koios / blockfrost / scraping 系で使用
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    # CIP-8 (COSE_Sign1) 検証用 — wallet_verify.py で使用
+    "cbor2>=5.6.0",
+    "pynacl>=1.5.0",
 ]
+
+[tool.uv.sources]
+cardanoism-wallet = { path = "cardanoism/custom_components/cardanoism_wallet", editable = true }

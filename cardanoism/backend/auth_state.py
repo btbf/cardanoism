@@ -969,20 +969,20 @@ class AuthState(rx.State):
     # GAお気に入り
     # ============================================================
 
-    def toggle_ga_favorite(self, proposal_tx_hash: str):
+    def toggle_ga_favorite(self, proposal_id: str):
         if not self.is_logged_in:
             self.show_login_modal = True
             return
-        if not proposal_tx_hash:
+        if not proposal_id:
             return
-        if proposal_tx_hash in self.ga_favorite_ids:
-            self.ga_favorite_ids = [uid for uid in self.ga_favorite_ids if uid != proposal_tx_hash]
+        if proposal_id in self.ga_favorite_ids:
+            self.ga_favorite_ids = [uid for uid in self.ga_favorite_ids if uid != proposal_id]
             yield
-            remove_favorite(self.user_id, proposal_tx_hash, "governance")
+            remove_favorite(self.user_id, proposal_id, "governance")
         else:
-            self.ga_favorite_ids = self.ga_favorite_ids + [proposal_tx_hash]
+            self.ga_favorite_ids = self.ga_favorite_ids + [proposal_id]
             yield
-            add_favorite(self.user_id, proposal_tx_hash, "governance")
+            add_favorite(self.user_id, proposal_id, "governance")
         if self.ga_favorites:
             self.ga_favorites = get_ga_favorites(self.user_id)
 
@@ -990,11 +990,11 @@ class AuthState(rx.State):
         if self.is_logged_in:
             self.ga_favorites = get_ga_favorites(self.user_id)
 
-    def remove_ga_favorite_handler(self, proposal_tx_hash: str):
+    def remove_ga_favorite_handler(self, proposal_id: str):
         if not self.is_logged_in:
             return
-        remove_favorite(self.user_id, proposal_tx_hash, "governance")
-        self.ga_favorite_ids = [uid for uid in self.ga_favorite_ids if uid != proposal_tx_hash]
+        remove_favorite(self.user_id, proposal_id, "governance")
+        self.ga_favorite_ids = [uid for uid in self.ga_favorite_ids if uid != proposal_id]
         self.load_ga_favorites()
 
     def ga_favorites_prev_page(self):

@@ -14,3 +14,13 @@ cardanoism/backend/proposals_extract_csv.py
 cardanoism/backend/proposals_export.csv
 /node_modules/
 uv.lock
+.claude/settings.local.json
+*.egg-info/
+build/
+dist/
+# Reflex の bun lockfile (uv.lock と同様にバージョン管理しない)
+bun.lock
+# AI 開発支援 skill (個人環境設定。共有不要)
+.agents/
+.claude/skills/
+skills-lock.json

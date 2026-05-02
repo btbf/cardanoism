@@ -124,6 +124,56 @@ def _parse_block_time(block_time) -> str | None:
         return None
 
 
+def _extract_action_anchor(item: dict, body: dict) -> tuple[str | None, str | None]:
+    """Koios レスポンスから「action の anchor URL」を抽出する。
+
+    NewConstitution 提案で、実際の憲法本文ドキュメントの URL を取り出す。
+    Koios のバージョンや tag によって構造が変わるため、複数の経路を順に試す:
+      1. item["proposed_action"]["contents"][*]["anchor"]["url"]
+      2. item["anchor"]["url"] (フラット形式)
+      3. meta_json.body.references[] でラベルが "Constitution" 系のもの
+    Returns: (url, hash) どちらか欠ければ None。
+    """
+    proposal_type = (item.get("proposal_type") or "").strip()
+
+    # (1) proposed_action.contents[*].anchor を探す
+    pa = item.get("proposed_action") or {}
+    if isinstance(pa, dict):
+        contents = pa.get("contents")
+        if isinstance(contents, list):
+            for c in contents:
+                if isinstance(c, dict):
+                    anchor = c.get("anchor")
+                    if isinstance(anchor, dict) and anchor.get("url"):
+                        return (
+                            str(anchor.get("url") or "") or None,
+                            str(anchor.get("dataHash") or anchor.get("data_hash") or "") or None,
+                        )
+
+    # (2) item.anchor (フラット形式)
+    anchor = item.get("anchor")
+    if isinstance(anchor, dict) and anchor.get("url"):
+        return (
+            str(anchor.get("url") or "") or None,
+            str(anchor.get("dataHash") or anchor.get("data_hash") or "") or None,
+        )
+
+    # (3) NewConstitution の場合は meta_json.body.references[] から
+    #     "constitution" を含むラベルや type を持つエントリの URI を採用
+    if proposal_type == "NewConstitution":
+        refs = body.get("references") or []
+        if isinstance(refs, list):
+            for r in refs:
+                if not isinstance(r, dict):
+                    continue
+                label = str(r.get("label") or r.get("@type") or "").lower()
+                uri = r.get("uri") or r.get("url")
+                if uri and ("constitution" in label or "憲法" in label):
+                    return (str(uri), None)
+
+    return (None, None)
+
+
 def _extract_fields(item: dict) -> dict:
     """Koios レスポンスの1件を DB カラムに対応するフィールド辞書に変換する。"""
     meta = item.get("meta_json") or {}
@@ -132,6 +182,21 @@ def _extract_fields(item: dict) -> dict:
 
     deposit = item.get("deposit")
     meta_is_valid = item.get("meta_is_valid")
+    action_anchor_url, action_anchor_hash = _extract_action_anchor(item, body)
+
+    # TreasuryWithdrawals の引き出し配列（[{amount, stake_address}, ...]）を集計
+    withdrawal = item.get("withdrawal")
+    withdrawal_total = None
+    withdrawal_json = None
+    if isinstance(withdrawal, list) and withdrawal:
+        total = 0
+        for w in withdrawal:
+            try:
+                total += int(w.get("amount") or 0)
+            except (TypeError, ValueError):
+                continue
+        withdrawal_total = total
+        withdrawal_json = json.dumps(withdrawal, ensure_ascii=False)
 
     return {
         "proposal_id":      item.get("proposal_id") or "",
@@ -139,6 +204,8 @@ def _extract_fields(item: dict) -> dict:
         "proposal_index":   int(item.get("proposal_index") or 0),
         "proposal_type":    item.get("proposal_type") or "",
         "deposit":          int(deposit) if deposit is not None else None,
+        "withdrawal_total_lovelace": withdrawal_total,
+        "withdrawal_json":  withdrawal_json,
         "return_address":   item.get("return_address"),
         "proposed_epoch":   item.get("proposed_epoch"),
         "ratified_epoch":   item.get("ratified_epoch"),
@@ -155,6 +222,8 @@ def _extract_fields(item: dict) -> dict:
         "motivation":       body.get("motivation") or None,
         "rationale":        body.get("rationale") or None,
         "references_json":  json.dumps(refs, ensure_ascii=False) if refs else None,
+        "action_anchor_url":  action_anchor_url,
+        "action_anchor_hash": action_anchor_hash,
     }
 
 
@@ -162,51 +231,69 @@ def _extract_fields(item: dict) -> dict:
 # DB 操作
 # ============================================================
 
-def upsert_proposal(fields: dict):
+def upsert_proposal(fields: dict) -> bool:
     """
     1件を governance_actions に upsert する。
     ON DUPLICATE KEY UPDATE で既存レコードのステータスを更新するが、
     翻訳済みの *_ja カラムは上書きしない（翻訳ロジックが管理する）。
+
+    Returns:
+        新規挿入された場合 True / 既存行が更新された場合 False。
+        呼び出し元はこの戻り値を見て新規 GA のみ AI 分析キューに enqueue する。
     """
     with get_db() as (cursor, conn):
+        cursor.execute(
+            "SELECT 1 FROM governance_actions WHERE proposal_id = ? LIMIT 1",
+            (fields["proposal_id"],),
+        )
+        existed = cursor.fetchone() is not None
         cursor.execute(
             """
             INSERT INTO governance_actions (
                 proposal_id, proposal_tx_hash, proposal_index, proposal_type,
-                deposit, return_address,
+                deposit, withdrawal_total_lovelace, withdrawal_json, return_address,
                 proposed_epoch, ratified_epoch, enacted_epoch,
                 dropped_epoch, expired_epoch, expiration,
                 block_time, meta_url, meta_hash, meta_is_valid,
-                title, `abstract`, motivation, rationale, references_json
+                title, `abstract`, motivation, rationale, references_json,
+                action_anchor_url, action_anchor_hash
             ) VALUES (
                 ?, ?, ?, ?,
-                ?, ?,
+                ?, ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?, ?,
-                ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?,
+                ?, ?
             )
             ON DUPLICATE KEY UPDATE
-                -- ステータスエポックのみ更新（本文・メタはオンチェーン固定のため不変）
-                ratified_epoch = VALUES(ratified_epoch),
-                enacted_epoch  = VALUES(enacted_epoch),
-                dropped_epoch  = VALUES(dropped_epoch),
-                expired_epoch  = VALUES(expired_epoch),
-                updated_at     = NOW()
+                -- ステータスエポック + 引き出し情報 + action anchor を更新
+                ratified_epoch            = VALUES(ratified_epoch),
+                enacted_epoch             = VALUES(enacted_epoch),
+                dropped_epoch             = VALUES(dropped_epoch),
+                expired_epoch             = VALUES(expired_epoch),
+                withdrawal_total_lovelace = VALUES(withdrawal_total_lovelace),
+                withdrawal_json           = VALUES(withdrawal_json),
+                action_anchor_url         = VALUES(action_anchor_url),
+                action_anchor_hash        = VALUES(action_anchor_hash),
+                updated_at                = NOW()
             """,
             (
                 fields["proposal_id"],     fields["proposal_tx_hash"], fields["proposal_index"],
                 fields["proposal_type"],
-                fields["deposit"],         fields["return_address"],
+                fields["deposit"],         fields["withdrawal_total_lovelace"],
+                fields["withdrawal_json"], fields["return_address"],
                 fields["proposed_epoch"],  fields["ratified_epoch"],   fields["enacted_epoch"],
                 fields["dropped_epoch"],   fields["expired_epoch"],    fields["expiration"],
                 fields["block_time"],      fields["meta_url"],         fields["meta_hash"],
                 fields["meta_is_valid"],
                 fields["title"],           fields["abstract"],
                 fields["motivation"],      fields["rationale"],        fields["references_json"],
+                fields.get("action_anchor_url"), fields.get("action_anchor_hash"),
             ),
         )
         conn.commit()
+    return not existed
 
 
 def fetch_translation_targets(
@@ -358,17 +445,30 @@ def main():
 
     upserted = 0
     errors = 0
+    new_proposal_ids: list[str] = []
     for item in proposals:
         try:
             fields = _extract_fields(item)
             if not fields["proposal_id"]:
                 continue
-            upsert_proposal(fields)
+            is_new = upsert_proposal(fields)
+            if is_new:
+                new_proposal_ids.append(fields["proposal_id"])
             upserted += 1
         except Exception as exc:
             errors += 1
             logger.error("upsert 失敗 proposal_id=%s: %s", item.get("proposal_id", "?"), exc)
-    logger.info("DB upsert 完了: %d 件 (エラー: %d 件)", upserted, errors)
+    logger.info("DB upsert 完了: %d 件 (新規 %d / エラー %d 件)",
+                upserted, len(new_proposal_ids), errors)
+
+    # 新規 GA を AI 分析キューに enqueue。失敗してもメインフローは中断しない。
+    if new_proposal_ids:
+        try:
+            from cardanoism.backend.governance_ai_db import bulk_enqueue
+            queued = bulk_enqueue(new_proposal_ids)
+            logger.info("AI 分析キューに enqueue: %d 件", queued)
+        except Exception as exc:
+            logger.warning("AI enqueue 失敗 (継続): %s", exc)
 
     if args.no_translate:
         logger.info("--no-translate 指定のため翻訳スキップ")

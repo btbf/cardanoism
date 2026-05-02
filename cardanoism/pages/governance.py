@@ -16,6 +16,7 @@ from cardanoism.components.governance_card import (
 from cardanoism.components.proposal_card import STATUS_DOT_STYLE
 from cardanoism.components.componets import top_button_component
 from cardanoism.components.login_modal import login_modal
+from cardanoism.components.governance_nav import governance_subnav
 
 
 # ─── react-select ──────────────────────────────────────────────────────────────
@@ -116,7 +117,7 @@ def gov_breadcrumb() -> rx.Component:
     return rx.hstack(
         rx.link(rx.icon("home", size=16), href="/", underline="none", color_scheme="gray"),
         rx.icon("chevron-right", size=14, color="gray"),
-        rx.text(AuthState.t["nav_governance"], size="2", weight="medium"),
+        rx.text(AuthState.t["gov_subnav_actions"], size="2", weight="medium"),
         spacing="2",
         align="center",
         width="100%",
@@ -129,7 +130,8 @@ def gov_breadcrumb_detail() -> rx.Component:
     return rx.hstack(
         rx.link(rx.icon("home", size=16), href="/", underline="none", color_scheme="gray"),
         rx.icon("chevron-right", size=14, color="gray"),
-        rx.link(AuthState.t["nav_governance"], href="/governance", size="2", underline="hover", color_scheme="gray"),
+        rx.link(AuthState.t["gov_subnav_actions"], href="/governance",
+                size="2", underline="hover", color_scheme="gray"),
         rx.icon("chevron-right", size=14, color="gray"),
         rx.text(AuthState.t["gov_breadcrumb_detail"], size="2", weight="medium"),
         spacing="2",
@@ -371,7 +373,7 @@ def gov_pagination() -> rx.Component:
 
 @template(
     route="/governance",
-    title="ガバナンス | Cardanoism",
+    title="GA 提案一覧 | Cardanoism",
     on_load=GovernanceState.on_load,
 )
 def governance_page() -> rx.Component:
@@ -393,6 +395,7 @@ def governance_page() -> rx.Component:
             governance_modal(),
             rx.vstack(
                 gov_breadcrumb(),
+                governance_subnav("actions"),
                 gov_filters(),
                 gov_header(),
                 rx.cond(
@@ -443,7 +446,7 @@ def governance_detail_page() -> rx.Component:
                 width="100%",
             ),
             width="100%",
-            max_width="780px",
+            max_width="1130px",
         ),
         rx.flex(rx.spinner(size="3"), justify="center", align="center", width="100%", padding_y="20px"),
     )

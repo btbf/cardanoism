@@ -5,6 +5,7 @@ from cardanoism.backend.db_connect import AppState, FundListState
 from cardanoism.components.proposal_card import card_foreach_dict
 from cardanoism.components.proposal_pagenation import pagination_component
 from cardanoism.components.componets import top_button_component
+from cardanoism.components.catalyst_tabs import catalyst_tabs
 
 
 class ReactSelectLib(rx.Component):
@@ -225,6 +226,22 @@ def fund_card(fund: dict) -> rx.Component:
     )
 
 
+def fund_list_breadcrumb() -> rx.Component:
+    """Breadcrumb for fund landing page (/catalyst/funds)."""
+    return rx.hstack(
+        rx.link(rx.icon("home", size=16), href="/", underline="none", color_scheme="gray"),
+        rx.icon("chevron-right", size=14, color="gray"),
+        rx.link(rx.text("Catalyst", size="2"), href="/catalyst", underline="none", color_scheme="gray"),
+        rx.icon("chevron-right", size=14, color="gray"),
+        rx.text("Funds", size="2", weight="medium"),
+        spacing="2",
+        align="center",
+        width="100%",
+        padding_top="15px",
+        padding_bottom="0px",
+    )
+
+
 def fund_hero() -> rx.Component:
     """Hero block for fund landing page."""
     return rx.box(
@@ -236,17 +253,6 @@ def fund_hero() -> rx.Component:
                 size="3",
                 color=rx.color("slate", 10),
                 max_width="720px",
-            ),
-            rx.hstack(
-                rx.link(rx.button("Catalyst一覧に戻る", variant="soft", color_scheme=None, size="3",
-                                   background_color=rx.color("slate", 3), color=rx.color("slate", 12),
-                                   _hover={"background_color": rx.color("amber", 10), "color": "white"}),href="/catalyst"),
-                #rx.link(rx.button("�ŐV��Fund������", variant="solid", color_scheme=None, size="3",
-                #                   background_color=rx.color("amber", 10), color="white",
-                #                   _hover={"background_color": rx.color("amber", 9)}), href="/catalyst/funds"),
-                spacing="3",
-                wrap="wrap",
-                cursor="pointer",
             ),
             spacing="3",
             align_items="start",
@@ -475,6 +481,8 @@ def proposal_controls() -> rx.Component:
 def fund() -> rx.Component:
     """Fund landing page with list of all funds."""
     content = rx.vstack(
+        fund_list_breadcrumb(),
+        catalyst_tabs(active="funds"),
         fund_hero(),
         rx.cond(
             FundListState.load,

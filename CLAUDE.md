@@ -142,51 +142,50 @@ CardanoガバナンスをナビゲートするReflexベースの日本語ポー�
 
 ---
 
-## 3. 通知バッチワーカー（`notify_worker.py`）
+## 3. 通知バックエンド
 
-cron で定期実行する独立スクリプト。Reflex アプリとは独立して動作する。
+通知系は2系統で構成される。両系統とも同じ MariaDB を共有し、`notification_log.dedup_key` で重複送信を防ぐ。
 
-### アーキテクチャ
+### 3-1. リアルタイム通知（`ogmios_listener.py`）
 
-```
-notify_worker.py
-├── 状態管理        : notification_check_state テーブル（前回値との差分検出）
-├── 重複送信防止    : notification_log テーブル（dedup_key で管理）
-├── LINE 送信       : cardanoism/backend/line_notify.py（Messaging API）
-└── メール送信      : cardanoism/backend/mail_notify.py（SMTP）
-```
+cardano-node + Ogmios + WebSocket で、ブロック確定の瞬間にイベントを発火する常駐デーモン。
 
-### 送信チャンネルの取得方法
+**担当**: `epoch_start` / `pool_epoch_performance` / `pool_retire` / `pool_fee_change` / `drep_new_governance_action` / `drep_vote`
 
-- LINE：`notification_channels WHERE channel_type='line'` を JOIN
-- メール：`notification_channels WHERE channel_type='email'` を JOIN
-- 両チャンネルをマージして送信（`_merge_stake_channels()` ヘルパー）
+セットアップ詳細: [`docs/realtime-notification-backend.md`](docs/realtime-notification-backend.md)
 
-### エポック時刻チェック（`EPOCH_CHECK_WINDOW_MIN`）
+### 3-2. Koios ポーリング（`notify_worker.py`）
 
-`--event epoch_start` 実行時に時間外スキップを行う機能。
+cron で定期実行する独立スクリプト。計算値・履歴値・キャッシュ同期を担当する。
 
-- Koios `/tip` の `epoch_slot`（エポック内経過秒数）で判定
-- `EPOCH_CHECK_WINDOW_MIN=60` のとき、エポック開始から 60 分以内のみ処理
-- ネットワーク別エポック長：mainnet/preprod = 432,000秒（5日）、preview = 86,400秒（1日）
+**担当通知**: `pool_saturation` / `pool_pledge_shortage` / `pool_reward_received` / `pool_delegation_reminder` / `drep_delegation_reminder` / `drep_status_change` / `treasury_withdrawal_enacted`
 
-```cron
-# 推奨 cron 設定（毎日 21:44 UTC に実行、mainnet の場合）
-44 21 * * *  EPOCH_CHECK_WINDOW_MIN=60 python notify_worker.py --event epoch_start
-44 21 * * *  は実際には 5 日に 1 回だけ処理が走る
+**担当キャッシュ同期**: `treasury_sync` / `fiat_sync` / `drep_sync` / `vote_sync` / `summary_sync` / `params_sync` / `vote_rationale_sync`
 
-# エポック切り替わり時刻確認
-python notify_worker.py --epoch-schedule
-```
+セットアップ詳細: [`docs/koios-polling-backend.md`](docs/koios-polling-backend.md)
 
-### 推奨 cron 設定
+### 3-3. GA AI 分析（`ga_ai_worker.py`）
 
-```cron
-44 21 * * *   EPOCH_CHECK_WINDOW_MIN=60 python /path/to/notify_worker.py --event epoch_start
-*/30 * * * *  python /path/to/notify_worker.py --event pool
-*/30 * * * *  python /path/to/notify_worker.py --event drep
-0 * * * *     python /path/to/notify_worker.py --event reminder
-```
+OpenAI gpt-5.4-mini で GA の**ファクト整理**をする常駐ワーカー。スコアや判定は出さず、提案の中立的な要約と主要ファクト（label_ja/en + value_ja/en）を JSON 出力し `governance_ai_analysis` に保存。TreasuryWithdrawals の場合は機械計算による NCL 上限内チェックも追加表示する。
+
+> **設計方針**: AI には判定をさせない。情報整理だけ任せて判断はユーザーに委ねる。
+> 過去の憲法準拠スコア / VISION 2030 KPI レーダー実装は AI 判定のブレが大きく信頼性が低いため廃止し、A 方針（ファクト整理）に転換した。
+
+**自動 trigger**: `governance.py` の Koios sync が新規 GA を `governance_actions` に INSERT したタイミングで `bulk_enqueue` → ワーカーが pending を拾って処理。
+
+**CLI コマンド**:
+- `python notify_worker.py --event ga_ai_initial_sync` — 初回投入（Active / Ratified / Enacted / 直近 6 エポック）
+- `python notify_worker.py --event ga_ai_reanalyze --proposal-id <id>` — 単一 GA を再分析（status 不問）
+- `python notify_worker.py --event ga_ai_reanalyze --all` — Active な analyzed 全件を再分析
+
+セットアップ詳細: [`docs/ga-ai-analysis-backend.md`](docs/ga-ai-analysis-backend.md)
+
+### 3-4. 共通実装
+
+- 状態管理: `notification_check_state` テーブル
+- 重複送信防止: `notification_log` テーブル（`dedup_key` で判定）
+- 送信ヘルパー: `flex_and_log()` / `email_and_log()` / `telegram_and_log()`（`notify_worker.py` に定義、`ogmios_listener.py` は import して再利用）
+- 送信チャンネル取得: `notification_channels WHERE channel_type IN ('line', 'email', 'telegram')` を JOIN し `_merge_stake_channels()` でマージ
 
 ---
 
@@ -226,39 +225,49 @@ SMTP 経由でメールを送信するヘルパー。
 
 ## 6. データモデル
 
-- **DB：** MariaDB（既存）
+- **DB：** MariaDB
 - **接続：** `mariadb` Pythonライブラリ + コネクションプール（`db_connect.py` の既存パターンに従う）
 - SQLModel（rx.Model）は**使わない**。生 SQL でテーブル操作する
+- **マイグレーション：** `cardanoism/backend/migrations/` 配下に統合済みスキーマ（001〜007）。すべて `CREATE TABLE IF NOT EXISTS` で冪等。詳細は同ディレクトリの `README.md`
 
 ### テーブル一覧
 
+#### 認証・ユーザー（001_users_auth.sql / 002_user_data.sql）
 | テーブル | 説明 |
 |---------|------|
-| `users` | ユーザー基本情報（email, username, avatar_url 等） |
+| `users` | ユーザー基本情報（username, email, avatar_url, language, notification_frequency） |
 | `user_sessions` | セッショントークン管理 |
 | `user_providers` | ソーシャルログインプロバイダ（line / google / twitter） |
-| `notification_channels` | 通知チャンネル（line / email）と enabled フラグ |
-| `stake_addresses` | ステークアドレス（最大3件/ユーザー） |
+| `notification_channels` | 通知チャンネル（line / email / telegram）と enabled フラグ |
+| `telegram_connect_tokens` | Telegram Bot 連携時の一時トークン |
+| `stake_addresses` | ステークアドレス（最大3件/ユーザー）+ 委任先 pool/drep 情報 |
 | `favorites` | お気に入り提案（catalyst / governance） |
+
+#### 通知（003_notifications.sql）
+| テーブル | 説明 |
+|---------|------|
 | `notification_settings` | ユーザー全体の通知設定（epoch_start 等） |
 | `stake_notification_settings` | ステークアドレスごとの通知設定 |
-| `notification_check_state` | バッチワーカーの状態管理（前回チェック値） |
+| `notification_check_state` | リアルタイム / バッチワーカーの状態管理（前回チェック値・カーソル） |
 | `notification_log` | 送信ログ・重複防止（dedup_key） |
 
-### `notification_channels` テーブル
+#### ガバナンス（004_governance.sql）
+| テーブル | 説明 |
+|---------|------|
+| `governance_actions` | GA 本体（CIP-100/108 メタデータ含む） |
+| `proposal_votes` | GA への投票（DRep / SPO / CC） |
+| `proposal_voting_summary` | GA ごとの投票集計 |
+| `protocol_params` | プロトコルパラメータ（id=1 固定） |
+| `cc_members` | 憲法委員会メンバー |
 
-```sql
-CREATE TABLE IF NOT EXISTS notification_channels (
-  id           INT AUTO_INCREMENT PRIMARY KEY,
-  user_id      INT NOT NULL,
-  channel_type ENUM('line', 'email') NOT NULL,
-  channel_value VARCHAR(255) NOT NULL,   -- LINE user ID / メールアドレス
-  enabled      TINYINT(1) NOT NULL DEFAULT 1,
-  created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  UNIQUE KEY uq_user_channel (user_id, channel_type)
-);
-```
+#### キャッシュ（005〜007）
+| テーブル | 説明 |
+|---------|------|
+| `dreps` | DRep 一覧 + CIP-119 メタデータ |
+| `treasury_snapshot` | 最新トレジャリー残高（id=1 固定） |
+| `treasury_withdrawal` | トレジャリー引き出し履歴 |
+| `ncl_active` | 採用中の Net Change Limit（id=1 固定） |
+| `fiat_rate` | ADA 法定通貨レート（id=1 固定） |
 
 ---
 
@@ -274,10 +283,76 @@ CREATE TABLE IF NOT EXISTS notification_channels (
 ## 8. 次フェーズのスコープ（現在対象外）
 
 - X（Twitter）ログイン
-- Telegram 通知チャンネル
 - サブスクリプション機能（有料プラン・ステークアドレス上限拡張）
 - LINEミニアプリ実装
-- ガバナンス提案お気に入り
 - アカウント削除機能
 - 通知履歴ページ
-- 複数ソーシャルアカウントの同一アカウントへの連携
+- 複数ソーシャルアカウントの同一ソーシャルアカウントへの連携
+
+---
+
+## 9. Reflex フレームワーク制約・知見
+
+実装中に判明した Reflex の特性と回避策。次セッション以降の自分が同じ罠にハマらないため。
+
+### 9-1. レンダリング: SPA のみ
+
+| モード | サポート |
+|---|---|
+| SPA (default) | ✅ |
+| SSG / 静的プリレンダー | ❌ (`prerender_routes` API なし) |
+| SSR (リクエスト毎サーバ生成) | ❌ |
+
+→ ユーザー固有ページ（マイページ、お気に入り）の静的化は不可。SEO 重要ページは tag メタを動的更新で対応。
+
+### 9-2. Google Analytics は手動 page_view 追跡が必須
+
+SPA なので URL 変更で自動 page_view が発火しない。`cardanoism.py` の `_GA_INLINE_SCRIPT` で `history.pushState` / `replaceState` / `popstate` をフックして、各遷移時に手動で `gtag('event', 'page_view', ...)` を発火させる。`requestAnimationFrame` で 1 frame 遅延させて React の `document.title` 更新を待つのがポイント。
+
+### 9-3. WASM 系 npm ライブラリ取り込み
+
+Reflex 公式は WASM をサポートしていない。Cardano lib (Lucid Evolution / MeshSDK) のような WASM 依存パッケージは Vite/Rolldown と相性が悪い:
+
+- `libsodium-wrappers-sumo@0.7.16` のパッケージング不具合（[issue #360](https://github.com/jedisct1/libsodium.js/issues/360)、0.8.0+ で修正済）
+- ESM 統合 (`import.wasm`) のサポートに `vite-plugin-wasm` + `vite-plugin-top-level-await` が必要
+- Node API polyfill (`global` / `Buffer` / `process`) も別途必要
+
+**回避策**:
+- `reflex-vite-config-plugin` で `optimizeDeps.exclude` 等を注入できる
+- ただしネスト依存（`@cardano-sdk/...` 配下の独自 `node_modules`）まで完全制御は難しい
+- 確実な解は **esbuild で self-host bundle 化して assets で配信**
+
+→ **Phase 3（委任 tx 構築）はペンディング**。実装は別ブランチで esbuild bundle 方式で再挑戦予定。
+
+### 9-4. カスタム React コンポーネント wrap の正規 API
+
+`rx.Component` を継承して以下を提供する:
+
+| メソッド | 役割 |
+|---|---|
+| `library = "<npm-name>"` / `tag = "<Component>"` | npm からの import |
+| `add_imports() -> dict` | 追加 import 文（モジュールトップ） |
+| `add_hooks() -> list[str]` | コンポーネント render 内 hooks |
+| `add_custom_code() -> list[str]` | render 関数の外側に注入する JS |
+
+`rx.Fragment` ベースで `add_custom_code` 単独でも使えるが、ローカル component を `library = None` で書くのは非サポート。
+
+### 9-5. 推奨される browser-side scripting
+
+| ニーズ | 推奨 API |
+|---|---|
+| 一度だけインジェクト | `rx.script(content)` (head_components 等で) |
+| Python event から JS 実行 + 結果受け取り | `rx.call_script(js, callback=event)` (async OK) |
+| state 変化に応じて JS 反応 | カスタム `rx.Component` で hooks 化 |
+
+`rx.call_script` の引数 JS は async IIFE でラップして `try/catch` を被せると Python 側の `__error` 規約と合わせやすい（`wallet_state.py` の `_js_call` ヘルパー参照）。
+
+### 9-6. バージョン情報
+
+- **現在**: 0.8.19 (`pyproject.toml`)
+- **最新**: 0.9.1（2026-04-27 リリース）
+- **0.9.x 破壊的変更**:
+  - ビルド出力先: `.web/_static/*` → `.web/build/client/*`
+  - DB スタック (`pydantic` / `sqlmodel` / `alembic`) は `reflex[db]` extra に分離
+  - イベントキュー実装変更（`yield` 挙動の差異あり）
+- アップグレードは別ブランチで慎重に検証すること

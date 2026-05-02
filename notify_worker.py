@@ -22,11 +22,18 @@ notify_worker.py
 import os
 import sys
 import argparse
+import json
 import logging
+import socket
+import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# .env を明示的にロード（他モジュールの import より先に実行する必要がある）
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cardanoism", ".env"), override=True)
 
 from cardanoism.backend.db_connect import get_db
 from cardanoism.backend.koios import (
@@ -950,6 +957,1024 @@ def _check_drep_status_change():
 
 
 # ============================================================
+# プロトコルパラメータ同期
+# ============================================================
+
+def check_params_sync():
+    """最新エポックのプロトコルパラメータ（投票閾値・デポジット等）と、
+    CC の quorum（committee_info）を DB にキャッシュする。"""
+    from cardanoism.backend.koios import get_current_epoch, get_epoch_params, get_committee_info
+    from cardanoism.backend.params_db import upsert_protocol_params
+
+    logger.info("プロトコルパラメータ同期 開始")
+    epoch = get_current_epoch()
+    if epoch is None:
+        logger.warning("現在のエポック取得失敗")
+        return
+    params = get_epoch_params(epoch_no=epoch)
+    if not params:
+        logger.warning("エポックパラメータ取得失敗")
+        return
+
+    # CC quorum + メンバーを committee_info から取得
+    cc_info = get_committee_info()
+    if cc_info:
+        params["cc_quorum_numerator"]   = cc_info.get("quorum_numerator")
+        params["cc_quorum_denominator"] = cc_info.get("quorum_denominator")
+        logger.info("CC quorum: %s / %s", cc_info.get("quorum_numerator"), cc_info.get("quorum_denominator"))
+    else:
+        logger.warning("committee_info 取得失敗。CC 閾値は更新されません")
+
+    upsert_protocol_params(params)
+
+    # CC メンバーを cc_members テーブルに UPSERT
+    if cc_info:
+        from cardanoism.backend.params_db import upsert_cc_member
+        members = cc_info.get("members") or []
+        for m in members:
+            try:
+                upsert_cc_member(m)
+            except Exception as e:
+                logger.exception("upsert_cc_member failed: %s", e)
+        logger.info("CC メンバー %d 件を同期", len(members))
+
+    logger.info("プロトコルパラメータ同期 完了 (epoch=%s)", epoch)
+
+
+# ============================================================
+# 投票理由（rationale）取得 + 翻訳
+# ============================================================
+
+def check_vote_rationale_sync(fetch_limit: int = 500, translate_limit: int = 100):
+    """
+    proposal_votes.meta_url から投票メタデータ（CIP-100）を取得して body.comment を抽出。
+    取得した rationale が英語なら OpenAI で日本語翻訳して rationale_ja に保存。
+
+    fetch_limit:     1 実行あたりのメタデータ取得上限件数（0 で無制限）
+    translate_limit: 1 実行あたりの翻訳対象件数（OpenAI API コスト制御。0 で無制限）
+    """
+    from cardanoism.backend.vote_meta_fetch import (
+        fetch_vote_metadata_json, extract_rationale, is_japanese,
+    )
+    from cardanoism.backend.vote_db import update_rationale
+
+    fetch_label = "無制限" if fetch_limit <= 0 else str(fetch_limit)
+    translate_label = "無制限" if translate_limit <= 0 else str(translate_limit)
+    logger.info("投票理由同期 開始 (fetch_limit=%s, translate_limit=%s)", fetch_label, translate_label)
+
+    # Step 1: meta_url が有り、rationale 未取得のレコードをフェッチ
+    fetch_sql = (
+        "SELECT id, meta_url "
+        "FROM proposal_votes "
+        "WHERE meta_url IS NOT NULL AND meta_url <> '' "
+        "  AND meta_fetched_at IS NULL "
+        "  AND voter_role = 'DRep' "
+        "ORDER BY block_time DESC"
+    )
+    fetch_params: list = []
+    if fetch_limit and fetch_limit > 0:
+        fetch_sql += " LIMIT ?"
+        fetch_params.append(int(fetch_limit))
+
+    with get_db() as (cursor, _):
+        cursor.execute(fetch_sql, fetch_params)
+        rows = [dict(r) for r in cursor.fetchall()]
+
+    logger.info("メタデータ取得対象: %d 件", len(rows))
+    fetched = 0
+    for i, r in enumerate(rows, 1):
+        vid = r["id"]
+        url = r["meta_url"]
+        meta = fetch_vote_metadata_json(url)
+        rationale = extract_rationale(meta)
+        try:
+            # rationale が空でも meta_fetched_at はセットする（再取得を避けるため）
+            update_rationale(vid, rationale if rationale else None)
+            fetched += 1
+        except Exception as e:
+            logger.exception("update_rationale failed (id=%s): %s", vid, e)
+        if i % 50 == 0:
+            logger.info("  フェッチ進捗: %d / %d", i, len(rows))
+    logger.info("メタデータ取得完了: %d 件処理", fetched)
+
+    # Step 2: 翻訳対象（英語テキストで rationale_ja が空）を OpenAI で翻訳
+    translate_sql = (
+        "SELECT id, rationale "
+        "FROM proposal_votes "
+        "WHERE rationale IS NOT NULL AND rationale <> '' "
+        "  AND (rationale_ja IS NULL OR rationale_ja = '') "
+        "ORDER BY block_time DESC"
+    )
+    translate_params: list = []
+    if translate_limit and translate_limit > 0:
+        translate_sql += " LIMIT ?"
+        translate_params.append(int(translate_limit))
+
+    with get_db() as (cursor, _):
+        cursor.execute(translate_sql, translate_params)
+        translate_rows = [dict(r) for r in cursor.fetchall()]
+
+    # 日本語判定ですでに日本語のものは除外
+    english_rows = [r for r in translate_rows if not is_japanese(r["rationale"])]
+    logger.info("翻訳対象: %d 件 (全候補 %d / 日本語スキップ %d)",
+                len(english_rows), len(translate_rows), len(translate_rows) - len(english_rows))
+
+    if english_rows:
+        from cardanoism.backend.governance import build_translator
+        translator = build_translator()
+        translated_ok = 0
+        for i, r in enumerate(english_rows, 1):
+            vid = r["id"]
+            text = r["rationale"]
+            try:
+                translated = translator.translate_overview(text)
+                if translated:
+                    with get_db() as (cursor, conn):
+                        cursor.execute(
+                            "UPDATE proposal_votes SET rationale_ja = ? WHERE id = ?",
+                            (translated, int(vid)),
+                        )
+                        conn.commit()
+                    translated_ok += 1
+            except Exception as e:
+                logger.exception("translate failed (id=%s): %s", vid, e)
+            if i % 10 == 0:
+                logger.info("  翻訳進捗: %d / %d", i, len(english_rows))
+        logger.info("翻訳完了: %d 件成功 / %d 件試行", translated_ok, len(english_rows))
+
+    logger.info("投票理由同期 完了")
+
+
+# ============================================================
+# 投票同期
+# ============================================================
+
+def _dedupe_latest_votes(votes: list[dict]) -> list[dict]:
+    """
+    Koios レスポンス内で同じ voter が複数回投票している場合、
+    block_time が最新のもののみを残す。
+    """
+    latest: dict[tuple, dict] = {}
+    for v in votes:
+        key = (v.get("voter_role") or "", v.get("voter_id") or "")
+        bt = v.get("block_time") or 0
+        try:
+            bt_int = int(bt)
+        except (TypeError, ValueError):
+            bt_int = 0
+        cur = latest.get(key)
+        if cur is None:
+            latest[key] = v
+        else:
+            cur_bt = cur.get("block_time") or 0
+            try:
+                cur_bt_int = int(cur_bt)
+            except (TypeError, ValueError):
+                cur_bt_int = 0
+            if bt_int > cur_bt_int:
+                latest[key] = v
+    return list(latest.values())
+
+
+def check_vote_sync():
+    """
+    governance_actions テーブルの全 proposal を対象に、Koios /proposal_votes を取得して
+    proposal_votes テーブルにキャッシュする。投票は常に最新トランザクション
+    （block_time 最大）を採用。
+    投票集計（/proposal_voting_summary）は重いので別バッチ（summary_sync）で行う。
+    """
+    from cardanoism.backend.koios import get_proposal_votes
+    from cardanoism.backend.vote_db import bulk_upsert_votes
+
+    logger.info("投票同期 開始")
+
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT proposal_id
+            FROM governance_actions
+            WHERE proposal_id IS NOT NULL AND proposal_id <> ''
+            ORDER BY block_time DESC
+            """
+        )
+        proposal_ids = [r["proposal_id"] for r in cursor.fetchall() if r.get("proposal_id")]
+
+    logger.info("投票取得対象 proposal: %d 件", len(proposal_ids))
+    total_votes = 0
+    for i, pid in enumerate(proposal_ids, 1):
+        try:
+            votes = get_proposal_votes(pid)
+            if votes:
+                deduped = _dedupe_latest_votes(votes)
+                n = bulk_upsert_votes(pid, deduped)
+                total_votes += n
+            if i % 20 == 0:
+                logger.info("  進捗: %d / %d proposal", i, len(proposal_ids))
+        except Exception as e:
+            logger.exception("vote_sync (proposal_id=%s) failed: %s", pid, e)
+    logger.info("投票同期 完了: %d 件 upsert", total_votes)
+
+
+# ============================================================
+# 投票集計同期（重い /proposal_voting_summary 専用）
+# ============================================================
+
+def check_summary_sync(max_workers: int = 6):
+    """
+    /proposal_voting_summary は Koios 側で計算コストが高く 1 件数十秒かかる場合がある。
+    ThreadPoolExecutor で並列化（既存のレートリミッタが自動的に 80req/10s で絞る）。
+    """
+    from cardanoism.backend.koios import get_proposal_voting_summary
+    from cardanoism.backend.voting_summary_db import upsert_voting_summary
+
+    logger.info("投票集計同期 開始 (workers=%d)", max_workers)
+
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT proposal_id, proposal_type
+            FROM governance_actions
+            WHERE proposal_id IS NOT NULL AND proposal_id <> ''
+            ORDER BY block_time DESC
+            """
+        )
+        proposals = [dict(r) for r in cursor.fetchall() if r.get("proposal_id")]
+    logger.info("集計対象: %d 件", len(proposals))
+
+    def _one(p: dict) -> int:
+        pid = p["proposal_id"]
+        ptype = p.get("proposal_type") or ""
+        try:
+            summary = get_proposal_voting_summary(pid)
+            if summary:
+                summary["proposal_type"] = ptype
+                upsert_voting_summary(pid, summary)
+                return 1
+        except Exception as e:
+            logger.exception("summary_sync %s: %s", pid, e)
+        return 0
+
+    total = 0
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futures = [ex.submit(_one, p) for p in proposals]
+        for i, fut in enumerate(as_completed(futures), 1):
+            total += fut.result()
+            if i % 10 == 0:
+                logger.info("  進捗: %d / %d", i, len(proposals))
+    logger.info("投票集計同期 完了: %d 件 upsert", total)
+
+
+# ============================================================
+# DRep 同期
+# ============================================================
+
+def _extract_drep_meta(meta_row: dict) -> dict:
+    """drep_metadata のレスポンスから CIP-119 body を抽出する。"""
+    if not meta_row:
+        return {}
+    body = ((meta_row.get("meta_json") or {}).get("body") or {}) if isinstance(meta_row.get("meta_json"), dict) else {}
+    if not isinstance(body, dict):
+        return {}
+
+    import json as _json
+
+    def _s(v):
+        if isinstance(v, dict):
+            return str(v.get("@value") or "").strip() or None
+        if isinstance(v, str):
+            return v.strip() or None
+        return None
+
+    image = body.get("image")
+    image_url = None
+    if isinstance(image, dict):
+        image_url = image.get("contentUrl") or image.get("@id") or None
+    elif isinstance(image, str):
+        image_url = image
+    # data URI (base64 画像) は巨大になりがちなので保存しない
+    if isinstance(image_url, str) and image_url.startswith("data:"):
+        image_url = None
+
+    refs = body.get("references") or []
+    return {
+        "given_name":     _s(body.get("givenName")),
+        "image_url":      image_url,
+        "payment_address": _s(body.get("paymentAddress")),
+        "motivations":    _s(body.get("motivations")),
+        "objectives":     _s(body.get("objectives")),
+        "qualifications": _s(body.get("qualifications")),
+        "references_json": _json.dumps(refs, ensure_ascii=False) if refs else None,
+        "meta_is_valid":  meta_row.get("is_valid"),
+    }
+
+
+def _extract_pool_meta(info: dict) -> dict:
+    """Koios /pool_info の meta_json から ticker / 名称 / 説明 / homepage を取り出す。
+    Koios の meta_json には extended フィールドが含まれないので extended は別途
+    meta_url を直接フェッチして抽出する（_fetch_pool_extended_via_meta_url）。
+    """
+    meta = info.get("meta_json") or {}
+    return {
+        "ticker":      _extract_str(meta.get("ticker")),
+        "pool_name":   _extract_str(meta.get("name")),
+        "description": _extract_str(meta.get("description")) or None,
+        "homepage":    _extract_str(meta.get("homepage")) or None,
+    }
+
+
+def _coerce_url(value) -> str | None:
+    """文字列 / {"@value": "..."} のいずれにも対応して http(s) URL を返す。"""
+    if isinstance(value, dict):
+        value = value.get("@value")
+    if not isinstance(value, str):
+        return None
+    v = value.strip()
+    if not v.startswith(("http://", "https://")):
+        return None
+    return v[:1024]
+
+
+def _coerce_handle(value, max_len: int = 128) -> str | None:
+    """social handle を正規化（先頭の @ を除去、長さ上限）。"""
+    if isinstance(value, dict):
+        value = value.get("@value")
+    if not isinstance(value, str):
+        return None
+    v = value.strip().lstrip("@").strip()
+    if not v:
+        return None
+    return v[:max_len]
+
+
+def _coerce_text(value, max_len: int = 4000) -> str | None:
+    """テキストフィールドを正規化（空チェック + 長さ上限）。"""
+    if isinstance(value, dict):
+        value = value.get("@value")
+    if not isinstance(value, str):
+        return None
+    v = value.strip()
+    if not v:
+        return None
+    return v[:max_len]
+
+
+def _fetch_pool_extended(extended_url: str | None) -> dict | None:
+    """CIP-6 / POM の extended metadata を取得し、UI で使う項目だけ抜き出して返す。
+
+    抽出キー:
+      icon_url        : info.url_png_icon_64x64 (なければ info.url_png_logo / body.url_png_icon_64x64)
+      logo_url        : info.url_png_logo
+      about           : info.about.me
+      twitter_handle  : info.social.twitter_handle
+      telegram_handle : info.social.telegram_handle
+      youtube_handle  : info.social.youtube_handle
+      github_handle   : info.social.github_handle
+    取得失敗 / 1 つも値が無い場合は None。
+    """
+    if not extended_url or not isinstance(extended_url, str):
+        return None
+    if not extended_url.startswith(("http://", "https://")):
+        return None
+    try:
+        resp = requests.get(extended_url, timeout=5)
+        if resp.status_code != 200:
+            return None
+        body = resp.json()
+    except Exception:
+        return None
+    if not isinstance(body, dict):
+        return None
+    info = body.get("info") if isinstance(body.get("info"), dict) else {}
+    social = info.get("social") if isinstance(info.get("social"), dict) else {}
+    about = info.get("about") if isinstance(info.get("about"), dict) else {}
+
+    icon = (
+        _coerce_url(info.get("url_png_icon_64x64"))
+        or _coerce_url(info.get("url_png_logo"))
+        or _coerce_url(body.get("url_png_icon_64x64"))
+    )
+    logo = _coerce_url(info.get("url_png_logo"))
+    out = {
+        "icon_url":        icon,
+        "logo_url":        logo,
+        "about":           _coerce_text(about.get("me")),
+        "twitter_handle":  _coerce_handle(social.get("twitter_handle")),
+        "telegram_handle": _coerce_handle(social.get("telegram_handle")),
+        "youtube_handle":  _coerce_handle(social.get("youtube_handle"), max_len=255),
+        "github_handle":   _coerce_handle(social.get("github_handle")),
+    }
+    # すべて None なら呼び出し側で判定しやすいように None を返す
+    if not any(v for v in out.values()):
+        return None
+    return out
+
+
+def _fetch_pool_extended_via_meta_url(meta_url: str | None) -> dict | None:
+    """meta_url を直接フェッチし、basic metadata に extended URL があればそれも辿って
+    アイコン/ロゴ/about/social を抽出した dict を返す。
+    extended が無い、もしくは取得失敗時は None。
+    """
+    if not meta_url or not isinstance(meta_url, str):
+        return None
+    if not meta_url.startswith(("http://", "https://")):
+        return None
+    try:
+        resp = requests.get(meta_url, timeout=5)
+        if resp.status_code != 200:
+            return None
+        body = resp.json()
+    except Exception:
+        return None
+    if not isinstance(body, dict):
+        return None
+    ext = body.get("extended")
+    if isinstance(ext, dict):
+        ext = ext.get("@value")
+    if not isinstance(ext, str):
+        return None
+    ext = ext.strip()
+    if not ext.startswith(("http://", "https://")):
+        return None
+    return _fetch_pool_extended(ext[:1024])
+
+
+def _fetch_extended_data_parallel(meta_urls: dict[str, str], workers: int = 16) -> dict[str, dict]:
+    """{pool_id: meta_url} を並列でフェッチ。各タスクは meta_url → extended URL → 抽出 を連続実行する。
+    返り値: {pool_id: extracted_dict}（icon_url / logo_url / about / *_handle）。
+    """
+    if not meta_urls:
+        return {}
+    out: dict[str, dict] = {}
+    logger.info("extended metadata フェッチ開始: %d 件 (workers=%d) — meta_url 直叩き", len(meta_urls), workers)
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(_fetch_pool_extended_via_meta_url, url): pid for pid, url in meta_urls.items()}
+        done = 0
+        for fut in as_completed(futs):
+            pid = futs[fut]
+            try:
+                data = fut.result()
+            except Exception:
+                data = None
+            if data:
+                out[pid] = data
+            done += 1
+            if done % 500 == 0:
+                logger.info("extended metadata: %d / %d 完了 (回収 %d)", done, len(meta_urls), len(out))
+    icon_count = sum(1 for d in out.values() if d.get("icon_url"))
+    social_count = sum(1 for d in out.values() if any(d.get(k) for k in ("twitter_handle", "telegram_handle", "youtube_handle", "github_handle")))
+    logger.info("extended metadata フェッチ完了: %d 件 (icons=%d, social=%d)", len(out), icon_count, social_count)
+    return out
+
+
+def _extract_str(value) -> str:
+    """{"@value": "..."} 形式と文字列の両方に対応して文字列を返す。"""
+    if isinstance(value, dict):
+        return str(value.get("@value") or "").strip()
+    return str(value or "").strip()
+
+
+# ============================================================
+# リレー疎通確認 (TCP connect)
+# ============================================================
+
+def _tcp_check(host: str, port: int, timeout: float = 3.0) -> bool:
+    """指定ホスト:ポートへ TCP コネクトを試みて成功すれば True。"""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except (OSError, ValueError):
+        return False
+
+
+def _check_single_relay(relay: dict, timeout: float = 3.0) -> bool:
+    """単一リレーへの疎通確認。ipv4 / ipv6 / dns に対応。SRV のみ等は False（確認不能=OFF）。"""
+    if not isinstance(relay, dict):
+        return False
+    port = relay.get("port")
+    try:
+        port = int(port) if port is not None else None
+    except (TypeError, ValueError):
+        return False
+    if not port or not (0 < port < 65536):
+        return False
+    raw_host = relay.get("ipv4") or relay.get("ipv6") or relay.get("dns")
+    if not isinstance(raw_host, str):
+        return False
+    host = raw_host.strip()
+    if not host:
+        return False
+    return _tcp_check(host, port, timeout=timeout)
+
+
+def _check_pool_relays(relays_value, timeout: float = 3.0) -> bool:
+    """プールのリレー疎通確認。1件でも疎通成功で True を返す（複数リレーは冗長構成のため）。
+    relays が空 / 取得失敗 / 全リレー疎通NG は False。
+    """
+    if relays_value is None:
+        return False
+    if isinstance(relays_value, str):
+        try:
+            relays = json.loads(relays_value)
+        except (TypeError, ValueError):
+            return False
+    else:
+        relays = relays_value
+    if not isinstance(relays, list) or not relays:
+        return False
+    for relay in relays:
+        if _check_single_relay(relay, timeout=timeout):
+            return True
+    return False
+
+
+def check_pool_relay_alive(workers: int = 32, timeout: float = 3.0):
+    """全 active プールのリレーに TCP 疎通確認を行い、relay_alive を一括更新する。"""
+    from cardanoism.backend.pool_db import get_pools_with_relays, bulk_update_relay_alive
+
+    pools = get_pools_with_relays(only_active=True)
+    if not pools:
+        logger.warning("リレー疎通確認: 対象プールがありません")
+        return
+    logger.info("リレー疎通確認 開始: %d 件 (workers=%d, timeout=%.1fs)", len(pools), workers, timeout)
+
+    results: list[tuple] = []
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {
+            ex.submit(_check_pool_relays, p.get("relays"), timeout): p["pool_id_bech32"]
+            for p in pools
+        }
+        done = 0
+        for fut in as_completed(futs):
+            pid = futs[fut]
+            try:
+                alive = fut.result()
+            except Exception:
+                alive = False
+            results.append((pid, bool(alive)))
+            done += 1
+            if done % 500 == 0:
+                alive_so_far = sum(1 for _, a in results if a)
+                logger.info("リレー疎通確認: %d / %d 完了 (alive=%d)", done, len(pools), alive_so_far)
+
+    bulk_update_relay_alive(results)
+    alive_count = sum(1 for _, a in results if a)
+    logger.info("リレー疎通確認 完了: %d / %d 件 ALIVE", alive_count, len(results))
+
+
+# ============================================================
+# プール ブロック履歴 同期 (直近 5 エポック)
+# ============================================================
+
+def check_pool_block_history(epochs: int = 5):
+    """全 active プールの直近 N エポックのブロック生成数を Koios /pool_history から取得。
+    pools.block_history_5ep に JSON 配列 (newest 順) で保存する。
+    """
+    from cardanoism.backend.koios import get_pool_history
+    from cardanoism.backend.pool_db import get_pool_ids_for_block_history, bulk_update_block_history
+
+    pool_ids = get_pool_ids_for_block_history(only_active=True)
+    if not pool_ids:
+        logger.warning("プールブロック履歴: 対象プールがありません")
+        return
+    logger.info("プールブロック履歴 同期 開始: %d 件 (epochs=%d)", len(pool_ids), epochs)
+
+    updates: list[tuple] = []
+    fetched = 0
+    for pid in pool_ids:
+        try:
+            history = get_pool_history(pid, limit=epochs)
+        except Exception as e:
+            logger.debug("get_pool_history 失敗 pool=%s: %s", pid, e)
+            history = []
+        # block_cnt のみを newest 順で抽出（足りない分は 0 でパディング）
+        counts: list[int] = []
+        for row in history[:epochs]:
+            try:
+                counts.append(int(row.get("block_cnt") or 0))
+            except (TypeError, ValueError):
+                counts.append(0)
+        while len(counts) < epochs:
+            counts.append(0)
+        updates.append((pid, json.dumps(counts)))
+        fetched += 1
+        if fetched % 200 == 0:
+            logger.info("プールブロック履歴: %d / %d フェッチ済み", fetched, len(pool_ids))
+
+    inserted = bulk_update_block_history(updates)
+    logger.info("プールブロック履歴 同期 完了: %d / %d 件 update", inserted, len(pool_ids))
+
+
+def check_pool_sync():
+    """
+    Koios から全プールの情報を取得して DB にキャッシュする。
+    - /pool_list: 全プールの最小情報（status / ticker / retiring_epoch 等）
+    - /pool_info: 詳細（pledge / margin / live_stake / saturation / blocks / メタデータ）
+    """
+    from cardanoism.backend.koios import (
+        KOIOS_BASE_URL, get_pool_list, get_pool_info_batch,
+    )
+    from cardanoism.backend.pool_db import bulk_upsert_pools
+
+    logger.info("プール同期 開始 (network=%s, url=%s)", _koios_network(), KOIOS_BASE_URL)
+
+    pools = get_pool_list()
+    if not pools:
+        logger.warning("プール一覧が取得できませんでした")
+        return
+    logger.info("プール一覧: %d 件", len(pools))
+
+    # retired はメタデータが薄い & 同期コスト高なので /pool_info の対象から外す。
+    # ただし pool_list 由来の最小情報（status / retiring_epoch）は upsert しておく。
+    target_ids = [
+        p["pool_id_bech32"]
+        for p in pools
+        if p.get("pool_id_bech32") and p.get("pool_status") != "retired"
+    ]
+    logger.info("/pool_info 対象: %d 件", len(target_ids))
+
+    info_map = {i["pool_id_bech32"]: i for i in get_pool_info_batch(target_ids)}
+
+    # 各プールの基本フィールド (ticker / name / homepage 等) を抽出。
+    # extended は Koios meta_json には乗らないので、meta_url を直叩きするための URL も集める。
+    pool_meta_cache: dict[str, dict] = {}
+    meta_url_targets: dict[str, str] = {}
+    for p in pools:
+        pid = p.get("pool_id_bech32")
+        if not pid:
+            continue
+        info = info_map.get(pid, {})
+        pool_meta_cache[pid] = _extract_pool_meta(info)
+        url = info.get("meta_url") or p.get("meta_url")
+        if url:
+            meta_url_targets[pid] = url
+    logger.info("meta_url 対象: %d 件 (extended は meta_url を直接フェッチして抽出)", len(meta_url_targets))
+
+    # meta_url → (extended があれば) extended URL → icon/logo/about/social を1タスクで連続取得
+    extended_map = _fetch_extended_data_parallel(meta_url_targets)
+
+    records: list[dict] = []
+    for p in pools:
+        pid = p.get("pool_id_bech32")
+        if not pid:
+            continue
+        info = info_map.get(pid, {})
+        meta = pool_meta_cache.get(pid) or _extract_pool_meta(info)
+        ext = extended_map.get(pid) or {}
+
+        records.append({
+            "pool_id_bech32":   pid,
+            "pool_id_hex":      info.get("pool_id_hex") or p.get("pool_id_hex"),
+            "pool_status":      p.get("pool_status") or info.get("pool_status"),
+            "active_epoch_no":  info.get("active_epoch_no"),
+            "retiring_epoch":   p.get("retiring_epoch") or info.get("retiring_epoch"),
+            "op_cert":          info.get("op_cert"),
+            "op_cert_counter": info.get("op_cert_counter"),
+            "vrf_key_hash":     info.get("vrf_key_hash"),
+            "pledge":           info.get("pledge"),
+            "margin":           info.get("margin"),
+            "fixed_cost":       info.get("fixed_cost"),
+            "active_stake":     info.get("active_stake"),
+            "live_stake":       info.get("live_stake"),
+            "live_pledge":      info.get("live_pledge"),
+            "live_delegators":  info.get("live_delegators"),
+            "live_saturation":  info.get("live_saturation"),
+            "sigma":            info.get("sigma"),
+            "block_count":      info.get("block_count"),
+            "reward_addr":      info.get("reward_addr"),
+            "owners":           info.get("owners"),
+            "relays":           info.get("relays"),
+            "meta_url":         info.get("meta_url") or p.get("meta_url"),
+            "meta_hash":        info.get("meta_hash") or p.get("meta_hash"),
+            "pool_icon_url":    ext.get("icon_url"),
+            "pool_logo_url":    ext.get("logo_url"),
+            "extended_about":   ext.get("about"),
+            "twitter_handle":   ext.get("twitter_handle"),
+            "telegram_handle":  ext.get("telegram_handle"),
+            "youtube_handle":   ext.get("youtube_handle"),
+            "github_handle":    ext.get("github_handle"),
+            **meta,
+        })
+
+    inserted = bulk_upsert_pools(records)
+    logger.info("プール同期 完了: %d / %d 件 upsert (extended=%d)", inserted, len(records), len(extended_map))
+
+
+def check_drep_sync():
+    """
+    Koios から全 DRep の情報を取得して DB にキャッシュする。
+    - /drep_list: 全 DRep の最小情報
+    - /drep_info: 登録状態 + 委任量
+    - /drep_metadata: CIP-119 メタデータ（画像・表示名等）
+    """
+    from cardanoism.backend.koios import (
+        KOIOS_BASE_URL, get_drep_list, get_drep_info_batch, get_drep_metadata_batch,
+    )
+    from cardanoism.backend.drep_db import bulk_upsert_dreps
+
+    logger.info("DRep 同期 開始 (network=%s, url=%s)", _koios_network(), KOIOS_BASE_URL)
+
+    dreps = get_drep_list()
+    if not dreps:
+        logger.warning("DRep 一覧が取得できませんでした")
+        return
+    logger.info("DRep 一覧: %d 件", len(dreps))
+
+    # 登録済みのみ詳細フェッチ対象にする（リソース節約）
+    registered_ids = [d["drep_id"] for d in dreps if d.get("registered") and d.get("drep_id")]
+    logger.info("registered DRep: %d 件", len(registered_ids))
+
+    info_map = {i["drep_id"]: i for i in get_drep_info_batch(registered_ids)}
+    meta_map = {m["drep_id"]: m for m in get_drep_metadata_batch(registered_ids)}
+
+    records: list[dict] = []
+    for d in dreps:
+        did = d.get("drep_id")
+        if not did:
+            continue
+        info = info_map.get(did, {})
+        meta_row = meta_map.get(did, {})
+        meta = _extract_drep_meta(meta_row)
+
+        records.append({
+            "drep_id":          did,
+            "hex":              d.get("hex"),
+            "has_script":       d.get("has_script"),
+            "registered":       d.get("registered"),
+            "drep_status":      info.get("drep_status"),
+            "active":           info.get("active"),
+            "deposit":          info.get("deposit"),
+            "expires_epoch_no": info.get("expires_epoch_no"),
+            "amount":           info.get("amount") or 0,
+            "meta_url":         info.get("meta_url"),
+            "meta_hash":        info.get("meta_hash"),
+            **meta,
+        })
+
+    inserted = bulk_upsert_dreps(records)
+    logger.info("DRep 同期 完了: %d / %d 件 upsert", inserted, len(records))
+
+
+# ============================================================
+# 法定通貨レート同期
+# ============================================================
+
+def check_fiat_sync():
+    """
+    CoinGecko から ADA/JPY・ADA/USD を取得して fiat_rate テーブルに保存。
+    cron 推奨: */15 * * * *
+    """
+    from cardanoism.backend.price import fetch_ada_rates
+    from cardanoism.backend.fiat_db import upsert_fiat_rate
+
+    logger.info("法定通貨レート同期 開始")
+    rates = fetch_ada_rates()
+    if not rates:
+        logger.warning("レート取得失敗")
+        return
+    upsert_fiat_rate(rates["ada_jpy"], rates["ada_usd"], source="coingecko")
+    logger.info("fiat_rate 更新: ADA/JPY=%.4f ADA/USD=%.6f",
+                rates["ada_jpy"], rates["ada_usd"])
+
+
+# ============================================================
+# トレジャリー同期（DBキャッシュ更新）
+# ============================================================
+
+def check_treasury_sync():
+    """
+    Koios から DB にトレジャリー関連データを同期する。
+      - treasury_snapshot: 最新エポックの /totals を UPSERT
+      - treasury_withdrawal: /treasury_withdrawals を INSERT IGNORE
+      - ncl_active: DRep過半数賛成の最新 NCL 提案を UPSERT
+
+    cron 推奨: エポック境界後1回（5日に1回）。日次でも問題ない。
+    """
+    from cardanoism.backend.koios import (
+        get_totals, get_treasury_withdrawals, fetch_active_ncl,
+        get_current_epoch, KOIOS_BASE_URL,
+    )
+    from cardanoism.backend.treasury_db import (
+        upsert_treasury_snapshot,
+        upsert_treasury_history,
+        get_existing_history_epochs,
+        insert_treasury_withdrawals,
+        upsert_active_ncl,
+    )
+    logger.info("トレジャリー同期 開始 (network=%s, url=%s)", _koios_network(), KOIOS_BASE_URL)
+
+    # 1) トレジャリー残高（最新スナップショット + 履歴）
+    epoch = None
+    try:
+        epoch = get_current_epoch()
+        totals = get_totals(epoch_no=epoch) if epoch else get_totals()
+        if totals and totals.get("treasury") is not None:
+            epoch_no = int(totals.get("epoch_no") or epoch or 0)
+            upsert_treasury_snapshot(
+                epoch_no=epoch_no,
+                treasury=int(totals["treasury"]),
+                reserves=int(totals["reserves"]) if totals.get("reserves") is not None else None,
+                supply=int(totals["supply"]) if totals.get("supply") is not None else None,
+            )
+            logger.info("treasury_snapshot 更新: Ep.%d treasury=%s", epoch_no, totals["treasury"])
+        else:
+            logger.warning("totals 取得失敗")
+    except Exception as e:
+        logger.exception("treasury_snapshot 同期失敗: %s", e)
+
+    # 1.5) treasury_history は NCL 期間に基づき同期（後段の NCL fetch 後に実行）。
+    # ここでは仮に直近 12 エポックを最低限同期してフォールバック用データを確保する。
+    try:
+        if epoch:
+            fallback_start = max(0, int(epoch) - 11)
+            fallback_end = int(epoch)
+            existing = get_existing_history_epochs(fallback_start, fallback_end)
+            synced = 0
+            for ep in range(fallback_start, fallback_end + 1):
+                if ep in existing:
+                    continue
+                t = get_totals(epoch_no=ep)
+                if t and t.get("treasury") is not None:
+                    upsert_treasury_history(
+                        epoch_no=int(t.get("epoch_no") or ep),
+                        treasury=int(t["treasury"]),
+                        reserves=int(t["reserves"]) if t.get("reserves") is not None else None,
+                        supply=int(t["supply"]) if t.get("supply") is not None else None,
+                    )
+                    synced += 1
+            logger.info("treasury_history (fallback): 直近 12 エポックのうち %d 件を新規取得", synced)
+    except Exception as e:
+        logger.exception("treasury_history fallback 同期失敗: %s", e)
+
+    # 2) 引き出し履歴
+    try:
+        withdrawals = get_treasury_withdrawals(limit=1000)
+        records = []
+        for w in withdrawals:
+            if not w.get("stake_address"):
+                continue
+            try:
+                records.append({
+                    "stake_address": w["stake_address"],
+                    "amount_lovelace": int(w.get("amount") or 0),
+                    "earned_epoch": int(w.get("earned_epoch") or 0),
+                    "spendable_epoch": int(w.get("spendable_epoch") or 0),
+                })
+            except (TypeError, ValueError):
+                continue
+        inserted = insert_treasury_withdrawals(records)
+        logger.info("treasury_withdrawal: 新規 %d 件追加（全 %d 件チェック）", inserted, len(records))
+    except Exception as e:
+        logger.exception("treasury_withdrawal 同期失敗: %s", e)
+
+    # 3) NCL
+    ncl_start = None
+    ncl_end = None
+    try:
+        ncl = fetch_active_ncl(use_cache=False)
+        if ncl:
+            upsert_active_ncl(ncl)
+            ncl_start = int(ncl["start_epoch"])
+            ncl_end = int(ncl["end_epoch"])
+            logger.info(
+                "ncl_active 更新: %s (%d ADA, Ep.%d-%d, DRep %.2f%%)",
+                ncl["title"], ncl["limit_ada"], ncl_start, ncl_end, ncl["drep_yes_pct"],
+            )
+        else:
+            logger.warning("DRep過半数賛成のNCL提案が見つかりません（既存の ncl_active はそのまま）")
+    except Exception as e:
+        logger.exception("ncl_active 同期失敗: %s", e)
+
+    # 4) NCL 期間の履歴（折れ線グラフ用）。NCL start から現在エポックまでを埋める。
+    # ON DUPLICATE KEY UPDATE で全件更新せず、未取得分だけ Koios call する設計。
+    try:
+        if ncl_start is not None and epoch:
+            range_start = max(0, ncl_start)
+            # 現在エポックを上限。NCL end が未来でも現在以降の履歴は取れない
+            range_end = min(int(epoch), ncl_end if ncl_end is not None else int(epoch))
+            existing = get_existing_history_epochs(range_start, range_end)
+            missing = [ep for ep in range(range_start, range_end + 1) if ep not in existing]
+            # 暴走防止: 1 サイクルで最大 80 件まで
+            CAP = 80
+            if len(missing) > CAP:
+                logger.info(
+                    "treasury_history (NCL範囲): 未取得 %d 件のうち最新 %d 件のみ今回同期",
+                    len(missing), CAP,
+                )
+                missing = missing[-CAP:]
+            synced = 0
+            for ep in missing:
+                t = get_totals(epoch_no=ep)
+                if t and t.get("treasury") is not None:
+                    upsert_treasury_history(
+                        epoch_no=int(t.get("epoch_no") or ep),
+                        treasury=int(t["treasury"]),
+                        reserves=int(t["reserves"]) if t.get("reserves") is not None else None,
+                        supply=int(t["supply"]) if t.get("supply") is not None else None,
+                    )
+                    synced += 1
+            logger.info(
+                "treasury_history (NCL Ep.%d-%d): 新規 %d 件取得（既存 %d 件はスキップ）",
+                range_start, range_end, synced, len(existing),
+            )
+    except Exception as e:
+        logger.exception("treasury_history (NCL範囲) 同期失敗: %s", e)
+
+    logger.info("トレジャリー同期 完了")
+
+
+# ============================================================
+# トレジャリーイベント
+# ============================================================
+
+def check_treasury_events():
+    """TreasuryWithdrawals ガバナンスアクションが enacted（施行）されたのを検知して全ユーザーへ通知。"""
+    logger.info("トレジャリーイベント チェック開始")
+    from cardanoism.backend.koios import get_treasury_proposals
+
+    proposals = get_treasury_proposals()
+    enacted = [p for p in proposals if p.get("enacted_epoch") is not None]
+    if not enacted:
+        logger.info("施行済みのトレジャリー引き出しはありません")
+        return
+
+    line_users = get_users_with_event("treasury_withdrawal_enacted")
+    email_users = get_users_with_email_event("treasury_withdrawal_enacted")
+    tg_users = get_users_with_telegram_event("treasury_withdrawal_enacted")
+
+    if not (line_users or email_users or tg_users):
+        logger.info("通知対象ユーザーがいません")
+        return
+
+    for p in enacted:
+        proposal_id = p.get("proposal_id") or ""
+        enacted_epoch = p.get("enacted_epoch")
+        dedup_base = f"treasury_enacted:{proposal_id}"
+
+        meta_body = ((p.get("meta_json") or {}).get("body") or {}) if isinstance(p.get("meta_json"), dict) else {}
+        title = ""
+        if isinstance(meta_body, dict):
+            raw_title = meta_body.get("title")
+            if isinstance(raw_title, dict):
+                title = str(raw_title.get("@value") or "").strip()
+            elif isinstance(raw_title, str):
+                title = raw_title.strip()
+        if not title:
+            title = proposal_id[:24] + "..."
+
+        proposal_url = f"{CARDANOISM_URL}/governance/{proposal_id}"
+
+        for u in line_users:
+            dk = dedup_base + "_line"
+            if already_sent(u["id"], "treasury_withdrawal_enacted", dk):
+                continue
+            lang = u.get("language", "ja")
+            msg = (
+                f"🏛️ 【トレジャリー引き出しが施行されました】\n"
+                f"タイトル: {title}\n"
+                f"施行エポック: {enacted_epoch}\n"
+                f"詳細: {proposal_url}"
+                if lang == "ja" else
+                f"🏛️ [Treasury Withdrawal Enacted]\n"
+                f"Title: {title}\n"
+                f"Enacted Epoch: {enacted_epoch}\n"
+                f"Details: {proposal_url}"
+            )
+            push_and_log(u["line_notify_id"], u["id"], "treasury_withdrawal_enacted", dk, msg)
+
+        for u in email_users:
+            dk = dedup_base + "_email"
+            if already_sent(u["id"], "treasury_withdrawal_enacted", dk):
+                continue
+            lang = u.get("language", "ja")
+            subj = "トレジャリー引き出しが施行されました" if lang == "ja" else "Treasury Withdrawal Enacted"
+            lines = (
+                [f"タイトル: {title}", f"施行エポック: {enacted_epoch}"]
+                if lang == "ja" else
+                [f"Title: {title}", f"Enacted Epoch: {enacted_epoch}"]
+            )
+            cta = "提案を開く" if lang == "ja" else "Open Proposal"
+            email_and_log(
+                u["email_addr"], u["id"], "treasury_withdrawal_enacted", dk, subj,
+                build_html(subj, lines, proposal_url, cta, lang),
+                build_text(subj, lines, proposal_url, lang),
+            )
+
+        for u in tg_users:
+            dk = dedup_base + "_telegram"
+            if already_sent(u["id"], "treasury_withdrawal_enacted", dk):
+                continue
+            lang = u.get("language", "ja")
+            tg_text = (
+                f"🏛️ <b>トレジャリー引き出しが施行されました</b>\n"
+                f"タイトル: {title}\n施行エポック: {enacted_epoch}\n{proposal_url}"
+                if lang == "ja" else
+                f"🏛️ <b>Treasury Withdrawal Enacted</b>\n"
+                f"Title: {title}\nEnacted Epoch: {enacted_epoch}\n{proposal_url}"
+            )
+            telegram_and_log(u["telegram_chat_id"], u["id"], "treasury_withdrawal_enacted", dk, tg_text)
+
+
+# ============================================================
 # テスト送信
 # ============================================================
 
@@ -1199,6 +2224,215 @@ def send_test_event(user_id: int, event: str):
 
 
 # ============================================================
+# GA AI 分析: 初回同期バッチ
+# ============================================================
+
+def check_ga_ai_initial_sync() -> None:
+    """既存 GA に対して AI 分析キューを初期化するバッチ。
+
+    対象（OR 条件で union）:
+      - Active（ratified/enacted/dropped/expired すべて NULL）
+      - Ratified（ratified_epoch IS NOT NULL）
+      - Enacted（enacted_epoch IS NOT NULL）
+      - expiration >= 現在エポック - 6（最近 Expired / Dropped した GA も含める）
+
+    INSERT IGNORE で投入するため、既に行があれば何もしない（再実行安全）。
+    実際の分析は ga_ai_worker.py が pending を拾って進める。
+    """
+    logger.info("=== GA AI 分析 初回同期バッチ 開始 ===")
+
+    try:
+        current_epoch = get_current_epoch()
+    except Exception as e:
+        logger.warning("現在エポック取得失敗 (continue with None): %s", e)
+        current_epoch = None
+
+    epoch_threshold: int | None = None
+    if current_epoch is not None:
+        epoch_threshold = max(0, int(current_epoch) - 6)
+
+    sql = (
+        "SELECT proposal_id FROM governance_actions "
+        "WHERE proposal_id IS NOT NULL AND proposal_id <> '' AND ("
+        "  (ratified_epoch IS NULL AND enacted_epoch IS NULL "
+        "   AND dropped_epoch IS NULL AND expired_epoch IS NULL)"
+        "  OR ratified_epoch IS NOT NULL"
+        "  OR enacted_epoch IS NOT NULL"
+    )
+    params: list = []
+    if epoch_threshold is not None:
+        sql += "  OR expiration >= ?"
+        params.append(epoch_threshold)
+    sql += ")"
+
+    with get_db() as (cursor, _):
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+    proposal_ids = [str(r["proposal_id"]) for r in rows]
+    logger.info("対象 GA: %d 件 (current_epoch=%s, threshold=%s)",
+                len(proposal_ids), current_epoch, epoch_threshold)
+
+    if not proposal_ids:
+        logger.info("対象 GA なし。終了。")
+        return
+
+    try:
+        from cardanoism.backend.governance_ai_db import bulk_enqueue
+        queued = bulk_enqueue(proposal_ids)
+    except Exception as e:
+        logger.exception("bulk_enqueue 失敗: %s", e)
+        return
+
+    logger.info("AI 分析キューに新規 enqueue: %d 件 (既存をスキップ: %d 件)",
+                queued, len(proposal_ids) - queued)
+    logger.info("=== GA AI 分析 初回同期バッチ 完了 ===")
+
+
+def check_constitution_sync() -> None:
+    """最新 enacted NewConstitution の本文を IPFS から取得し、Catalyst でも使われる
+    Translator で日本語訳して constitution_cache に保存する。
+
+    既に同じ proposal_id で翻訳済みなら skip（強制再翻訳したい場合は constitution_cache
+    の id=1 行を削除してから再実行）。
+    """
+    logger.info("=== Constitution sync 開始 ===")
+
+    from cardanoism.backend.constitution_fetcher import fetch_constitution_text
+    from cardanoism.backend.constitution_db import get_constitution, upsert_constitution
+    from cardanoism.backend.governance import build_translator
+
+    # 最新 enacted を引く
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT proposal_id, enacted_epoch
+            FROM governance_actions
+            WHERE proposal_type = 'NewConstitution'
+              AND enacted_epoch IS NOT NULL
+            ORDER BY enacted_epoch DESC
+            LIMIT 1
+            """
+        )
+        row = cursor.fetchone()
+    if not row:
+        logger.warning("enacted NewConstitution が DB に見つかりません")
+        return
+
+    proposal_id = str(row.get("proposal_id") or "")
+    enacted_epoch = row.get("enacted_epoch")
+
+    cached = get_constitution()
+    if (
+        cached
+        and cached.get("proposal_id") == proposal_id
+        and cached.get("translated_text")
+    ):
+        logger.info(
+            "constitution_cache に同じ proposal_id (%s) が既に翻訳済みのためスキップ",
+            proposal_id,
+        )
+        return
+
+    logger.info("憲法本文取得中: proposal_id=%s, enacted_epoch=%s", proposal_id, enacted_epoch)
+    text, source_url = fetch_constitution_text()
+    if not text:
+        logger.error("憲法本文の取得に失敗。IPFS gateway / pymupdf / GPT_API_KEY / action_anchor_url を確認してください")
+        return
+    logger.info("取得 OK: %d 文字 (url=%s)", len(text), source_url)
+
+    # まず原文だけ保存しておく（翻訳が長時間 / 失敗してもキャッシュは残る）
+    upsert_constitution(
+        proposal_id=proposal_id,
+        enacted_epoch=enacted_epoch,
+        source_url=source_url,
+        original_text=text,
+        update_translation=False,
+    )
+
+    # 翻訳（chunk して連続翻訳）
+    logger.info("翻訳開始 (Translator はカタリスト同等エンジン)")
+    translator = build_translator()
+    translated = _translate_constitution_text(translator, text)
+    logger.info("翻訳完了: %d 文字", len(translated))
+
+    upsert_constitution(
+        proposal_id=proposal_id,
+        enacted_epoch=enacted_epoch,
+        source_url=source_url,
+        original_text=text,
+        translated_text=translated,
+        update_translation=True,
+    )
+    logger.info("=== Constitution sync 完了 ===")
+
+
+def _translate_constitution_text(translator, text: str, chunk_chars: int = 4000) -> str:
+    """段落単位で chunk して翻訳する（長文一括は token 制限・失敗時の再試行が辛いため）。
+    chunk_chars 文字程度ごとに区切る。
+    """
+    paragraphs = text.split("\n\n")
+    chunks: list[str] = []
+    cur: list[str] = []
+    cur_len = 0
+    for p in paragraphs:
+        if cur_len + len(p) > chunk_chars and cur:
+            chunks.append("\n\n".join(cur))
+            cur = []
+            cur_len = 0
+        cur.append(p)
+        cur_len += len(p) + 2
+    if cur:
+        chunks.append("\n\n".join(cur))
+
+    out: list[str] = []
+    for i, c in enumerate(chunks, 1):
+        if not c.strip():
+            out.append(c)
+            continue
+        logger.info("  chunk %d/%d (%d chars)", i, len(chunks), len(c))
+        try:
+            translated = translator.translate_overview(c)
+        except Exception as exc:
+            logger.warning("  chunk %d 翻訳失敗 (continue 原文): %s", i, exc)
+            translated = c
+        out.append(translated)
+    return "\n\n".join(out)
+
+
+def check_ga_ai_reanalyze(proposal_id: str | None = None, all_flag: bool = False) -> None:
+    """既に analyzed の GA を pending に戻して再分析対象にする。
+
+    Args:
+        proposal_id: 単一 GA を対象に再分析する場合に指定。
+        all_flag:    True なら status='analyzed' の全行を再分析対象にする。
+
+    どちらも指定しなかった / 両方指定した場合は何もしない。
+    """
+    if proposal_id and all_flag:
+        logger.error("--proposal-id と --all は同時指定できません")
+        return
+    if not proposal_id and not all_flag:
+        logger.error("--proposal-id <id> または --all のどちらかを指定してください")
+        return
+
+    from cardanoism.backend.governance_ai_db import requeue, requeue_all
+
+    if proposal_id:
+        logger.info("=== GA AI 再分析: %s ===", proposal_id)
+        ok = requeue(proposal_id)
+        if ok:
+            logger.info("pending に戻しました。ga_ai_worker が次サイクルで再分析します。")
+        else:
+            logger.warning("再分析対象に変更できませんでした (proposal_id 確認してください)")
+        return
+
+    logger.info("=== GA AI 再分析: Active な analyzed 全件 ===")
+    n = requeue_all(only_analyzed=True, active_only=True)
+    logger.info("%d 件を pending に戻しました（Active な GA のみ対象）。"
+                " ga_ai_worker が順次再分析します。", n)
+
+
+# ============================================================
 # エントリポイント
 # ============================================================
 
@@ -1207,7 +2441,7 @@ def main():
     parser.add_argument(
         "--event",
         default="all",
-        choices=["all", "pool", "drep", "reminder"],
+        choices=["all", "pool", "drep", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync"],
         help="実行するイベントグループ",
     )
     parser.add_argument(
@@ -1236,6 +2470,29 @@ def main():
         action="store_true",
         help="直近のエポック切り替わり時刻（UTC）を表示して終了する",
     )
+    parser.add_argument(
+        "--fetch-limit",
+        type=int,
+        default=500,
+        help="vote_rationale_sync でメタデータ取得する最大件数（0 で無制限）",
+    )
+    parser.add_argument(
+        "--translate-limit",
+        type=int,
+        default=100,
+        help="vote_rationale_sync で OpenAI 翻訳する最大件数（0 で無制限）",
+    )
+    parser.add_argument(
+        "--proposal-id",
+        metavar="PROPOSAL_ID",
+        help="ga_ai_reanalyze で対象を 1 件に絞るときに指定する proposal_id",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="ga_ai_reanalyze で Active かつ analyzed の GA 全件を再分析対象にする"
+             "（Ratified / Enacted / Dropped / Expired は対象外）",
+    )
     args = parser.parse_args()
 
     if args.epoch_schedule:
@@ -1263,6 +2520,43 @@ def main():
         check_drep_events()
     if args.event in ("all", "reminder"):
         check_delegation_reminders()
+    if args.event in ("all", "treasury"):
+        check_treasury_events()
+    if args.event in ("all", "treasury_sync"):
+        check_treasury_sync()
+    if args.event in ("all", "fiat_sync"):
+        check_fiat_sync()
+    if args.event in ("all", "drep_sync"):
+        check_drep_sync()
+    if args.event in ("all", "pool_sync"):
+        check_pool_sync()
+    if args.event in ("all", "pool_block_history_sync"):
+        check_pool_block_history()
+    if args.event in ("all", "relay_check"):
+        check_pool_relay_alive()
+    if args.event in ("all", "vote_sync"):
+        check_vote_sync()
+    if args.event in ("all", "summary_sync"):
+        check_summary_sync()
+    if args.event in ("all", "params_sync"):
+        check_params_sync()
+    if args.event in ("all", "vote_rationale_sync"):
+        check_vote_rationale_sync(
+            fetch_limit=args.fetch_limit,
+            translate_limit=args.translate_limit,
+        )
+    # GA AI 初回同期は --event ga_ai_initial_sync で明示指定したときのみ実行する
+    # （"all" には含めない: 通常は governance.py 側 enqueue で自動投入されるため）
+    if args.event == "ga_ai_initial_sync":
+        check_ga_ai_initial_sync()
+
+    # GA AI 再分析: --event ga_ai_reanalyze で明示指定（"all" には含めない）
+    if args.event == "ga_ai_reanalyze":
+        check_ga_ai_reanalyze(proposal_id=args.proposal_id, all_flag=args.all)
+
+    # 憲法同期 + 翻訳: --event constitution_sync で明示指定（"all" には含めない）
+    if args.event == "constitution_sync":
+        check_constitution_sync()
 
     logger.info("完了")
 

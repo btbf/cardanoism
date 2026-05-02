@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cardanoism-wallet"
+version = "0.1.0"
+description = "Cardano CIP-30 wallet connector custom component for Reflex (Lucid Evolution backed)"
+requires-python = ">=3.11"
+dependencies = [
+    "reflex>=0.8.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["cardanoism_wallet*"]
+
+[tool.setuptools.package-data]
+cardanoism_wallet = ["web/src/*", "web/package.json"]
