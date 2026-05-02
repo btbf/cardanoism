@@ -482,42 +482,19 @@ class WalletState(rx.State):
             self.delegate_current_pool = {}
 
     @rx.event
-    async def submit_delegation(self):
-        """確認ダイアログから委任 tx を組み立てて wallet で署名 → submit する。"""
-        if self.delegating:
-            return
-        if not self.connected:
-            return rx.toast.error("ウォレットが接続されていません")
+    def submit_delegation(self):
+        """確認ダイアログから委任 tx を送信する (Phase 3 実装予定 / 現在スタブ)。
 
-        pool_id = str((self.delegate_target_pool or {}).get("pool_id_bech32", "")).strip()
-        if not pool_id or not pool_id.startswith("pool"):
-            return rx.toast.error("有効な SPO が選択されていません")
-
-        auth = await self.get_state(AuthState)
-        if not auth.user_id:
-            return rx.toast.error("ログインが必要です")
-
-        # 接続中の reward が登録済みアドレスのいずれかと一致することを確認
-        registered = [
-            str(a.get("address", "")) for a in (auth.stake_addresses or [])
-        ]
-        if self.reward_address not in registered:
-            return rx.toast.error(
-                "接続中ウォレットのアドレスが登録されていません。"
-                "マイページで登録 + 接続してから再度お試しください。"
-            )
-
-        # network 推定 (network_id: 0=testnet, 1=mainnet)
-        network_name = "Mainnet" if self.network_id == 1 else "Preprod"
-
-        self.delegating = True
-        return rx.call_script(
-            _js_call(
-                "window.cardanoismWallet.delegateToPool("
-                f"{json.dumps(pool_id)}, {json.dumps(network_name)})"
+        TODO: Phase 3 で MeshSDK or Lucid Evolution を使った tx 構築を別ブランチで実装。
+        現状は UI フローだけ完成しており、ボタン押下時は info toast を返すのみ。
+        """
+        return [
+            rx.toast.info(
+                "委任機能は現在開発中です (近日対応予定)。",
+                duration=6000,
             ),
-            callback=WalletState.delegation_result,
-        )
+            WalletState.close_delegate_dialog,
+        ]
 
     @rx.event
     def delegation_result(self, result: dict):

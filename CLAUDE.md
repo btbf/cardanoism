@@ -287,4 +287,72 @@ SMTP 経由でメールを送信するヘルパー。
 - LINEミニアプリ実装
 - アカウント削除機能
 - 通知履歴ページ
-- 複数ソーシャルアカウントの同一アカウントへの連携
+- 複数ソーシャルアカウントの同一ソーシャルアカウントへの連携
+
+---
+
+## 9. Reflex フレームワーク制約・知見
+
+実装中に判明した Reflex の特性と回避策。次セッション以降の自分が同じ罠にハマらないため。
+
+### 9-1. レンダリング: SPA のみ
+
+| モード | サポート |
+|---|---|
+| SPA (default) | ✅ |
+| SSG / 静的プリレンダー | ❌ (`prerender_routes` API なし) |
+| SSR (リクエスト毎サーバ生成) | ❌ |
+
+→ ユーザー固有ページ（マイページ、お気に入り）の静的化は不可。SEO 重要ページは tag メタを動的更新で対応。
+
+### 9-2. Google Analytics は手動 page_view 追跡が必須
+
+SPA なので URL 変更で自動 page_view が発火しない。`cardanoism.py` の `_GA_INLINE_SCRIPT` で `history.pushState` / `replaceState` / `popstate` をフックして、各遷移時に手動で `gtag('event', 'page_view', ...)` を発火させる。`requestAnimationFrame` で 1 frame 遅延させて React の `document.title` 更新を待つのがポイント。
+
+### 9-3. WASM 系 npm ライブラリ取り込み
+
+Reflex 公式は WASM をサポートしていない。Cardano lib (Lucid Evolution / MeshSDK) のような WASM 依存パッケージは Vite/Rolldown と相性が悪い:
+
+- `libsodium-wrappers-sumo@0.7.16` のパッケージング不具合（[issue #360](https://github.com/jedisct1/libsodium.js/issues/360)、0.8.0+ で修正済）
+- ESM 統合 (`import.wasm`) のサポートに `vite-plugin-wasm` + `vite-plugin-top-level-await` が必要
+- Node API polyfill (`global` / `Buffer` / `process`) も別途必要
+
+**回避策**:
+- `reflex-vite-config-plugin` で `optimizeDeps.exclude` 等を注入できる
+- ただしネスト依存（`@cardano-sdk/...` 配下の独自 `node_modules`）まで完全制御は難しい
+- 確実な解は **esbuild で self-host bundle 化して assets で配信**
+
+→ **Phase 3（委任 tx 構築）はペンディング**。実装は別ブランチで esbuild bundle 方式で再挑戦予定。
+
+### 9-4. カスタム React コンポーネント wrap の正規 API
+
+`rx.Component` を継承して以下を提供する:
+
+| メソッド | 役割 |
+|---|---|
+| `library = "<npm-name>"` / `tag = "<Component>"` | npm からの import |
+| `add_imports() -> dict` | 追加 import 文（モジュールトップ） |
+| `add_hooks() -> list[str]` | コンポーネント render 内 hooks |
+| `add_custom_code() -> list[str]` | render 関数の外側に注入する JS |
+
+`rx.Fragment` ベースで `add_custom_code` 単独でも使えるが、ローカル component を `library = None` で書くのは非サポート。
+
+### 9-5. 推奨される browser-side scripting
+
+| ニーズ | 推奨 API |
+|---|---|
+| 一度だけインジェクト | `rx.script(content)` (head_components 等で) |
+| Python event から JS 実行 + 結果受け取り | `rx.call_script(js, callback=event)` (async OK) |
+| state 変化に応じて JS 反応 | カスタム `rx.Component` で hooks 化 |
+
+`rx.call_script` の引数 JS は async IIFE でラップして `try/catch` を被せると Python 側の `__error` 規約と合わせやすい（`wallet_state.py` の `_js_call` ヘルパー参照）。
+
+### 9-6. バージョン情報
+
+- **現在**: 0.8.19 (`pyproject.toml`)
+- **最新**: 0.9.1（2026-04-27 リリース）
+- **0.9.x 破壊的変更**:
+  - ビルド出力先: `.web/_static/*` → `.web/build/client/*`
+  - DB スタック (`pydantic` / `sqlmodel` / `alembic`) は `reflex[db]` extra に分離
+  - イベントキュー実装変更（`yield` 挙動の差異あり）
+- アップグレードは別ブランチで慎重に検証すること

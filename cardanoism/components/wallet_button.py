@@ -272,11 +272,15 @@ def wallet_connector_mount() -> rx.Component:
 
     `navbar_icons()` の最上位に置いて全ページで常時生存させる。
     マウント時に検出 + 自動再接続を試みる。
+
+    LucidProvider が `@lucid-evolution/lucid` を npm から import し
+    `window.__cardanoismLucid` に publish する。Vite の optimizeDeps.exclude
+    で pre-bundling が回避されるので WASM 依存も runtime で正しくロードされる。
     """
     return rx.fragment(
         # CSS (pulse keyframes 等) を inject
         rx.html(_WALLET_CSS),
-        # JS モジュールを <script> として注入
+        # ウォレット制御 JS モジュールを <script> として注入
         rx.script(wallet_module_script()),
         # 検出 + auto reconnect トリガ用の不可視ボックス
         rx.box(

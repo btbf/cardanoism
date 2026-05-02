@@ -657,7 +657,8 @@ def _pool_card(p) -> rx.Component:
         rx.fragment(),
     )
 
-    return rx.box(
+    # ── ヘッダー: プール名 / ID / 概要 (明るめ背景) ─────────
+    header_section = rx.box(
         rx.vstack(
             rx.hstack(
                 icon_or_rank,
@@ -669,17 +670,41 @@ def _pool_card(p) -> rx.Component:
                 spacing="3", align="center", width="100%",
             ),
             about_row,
+            spacing="3", align_items="stretch", width="100%",
+        ),
+        padding="16px 18px 14px 18px",
+        background=rx.color_mode_cond("white", "rgba(255,255,255,0.04)"),
+        width="100%",
+    )
+
+    # ── ボディ: 飽和率 + メトリクス (やや暗め背景で数値ゾーンを区別) ──
+    body_section = rx.box(
+        rx.vstack(
             saturation_row,
             metrics,
             spacing="3", align_items="stretch", width="100%",
         ),
-        padding="16px 18px",
+        padding="14px 18px 16px 18px",
+        background=rx.color_mode_cond("var(--gray-3)", "rgba(0,0,0,0.18)"),
+        border_top=f"1px solid {rx.color('gray', 4)}",
+        width="100%",
+    )
+
+    return rx.box(
+        header_section,
+        body_section,
         border_radius="12px",
         border=f"1px solid {rx.color('gray', 4)}",
-        background="var(--gray-2)",
+        overflow="hidden",  # 角の丸みで内側の背景を綺麗にクリップ
         width="100%",
-        _hover={"background": "var(--gray-3)"},
-        transition="background 0.15s",
+        _hover={
+            "border_color": rx.color("gray", 6),
+            "box_shadow": rx.color_mode_cond(
+                "0 4px 14px -4px rgba(0,0,0,0.08)",
+                "0 4px 14px -4px rgba(0,0,0,0.40)",
+            ),
+        },
+        style={"transition": "border-color 0.15s, box-shadow 0.15s"},
     )
 
 

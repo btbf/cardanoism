@@ -8,6 +8,10 @@ Python 側からの呼び出しは `rx.call_script(...)` 経由 (wallet_state.py
 使い方:
     from cardanoism_wallet import wallet_module_script
     rx.script(wallet_module_script())
+
+NOTE: Phase 3 (委任 tx 構築) では Mesh/Lucid を試みたが、Reflex 0.8 の
+Vite + Rolldown 構成と Cardano lib の WASM/Node API 依存が噛み合わず保留。
+別ブランチで esbuild self-host bundle として再挑戦予定。
 """
 from __future__ import annotations
 
