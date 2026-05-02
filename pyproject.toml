@@ -19,8 +19,12 @@ dependencies = [
     "requests>=2.31.0",
     "beautifulsoup4>=4.12.0",
     # CIP-8 (COSE_Sign1) 検証用 — wallet_verify.py で使用
-    "cbor2>=5.6.0",
+    # cbor2 6.x は pycardano (cbor2pure) と非互換のため 5.x に固定
+    "cbor2>=5.6.0,<6.0",
     "pynacl>=1.5.0",
+    # Phase 3: サーバサイドで Cardano tx を構築 (委任 / 投票)
+    # 0.19+ で Conway era の cert / DRep 委任サポートが安定
+    "pycardano>=0.19.0",
 ]
 
 [tool.uv.sources]
