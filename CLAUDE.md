@@ -375,7 +375,7 @@ Reflex 公式は WASM をサポートしていない。Cardano lib (Lucid Evolut
 
 ### 9-6. バージョン情報
 
-- **現在**: 0.8.19 (`pyproject.toml`)
+- **現在**: 0.8.22 (`pyproject.toml` / `requirements.txt`)
 - **最新**: 0.9.1（2026-04-27 リリース）
 - **0.9.x 破壊的変更**:
   - ビルド出力先: `.web/_static/*` → `.web/build/client/*`
