@@ -18,9 +18,10 @@ uv.lock
 *.egg-info/
 build/
 dist/
-# Reflex の bun lockfile (uv.lock と同様にバージョン管理しない)
+# Reflex bun lockfile (do not track, similar to uv.lock policy)
 bun.lock
-# AI 開発支援 skill (個人環境設定。共有不要)
+# Local AI assistant skills (personal environment, not shared)
 .agents/
 .claude/skills/
 skills-lock.json
+.claude/settings.local.json

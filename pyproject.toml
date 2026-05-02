@@ -10,7 +10,7 @@ dependencies = [
     "openai>=2.8.0",
     "playwright>=1.57.0",
     "python-dotenv>=1.0.0",
-    "reflex==0.8.19",
+    "reflex[db]==0.9.1",
     "cardanoism-wallet",
     # FastAPI / Starlette — telegram_bot.py / line_auth.py / api_transformer で使用
     "fastapi>=0.110.0",
