@@ -42,6 +42,11 @@
 | `summary_sync` | `proposal_voting_summary` | 投票集計 |
 | `params_sync` | `protocol_params` / `cc_members` | プロトコルパラメータ・憲法委員会 |
 | `vote_rationale_sync` | `proposal_votes.rationale_ja` | OpenAI で投票理由を翻訳 |
+| `pool_sync` | `pools` | SPO 一覧 + 拡張メタ |
+| `pool_block_history_sync` | `pools_block_history` | プール別エポック作成ブロック数の履歴 |
+| `relay_check` | `pools.relay_alive` | リレー疎通チェック |
+| `constitution_sync` | `constitution_cache` | Cardano 憲法本文の取得 + 翻訳 |
+| `ga_ai_initial_sync` | `governance_ai_analysis` (pending) | 既存 GA を AI 分析キューに一括投入 |
 
 > リアルタイムバックエンド（Ogmios）が担当するイベント（`epoch_start` / `pool_retire` / `pool_fee_change` / `pool_epoch_performance` / `drep_new_governance_action` / `drep_vote`）は notify_worker.py からは送信されない。Ogmios デーモンが必須。
 
@@ -207,6 +212,11 @@ cd /opt/cardanoism
 .venv/bin/python notify_worker.py --event params_sync
 .venv/bin/python notify_worker.py --event treasury_sync
 .venv/bin/python notify_worker.py --event fiat_sync
+
+# SPO 系
+.venv/bin/python notify_worker.py --event pool_sync
+.venv/bin/python notify_worker.py --event pool_block_history_sync
+.venv/bin/python notify_worker.py --event relay_check
 ```
 
 ### 5-3. テスト送信
@@ -225,7 +235,58 @@ cd /opt/cardanoism
 .venv/bin/python notify_worker.py --test 1 --test-enabled
 ```
 
-### 5-4. エポック切替時刻の確認
+### 5-4. 初回投入 / DB リセット時の同期手順
+
+新規環境にデプロイした直後、またはネットワーク切替（mainnet ↔ preview）でガバナンス系・SPO 系のキャッシュテーブルを TRUNCATE した直後に **1 回だけ** 実行する。順序が重要（GA 本体が無いと AI 分析の enqueue 対象が無いため）。
+
+```bash
+INF="infisical run --env=preview --"
+
+# (1) GA 本体を governance_actions に取り込む
+#     Koios /proposal_list を全件フェッチ → upsert → 新規 GA は AI 分析キューに自動 enqueue
+$INF python cardanoism/backend/governance.py --no-translate
+# 翻訳まで一気にやる場合は --no-translate を外す
+
+# (2) プロトコルパラメータ + CC メンバー（NCL 計算の前提）
+$INF python notify_worker.py --event params_sync
+
+# (3) トレジャリー残高 + 履歴 + NCL
+$INF python notify_worker.py --event treasury_sync
+
+# (4) 法定通貨レート
+$INF python notify_worker.py --event fiat_sync
+
+# (5) DRep 一覧
+$INF python notify_worker.py --event drep_sync
+
+# (6) 投票履歴 + 集計
+$INF python notify_worker.py --event vote_sync
+$INF python notify_worker.py --event summary_sync
+
+# (7) 投票理由メタ + 翻訳
+$INF python notify_worker.py --event vote_rationale_sync
+
+# (8) SPO
+$INF python notify_worker.py --event pool_sync
+$INF python notify_worker.py --event pool_block_history_sync
+
+# (9) GA AI 分析の pending を bulk enqueue
+#     (1) で新規ぶんは自動 enqueue 済み。空 DB から再投入する時のみ必要
+$INF python notify_worker.py --event ga_ai_initial_sync
+
+# (10) 憲法本文 + 翻訳
+$INF python notify_worker.py --event constitution_sync
+```
+
+(9) の pending を消化する常駐ワーカーは別プロセス:
+
+```bash
+$INF python ga_ai_worker.py
+```
+
+DB リセット後の Ogmios listener は `--from-tip` 必須（`docs/realtime-notification-backend.md` 5-3）。
+
+### 5-5. エポック切替時刻の確認
 
 ```bash
 .venv/bin/python notify_worker.py --epoch-schedule
@@ -235,7 +296,7 @@ cd /opt/cardanoism
 
 > リアルタイムバックエンドが稼働している場合、`epoch_start` 通知は Ogmios 側が担当するため、ここで提示された cron 行は **登録不要**。
 
-### 5-5. 投票理由翻訳の制限
+### 5-6. 投票理由翻訳の制限
 
 ```bash
 # メタデータ取得は最大 100 件、OpenAI 翻訳は最大 30 件で実行（コスト抑制）
