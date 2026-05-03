@@ -452,7 +452,7 @@ def _vote_history_row(v) -> rx.Component:
                         size="3", weight="medium", color="var(--gray-12)",
                         style={"wordBreak": "break-word"},
                     ),
-                    href="/governance/" + v["proposal_id"],
+                    href="/governance/ga/" + v["proposal_id"],
                     underline="hover",
                 ),
                 rx.text(v["block_time"], size="1", color="var(--gray-10)"),

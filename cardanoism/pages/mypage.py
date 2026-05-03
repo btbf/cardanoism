@@ -57,7 +57,7 @@ def ga_favorite_card(fav: rx.Var[dict]) -> rx.Component:
                         weight="medium",
                         line_height="1.4",
                     ),
-                    href="/governance/" + fav["proposal_uuid"].to(str),
+                    href="/governance/ga/" + fav["proposal_uuid"].to(str),
                     underline="hover",
                 ),
                 rx.hstack(

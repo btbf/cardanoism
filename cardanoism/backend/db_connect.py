@@ -1946,6 +1946,13 @@ class GovernanceState(rx.State):
 
     # ── ページロード ──────────────────────────────────────────────────────────
 
+    def redirect_to_ga(self):
+        """`/governance` を当面 GA 提案ページへ redirect する暫定ハンドラ。
+
+        Step 3 でガバナンスダッシュボードを `/governance` に実装したら廃止。
+        """
+        return rx.redirect("/governance/ga")
+
     def on_load(self):
         ensure_warm()
         self.load = False
@@ -2004,7 +2011,7 @@ class GovernanceState(rx.State):
             self.current_constitution = {}
 
     def load_detail_page(self):
-        """個別ページ /governance/[proposal_id] のロード処理。"""
+        """個別ページ /governance/ga/[proposal_id] のロード処理。"""
         self.load = False
         self.modal_action = {}
         self.modal_action_refs = []
@@ -2037,7 +2044,7 @@ class GovernanceState(rx.State):
         self._load_full_action(proposal_id)
         self.modal_loading = False
         events: list = [rx.call_script(
-            f"history.pushState(null, '', '/governance/{proposal_id}');"
+            f"history.pushState(null, '', '/governance/ga/{proposal_id}');"
         ), GovernanceState.load_user_drep_votes]
         if self.modal_ai_status in ("pending", "analyzing"):
             events.append(GovernanceState.poll_ai_status)
@@ -2048,20 +2055,14 @@ class GovernanceState(rx.State):
             self.modal_open = False
             self.modal_action = {}
             self.modal_action_refs = []
-            target = self.last_list_path or "/governance"
-            # /governance/<id> （GA detail）のときだけ戻る。/governance, /governance/constitution,
-            # /governance/treasury, /governance/drep などの静的ルートは対象外。
+            target = self.last_list_path or "/governance/ga"
+            # /governance/ga/<id> （GA detail）のときだけ戻る。
+            # /governance/ga 自体や他のサブパスは対象外。
             return rx.call_script(
                 "(() => {"
                 "  const p = window.location.pathname;"
-                "  const known = new Set(["
-                "    '/governance', '/governance/',"
-                "    '/governance/constitution', '/governance/constitution/',"
-                "    '/governance/treasury', '/governance/treasury/',"
-                "    '/governance/drep', '/governance/drep/'"
-                "  ]);"
-                "  if (!p.startsWith('/governance/') || known.has(p)) return;"
-                "  if (p.startsWith('/governance/drep/')) return;"
+                "  if (!p.startsWith('/governance/ga/')) return;"
+                "  if (p === '/governance/ga/' || p === '/governance/ga') return;"
                 "  if (history.state !== null) { history.back(); }"
                 f"  else {{ history.replaceState(null, '', '{target}'); }}"
                 "})();"

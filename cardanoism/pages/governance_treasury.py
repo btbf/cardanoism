@@ -650,7 +650,7 @@ def _ncl_card() -> rx.Component:
                         rx.icon("file-check-2", size=12, color="var(--green-10)"),
                         rx.link(
                             TreasuryState.ncl_title,
-                            href="/governance/" + TreasuryState.ncl_proposal_id,
+                            href="/governance/ga/" + TreasuryState.ncl_proposal_id,
                             size="1",
                             color_scheme="amber",
                         ),
@@ -880,7 +880,7 @@ def _proposal_row(p) -> rx.Component:
             flex="1",
             min_width="0",
         ),
-        href="/governance/" + p["proposal_id"],
+        href="/governance/ga/" + p["proposal_id"],
         underline="none",
         color="inherit",
         width="100%",

@@ -57,7 +57,7 @@ def governance_subnav(active: str) -> rx.Component:
     並び順: GA 提案一覧 → トレジャリー → DRep 一覧 → Cardano 憲法
     """
     return rx.hstack(
-        _pill(AuthState.t["gov_subnav_actions"], "/governance", "gavel", active == "actions"),
+        _pill(AuthState.t["gov_subnav_actions"], "/governance/ga", "gavel", active == "actions"),
         _pill(AuthState.t["gov_subnav_treasury"], "/governance/treasury", "landmark", active == "treasury"),
         _pill(AuthState.t["gov_subnav_drep"], "/governance/drep", "users", active == "drep"),
         _pill(AuthState.t["gov_subnav_constitution"], "/governance/constitution", "scroll-text", active == "constitution"),
