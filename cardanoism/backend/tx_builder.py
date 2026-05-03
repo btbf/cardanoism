@@ -181,18 +181,40 @@ def _bech32_to_bytes(bech: str) -> tuple[str, bytes]:
 
 
 def _drep_from_id(drep_id: str) -> DRep:
-    """drep1... bech32 もしくは "always_abstain" / "always_no_confidence" を DRep に変換。"""
+    """drep1... bech32 もしくは "always_abstain" / "always_no_confidence" を DRep に変換。
+
+    対応形式:
+      - CIP-129 (29 byte): 1 byte header (0x22=key, 0x23=script) + 28 byte hash
+      - CIP-105 旧 (28 byte): drep1... = key hash, drep_script1... = script hash
+      - "always_abstain" / "always_no_confidence" / "abstain" / "no_confidence"
+
+    Why: Koios の最近のレスポンスは CIP-129 形式の drep1... (29 byte) を返す。
+    CIP-105 形式 (28 byte) も後方互換で受ける。
+    """
     s = (drep_id or "").strip().lower()
     if s in ("always_abstain", "abstain"):
         return DRep(DRepKind.ALWAYS_ABSTAIN)
     if s in ("always_no_confidence", "no_confidence"):
         return DRep(DRepKind.ALWAYS_NO_CONFIDENCE)
 
-    hrp, key_bytes = _bech32_to_bytes(s)
+    hrp, raw = _bech32_to_bytes(s)
     if hrp == "drep":
-        return DRep(DRepKind.VERIFICATION_KEY_HASH, VerificationKeyHash(key_bytes))
+        if len(raw) == 29:
+            # CIP-129: header byte で credential type を判別
+            header = raw[0]
+            hash_bytes = raw[1:]
+            if header == 0x22:
+                return DRep(DRepKind.VERIFICATION_KEY_HASH, VerificationKeyHash(hash_bytes))
+            if header == 0x23:
+                return DRep(DRepKind.SCRIPT_HASH, ScriptHash(hash_bytes))
+            raise ValueError(f"Unknown CIP-129 DRep header byte: 0x{header:02x}")
+        if len(raw) == 28:
+            # CIP-105 旧形式: header なし、key hash として扱う
+            return DRep(DRepKind.VERIFICATION_KEY_HASH, VerificationKeyHash(raw))
+        raise ValueError(f"Invalid DRep ID raw length: {len(raw)} (expected 28 or 29)")
     if hrp == "drep_script":
-        return DRep(DRepKind.SCRIPT_HASH, ScriptHash(key_bytes))
+        # CIP-105 旧形式の script DRep
+        return DRep(DRepKind.SCRIPT_HASH, ScriptHash(raw))
     raise ValueError(f"Unknown DRep hrp: {hrp}")
 
 

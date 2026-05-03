@@ -323,6 +323,15 @@ UI_JA: dict[str, str] = {
     "delegate_btn_submit":         "委任 tx を送信",
     "delegate_btn_submitting":     "送信中…",
 
+    # DRep 委任ダイアログ
+    "drep_delegate_modal_title":   "この DRep に委任しますか？",
+    "drep_delegate_modal_desc":    "下記の内容で DRep 委任 tx を作成し、ウォレットで署名・送信します。",
+    "drep_delegate_label_amount":  "委任量",
+    "drep_delegate_label_share":   "影響力",
+    "drep_delegate_unnamed":       "（名前未設定）",
+    "drep_special_always_abstain":       "常に棄権",
+    "drep_special_always_no_confidence": "常に否決",
+
     # トレジャリーページ
     "treasury_balance_title": "現在のトレジャリー残高",
     "treasury_epoch_label": "基準エポック:",
@@ -827,6 +836,15 @@ UI_EN: dict[str, str] = {
     "delegate_btn_cancel":         "Cancel",
     "delegate_btn_submit":         "Submit delegation tx",
     "delegate_btn_submitting":     "Submitting…",
+
+    # DRep delegation dialog
+    "drep_delegate_modal_title":   "Delegate to this DRep?",
+    "drep_delegate_modal_desc":    "Build a DRep vote-delegation transaction with the info below and sign / submit via your wallet.",
+    "drep_delegate_label_amount":  "Delegated",
+    "drep_delegate_label_share":   "Influence",
+    "drep_delegate_unnamed":       "(Unnamed)",
+    "drep_special_always_abstain":       "Always Abstain",
+    "drep_special_always_no_confidence": "Always No Confidence",
 
     # Treasury page
     "treasury_balance_title": "Current Treasury Balance",
