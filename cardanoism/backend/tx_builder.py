@@ -159,7 +159,7 @@ def _is_stake_registered(stake_addr: Address) -> bool:
         return False
 
     is_reg = bool(summaries)
-    logger.info(
+    logger.warning(
         "[tx_builder] Ogmios stake check: stake=%s registered=%s summaries=%d",
         stake_addr.encode(), is_reg, len(summaries),
     )
@@ -280,7 +280,8 @@ def combine_and_submit(unsigned_tx_cbor: str, witness_set_cbor: str) -> str:
     # 失敗時は詳細メッセージ付き例外を投げる
     ctx.submit_tx(signed_tx)
 
-    return str(signed_tx.transaction_body.hash().payload.hex())
+    # pycardano 0.19+ の TransactionBody.hash() は bytes を直接返す
+    return signed_tx.transaction_body.hash().hex()
 
 
 def build_drep_delegation_tx(
