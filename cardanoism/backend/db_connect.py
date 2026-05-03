@@ -1281,12 +1281,13 @@ def _attach_voting_summary(row: Dict[str, Any], protocol_params: dict | None) ->
         return str(v)
 
     def _donut(yes, no):
+        # 色覚多様性対応: 賛成=青 / 反対=オレンジ / 棄権=グレー (Wong 2011 パレット系)
         y_end = yes
         n_end = yes + no
         return (
             f"conic-gradient("
-            f"var(--green-9) 0% {y_end:.2f}%, "
-            f"var(--red-9) {y_end:.2f}% {n_end:.2f}%, "
+            f"var(--blue-9) 0% {y_end:.2f}%, "
+            f"var(--orange-9) {y_end:.2f}% {n_end:.2f}%, "
             f"var(--gray-5) {n_end:.2f}% 100%)"
         )
 

@@ -398,15 +398,15 @@ def _mini_donut(label, yes_pct, no_pct, abstain_pct, threshold_pct, status, donu
             rx.fragment(),
         ),
         rx.hstack(
-            rx.box(width="6px", height="6px", background="var(--green-9)", border_radius="1px", flex_shrink="0"),
+            rx.box(width="6px", height="6px", background="var(--blue-9)", border_radius="1px", flex_shrink="0"),
             rx.text("Yes", style={"fontSize": "9px", "color": "var(--gray-10)"}),
-            rx.text(yes_pct + "%", style={"fontSize": "10px", "color": "var(--green-11)", "fontWeight": "600"}),
+            rx.text(yes_pct + "%", style={"fontSize": "10px", "color": "var(--blue-11)", "fontWeight": "600"}),
             spacing="1", align="baseline",
         ),
         rx.hstack(
-            rx.box(width="6px", height="6px", background="var(--red-9)", border_radius="1px", flex_shrink="0"),
+            rx.box(width="6px", height="6px", background="var(--orange-9)", border_radius="1px", flex_shrink="0"),
             rx.text("No", style={"fontSize": "9px", "color": "var(--gray-10)"}),
-            rx.text(no_pct + "%", style={"fontSize": "10px", "color": "var(--red-11)", "fontWeight": "600"}),
+            rx.text(no_pct + "%", style={"fontSize": "10px", "color": "var(--orange-11)", "fontWeight": "600"}),
             spacing="1", align="baseline",
         ),
         spacing="0",
@@ -601,7 +601,7 @@ def _donut_chart(role_label, yes_pct, no_pct, abstain_pct, threshold, status, do
                 rx.vstack(
                     rx.text("Yes", size="1", color="var(--gray-10)"),
                     rx.hstack(
-                        rx.text(yes_pct, size="6", weight="bold", color="var(--green-11)"),
+                        rx.text(yes_pct, size="6", weight="bold", color="var(--blue-11)"),
                         rx.text("%", size="2", color="var(--gray-11)"),
                         spacing="0", align="baseline",
                     ),
@@ -642,7 +642,7 @@ def _donut_chart(role_label, yes_pct, no_pct, abstain_pct, threshold, status, do
         rx.vstack(
             rx.hstack(
                 rx.text("No:", size="1", color="var(--gray-10)"),
-                rx.text(no_pct + "%", size="1", color="var(--red-11)", weight="medium"),
+                rx.text(no_pct + "%", size="1", color="var(--orange-11)", weight="medium"),
                 spacing="1", align="baseline",
             ),
             rx.hstack(
