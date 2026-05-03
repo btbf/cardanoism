@@ -1,5 +1,6 @@
 import reflex as rx
 from cardanoism.backend.auth_state import AuthState
+from cardanoism.backend.fiat_state import FiatRateState
 from cardanoism.components.wallet_button import wallet_connector_mount
 
 ACCENT = "#ffcf00"
@@ -22,6 +23,41 @@ _PILL_HOVER = {
     "color": "var(--gray-12)",
     "textDecoration": "none",
 }
+
+
+def fiat_rates_pill() -> rx.Component:
+    """ナビバー内の ADA レート表示。
+    言語 (AuthState.language) に連動して JA → ADA/JPY、EN → ADA/USD を表示する。
+    """
+    label_style = {"color": "var(--gray-9)", "fontSize": "11px", "fontWeight": "600", "letterSpacing": "0.02em"}
+    value_style = {"color": "var(--gray-12)", "fontSize": "13px", "fontWeight": "700"}
+    return rx.hstack(
+        rx.cond(
+            AuthState.language == "ja",
+            rx.fragment(
+                rx.el.span("ADA/JPY", style=label_style),
+                rx.el.span(FiatRateState.ada_jpy, style=value_style),
+            ),
+            rx.fragment(
+                rx.el.span("ADA/USD", style=label_style),
+                rx.el.span(FiatRateState.ada_usd, style=value_style),
+            ),
+        ),
+        rx.cond(
+            FiatRateState.updated_label != "",
+            rx.el.span(
+                "(", FiatRateState.updated_label, ")",
+                style={"color": "var(--gray-9)", "fontSize": "11px", "marginLeft": "4px"},
+            ),
+            rx.fragment(),
+        ),
+        spacing="2",
+        align="center",
+        padding="4px 12px",
+        background=rx.color_mode_cond("var(--gray-2)", "var(--gray-3)"),
+        border_radius="9999px",
+        style={"whiteSpace": "nowrap"},
+    )
 
 
 def lang_toggle() -> rx.Component:
@@ -167,6 +203,8 @@ def navbar_icons() -> rx.Component:
             ),
             rx.box(flex="1"),
             rx.hstack(
+                fiat_rates_pill(),
+                divider,
                 lang_toggle(),
                 divider,
                 auth_section(),
