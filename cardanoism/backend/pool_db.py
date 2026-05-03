@@ -209,9 +209,9 @@ def get_pools(
         # registered と retiring (これから退役) は表示する。retired は除外。
         where.append("(pool_status IS NULL OR pool_status <> 'retired')")
     if search:
-        where.append("(ticker LIKE ? OR pool_name LIKE ?)")
+        where.append("(ticker LIKE ? OR pool_name LIKE ? OR pool_id_bech32 LIKE ?)")
         sv = f"%{search}%"
-        params.extend([sv, sv])
+        params.extend([sv, sv, sv])
 
     if sort == "random":
         # int キャストで SQL インジェクションを防ぐ（識別子位置のため ? バインドが効かない）
@@ -246,9 +246,9 @@ def count_pools(search: str = "", only_active: bool = True) -> int:
     if only_active:
         where.append("(pool_status IS NULL OR pool_status <> 'retired')")
     if search:
-        where.append("(ticker LIKE ? OR pool_name LIKE ?)")
+        where.append("(ticker LIKE ? OR pool_name LIKE ? OR pool_id_bech32 LIKE ?)")
         sv = f"%{search}%"
-        params.extend([sv, sv])
+        params.extend([sv, sv, sv])
     sql = f"SELECT COUNT(*) AS cnt FROM pools WHERE {' AND '.join(where)}"
     with get_db() as (cursor, _):
         cursor.execute(sql, params)
