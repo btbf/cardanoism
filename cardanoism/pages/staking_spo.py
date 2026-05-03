@@ -268,16 +268,19 @@ class StakingSPOState(rx.State):
             self._fetch()
         except (TypeError, ValueError):
             pass
+        return rx.call_script("window.scrollTo(0, 0)")
 
     def prev_page(self):
         if self.current_page > 1:
             self.current_page -= 1
             self._fetch()
+        return rx.call_script("window.scrollTo(0, 0)")
 
     def next_page(self):
         if self.current_page < self.total_pages:
             self.current_page += 1
             self._fetch()
+        return rx.call_script("window.scrollTo(0, 0)")
 
 
 # ─── UI パーツ ────────────────────────────────────────────────────────────────

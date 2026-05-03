@@ -86,14 +86,17 @@ class DrepDetailState(rx.State):
             self.current_page = page
         except (TypeError, ValueError):
             pass
+        return rx.call_script("window.scrollTo(0, 0)")
 
     def votes_prev_page(self):
         if self.current_page > 1:
             self.current_page -= 1
+        return rx.call_script("window.scrollTo(0, 0)")
 
     def votes_next_page(self):
         if self.current_page < self.votes_total_pages:
             self.current_page += 1
+        return rx.call_script("window.scrollTo(0, 0)")
 
     async def on_load(self):
         self.load = False
