@@ -55,8 +55,8 @@ UI_JA: dict[str, str] = {
     # ナビバー
     "nav_home": "ホーム",
     "nav_catalyst": "カタリスト",
-    "nav_proposals_list": "提案一覧",
-    "nav_funds_list": "ファンド一覧",
+    "nav_proposals_list": "カタリスト提案",
+    "nav_funds_list": "ラウンド",
     "nav_governance": "ガバナンス",
     "nav_staking": "ステーキング",
     "nav_mypage": "マイページ",
@@ -201,8 +201,8 @@ UI_JA: dict[str, str] = {
     "gov_ref_no_label": "（ラベルなし）",
 
     # ガバナンス サブナビゲーション
-    "gov_subnav_actions": "GA 提案一覧",
-    "gov_subnav_drep": "DRep 一覧",
+    "gov_subnav_actions": "ガバナンス提案",
+    "gov_subnav_drep": "代表者 (DRep)",
     "gov_subnav_treasury": "トレジャリー",
     "gov_subnav_constitution": "Cardano 憲法",
     # ── /constitution ページ ──
@@ -240,7 +240,7 @@ UI_JA: dict[str, str] = {
 
     # ステーキングページ
     "staking_subnav_dashboard":    "ダッシュボード",
-    "staking_subnav_spo":          "SPO一覧",
+    "staking_subnav_spo":          "ステークプール",
     # ── /staking ダッシュボード: 委任セクション ──
     "staking_my_delegations_title":          "あなたの委任先",
     "staking_my_delegations_manage":         "管理",

@@ -114,6 +114,65 @@ def nav_pill(text, url: str, disabled: bool = False) -> rx.Component:
     )
 
 
+def _submenu_link(icon_name: str, label, href: str) -> rx.Component:
+    """サブメニュー項目（アイコン + テキスト）。Reflex 公式 About 風。"""
+    return rx.link(
+        rx.icon(icon_name, size=15, color="var(--gray-11)", flex_shrink="0"),
+        rx.text(label, size="2", weight="medium", color="var(--gray-12)"),
+        href=href,
+        underline="none",
+        style={
+            "display": "inline-flex",
+            "alignItems": "center",
+            "gap": "10px",
+            "padding": "8px 12px",
+            "borderRadius": "8px",
+            "textDecoration": "none",
+            "transition": "background 0.12s",
+            "width": "100%",
+        },
+        _hover={
+            "background": rx.color("gray", 3),
+            "textDecoration": "none",
+        },
+    )
+
+
+def nav_with_submenu(
+    label,
+    href: str,
+    items: list[tuple[str, str, str]],
+) -> rx.Component:
+    """トップナビ項目 + ホバー時のドロップダウン。
+
+    items: [(icon_name, label, href), ...]
+
+    クリックで href に遷移、ホバーでサブメニューが開く。
+    Radix HoverCard ベース (open_delay/close_delay を短く設定)。
+    """
+    return rx.hover_card.root(
+        rx.hover_card.trigger(nav_pill(label, href)),
+        rx.hover_card.content(
+            rx.vstack(
+                *[_submenu_link(icon, lab, h) for icon, lab, h in items],
+                spacing="1",
+                align_items="stretch",
+                width="100%",
+            ),
+            side="bottom",
+            align="start",
+            side_offset=6,
+            style={
+                "padding": "8px",
+                "minWidth": "220px",
+                "borderRadius": "12px",
+            },
+        ),
+        open_delay=80,
+        close_delay=120,
+    )
+
+
 def auth_section() -> rx.Component:
     return rx.cond(
         AuthState.is_logged_in,
@@ -199,9 +258,29 @@ def navbar_icons() -> rx.Component:
             divider,
             rx.hstack(
                 nav_pill(AuthState.t["nav_home"], "/"),
-                nav_pill(AuthState.t["nav_governance"], "/governance"),
-                nav_pill(AuthState.t["nav_staking"], "/staking"),
-                nav_pill(AuthState.t["nav_catalyst"], "/catalyst"),
+                nav_with_submenu(
+                    AuthState.t["nav_governance"], "/governance",
+                    [
+                        ("gavel",        AuthState.t["gov_subnav_actions"],      "/governance"),
+                        ("landmark",     AuthState.t["gov_subnav_treasury"],     "/governance/treasury"),
+                        ("users",        AuthState.t["gov_subnav_drep"],         "/governance/drep"),
+                        ("scroll-text",  AuthState.t["gov_subnav_constitution"], "/governance/constitution"),
+                    ],
+                ),
+                nav_with_submenu(
+                    AuthState.t["nav_staking"], "/staking",
+                    [
+                        ("layout-dashboard", AuthState.t["staking_subnav_dashboard"], "/staking"),
+                        ("server",           AuthState.t["staking_subnav_spo"],       "/staking/spo"),
+                    ],
+                ),
+                nav_with_submenu(
+                    AuthState.t["nav_catalyst"], "/catalyst",
+                    [
+                        ("file-text", AuthState.t["nav_proposals_list"], "/catalyst"),
+                        ("layers",    AuthState.t["nav_funds_list"],     "/catalyst/funds"),
+                    ],
+                ),
                 spacing="1",
                 align="center",
             ),
