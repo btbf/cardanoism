@@ -1527,27 +1527,34 @@ def check_pool_relay_alive(workers: int = 32, timeout: float = 3.0):
 # ============================================================
 
 def check_pool_block_history(epochs: int = 5):
-    """全 active プールの直近 N エポックのブロック生成数を Koios /pool_history から取得。
-    pools.block_history_5ep に JSON 配列 (newest 順) で保存する。
+    """全 active プールの直近 N エポックのブロック生成数 + 直近 7 エポックの APY 平均を取得。
+    /pool_history は 1 コールで block_cnt も epoch_ros も返すため、limit=7 で叩き、
+    epoch_ros の値が入っている行の平均を pools.apy に保存する（API コール数ゼロ追加）。
+    block_history_5ep には先頭 epochs 件（デフォルト 5）を従来通り保存。
     """
     from cardanoism.backend.koios import get_pool_history
     from cardanoism.backend.pool_db import get_pool_ids_for_block_history, bulk_update_block_history
+
+    APY_WINDOW = 7
+    fetch_limit = max(epochs, APY_WINDOW)
 
     pool_ids = get_pool_ids_for_block_history(only_active=True)
     if not pool_ids:
         logger.warning("プールブロック履歴: 対象プールがありません")
         return
-    logger.info("プールブロック履歴 同期 開始: %d 件 (epochs=%d)", len(pool_ids), epochs)
+    logger.info("プールブロック履歴 同期 開始: %d 件 (block_window=%d, apy_window=%d)",
+                len(pool_ids), epochs, APY_WINDOW)
 
     updates: list[tuple] = []
     fetched = 0
+    apy_captured = 0
     for pid in pool_ids:
         try:
-            history = get_pool_history(pid, limit=epochs)
+            history = get_pool_history(pid, limit=fetch_limit)
         except Exception as e:
             logger.debug("get_pool_history 失敗 pool=%s: %s", pid, e)
             history = []
-        # block_cnt のみを newest 順で抽出（足りない分は 0 でパディング）
+        # block_cnt を newest 順で抽出（足りない分は 0 でパディング）
         counts: list[int] = []
         for row in history[:epochs]:
             try:
@@ -1556,13 +1563,32 @@ def check_pool_block_history(epochs: int = 5):
                 counts.append(0)
         while len(counts) < epochs:
             counts.append(0)
-        updates.append((pid, json.dumps(counts)))
+
+        # 直近 APY_WINDOW エポック分のうち epoch_ros が確定している値だけを配列化。
+        # 完了直後のエポックでは epoch_ros が NULL のことがあるので skip。
+        # 平均は表示時に Python 側で算出する (block_history_5ep と同じ流儀)。
+        ros_values: list[float] = []
+        for row in history[:APY_WINDOW]:
+            ros = row.get("epoch_ros")
+            if ros is None:
+                continue
+            try:
+                ros_values.append(round(float(ros), 4))
+            except (TypeError, ValueError):
+                continue
+
+        apy_json = json.dumps(ros_values) if ros_values else None
+        if ros_values:
+            apy_captured += 1
+
+        updates.append((pid, json.dumps(counts), apy_json))
         fetched += 1
         if fetched % 200 == 0:
-            logger.info("プールブロック履歴: %d / %d フェッチ済み", fetched, len(pool_ids))
+            logger.info("プールブロック履歴: %d / %d フェッチ済み (APY 取得=%d)", fetched, len(pool_ids), apy_captured)
 
     inserted = bulk_update_block_history(updates)
-    logger.info("プールブロック履歴 同期 完了: %d / %d 件 update", inserted, len(pool_ids))
+    logger.info("プールブロック履歴 同期 完了: %d / %d 件 update (APY 取得=%d, window=%d)",
+                inserted, len(pool_ids), apy_captured, APY_WINDOW)
 
 
 def check_pool_sync():

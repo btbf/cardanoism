@@ -106,6 +106,19 @@ def format_pool_card_data(
         history_counts.append(0)
     history_total = sum(history_counts)
 
+    # APY (直近 7 エポックの epoch_ros 配列を平均、pool_block_history_sync で取得)
+    apy_raw = r.get("apy_history_7ep")
+    apy_str = "—"
+    if apy_raw:
+        try:
+            apy_arr = json.loads(apy_raw) if isinstance(apy_raw, str) else apy_raw
+            if isinstance(apy_arr, list) and apy_arr:
+                values = [float(x) for x in apy_arr if x is not None]
+                if values:
+                    apy_str = f"{sum(values) / len(values):.2f}"
+        except (TypeError, ValueError, json.JSONDecodeError):
+            pass
+
     tw = str(r.get("twitter_handle") or "").strip()
     tg = str(r.get("telegram_handle") or "").strip()
     yt = str(r.get("youtube_handle") or "").strip()
@@ -146,6 +159,7 @@ def format_pool_card_data(
         "retiring_epoch":  str(retiring_epoch) if retiring_epoch is not None else "",
         "relay_state":     relay_state,
         "history_total":   str(history_total),
+        "apy_avg":         apy_str,
     }
 
 
@@ -536,7 +550,8 @@ def _pool_card(p) -> rx.Component:
         _metric(AuthState.t["staking_metric_delegators"], p["delegators"], ""),
         _metric(AuthState.t["staking_metric_blocks"], p["block_count"], ""),
         _metric(AuthState.t["staking_metric_recent5ep"], p["history_total"], "", emphasis=True),
-        # 委任ボタン (8 番目のセル)
+        _metric(AuthState.t["staking_metric_apy"], p["apy_avg"], "%", emphasis=True),
+        # 委任ボタン (9 番目のセル)
         rx.box(
             delegate_button,
             style={
@@ -553,7 +568,7 @@ def _pool_card(p) -> rx.Component:
             "gap": "12px",
             "gridTemplateColumns": "repeat(2, minmax(0, 1fr))",
             "@media (min-width: 1024px)": {
-                "gridTemplateColumns": "repeat(8, minmax(0, 1fr))",
+                "gridTemplateColumns": "repeat(9, minmax(0, 1fr))",
             },
         },
     )

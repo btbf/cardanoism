@@ -228,7 +228,7 @@ def get_pools(
         "active_stake, live_stake, live_pledge, live_delegators, live_saturation, sigma, block_count, "
         "ticker, pool_name, description, homepage, pool_icon_url, pool_logo_url, "
         "extended_about, twitter_handle, telegram_handle, youtube_handle, github_handle, "
-        "relay_alive, relay_checked_at, block_history_5ep, "
+        "relay_alive, relay_checked_at, block_history_5ep, apy_history_7ep, "
         "meta_url, updated_at "
         "FROM pools "
         f"WHERE {' AND '.join(where)} "
@@ -291,14 +291,25 @@ def bulk_update_relay_alive(updates: list[tuple]) -> int:
 
 
 def bulk_update_block_history(updates: list[tuple]) -> int:
-    """[(pool_id_bech32, json_str), ...] を一括 UPDATE。json_str は "[12,8,15,11,9]" 形式。"""
+    """[(pool_id_bech32, block_json, apy_json), ...] を一括 UPDATE。
+
+    block_json は "[12,8,15,11,9]" 形式。
+    apy_json は "[3.42,3.21,3.55,3.33,3.61,3.40,3.74]" 形式 (epoch_ros が確定している
+    値のみ、newest 順)。値が 1 つも無いプールは "[]" or None で渡す。
+    """
     if not updates:
         return 0
     with get_db() as (cursor, conn):
-        for pid, history_json in updates:
+        for row in updates:
+            pid, block_json, apy_json = row
             cursor.execute(
-                "UPDATE pools SET block_history_5ep = ? WHERE pool_id_bech32 = ?",
-                (history_json, pid),
+                """
+                UPDATE pools
+                   SET block_history_5ep = ?,
+                       apy_history_7ep   = ?
+                 WHERE pool_id_bech32    = ?
+                """,
+                (block_json, apy_json, pid),
             )
         conn.commit()
     return len(updates)
