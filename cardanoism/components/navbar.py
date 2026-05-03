@@ -261,7 +261,7 @@ def navbar_icons() -> rx.Component:
                 nav_with_submenu(
                     AuthState.t["nav_governance"], "/governance",
                     [
-                        ("gavel",        AuthState.t["gov_subnav_actions"],      "/governance/ga"),
+                        ("gavel",        AuthState.t["gov_subnav_actions"],      "/governance"),
                         ("landmark",     AuthState.t["gov_subnav_treasury"],     "/governance/treasury"),
                         ("users",        AuthState.t["gov_subnav_drep"],         "/governance/drep"),
                         ("scroll-text",  AuthState.t["gov_subnav_constitution"], "/governance/constitution"),

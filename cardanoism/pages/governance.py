@@ -130,7 +130,7 @@ def gov_breadcrumb_detail() -> rx.Component:
     return rx.hstack(
         rx.link(rx.icon("home", size=16), href="/", underline="none", color_scheme="gray"),
         rx.icon("chevron-right", size=14, color="gray"),
-        rx.link(AuthState.t["gov_subnav_actions"], href="/governance/ga",
+        rx.link(AuthState.t["gov_subnav_actions"], href="/governance",
                 size="2", underline="hover", color_scheme="gray"),
         rx.icon("chevron-right", size=14, color="gray"),
         rx.text(AuthState.t["gov_breadcrumb_detail"], size="2", weight="medium"),
@@ -372,8 +372,8 @@ def gov_pagination() -> rx.Component:
 # ─── ページ ────────────────────────────────────────────────────────────────────
 
 @template(
-    route="/governance/ga",
-    title="ガバナンス提案 | Cardanoism",
+    route="/governance",
+    title="GA 提案一覧 | Cardanoism",
     on_load=GovernanceState.on_load,
 )
 def governance_page() -> rx.Component:
@@ -416,21 +416,7 @@ def governance_page() -> rx.Component:
 
 
 @template(
-    route="/governance",
-    title="ガバナンス | Cardanoism",
-    on_load=GovernanceState.redirect_to_ga,
-)
-def governance_root_redirect_page() -> rx.Component:
-    """暫定: ダッシュボード実装までの間 GA 提案ページへ redirect する。"""
-    return rx.flex(
-        rx.spinner(size="3"),
-        justify="center", align="center",
-        width="100%", padding_y="40px",
-    )
-
-
-@template(
-    route="/governance/ga/[id]",
+    route="/governance/[id]",
     title="ガバナンスアクション | Cardanoism",
     on_load=GovernanceState.load_detail_page_with_lang,
 )
