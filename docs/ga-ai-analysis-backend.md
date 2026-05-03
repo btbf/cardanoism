@@ -38,6 +38,8 @@ TreasuryWithdrawals の場合は機械計算による NCL 上限内チェック�
 
 リアルタイムバックエンド（Ogmios）と Koios ポーリングバックエンドとは独立した第 3 のデーモン。
 
+> 新規 VPS への一括デプロイは [`initial-setup.md`](initial-setup.md) に全体手順をまとめている。本ドキュメントは GA AI 分析個別の詳細。
+
 ---
 
 ## 1. インフラ要件

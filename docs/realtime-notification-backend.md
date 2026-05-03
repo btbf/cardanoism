@@ -10,6 +10,8 @@ cardano-node ─IPC ── Ogmios ─WebSocket── ogmios_listener.py ── �
 
 `notify_worker.py`（Koios ポーリング）の送信関数（`flex_and_log` / `email_and_log` / `telegram_and_log`）をそのまま再利用する。新規送信ロジックは持たない。
 
+> 新規 VPS への一括デプロイは [`initial-setup.md`](initial-setup.md) に全体手順をまとめている。本ドキュメントはリアルタイム通知個別の詳細。
+
 ---
 
 ## 1. 担当イベント

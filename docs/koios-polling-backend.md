@@ -13,6 +13,8 @@
 
 リアルタイムバックエンド（`docs/realtime-notification-backend.md`）と並行稼働する独立プロセス。
 
+> 新規 VPS への一括デプロイは [`initial-setup.md`](initial-setup.md) に全体手順をまとめている。本ドキュメントは Koios ポーリング個別の詳細。
+
 ---
 
 ## 1. 担当イベント
@@ -75,7 +77,7 @@ sudo chown cardanoism:cardanoism /opt/cardanoism
 cd /opt/cardanoism
 git clone <REPO_URL> .
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+infisical run --env=preview -- pip install -r requirements.txt
 ```
 
 ### 3-2. DB マイグレーション適用
@@ -121,7 +123,7 @@ VPS への CLI / Service Token セットアップは `docs/realtime-notification
 # /etc/cron.d/cardanoism-notify
 SHELL=/bin/bash
 WORKDIR=/opt/cardanoism
-PY=/opt/cardanoism/.venv/bin/python
+PY=/opt/cardanoism/infisical run --env=preview -- python
 INF=/usr/local/bin/infisical
 TOKEN_FILE=/etc/cardanoism/infisical.token
 # Infisical の env スコープを切り替えるなら ENV=preview に変更
@@ -193,7 +195,7 @@ sudo install -m 0644 cron.d-cardanoism-notify /etc/cron.d/cardanoism-notify
 
 ```bash
 cd /opt/cardanoism
-.venv/bin/python notify_worker.py
+infisical run --env=preview -- python notify_worker.py
 # = 全 --event を順次実行
 ```
 
@@ -201,38 +203,38 @@ cd /opt/cardanoism
 
 ```bash
 # 通知だけ
-.venv/bin/python notify_worker.py --event pool
-.venv/bin/python notify_worker.py --event drep
-.venv/bin/python notify_worker.py --event reminder
+infisical run --env=preview -- python notify_worker.py --event pool
+infisical run --env=preview -- python notify_worker.py --event drep
+infisical run --env=preview -- python notify_worker.py --event reminder
 
 # 同期だけ
-.venv/bin/python notify_worker.py --event drep_sync
-.venv/bin/python notify_worker.py --event vote_sync
-.venv/bin/python notify_worker.py --event summary_sync
-.venv/bin/python notify_worker.py --event params_sync
-.venv/bin/python notify_worker.py --event treasury_sync
-.venv/bin/python notify_worker.py --event fiat_sync
+infisical run --env=preview -- python notify_worker.py --event drep_sync
+infisical run --env=preview -- python notify_worker.py --event vote_sync
+infisical run --env=preview -- python notify_worker.py --event summary_sync
+infisical run --env=preview -- python notify_worker.py --event params_sync
+infisical run --env=preview -- python notify_worker.py --event treasury_sync
+infisical run --env=preview -- python notify_worker.py --event fiat_sync
 
 # SPO 系
-.venv/bin/python notify_worker.py --event pool_sync
-.venv/bin/python notify_worker.py --event pool_block_history_sync
-.venv/bin/python notify_worker.py --event relay_check
+infisical run --env=preview -- python notify_worker.py --event pool_sync
+infisical run --env=preview -- python notify_worker.py --event pool_block_history_sync
+infisical run --env=preview -- python notify_worker.py --event relay_check
 ```
 
 ### 5-3. テスト送信
 
 ```bash
 # 対象ユーザー一覧
-.venv/bin/python notify_worker.py --list-users
+infisical run --env=preview -- python notify_worker.py --list-users
 
 # ユーザーへ実データでテスト
-.venv/bin/python notify_worker.py --test 1
+infisical run --env=preview -- python notify_worker.py --test 1
 
 # 特定イベントのダミーデータでテスト
-.venv/bin/python notify_worker.py --test 1 --test-event pool_saturation
+infisical run --env=preview -- python notify_worker.py --test 1 --test-event pool_saturation
 
 # ユーザーが ON にしているイベントだけダミーテスト
-.venv/bin/python notify_worker.py --test 1 --test-enabled
+infisical run --env=preview -- python notify_worker.py --test 1 --test-enabled
 ```
 
 ### 5-4. 初回投入 / DB リセット時の同期手順
@@ -289,7 +291,7 @@ DB リセット後の Ogmios listener は `--from-tip` 必須（`docs/realtime-n
 ### 5-5. エポック切替時刻の確認
 
 ```bash
-.venv/bin/python notify_worker.py --epoch-schedule
+infisical run --env=preview -- python notify_worker.py --epoch-schedule
 ```
 
 直近 10 エポックの切替時刻と推奨 cron 行を出力する。
@@ -300,7 +302,7 @@ DB リセット後の Ogmios listener は `--from-tip` 必須（`docs/realtime-n
 
 ```bash
 # メタデータ取得は最大 100 件、OpenAI 翻訳は最大 30 件で実行（コスト抑制）
-.venv/bin/python notify_worker.py --event vote_rationale_sync \
+infisical run --env=preview -- python notify_worker.py --event vote_rationale_sync \
   --fetch-limit 100 --translate-limit 30
 ```
 

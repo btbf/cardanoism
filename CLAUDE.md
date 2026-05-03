@@ -146,6 +146,8 @@ CardanoガバナンスをナビゲートするReflexベースの日本語ポー�
 
 通知系は2系統で構成される。両系統とも同じ MariaDB を共有し、`notification_log.dedup_key` で重複送信を防ぐ。
 
+> 新規 VPS への一括デプロイ手順は [`docs/initial-setup.md`](docs/initial-setup.md) を参照。3 系統を 1 ホストで立ち上げる流れがまとまっている。
+
 ### 3-1. リアルタイム通知（`ogmios_listener.py`）
 
 cardano-node + Ogmios + WebSocket で、ブロック確定の瞬間にイベントを発火する常駐デーモン。
