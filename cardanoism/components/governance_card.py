@@ -350,15 +350,12 @@ def _withdrawal_entry_row(entry) -> rx.Component:
     )
 
 
-def _mini_donut(label, yes_pct, no_pct, abstain_pct, threshold_pct, status, donut_bg, applicable) -> rx.Component:
-    """一覧カード用のミニドーナツ（YES/NO/Abstain を一目で把握できる円グラフ）。"""
-    yes_text_color = rx.match(
-        status,
-        ("passed", "var(--green-11)"),
-        ("failed", "var(--red-11)"),
-        "var(--gray-12)",
-    )
+def _mini_donut(label, yes_pct, yes_pct_donut, no_pct, abstain_pct, threshold_pct, status, donut_bg, applicable) -> rx.Component:
+    """一覧カード用のミニドーナツ（YES/NO/Abstain を一目で把握できる円グラフ）。
 
+    yes_pct        : 凡例表示用 (小数点1位)
+    yes_pct_donut  : 中央表示用 (整数。狭い円内で 100.0 等が縁に被るのを回避)
+    """
     donut = rx.box(
         rx.box(
             width="56px",
@@ -369,14 +366,14 @@ def _mini_donut(label, yes_pct, no_pct, abstain_pct, threshold_pct, status, donu
         ),
         rx.center(
             rx.hstack(
-                rx.text(yes_pct, weight="bold", color=yes_text_color, style={"fontSize": "11px"}),
-                rx.text("%", style={"fontSize": "9px", "color": "var(--gray-10)"}),
+                rx.text(yes_pct_donut, weight="bold", color="var(--gray-12)", style={"fontSize": "14px", "lineHeight": "1"}),
+                rx.text("%", style={"fontSize": "10px", "color": "var(--gray-10)", "lineHeight": "1"}),
                 spacing="0", align="baseline",
             ),
             position="absolute",
             top="50%", left="50%",
             transform="translate(-50%, -50%)",
-            width="36px", height="36px",
+            width="42px", height="42px",
             border_radius="50%",
             background="var(--gray-2)",
         ),
@@ -468,6 +465,7 @@ def _vote_summary_inline(action: Dict[str, Any]) -> rx.Component:
             _mini_donut(
                 AuthState.t["gov_voter_drep"],
                 action["drep_yes_pct"].to(str),
+                action["drep_yes_pct_donut"].to(str),
                 action["drep_no_pct"].to(str),
                 action["drep_abstain_pct"].to(str),
                 action["drep_threshold_pct"].to(str),
@@ -478,6 +476,7 @@ def _vote_summary_inline(action: Dict[str, Any]) -> rx.Component:
             _mini_donut(
                 AuthState.t["gov_voter_cc"],
                 action["cc_yes_pct"].to(str),
+                action["cc_yes_pct_donut"].to(str),
                 action["cc_no_pct"].to(str),
                 action["cc_abstain_pct"].to(str),
                 action["cc_threshold_pct"].to(str),
@@ -488,6 +487,7 @@ def _vote_summary_inline(action: Dict[str, Any]) -> rx.Component:
             _mini_donut(
                 AuthState.t["gov_voter_spo"],
                 action["pool_yes_pct"].to(str),
+                action["pool_yes_pct_donut"].to(str),
                 action["pool_no_pct"].to(str),
                 action["pool_abstain_pct"].to(str),
                 action["pool_threshold_pct"].to(str),
@@ -575,7 +575,7 @@ def _withdrawal_section(action: Dict[str, Any]) -> rx.Component:
     )
 
 
-def _donut_chart(role_label, yes_pct, no_pct, abstain_pct, threshold, status, donut_bg, applicable) -> rx.Component:
+def _donut_chart(role_label, yes_pct, yes_pct_donut, no_pct, abstain_pct, threshold, status, donut_bg, applicable) -> rx.Component:
     """1つの役割のドーナツチャート。中央に Yes%、下に閾値と状態バッジ。
     applicable: "yes" = 通常表示 / "no" = グレーアウト / "conditional" = 条件付き注釈付き
     """
@@ -601,7 +601,7 @@ def _donut_chart(role_label, yes_pct, no_pct, abstain_pct, threshold, status, do
                 rx.vstack(
                     rx.text("Yes", size="1", color="var(--gray-10)"),
                     rx.hstack(
-                        rx.text(yes_pct, size="6", weight="bold", color="var(--blue-11)"),
+                        rx.text(yes_pct_donut, size="6", weight="bold", color="var(--gray-12)"),
                         rx.text("%", size="2", color="var(--gray-11)"),
                         spacing="0", align="baseline",
                     ),
@@ -827,6 +827,7 @@ def _voting_summary_section(action: Dict[str, Any]) -> rx.Component:
                 _donut_chart(
                     AuthState.t["gov_voter_drep"],
                     action["drep_yes_pct"].to(str),
+                    action["drep_yes_pct_donut"].to(str),
                     action["drep_no_pct"].to(str),
                     action["drep_abstain_pct"].to(str),
                     action["drep_threshold_pct"].to(str),
@@ -838,6 +839,7 @@ def _voting_summary_section(action: Dict[str, Any]) -> rx.Component:
                 _donut_chart(
                     AuthState.t["gov_voter_spo"],
                     action["pool_yes_pct"].to(str),
+                    action["pool_yes_pct_donut"].to(str),
                     action["pool_no_pct"].to(str),
                     action["pool_abstain_pct"].to(str),
                     action["pool_threshold_pct"].to(str),
