@@ -309,8 +309,6 @@ UI_JA: dict[str, str] = {
     # 委任 (Phase 3): SPO カードのボタン + 委任ダイアログ
     "delegate_btn":                "委任する",
     "delegate_btn_currently":      "委任中",
-    "delegate_btn_coming_soon":    "委任機能 近日対応",
-    "wallet_coming_soon_note":     "ウォレット接続（所有確認）と委任機能は近日実装予定です",
     "delegate_modal_title":        "この SPO に委任しますか？",
     "delegate_modal_desc":         "下記の内容で委任 tx を作成し、ウォレットで署名・送信します。",
     "delegate_label_wallet":       "委任ウォレット",
@@ -816,8 +814,6 @@ UI_EN: dict[str, str] = {
     # Delegation (Phase 3): SPO card button + dialog
     "delegate_btn":                "Delegate",
     "delegate_btn_currently":      "Delegated",
-    "delegate_btn_coming_soon":    "Delegation coming soon",
-    "wallet_coming_soon_note":     "Wallet connection (ownership proof) and delegation are coming soon",
     "delegate_modal_title":        "Delegate to this SPO?",
     "delegate_modal_desc":         "Build a delegation transaction with the info below and sign / submit via your wallet.",
     "delegate_label_wallet":       "Delegating wallet",

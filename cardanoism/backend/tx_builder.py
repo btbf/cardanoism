@@ -131,26 +131,39 @@ def _stake_credential_from_addr(stake_addr: Address) -> StakeCredential:
     return StakeCredential(stake_addr.staking_part)
 
 
-def _is_stake_registered(stake_bech32: str) -> bool:
-    """Koios の /account_info でステークが既に登録済みか確認する。
+def _is_stake_registered(stake_addr: Address) -> bool:
+    """Ogmios の rewardAccountSummaries で stake credential が登録済みか直接確認する。
 
-    未登録 (status != "registered") なら False。
-    Koios 通信失敗時は False (= 未登録扱い) → tx 構築時に register cert を含める。
+    Why: Koios の `account_info.status` は tip キャッチアップ前にズレることがあり、
+    StakeDelegation / StakeRegistrationAndDelegation の分岐を誤らせて
+    Ogmios error 3146 (UnknownCredential / KeyAlreadyRegistered) を引き起こしていた。
+    Ogmios は submit 先と同じ ledger 状態を見ているので、ここを情報源にすれば
+    判定と submit の整合性が確実に取れる。
     """
+    if stake_addr.staking_part is None:
+        raise ValueError("Address does not have a staking part")
+
+    cred_hex = stake_addr.staking_part.payload.hex()
+    if isinstance(stake_addr.staking_part, ScriptHash):
+        keys: Optional[list[str]] = None
+        scripts: Optional[list[str]] = [cred_hex]
+    else:
+        keys = [cred_hex]
+        scripts = None
+
     try:
-        from cardanoism.backend.koios import batch_account_info
-        info = batch_account_info([stake_bech32])
-        row = info.get(stake_bech32, {})
-        status = str(row.get("status", "")).lower()
-        is_reg = status == "registered"
-        logger.warning(
-            "[tx_builder] Koios account_info: stake=%s row=%r status=%r registered=%s",
-            stake_bech32, row, status, is_reg,
-        )
-        return is_reg
+        ctx = get_chain_context()
+        summaries = ctx.query_account_reward_summaries(scripts=scripts, keys=keys)
     except Exception as e:  # noqa: BLE001
-        logger.warning("[tx_builder] Koios stake registration check failed: %s", e)
+        logger.warning("[tx_builder] Ogmios reward summaries query failed: %s", e)
         return False
+
+    is_reg = bool(summaries)
+    logger.info(
+        "[tx_builder] Ogmios stake check: stake=%s registered=%s summaries=%d",
+        stake_addr.encode(), is_reg, len(summaries),
+    )
+    return is_reg
 
 
 # ── DRep helpers ──────────────────────────────────────────
@@ -215,20 +228,11 @@ def build_pool_delegation_tx(
         raise ValueError(f"Pool id does not have 'pool' hrp: {hrp}")
     pool_keyhash = PoolKeyHash(key_bytes)
 
-    # 登録済みかを Koios で確認 → 未登録なら register + delegate を 1 cert で
-    stake_bech32 = stake_addr.encode()
-    is_registered = _is_stake_registered(stake_bech32)
-    logger.warning("[tx_builder] pool delegation: stake=%s registered=%s", stake_bech32, is_registered)
-
-    if is_registered:
+    if _is_stake_registered(stake_addr):
         cert = StakeDelegation(stake_cred, pool_keyhash)
-        logger.warning("[tx_builder] using StakeDelegation (delegate-only)")
     else:
-        # Conway era: register + delegate を atomic に行う cert
-        # deposit は protocol_param の key_deposit (= 2 ADA in mainnet)
         deposit = int(ctx.protocol_param.key_deposit or 2_000_000)
         cert = StakeRegistrationAndDelegation(stake_cred, pool_keyhash, deposit)
-        logger.warning("[tx_builder] using StakeRegistrationAndDelegation (register+delegate, deposit=%d)", deposit)
     builder.certificates = [cert]
 
     # Build the body, balance with change to wallet's change address
@@ -306,18 +310,11 @@ def build_drep_delegation_tx(
     stake_cred = _stake_credential_from_addr(stake_addr)
     drep = _drep_from_id(drep_id)
 
-    stake_bech32 = stake_addr.encode()
-    is_registered = _is_stake_registered(stake_bech32)
-    logger.warning("[tx_builder] drep delegation: stake=%s registered=%s", stake_bech32, is_registered)
-
-    if is_registered:
+    if _is_stake_registered(stake_addr):
         cert = VoteDelegation(stake_cred, drep)
-        logger.warning("[tx_builder] using VoteDelegation (delegate-only)")
     else:
-        # Conway era: register + vote-delegate を atomic に行う cert
         deposit = int(ctx.protocol_param.key_deposit or 2_000_000)
         cert = StakeRegistrationAndVoteDelegation(stake_cred, drep, deposit)
-        logger.warning("[tx_builder] using StakeRegistrationAndVoteDelegation (register+vote, deposit=%d)", deposit)
     builder.certificates = [cert]
 
     change_addr = _address_from_cbor(change_addr_cbor)

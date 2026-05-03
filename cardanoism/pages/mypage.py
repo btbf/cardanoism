@@ -10,7 +10,11 @@ import reflex as rx
 from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.components.login_modal import login_modal
-from cardanoism.components.wallet_button import wallet_register_picker_menu
+from cardanoism.components.wallet_button import (
+    wallet_connect_pill,
+    wallet_register_picker_menu,
+)
+from cardanoism.backend.wallet_state import WalletState
 from cardanoism.backend.auth_db import (
     POOL_NOTIFICATION_EVENT_TYPES,
     DELEGATOR_NOTIFICATION_EVENT_TYPES,
@@ -374,6 +378,9 @@ def profile_tab() -> rx.Component:
 # ============================================================
 
 def stake_address_card(addr: rx.Var[dict]) -> rx.Component:
+    is_active_wallet = (
+        WalletState.connected & (WalletState.reward_address == addr["address"])
+    )
     return rx.box(
         rx.hstack(
             rx.vstack(
@@ -404,6 +411,8 @@ def stake_address_card(addr: rx.Var[dict]) -> rx.Component:
                     align="start",
                     wrap="wrap",
                 ),
+                # ウォレット接続/検証状態 (このカードのアドレスに対して)
+                wallet_connect_pill(addr),
                 spacing="2",
                 align_items="start",
                 width="100%",
@@ -421,9 +430,26 @@ def stake_address_card(addr: rx.Var[dict]) -> rx.Component:
         ),
         padding="14px 16px",
         border_radius="10px",
-        border=f"1px solid {rx.color('gray', 4)}",
-        background=rx.color_mode_cond("white", "rgba(15,15,25,0.85)"),
+        border=rx.cond(
+            is_active_wallet,
+            "1px solid var(--green-7)",
+            f"1px solid {rx.color('gray', 4)}",
+        ),
+        background=rx.cond(
+            is_active_wallet,
+            rx.color_mode_cond(
+                "linear-gradient(135deg, var(--green-2), var(--green-3))",
+                "linear-gradient(135deg, rgba(34,197,94,0.14), rgba(34,197,94,0.05))",
+            ),
+            rx.color_mode_cond("white", "rgba(15,15,25,0.85)"),
+        ),
+        box_shadow=rx.cond(
+            is_active_wallet,
+            "0 0 0 3px rgba(34,197,94,0.10)",
+            "none",
+        ),
         width="100%",
+        style={"transition": "background 0.18s, border-color 0.18s, box-shadow 0.18s"},
     )
 
 
@@ -473,15 +499,7 @@ def stake_tab() -> rx.Component:
                                     "対応ウォレットを選ぶとアクティブアドレスが自動入力されます",
                                     size="1", color="var(--gray-10)",
                                 ),
-                                rx.hstack(
-                                    rx.icon("clock", size=11, color="var(--gray-9)"),
-                                    rx.text(
-                                        AuthState.t["wallet_coming_soon_note"],
-                                        size="1", color="var(--gray-9)",
-                                    ),
-                                    spacing="1", align="center",
-                                ),
-                                spacing="1", align_items="start",
+                                spacing="0", align_items="start",
                             ),
                             rx.spacer(),
                             wallet_register_picker_menu(

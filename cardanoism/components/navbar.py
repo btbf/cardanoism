@@ -1,7 +1,11 @@
 import reflex as rx
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.backend.fiat_state import FiatRateState
-from cardanoism.components.wallet_button import wallet_connector_mount
+from cardanoism.backend.wallet_state import WalletState
+from cardanoism.components.wallet_button import (
+    wallet_connector_mount,
+    wallet_status,
+)
 
 ACCENT = "#ffcf00"
 ACCENT_DARK = "#c7a300"
@@ -207,6 +211,16 @@ def navbar_icons() -> rx.Component:
                 divider,
                 lang_toggle(),
                 divider,
+                rx.cond(
+                    WalletState.connected,
+                    rx.hstack(
+                        wallet_status(),
+                        divider,
+                        spacing="3",
+                        align="center",
+                    ),
+                    rx.fragment(),
+                ),
                 auth_section(),
                 spacing="3",
                 align="center",
