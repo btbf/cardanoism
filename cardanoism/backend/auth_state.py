@@ -22,6 +22,7 @@ from cardanoism.backend.auth_db import (
     add_stake_address,
     update_stake_address_role,
     delete_stake_address,
+    update_stake_address_nickname,
     get_favorite_ids,
     get_favorites,
     add_favorite,
@@ -93,6 +94,9 @@ class AuthState(rx.State):
     stake_error: str = ""
     stake_adding: bool = False
     stake_role_loading: bool = False
+    # ニックネーム編集中の stake_address.id (0 = 編集中なし)
+    editing_stake_id: int = 0
+    editing_stake_nickname: str = ""
     active_tab: str = "dashboard"
 
 
@@ -867,6 +871,46 @@ class AuthState(rx.State):
         delete_stake_address(address_id, self.user_id)
         self.stake_addresses = get_stake_addresses(self.user_id)
         self._load_stake_notification_settings()
+
+    # ── ステークアドレスのニックネーム編集 ──
+
+    def start_edit_stake_nickname(self, address_id: int, current_nickname: str):
+        """編集モード開始。address_id のカードに input を出す。"""
+        try:
+            self.editing_stake_id = int(address_id)
+        except (TypeError, ValueError):
+            self.editing_stake_id = 0
+            return
+        self.editing_stake_nickname = str(current_nickname or "")
+
+    def cancel_edit_stake_nickname(self):
+        self.editing_stake_id = 0
+        self.editing_stake_nickname = ""
+
+    def set_editing_stake_nickname(self, value: str):
+        self.editing_stake_nickname = value
+
+    def save_stake_nickname(self):
+        """編集中のニックネームを保存。"""
+        if not self.is_logged_in or self.editing_stake_id == 0:
+            return
+        _t = self.t
+        name = (self.editing_stake_nickname or "").strip()
+        if not name:
+            return rx.toast.error(_t["stake_nickname_required"])
+        if len(name) > 100:
+            return rx.toast.error(_t["stake_nickname_too_long"])
+        try:
+            ok = update_stake_address_nickname(self.user_id, self.editing_stake_id, name)
+        except Exception as e:  # noqa: BLE001
+            logger.exception("update_stake_address_nickname failed: %s", e)
+            return rx.toast.error(_t["stake_nickname_update_failed"])
+        if not ok:
+            return rx.toast.error(_t["stake_nickname_update_failed"])
+        self.stake_addresses = get_stake_addresses(self.user_id)
+        self.editing_stake_id = 0
+        self.editing_stake_nickname = ""
+        return rx.toast.success(_t["stake_nickname_updated"])
 
     def _load_stake_notification_settings(self):
         flat: dict[str, bool] = {}

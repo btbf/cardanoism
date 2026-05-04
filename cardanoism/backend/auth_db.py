@@ -411,6 +411,21 @@ def delete_stake_address(address_id: int, user_id: int) -> None:
         conn.commit()
 
 
+def update_stake_address_nickname(user_id: int, address_id: int, nickname: str) -> bool:
+    """ステークアドレスのニックネームを更新する。所有者チェック付き。"""
+    name = (nickname or "").strip()
+    if not name:
+        return False
+    with get_db() as (cursor, conn):
+        cursor.execute(
+            "UPDATE stake_addresses SET nickname = ? WHERE id = ? AND user_id = ?",
+            (name, int(address_id), int(user_id)),
+        )
+        ok = cursor.rowcount > 0
+        conn.commit()
+        return ok
+
+
 # ============================================================
 # お気に入り
 # ============================================================

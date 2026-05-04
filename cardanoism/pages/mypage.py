@@ -384,10 +384,66 @@ def stake_address_card(addr: rx.Var[dict]) -> rx.Component:
     is_active_wallet = (
         WalletState.connected & (WalletState.reward_address == addr["address"])
     )
+    is_editing = AuthState.editing_stake_id == addr["id"].to(int)
+    nickname_block = rx.cond(
+        is_editing,
+        rx.hstack(
+            rx.input(
+                value=AuthState.editing_stake_nickname,
+                on_change=AuthState.set_editing_stake_nickname,
+                size="2",
+                max_length=100,
+                width="220px",
+            ),
+            rx.icon_button(
+                rx.icon("check", size=14),
+                on_click=AuthState.save_stake_nickname,
+                color_scheme="green",
+                size="1",
+                cursor="pointer",
+            ),
+            rx.icon_button(
+                rx.icon("x", size=14),
+                on_click=AuthState.cancel_edit_stake_nickname,
+                variant="ghost",
+                color_scheme="gray",
+                size="1",
+                cursor="pointer",
+            ),
+            spacing="1", align="center",
+        ),
+        rx.hstack(
+            rx.text(addr["nickname"], size="4", weight="medium"),
+            rx.icon_button(
+                rx.icon("pencil", size=12),
+                variant="ghost",
+                color_scheme="gray",
+                size="1",
+                cursor="pointer",
+                on_click=AuthState.start_edit_stake_nickname(
+                    addr["id"].to(int), addr["nickname"].to(str),
+                ),
+            ),
+            spacing="2", align="center",
+        ),
+    )
+    # 編集中はゴミ箱ボタンを隠して押し間違いを防ぐ
+    delete_button = rx.cond(
+        is_editing,
+        rx.fragment(),
+        rx.icon_button(
+            rx.icon("trash-2", size=14),
+            variant="ghost",
+            color_scheme="red",
+            size="1",
+            cursor="pointer",
+            on_click=AuthState.delete_stake_address_handler(addr["id"]),
+        ),
+    )
     return rx.box(
         rx.hstack(
             rx.vstack(
-                rx.text(addr["nickname"], size="4", weight="medium"),
+                nickname_block,
                 # 受信アドレス（メイン表示）
                 rx.cond(
                     addr["wallet_address"],
@@ -420,14 +476,7 @@ def stake_address_card(addr: rx.Var[dict]) -> rx.Component:
                 align_items="start",
                 width="100%",
             ),
-            rx.icon_button(
-                rx.icon("trash-2", size=14),
-                variant="ghost",
-                color_scheme="red",
-                size="1",
-                cursor="pointer",
-                on_click=AuthState.delete_stake_address_handler(addr["id"]),
-            ),
+            delete_button,
             align="start",
             width="100%",
         ),

@@ -534,7 +534,7 @@ UI_JA: dict[str, str] = {
     "tab_dashboard": "ダッシュボード",
     "tab_favorites": "お気に入り",
     "tab_profile": "プロフィール",
-    "tab_stake": "アドレス",
+    "tab_stake": "アドレス管理",
     "tab_notification": "通知管理",
 
     # お気に入りタブ
@@ -568,6 +568,13 @@ UI_JA: dict[str, str] = {
     "stake_address_hint": "ウォレットの受信アドレスを入力するとステークアドレスを自動取得します",
     "stake_add_button": "追加",
     "stake_limit_message": "ステークアドレスの登録上限（3件）に達しています。",
+    "stake_nickname_edit_title":   "ニックネームを編集",
+    "stake_nickname_save":         "保存",
+    "stake_nickname_cancel":       "キャンセル",
+    "stake_nickname_required":     "ニックネームを入力してください",
+    "stake_nickname_too_long":     "ニックネームは 100 文字以内にしてください",
+    "stake_nickname_update_failed": "ニックネームの更新に失敗しました",
+    "stake_nickname_updated":      "ニックネームを更新しました",
 
     # エラーメッセージ
     "err_addr_required": "アドレスとニックネームを入力してください",
@@ -1109,7 +1116,7 @@ UI_EN: dict[str, str] = {
     "tab_dashboard": "Dashboard",
     "tab_favorites": "Favorites",
     "tab_profile": "Profile",
-    "tab_stake": "Addresses",
+    "tab_stake": "Manage addresses",
     "tab_notification": "Notifications",
 
     # Favorites tab
@@ -1143,6 +1150,13 @@ UI_EN: dict[str, str] = {
     "stake_address_hint": "Enter your wallet's receive address to automatically detect the stake address",
     "stake_add_button": "Add",
     "stake_limit_message": "Maximum stake address limit (3) reached.",
+    "stake_nickname_edit_title":   "Edit nickname",
+    "stake_nickname_save":         "Save",
+    "stake_nickname_cancel":       "Cancel",
+    "stake_nickname_required":     "Please enter a nickname",
+    "stake_nickname_too_long":     "Nickname must be 100 characters or less",
+    "stake_nickname_update_failed": "Failed to update nickname",
+    "stake_nickname_updated":      "Nickname updated",
 
     # Error messages
     "err_addr_required": "Please enter an address and nickname",
