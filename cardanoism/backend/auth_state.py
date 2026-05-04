@@ -93,7 +93,7 @@ class AuthState(rx.State):
     stake_error: str = ""
     stake_adding: bool = False
     stake_role_loading: bool = False
-    active_tab: str = "favorites"
+    active_tab: str = "dashboard"
 
 
     # お気に入り（catalyst）
@@ -1093,9 +1093,9 @@ class AuthState(rx.State):
         self.ga_favorites = get_ga_favorites(self.user_id)
         self.notification_settings = get_notification_settings(self.user_id)
         self._load_stake_notification_settings()
-        valid_tabs = {"favorites", "profile", "stake", "notification"}
-        tab = self.router.page.params.get("tab", "favorites")
-        self.active_tab = tab if tab in valid_tabs else "favorites"
+        valid_tabs = {"dashboard", "favorites", "profile", "stake", "notification"}
+        tab = self.router.page.params.get("tab", "dashboard")
+        self.active_tab = tab if tab in valid_tabs else "dashboard"
 
 
 # ============================================================

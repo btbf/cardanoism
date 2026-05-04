@@ -281,6 +281,12 @@ def navbar_icons() -> rx.Component:
                         ("layers",    AuthState.t["nav_funds_list"],     "/catalyst/funds"),
                     ],
                 ),
+                # マイページはログイン時のみ表示
+                rx.cond(
+                    AuthState.is_logged_in,
+                    nav_pill(AuthState.t["nav_mypage"], "/mypage"),
+                    rx.fragment(),
+                ),
                 spacing="1",
                 align="center",
             ),

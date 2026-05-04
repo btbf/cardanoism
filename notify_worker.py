@@ -47,6 +47,7 @@ from cardanoism.backend.line_notify import send_line_push, send_line_flex
 from cardanoism.backend import line_flex
 from cardanoism.backend.mail_notify import send_email, build_html, build_text
 from cardanoism.backend.telegram_notify import send_telegram
+from cardanoism.backend.stake_rewards_db import bulk_upsert_stake_rewards
 
 logging.basicConfig(
     level=logging.INFO,
@@ -668,6 +669,21 @@ def _check_pool_reward_received_batch(
     )
     if not reward_map:
         return
+
+    # ダッシュボード用キャッシュ: 取得した報酬を stake_rewards テーブルに upsert する。
+    # 通知判定とは独立に保存するので、reward_map に含まれる全アドレスが対象。
+    # pool_id は通知ループ内で addr から引けるため、後続でまとめて辞書化してから渡す。
+    addr_to_pool = {
+        a["address"]: (a.get("delegated_pool_id") or None)
+        for a in reward_addrs
+    }
+    try:
+        bulk_upsert_stake_rewards(
+            (sa, reward_epoch, lovelace, addr_to_pool.get(sa))
+            for sa, lovelace in reward_map.items()
+        )
+    except Exception as _e:  # noqa: BLE001
+        logger.warning("stake_rewards cache upsert failed: %s", _e)
 
     # 各アドレスに通知
     for addr in reward_addrs:

@@ -136,6 +136,20 @@ def get_current_epoch() -> int | None:
     return data[0].get("epoch_no")
 
 
+def get_tip() -> dict | None:
+    """Koios `/tip` の生レスポンス (epoch_no / epoch_slot / block_time 等) を返す。
+
+    ダッシュボードでエポック残時間を計算するために使用する。
+    レスポンス例:
+      { "epoch_no": 567, "epoch_slot": 12345, "block_no": ..., "block_time": 1716000000, ... }
+    block_time は UNIX 秒 (UTC)。
+    """
+    data = _get("/tip")
+    if not data or not isinstance(data, list) or not data[0]:
+        return None
+    return data[0]
+
+
 def get_stake_address_from_addr(addr: str) -> str | None:
     """
     受信アドレス（addr1...）からステークアドレスを取得する。

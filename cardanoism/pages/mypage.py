@@ -1,15 +1,18 @@
 """
 mypage.py
-マイページ (/mypage) - 4タブ構成
-  1. お気に入り（カタリスト提案）
-  2. プロフィール編集
-  3. ステークアドレス管理
-  4. 通知管理
+マイページ (/mypage) - 5タブ構成
+  1. ダッシュボード（自分の Cardano 参加状況）
+  2. お気に入り（カタリスト提案）
+  3. プロフィール編集
+  4. ステークアドレス管理
+  5. 通知管理
 """
 import reflex as rx
 from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
+from cardanoism.backend.dashboard_state import DashboardState
 from cardanoism.components.login_modal import login_modal
+from cardanoism.components.dashboard import dashboard
 from cardanoism.components.wallet_button import (
     wallet_connect_pill,
     wallet_register_picker_menu,
@@ -1234,34 +1237,60 @@ def notification_tab() -> rx.Component:
 # マイページ本体
 # ============================================================
 
-@template(route="/mypage", title="マイページ | Cardanoism", on_load=AuthState.load_mypage)
+@template(
+    route="/mypage",
+    title="マイページ | Cardanoism",
+    on_load=[AuthState.load_mypage, DashboardState.on_load],
+)
 def mypage() -> rx.Component:
+    # ダッシュボードヒーロー意匠 (welcome + username + email + サブテキスト)
+    hero = rx.box(
+        rx.hstack(
+            rx.cond(
+                AuthState.avatar_url != "",
+                rx.avatar(src=AuthState.avatar_url, size="5", radius="full"),
+                rx.avatar(fallback=AuthState.username[:1], size="5", radius="full"),
+            ),
+            rx.vstack(
+                rx.hstack(
+                    rx.text(
+                        AuthState.t["dashboard_welcome"],
+                        size="3", color="var(--gray-10)",
+                    ),
+                    rx.heading(AuthState.username, size="6", weight="bold"),
+                    spacing="2", align="baseline", wrap="wrap",
+                ),
+                rx.text(AuthState.email, size="2", color="var(--gray-9)"),
+                rx.text(
+                    AuthState.t["dashboard_welcome_sub"],
+                    size="2", color="var(--gray-10)",
+                ),
+                spacing="1", align_items="start",
+            ),
+            spacing="4", align="center",
+        ),
+        padding="20px 22px",
+        border_radius="14px",
+        border=f"1px solid {rx.color('gray', 4)}",
+        background=rx.color_mode_cond(
+            "linear-gradient(135deg, var(--amber-2), var(--amber-1))",
+            "linear-gradient(135deg, rgba(245,158,11,0.08), rgba(245,158,11,0.02))",
+        ),
+        width="100%",
+    )
+
     return rx.box(
         login_modal(),
         rx.cond(
             AuthState.is_logged_in,
             rx.vstack(
-                # ヘッダー
-                rx.hstack(
-                    rx.cond(
-                        AuthState.avatar_url != "",
-                        rx.avatar(src=AuthState.avatar_url, size="5", radius="full"),
-                        rx.avatar(fallback=AuthState.username[:1], size="5", radius="full"),
-                    ),
-                    rx.vstack(
-                        rx.heading(AuthState.username, size="5", weight="bold"),
-                        rx.text(AuthState.email, size="3", color="var(--gray-9)"),
-                        spacing="1",
-                        align_items="start",
-                    ),
-                    spacing="4",
-                    align="center",
-                    padding_bottom="8px",
-                ),
-                rx.divider(),
-                # タブ
+                hero,
                 rx.tabs.root(
                     rx.tabs.list(
+                        rx.tabs.trigger(
+                            rx.hstack(rx.icon("layout-dashboard", size=14), rx.text(AuthState.t["tab_dashboard"]), spacing="1"),
+                            value="dashboard",
+                        ),
                         rx.tabs.trigger(
                             rx.hstack(rx.icon("bookmark", size=14), rx.text(AuthState.t["tab_favorites"]), spacing="1"),
                             value="favorites",
@@ -1280,6 +1309,7 @@ def mypage() -> rx.Component:
                         ),
                         wrap="wrap",
                     ),
+                    rx.tabs.content(dashboard(), value="dashboard", padding_top="20px"),
                     rx.tabs.content(favorites_tab(), value="favorites", padding_top="20px"),
                     rx.tabs.content(profile_tab(), value="profile", padding_top="20px"),
                     rx.tabs.content(stake_tab(), value="stake", padding_top="20px"),
@@ -1288,7 +1318,7 @@ def mypage() -> rx.Component:
                     on_change=AuthState.set_active_tab,
                     width="100%",
                 ),
-                spacing="5",
+                spacing="4",
                 width="100%",
                 align_items="start",
             ),
