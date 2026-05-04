@@ -388,9 +388,7 @@ UI_JA: dict[str, str] = {
     "dashboard_unvoted_self_label":       "あなた (DRep) が未投票",
     "dashboard_unvoted_delegated_label":  "委任先 DRep が未投票",
     "dashboard_unvoted_empty":            "現在未投票のアクティブ提案はありません",
-    "dashboard_expiring_title":           "締切が近いガバナンス提案",
-    "dashboard_expiring_empty":           "現在進行中の提案はありません",
-    "dashboard_ga_left_prefix":           "残り",
+    "dashboard_ga_deadline_label":        "期限:",
     "dashboard_login_required":           "ダッシュボードを表示するにはログインが必要です",
 
     # トレジャリーページ
@@ -971,9 +969,7 @@ UI_EN: dict[str, str] = {
     "dashboard_unvoted_self_label":       "You (DRep) haven't voted",
     "dashboard_unvoted_delegated_label":  "Your delegated DRep hasn't voted",
     "dashboard_unvoted_empty":            "No pending active proposals",
-    "dashboard_expiring_title":           "Expiring soon",
-    "dashboard_expiring_empty":           "No active proposals right now",
-    "dashboard_ga_left_prefix":           "in",
+    "dashboard_ga_deadline_label":        "Deadline:",
     "dashboard_login_required":           "Log in to view your dashboard",
 
     # Treasury page

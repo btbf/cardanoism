@@ -628,9 +628,9 @@ def _epoch_treasury_section() -> rx.Component:
             spacing="1", align="center",
         ),
         rx.hstack(
+            rx.text("Epoch", size="2", color="var(--gray-10)"),
             rx.text(DashboardState.current_epoch_str, size="6", weight="bold", color="var(--gray-12)"),
-            rx.text("ep", size="2", color="var(--gray-10)"),
-            spacing="1", align="baseline",
+            spacing="2", align="baseline",
         ),
         rx.cond(
             DashboardState.next_epoch_in_label != "",
@@ -833,7 +833,7 @@ def _pool_performances_section() -> rx.Component:
 def _reward_recent_row(r: rx.Var) -> rx.Component:
     """popover 内: エポック別 1 行。"""
     return rx.hstack(
-        rx.text("ep", size="1", color="var(--gray-10)"),
+        rx.text("Epoch", size="1", color="var(--gray-10)"),
         rx.text(r["epoch_no"], size="1", weight="medium", color="var(--gray-12)"),
         rx.spacer(),
         rx.text(r["amount_ada"], size="2", weight="bold", color="var(--green-11)"),
@@ -951,34 +951,52 @@ def _rewards_popover(p: rx.Var) -> rx.Component:
 # ── 未投票 GA (Phase B) ────────────────────────
 
 def _ga_link_row(g: rx.Var) -> rx.Component:
+    """未投票 GA 1 件: 締切日付 + タイトル + DRep 投票率バー。"""
     title = rx.cond(
         AuthState.language == "ja",
         rx.cond(g["title_ja"] != "", g["title_ja"], g["title"]),
         g["title"],
     )
-    epochs_left_label = rx.cond(
-        g["epochs_left"] != "",
+    deadline_badge = rx.cond(
+        g["expiration_date"] != "",
         rx.badge(
-            AuthState.t["dashboard_ga_left_prefix"], " ", g["epochs_left"], " ep",
+            AuthState.t["dashboard_ga_deadline_label"],
+            g["expiration_date"],
             color_scheme="amber", variant="soft", size="1",
+            style={"flexShrink": "0", "whiteSpace": "nowrap"},
         ),
         rx.fragment(),
     )
-    return rx.link(
-        rx.hstack(
-            rx.icon("file-text", size=12, color="var(--gray-10)", flex_shrink="0"),
-            rx.text(
-                rx.cond(title != "", title, g["proposal_id"][:24] + "…"),
-                size="2", color="var(--gray-12)",
-                style={"overflow": "hidden", "textOverflow": "ellipsis", "whiteSpace": "nowrap"},
-                flex="1", min_width="0",
+    return rx.box(
+        rx.vstack(
+            rx.link(
+                rx.hstack(
+                    deadline_badge,
+                    rx.text(
+                        rx.cond(title != "", title, g["proposal_id"][:24] + "…"),
+                        size="2", weight="medium", color="var(--gray-12)",
+                        style={"overflow": "hidden", "textOverflow": "ellipsis", "whiteSpace": "nowrap"},
+                        flex="1", min_width="0",
+                    ),
+                    spacing="2", align="center", width="100%",
+                ),
+                href="/governance/" + g["proposal_id"],
+                underline="hover",
+                color="inherit",
+                width="100%",
             ),
-            epochs_left_label,
-            spacing="2", align="center", width="100%",
+            _vote_progress_bar(
+                "DRep",
+                g["drep_yes_pct"],
+                g["drep_threshold_pct"],
+                g["drep_applicable"],
+            ),
+            spacing="2", align="stretch", width="100%",
         ),
-        href="/governance/" + g["proposal_id"],
-        underline="hover",
-        color="inherit",
+        padding="10px 12px",
+        border_radius="8px",
+        background="var(--gray-2)",
+        border=f"1px solid {rx.color('gray', 4)}",
         width="100%",
     )
 
@@ -995,7 +1013,7 @@ def _unvoted_gas_section() -> rx.Component:
                 DashboardState.unvoted_gas_self.to(list[dict[str, str]]),
                 _ga_link_row,
             ),
-            spacing="1", align="stretch", width="100%",
+            spacing="2", align="stretch", width="100%",
         ),
         rx.fragment(),
     )
@@ -1010,7 +1028,7 @@ def _unvoted_gas_section() -> rx.Component:
                 DashboardState.unvoted_gas_delegated.to(list[dict[str, str]]),
                 _ga_link_row,
             ),
-            spacing="1", align="stretch", width="100%",
+            spacing="2", align="stretch", width="100%",
         ),
         rx.fragment(),
     )
@@ -1037,27 +1055,98 @@ def _unvoted_gas_section() -> rx.Component:
 
 # ── 締切が近い GA (Phase B) ────────────────────
 
-def _expiring_gas_section() -> rx.Component:
-    inner = rx.cond(
-        DashboardState.expiring_gas.length() > 0,
-        rx.vstack(
-            rx.foreach(
-                DashboardState.expiring_gas.to(list[dict[str, str]]),
-                _ga_link_row,
+def _vote_progress_bar(
+    label,
+    yes_pct: rx.Var,
+    threshold_pct: rx.Var,
+    applicable: rx.Var,
+) -> rx.Component:
+    """投票率の横バー (賛成率の塗りつぶし + 閾値マーカー)。
+
+    - 閾値の数字はマーカー直近 (バー上方) に配置することで視線移動を減らす
+    - applicable == "no" の場合はグレーアウト (該当しない voter group)
+    - threshold_pct が空文字なら閾値マーカー / 数字とも非表示
+    """
+    not_applicable = applicable == "no"
+    fill_color = rx.cond(not_applicable, "var(--gray-6)", "var(--blue-9)")
+    return rx.vstack(
+        # 上ラベル行: voter group 名 + 現在の賛成率
+        rx.hstack(
+            rx.text(
+                label,
+                size="1", weight="medium",
+                color=rx.cond(not_applicable, "var(--gray-9)", "var(--gray-11)"),
+                style={"minWidth": "40px"},
             ),
-            spacing="1", align="stretch", width="100%",
+            rx.spacer(),
+            rx.text(
+                yes_pct, "%",
+                size="1", weight="medium",
+                color=rx.cond(not_applicable, "var(--gray-9)", "var(--gray-12)"),
+            ),
+            spacing="1", align="baseline", width="100%",
         ),
-        rx.text(
-            AuthState.t["dashboard_expiring_empty"],
-            size="2", color="var(--gray-10)",
+        # バー本体 (上に閾値の数字を absolute で重ねる)
+        rx.box(
+            # 閾値ラベル (マーカー位置の真上に中央揃えで配置)
+            rx.cond(
+                threshold_pct != "",
+                rx.text(
+                    threshold_pct, "%",
+                    color="var(--gray-11)",
+                    position="absolute",
+                    top="-14px",
+                    left=threshold_pct + "%",
+                    style={
+                        "transform": "translateX(-50%)",
+                        "whiteSpace": "nowrap",
+                        "fontSize": "10px",
+                        "fontWeight": "500",
+                        "lineHeight": "1",
+                        "pointerEvents": "none",
+                    },
+                ),
+                rx.fragment(),
+            ),
+            # 背景バー
+            rx.box(
+                width="100%", height="6px",
+                background="var(--gray-3)",
+                border_radius="3px",
+            ),
+            # 賛成率の塗りつぶし
+            rx.box(
+                width=yes_pct + "%",
+                height="6px",
+                background=fill_color,
+                border_radius="3px",
+                position="absolute",
+                top="0", left="0",
+                style={"transition": "width 0.3s ease"},
+            ),
+            # 閾値マーカー (縦線)
+            rx.cond(
+                threshold_pct != "",
+                rx.box(
+                    width="2px", height="10px",
+                    background="var(--gray-12)",
+                    position="absolute",
+                    top="-2px",
+                    left=threshold_pct + "%",
+                    border_radius="1px",
+                ),
+                rx.fragment(),
+            ),
+            position="relative",
+            width="100%",
+            height="6px",
+            # 上部の閾値数字の分の余白 (絶対配置のため通常 flow に乗らない)
+            margin_top="14px",
         ),
+        spacing="1", align="stretch", width="100%",
     )
-    body = rx.cond(DashboardState.expiring_gas_loading, _section_spinner(), inner)
-    return _section_card(
-        AuthState.t["dashboard_expiring_title"],
-        "hourglass",
-        body,
-    )
+
+
 
 
 # ── ダッシュボード本体 ──────────────────────────
@@ -1079,7 +1168,6 @@ def dashboard() -> rx.Component:
             _pool_performances_section(),
             _drep_votes_section(),
             _unvoted_gas_section(),
-            _expiring_gas_section(),
             _favorites_section(),
             _notification_summary_section(),
             spacing="4",

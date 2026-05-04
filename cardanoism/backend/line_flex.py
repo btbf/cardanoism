@@ -615,7 +615,7 @@ def pool_epoch_performance(
     if block_cnt is not None:
         rows.append(_row(t["pool_epoch_perf_blocks_label"], str(block_cnt), TEXT_PRIMARY))
     if apy is not None:
-        apy_label = f"{t['pool_epoch_perf_apy_label']}（Ep.{apy_epoch_no}）" if apy_epoch_no else t["pool_epoch_perf_apy_label"]
+        apy_label = f"{t['pool_epoch_perf_apy_label']}（Epoch {apy_epoch_no}）" if apy_epoch_no else t["pool_epoch_perf_apy_label"]
         rows.append(_row(apy_label, f"{apy:.2f}%", TEXT_APY))
 
     return _bubble(

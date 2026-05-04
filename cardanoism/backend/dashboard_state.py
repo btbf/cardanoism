@@ -24,7 +24,7 @@ import reflex as rx
 
 from cardanoism.backend import auth_db
 from cardanoism.backend.auth_state import AuthState
-from cardanoism.backend.db_connect import get_db
+from cardanoism.backend.db_connect import get_db, _epoch_to_date, _attach_voting_summary
 from cardanoism.backend.pool_db import get_pool
 from cardanoism.backend.drep_db import get_drep
 from cardanoism.backend.vote_db import get_votes_by_drep
@@ -43,7 +43,6 @@ logger = logging.getLogger(__name__)
 FAVORITES_PREVIEW_LIMIT = 5
 DREP_VOTES_PREVIEW_LIMIT = 5
 UNVOTED_GA_LIMIT = 5
-EXPIRING_GA_LIMIT = 5
 RECENT_REWARDS_EPOCHS = 5
 
 # Cardano mainnet エポック長 (= 5 days)
@@ -60,7 +59,6 @@ class DashboardState(rx.State):
     delegations_loading: bool = False
     pool_perf_loading: bool = False
     unvoted_gas_loading: bool = False
-    expiring_gas_loading: bool = False
     epoch_treasury_loading: bool = False
     notifications_loading: bool = False
 
@@ -107,10 +105,6 @@ class DashboardState(rx.State):
     # 委任先 DRep が未投票な active GA
     unvoted_gas_delegated: list[dict[str, str]] = []
 
-    # 締切が近い active GA (全件、絞り込みなし)
-    # entry: { proposal_id, title, title_ja, proposal_type, expiration, epochs_left }
-    expiring_gas: list[dict[str, str]] = []
-
     # エポック情報
     current_epoch_str: str = ""
     next_epoch_in_seconds: int = 0
@@ -133,7 +127,6 @@ class DashboardState(rx.State):
         self.delegations_loading = True
         self.pool_perf_loading = True
         self.unvoted_gas_loading = True
-        self.expiring_gas_loading = True
         self.epoch_treasury_loading = True
         self.notifications_loading = True
         self.load = True
@@ -148,7 +141,6 @@ class DashboardState(rx.State):
                 self.delegations_loading = False
                 self.pool_perf_loading = False
                 self.unvoted_gas_loading = False
-                self.expiring_gas_loading = False
                 self.epoch_treasury_loading = False
                 self.notifications_loading = False
                 return
@@ -179,7 +171,6 @@ class DashboardState(rx.State):
 
             self._load_governance_actions(auth.stake_addresses or [])
             self.unvoted_gas_loading = False
-            self.expiring_gas_loading = False
             yield
 
             # Koios `/totals` 1 回叩く (重め)
@@ -202,7 +193,6 @@ class DashboardState(rx.State):
             self.delegations_loading = False
             self.pool_perf_loading = False
             self.unvoted_gas_loading = False
-            self.expiring_gas_loading = False
             self.epoch_treasury_loading = False
             self.notifications_loading = False
 
@@ -224,7 +214,6 @@ class DashboardState(rx.State):
         self.rewards_missing_addresses = []
         self.unvoted_gas_self = []
         self.unvoted_gas_delegated = []
-        self.expiring_gas = []
         self.current_epoch_str = ""
         self.next_epoch_in_seconds = 0
         self.next_epoch_in_label = ""
@@ -503,13 +492,6 @@ class DashboardState(rx.State):
         except (TypeError, ValueError):
             cur_epoch = 0
 
-        # 締切が近い active GA (絞り込み無しの全件)
-        try:
-            self.expiring_gas = self._select_expiring_gas(cur_epoch)
-        except Exception as e:  # noqa: BLE001
-            logger.warning("_select_expiring_gas failed: %s", e)
-            self.expiring_gas = []
-
         # 自分が DRep として登録された stake_address (role="drep")
         own_drep_ids = [
             str(a.get("delegated_drep_id") or "")
@@ -541,45 +523,6 @@ class DashboardState(rx.State):
             self.unvoted_gas_delegated = []
 
     # ── 内部 SQL ───────────────────────────────────
-
-    @staticmethod
-    def _select_expiring_gas(current_epoch: int) -> list[dict[str, str]]:
-        """締切が近い active GA を返す。current_epoch=0 のときは全 active GA。"""
-        where = [
-            "ratified_epoch IS NULL",
-            "dropped_epoch IS NULL",
-            "expired_epoch IS NULL",
-            "enacted_epoch IS NULL",
-        ]
-        params: list = []
-        if current_epoch > 0:
-            where.append("expiration > ?")
-            params.append(current_epoch)
-        sql = (
-            "SELECT proposal_id, title, title_ja, proposal_type, expiration "
-            "FROM governance_actions "
-            f"WHERE {' AND '.join(where)} "
-            "ORDER BY expiration ASC "
-            f"LIMIT {EXPIRING_GA_LIMIT}"
-        )
-        with get_db() as (cursor, _):
-            cursor.execute(sql, params)
-            rows = [dict(r) for r in cursor.fetchall()]
-        out: list[dict[str, str]] = []
-        for r in rows:
-            exp = r.get("expiration")
-            epochs_left = ""
-            if exp is not None and current_epoch > 0:
-                epochs_left = str(max(0, int(exp) - current_epoch))
-            out.append({
-                "proposal_id":   str(r.get("proposal_id") or ""),
-                "title":         str(r.get("title") or ""),
-                "title_ja":      str(r.get("title_ja") or ""),
-                "proposal_type": str(r.get("proposal_type") or ""),
-                "expiration":    "" if exp is None else str(exp),
-                "epochs_left":   epochs_left,
-            })
-        return out
 
     @staticmethod
     def _select_active_gas_with_drep_vote(drep_id: str) -> list[dict[str, str]]:
@@ -649,8 +592,13 @@ class DashboardState(rx.State):
             where.append("g.expiration > ?")
             params.append(current_epoch)
         sql = (
-            "SELECT g.proposal_id, g.title, g.title_ja, g.proposal_type, g.expiration "
+            "SELECT g.proposal_id, g.title, g.title_ja, g.proposal_type, g.expiration, "
+            "g.block_time, g.proposed_epoch, "
+            "s.drep_yes_pct, s.drep_no_pct, "
+            "s.pool_yes_pct, s.pool_no_pct, "
+            "s.committee_yes_pct, s.committee_no_pct "
             "FROM governance_actions g "
+            "LEFT JOIN proposal_voting_summary s ON g.proposal_id = s.proposal_id "
             f"WHERE {' AND '.join(where)} "
             "ORDER BY g.expiration ASC "
             f"LIMIT {UNVOTED_GA_LIMIT}"
@@ -658,18 +606,26 @@ class DashboardState(rx.State):
         with get_db() as (cursor, _):
             cursor.execute(sql, params)
             rows = [dict(r) for r in cursor.fetchall()]
+
+        from cardanoism.backend.params_db import get_protocol_params
+        protocol_params = get_protocol_params() or {}
+
         out: list[dict[str, str]] = []
         for r in rows:
             exp = r.get("expiration")
-            epochs_left = ""
-            if exp is not None and current_epoch > 0:
-                epochs_left = str(max(0, int(exp) - current_epoch))
+            _attach_voting_summary(r, protocol_params)
             out.append({
-                "proposal_id":   str(r.get("proposal_id") or ""),
-                "title":         str(r.get("title") or ""),
-                "title_ja":      str(r.get("title_ja") or ""),
-                "proposal_type": str(r.get("proposal_type") or ""),
-                "expiration":    "" if exp is None else str(exp),
-                "epochs_left":   epochs_left,
+                "proposal_id":     str(r.get("proposal_id") or ""),
+                "title":           str(r.get("title") or ""),
+                "title_ja":        str(r.get("title_ja") or ""),
+                "proposal_type":   str(r.get("proposal_type") or ""),
+                "expiration":      "" if exp is None else str(exp),
+                "expiration_date": _epoch_to_date(
+                    exp, r.get("proposed_epoch"), r.get("block_time"),
+                ),
+                "drep_yes_pct":       str(r.get("drep_yes_pct") or "0"),
+                "drep_threshold_pct": str(r.get("drep_threshold_pct") or ""),
+                "drep_status":        str(r.get("drep_status") or ""),
+                "drep_applicable":    str(r.get("drep_applicable") or "no"),
             })
         return out

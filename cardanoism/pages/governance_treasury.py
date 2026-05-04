@@ -38,7 +38,7 @@ from cardanoism.components.login_modal import login_modal
 
 logger = logging.getLogger(__name__)
 
-# Cardano mainnet Shelley genesis (Ep.208 開始 = 2020-07-29 21:44:51 UTC)
+# Cardano mainnet Shelley genesis (Epoch 208 開始 = 2020-07-29 21:44:51 UTC)
 # NCL 提案は mainnet 固定なのでこの基準で算出する
 _SHELLEY_MAINNET_EPOCH = 208
 _SHELLEY_MAINNET_UNIX  = 1596059091

@@ -1212,7 +1212,7 @@ _DISPLAY_TZ_LABEL = "JST"
 
 
 def _epoch_to_display(epoch, ref_epoch, ref_dt: datetime | None) -> str:
-    """エポック番号を 'Ep.NNN（YYYY/MM/DD JST）' 形式に変換する。
+    """エポック番号を 'Epoch NNN（YYYY/MM/DD JST）' 形式に変換する。
     ref_epoch/ref_dt（block_time, UTC）を基準に差分×エポック長で日付を算出し、
     JST に変換した上で TZ 略語を付与する。
     """
@@ -1225,10 +1225,29 @@ def _epoch_to_display(epoch, ref_epoch, ref_dt: datetime | None) -> str:
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             dt_local = dt.astimezone(_DISPLAY_TZ)
-            return f"Ep.{n}（{dt_local.strftime('%Y/%m/%d')} {_DISPLAY_TZ_LABEL}）"
-        return f"Ep.{n}"
+            return f"Epoch {n}（{dt_local.strftime('%Y/%m/%d')} {_DISPLAY_TZ_LABEL}）"
+        return f"Epoch {n}"
     except (ValueError, TypeError):
         return str(epoch)
+
+
+def _epoch_to_date(epoch, ref_epoch, ref_dt: datetime | None) -> str:
+    """エポック番号を日付だけ 'YYYY/MM/DD JST' 形式に変換する。
+
+    Epoch 番号を出さず、ダッシュボードの未投票/締切 GA バッジのように
+    限られたスペースで「いつまで」だけ示したい場面で使う。
+    """
+    if epoch is None or ref_dt is None or ref_epoch is None:
+        return ""
+    try:
+        n = int(epoch)
+        dt = ref_dt + _EPOCH_DURATION * (n - int(ref_epoch))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        dt_local = dt.astimezone(_DISPLAY_TZ)
+        return f"{dt_local.strftime('%Y/%m/%d')} {_DISPLAY_TZ_LABEL}"
+    except (ValueError, TypeError):
+        return ""
 
 
 def _attach_voting_summary(row: Dict[str, Any], protocol_params: dict | None) -> None:
