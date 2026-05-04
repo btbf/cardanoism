@@ -1,16 +1,22 @@
 """
 mypage.py
-マイページ (/mypage) - 4タブ構成
-  1. お気に入り（カタリスト提案）
-  2. プロフィール編集
-  3. ステークアドレス管理
-  4. 通知管理
+マイページ (/mypage) - 5タブ構成
+  1. ダッシュボード（自分の Cardano 参加状況）
+  2. お気に入り（カタリスト提案）
+  3. プロフィール編集
+  4. ステークアドレス管理
+  5. 通知管理
 """
 import reflex as rx
 from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.components.login_modal import login_modal
-from cardanoism.components.wallet_button import wallet_register_picker_menu
+from cardanoism.components.dashboard import dashboard
+from cardanoism.components.wallet_button import (
+    wallet_connect_pill,
+    wallet_register_picker_menu,
+)
+from cardanoism.backend.wallet_state import WalletState
 from cardanoism.backend.auth_db import (
     POOL_NOTIFICATION_EVENT_TYPES,
     DELEGATOR_NOTIFICATION_EVENT_TYPES,
@@ -374,10 +380,69 @@ def profile_tab() -> rx.Component:
 # ============================================================
 
 def stake_address_card(addr: rx.Var[dict]) -> rx.Component:
+    is_active_wallet = (
+        WalletState.connected & (WalletState.reward_address == addr["address"])
+    )
+    is_editing = AuthState.editing_stake_id == addr["id"].to(int)
+    nickname_block = rx.cond(
+        is_editing,
+        rx.hstack(
+            rx.input(
+                value=AuthState.editing_stake_nickname,
+                on_change=AuthState.set_editing_stake_nickname,
+                size="2",
+                max_length=100,
+                width="220px",
+            ),
+            rx.icon_button(
+                rx.icon("check", size=14),
+                on_click=AuthState.save_stake_nickname,
+                color_scheme="green",
+                size="1",
+                cursor="pointer",
+            ),
+            rx.icon_button(
+                rx.icon("x", size=14),
+                on_click=AuthState.cancel_edit_stake_nickname,
+                variant="ghost",
+                color_scheme="gray",
+                size="1",
+                cursor="pointer",
+            ),
+            spacing="1", align="center",
+        ),
+        rx.hstack(
+            rx.text(addr["nickname"], size="4", weight="medium"),
+            rx.icon_button(
+                rx.icon("pencil", size=12),
+                variant="ghost",
+                color_scheme="gray",
+                size="1",
+                cursor="pointer",
+                on_click=AuthState.start_edit_stake_nickname(
+                    addr["id"].to(int), addr["nickname"].to(str),
+                ),
+            ),
+            spacing="2", align="center",
+        ),
+    )
+    # 編集中はゴミ箱ボタンを隠して押し間違いを防ぐ
+    delete_button = rx.cond(
+        is_editing,
+        rx.fragment(),
+        rx.icon_button(
+            rx.icon("trash-2", size=14),
+            variant="ghost",
+            color_scheme="red",
+            size="1",
+            cursor="pointer",
+            on_click=AuthState.delete_stake_address_handler(addr["id"]),
+        ),
+    )
     return rx.box(
         rx.hstack(
             rx.vstack(
-                rx.text(addr["nickname"], size="4", weight="medium"),
+                nickname_block,
                 # 受信アドレス（メイン表示）
                 rx.cond(
                     addr["wallet_address"],
@@ -404,26 +469,38 @@ def stake_address_card(addr: rx.Var[dict]) -> rx.Component:
                     align="start",
                     wrap="wrap",
                 ),
+                # ウォレット接続/検証状態 (このカードのアドレスに対して)
+                wallet_connect_pill(addr),
                 spacing="2",
                 align_items="start",
                 width="100%",
             ),
-            rx.icon_button(
-                rx.icon("trash-2", size=14),
-                variant="ghost",
-                color_scheme="red",
-                size="1",
-                cursor="pointer",
-                on_click=AuthState.delete_stake_address_handler(addr["id"]),
-            ),
+            delete_button,
             align="start",
             width="100%",
         ),
         padding="14px 16px",
         border_radius="10px",
-        border=f"1px solid {rx.color('gray', 4)}",
-        background=rx.color_mode_cond("white", "rgba(15,15,25,0.85)"),
+        border=rx.cond(
+            is_active_wallet,
+            "1px solid var(--green-7)",
+            f"1px solid {rx.color('gray', 4)}",
+        ),
+        background=rx.cond(
+            is_active_wallet,
+            rx.color_mode_cond(
+                "linear-gradient(135deg, var(--green-2), var(--green-3))",
+                "linear-gradient(135deg, rgba(34,197,94,0.14), rgba(34,197,94,0.05))",
+            ),
+            rx.color_mode_cond("white", "rgba(15,15,25,0.85)"),
+        ),
+        box_shadow=rx.cond(
+            is_active_wallet,
+            "0 0 0 3px rgba(34,197,94,0.10)",
+            "none",
+        ),
         width="100%",
+        style={"transition": "background 0.18s, border-color 0.18s, box-shadow 0.18s"},
     )
 
 
@@ -473,15 +550,7 @@ def stake_tab() -> rx.Component:
                                     "対応ウォレットを選ぶとアクティブアドレスが自動入力されます",
                                     size="1", color="var(--gray-10)",
                                 ),
-                                rx.hstack(
-                                    rx.icon("clock", size=11, color="var(--gray-9)"),
-                                    rx.text(
-                                        AuthState.t["wallet_coming_soon_note"],
-                                        size="1", color="var(--gray-9)",
-                                    ),
-                                    spacing="1", align="center",
-                                ),
-                                spacing="1", align_items="start",
+                                spacing="0", align_items="start",
                             ),
                             rx.spacer(),
                             wallet_register_picker_menu(
@@ -1216,34 +1285,60 @@ def notification_tab() -> rx.Component:
 # マイページ本体
 # ============================================================
 
-@template(route="/mypage", title="マイページ | Cardanoism", on_load=AuthState.load_mypage)
+@template(
+    route="/mypage",
+    title="マイページ | Cardanoism",
+    on_load=AuthState.load_mypage,
+)
 def mypage() -> rx.Component:
+    # ダッシュボードヒーロー意匠 (welcome + username + email + サブテキスト)
+    hero = rx.box(
+        rx.hstack(
+            rx.cond(
+                AuthState.avatar_url != "",
+                rx.avatar(src=AuthState.avatar_url, size="5", radius="full"),
+                rx.avatar(fallback=AuthState.username[:1], size="5", radius="full"),
+            ),
+            rx.vstack(
+                rx.hstack(
+                    rx.text(
+                        AuthState.t["dashboard_welcome"],
+                        size="3", color="var(--gray-10)",
+                    ),
+                    rx.heading(AuthState.username, size="6", weight="bold"),
+                    spacing="2", align="baseline", wrap="wrap",
+                ),
+                rx.text(AuthState.email, size="2", color="var(--gray-9)"),
+                rx.text(
+                    AuthState.t["dashboard_welcome_sub"],
+                    size="2", color="var(--gray-10)",
+                ),
+                spacing="1", align_items="start",
+            ),
+            spacing="4", align="center",
+        ),
+        padding="20px 22px",
+        border_radius="14px",
+        border=f"1px solid {rx.color('gray', 4)}",
+        background=rx.color_mode_cond(
+            "linear-gradient(135deg, var(--amber-2), var(--amber-1))",
+            "linear-gradient(135deg, rgba(245,158,11,0.08), rgba(245,158,11,0.02))",
+        ),
+        width="100%",
+    )
+
     return rx.box(
         login_modal(),
         rx.cond(
             AuthState.is_logged_in,
             rx.vstack(
-                # ヘッダー
-                rx.hstack(
-                    rx.cond(
-                        AuthState.avatar_url != "",
-                        rx.avatar(src=AuthState.avatar_url, size="5", radius="full"),
-                        rx.avatar(fallback=AuthState.username[:1], size="5", radius="full"),
-                    ),
-                    rx.vstack(
-                        rx.heading(AuthState.username, size="5", weight="bold"),
-                        rx.text(AuthState.email, size="3", color="var(--gray-9)"),
-                        spacing="1",
-                        align_items="start",
-                    ),
-                    spacing="4",
-                    align="center",
-                    padding_bottom="8px",
-                ),
-                rx.divider(),
-                # タブ
+                hero,
                 rx.tabs.root(
                     rx.tabs.list(
+                        rx.tabs.trigger(
+                            rx.hstack(rx.icon("layout-dashboard", size=14), rx.text(AuthState.t["tab_dashboard"]), spacing="1"),
+                            value="dashboard",
+                        ),
                         rx.tabs.trigger(
                             rx.hstack(rx.icon("bookmark", size=14), rx.text(AuthState.t["tab_favorites"]), spacing="1"),
                             value="favorites",
@@ -1262,15 +1357,16 @@ def mypage() -> rx.Component:
                         ),
                         wrap="wrap",
                     ),
+                    rx.tabs.content(dashboard(), value="dashboard", padding_top="20px"),
                     rx.tabs.content(favorites_tab(), value="favorites", padding_top="20px"),
                     rx.tabs.content(profile_tab(), value="profile", padding_top="20px"),
                     rx.tabs.content(stake_tab(), value="stake", padding_top="20px"),
                     rx.tabs.content(notification_tab(), value="notification", padding_top="20px"),
                     value=AuthState.active_tab,
-                    on_change=AuthState.set_active_tab,
+                    on_change=AuthState.change_active_tab,
                     width="100%",
                 ),
-                spacing="5",
+                spacing="4",
                 width="100%",
                 align_items="start",
             ),

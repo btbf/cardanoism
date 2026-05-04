@@ -1,6 +1,11 @@
 import reflex as rx
 from cardanoism.backend.auth_state import AuthState
-from cardanoism.components.wallet_button import wallet_connector_mount
+from cardanoism.backend.fiat_state import FiatRateState
+from cardanoism.backend.wallet_state import WalletState
+from cardanoism.components.wallet_button import (
+    wallet_connector_mount,
+    wallet_status,
+)
 
 ACCENT = "#ffcf00"
 ACCENT_DARK = "#c7a300"
@@ -22,6 +27,41 @@ _PILL_HOVER = {
     "color": "var(--gray-12)",
     "textDecoration": "none",
 }
+
+
+def fiat_rates_pill() -> rx.Component:
+    """ナビバー内の ADA レート表示。
+    言語 (AuthState.language) に連動して JA → ADA/JPY、EN → ADA/USD を表示する。
+    """
+    label_style = {"color": "var(--gray-9)", "fontSize": "11px", "fontWeight": "600", "letterSpacing": "0.02em"}
+    value_style = {"color": "var(--gray-12)", "fontSize": "13px", "fontWeight": "700"}
+    return rx.hstack(
+        rx.cond(
+            AuthState.language == "ja",
+            rx.fragment(
+                rx.el.span("ADA/JPY", style=label_style),
+                rx.el.span(FiatRateState.ada_jpy, style=value_style),
+            ),
+            rx.fragment(
+                rx.el.span("ADA/USD", style=label_style),
+                rx.el.span(FiatRateState.ada_usd, style=value_style),
+            ),
+        ),
+        rx.cond(
+            FiatRateState.updated_label != "",
+            rx.el.span(
+                "(", FiatRateState.updated_label, ")",
+                style={"color": "var(--gray-9)", "fontSize": "11px", "marginLeft": "4px"},
+            ),
+            rx.fragment(),
+        ),
+        spacing="2",
+        align="center",
+        padding="4px 12px",
+        background=rx.color_mode_cond("var(--gray-2)", "var(--gray-3)"),
+        border_radius="9999px",
+        style={"whiteSpace": "nowrap"},
+    )
 
 
 def lang_toggle() -> rx.Component:
@@ -71,6 +111,65 @@ def nav_pill(text, url: str, disabled: bool = False) -> rx.Component:
         href=url,
         style=style,
         _hover=_PILL_HOVER,
+    )
+
+
+def _submenu_link(icon_name: str, label, href: str) -> rx.Component:
+    """サブメニュー項目（アイコン + テキスト）。Reflex 公式 About 風。"""
+    return rx.link(
+        rx.icon(icon_name, size=15, color="var(--gray-11)", flex_shrink="0"),
+        rx.text(label, size="2", weight="medium", color="var(--gray-12)"),
+        href=href,
+        underline="none",
+        style={
+            "display": "inline-flex",
+            "alignItems": "center",
+            "gap": "10px",
+            "padding": "8px 12px",
+            "borderRadius": "8px",
+            "textDecoration": "none",
+            "transition": "background 0.12s",
+            "width": "100%",
+        },
+        _hover={
+            "background": rx.color("gray", 3),
+            "textDecoration": "none",
+        },
+    )
+
+
+def nav_with_submenu(
+    label,
+    href: str,
+    items: list[tuple[str, str, str]],
+) -> rx.Component:
+    """トップナビ項目 + ホバー時のドロップダウン。
+
+    items: [(icon_name, label, href), ...]
+
+    クリックで href に遷移、ホバーでサブメニューが開く。
+    Radix HoverCard ベース (open_delay/close_delay を短く設定)。
+    """
+    return rx.hover_card.root(
+        rx.hover_card.trigger(nav_pill(label, href)),
+        rx.hover_card.content(
+            rx.vstack(
+                *[_submenu_link(icon, lab, h) for icon, lab, h in items],
+                spacing="1",
+                align_items="stretch",
+                width="100%",
+            ),
+            side="bottom",
+            align="start",
+            side_offset=6,
+            style={
+                "padding": "8px",
+                "minWidth": "220px",
+                "borderRadius": "12px",
+            },
+        ),
+        open_delay=80,
+        close_delay=120,
     )
 
 
@@ -159,16 +258,54 @@ def navbar_icons() -> rx.Component:
             divider,
             rx.hstack(
                 nav_pill(AuthState.t["nav_home"], "/"),
-                nav_pill(AuthState.t["nav_governance"], "/governance"),
-                nav_pill(AuthState.t["nav_staking"], "/staking"),
-                nav_pill(AuthState.t["nav_catalyst"], "/catalyst"),
+                nav_with_submenu(
+                    AuthState.t["nav_governance"], "/governance",
+                    [
+                        ("gavel",        AuthState.t["gov_subnav_actions"],      "/governance"),
+                        ("landmark",     AuthState.t["gov_subnav_treasury"],     "/governance/treasury"),
+                        ("users",        AuthState.t["gov_subnav_drep"],         "/governance/drep"),
+                        ("scroll-text",  AuthState.t["gov_subnav_constitution"], "/governance/constitution"),
+                    ],
+                ),
+                nav_with_submenu(
+                    AuthState.t["nav_staking"], "/staking",
+                    [
+                        ("layout-dashboard", AuthState.t["staking_subnav_dashboard"], "/staking"),
+                        ("server",           AuthState.t["staking_subnav_spo"],       "/staking/spo"),
+                    ],
+                ),
+                nav_with_submenu(
+                    AuthState.t["nav_catalyst"], "/catalyst",
+                    [
+                        ("file-text", AuthState.t["nav_proposals_list"], "/catalyst"),
+                        ("layers",    AuthState.t["nav_funds_list"],     "/catalyst/funds"),
+                    ],
+                ),
+                # マイページはログイン時のみ表示
+                rx.cond(
+                    AuthState.is_logged_in,
+                    nav_pill(AuthState.t["nav_mypage"], "/mypage"),
+                    rx.fragment(),
+                ),
                 spacing="1",
                 align="center",
             ),
             rx.box(flex="1"),
             rx.hstack(
+                fiat_rates_pill(),
+                divider,
                 lang_toggle(),
                 divider,
+                rx.cond(
+                    WalletState.connected,
+                    rx.hstack(
+                        wallet_status(),
+                        divider,
+                        spacing="3",
+                        align="center",
+                    ),
+                    rx.fragment(),
+                ),
                 auth_section(),
                 spacing="3",
                 align="center",

@@ -22,6 +22,7 @@ from cardanoism.backend.auth_db import (
     add_stake_address,
     update_stake_address_role,
     delete_stake_address,
+    update_stake_address_nickname,
     get_favorite_ids,
     get_favorites,
     add_favorite,
@@ -93,7 +94,12 @@ class AuthState(rx.State):
     stake_error: str = ""
     stake_adding: bool = False
     stake_role_loading: bool = False
-    active_tab: str = "favorites"
+    # ニックネーム編集中の stake_address.id (0 = 編集中なし)
+    editing_stake_id: int = 0
+    editing_stake_nickname: str = ""
+    # ダッシュボード「報酬実績」用: バックグラウンドで報酬履歴を取得中か
+    rewards_backfilling: bool = False
+    active_tab: str = "dashboard"
 
 
     # お気に入り（catalyst）
@@ -856,6 +862,9 @@ class AuthState(rx.State):
                 )
                 self.stake_addresses = get_stake_addresses(self.user_id)
             self.stake_role_loading = False
+            # 登録した stake_address の過去報酬を裏で取得して stake_rewards にキャッシュする。
+            # ダッシュボードの「報酬実績」popover が初見でも履歴を表示できるようにする目的。
+            yield AuthState.backfill_stake_rewards(address)
         elif result == "duplicate":
             self.stake_error = _t["err_duplicate"]
         else:
@@ -867,6 +876,97 @@ class AuthState(rx.State):
         delete_stake_address(address_id, self.user_id)
         self.stake_addresses = get_stake_addresses(self.user_id)
         self._load_stake_notification_settings()
+
+    def change_active_tab(self, tab: str):
+        """タブ切替ハンドラ。ダッシュボードタブを「他タブから」開いた時にデータ再ロードする。
+
+        Reflex の rx.tabs.root(on_change=...) から呼ばれる。
+        load_mypage で active_tab を初期設定すると tabs.root の value 変化で
+        onValueChange が発火するケースがあり、二重発火を避けるため
+        実際にタブが変わった時のみ DashboardState.on_load を発火する。
+        """
+        if tab == self.active_tab:
+            # 同タブクリック / 値同期による発火は無視
+            return
+        self.active_tab = tab
+        if tab == "dashboard":
+            from cardanoism.backend.dashboard_state import DashboardState
+            return DashboardState.on_load
+
+    @rx.event(background=True)
+    async def backfill_stake_rewards(self, stake_address: str):
+        """新規登録 stake_address の報酬履歴を直近 30 エポック分取得してキャッシュする。
+
+        Koios `/account_reward_history` を `_epoch_no` 省略 + `limit` で叩き、
+        type 別行を epoch ごとに集計して `stake_rewards` テーブルに upsert する。
+        進行中は `rewards_backfilling` を True にして UI 側でスピナーを出させる。
+        """
+        addr = (stake_address or "").strip()
+        if not addr:
+            return
+        async with self:
+            self.rewards_backfilling = True
+        try:
+            from cardanoism.backend.koios import (
+                fetch_reward_history_recent,
+                aggregate_rewards_by_epoch,
+            )
+            from cardanoism.backend.stake_rewards_db import bulk_upsert_stake_rewards
+
+            rows = fetch_reward_history_recent([addr], n_epochs=30)
+            if rows:
+                tuples = aggregate_rewards_by_epoch(rows)
+                if tuples:
+                    bulk_upsert_stake_rewards(tuples)
+                    logger.info(
+                        "backfill_stake_rewards: upserted %d epoch rows for %s",
+                        len(tuples), addr,
+                    )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("backfill_stake_rewards failed (addr=%s): %s", addr, e)
+        finally:
+            async with self:
+                self.rewards_backfilling = False
+
+    # ── ステークアドレスのニックネーム編集 ──
+
+    def start_edit_stake_nickname(self, address_id: int, current_nickname: str):
+        """編集モード開始。address_id のカードに input を出す。"""
+        try:
+            self.editing_stake_id = int(address_id)
+        except (TypeError, ValueError):
+            self.editing_stake_id = 0
+            return
+        self.editing_stake_nickname = str(current_nickname or "")
+
+    def cancel_edit_stake_nickname(self):
+        self.editing_stake_id = 0
+        self.editing_stake_nickname = ""
+
+    def set_editing_stake_nickname(self, value: str):
+        self.editing_stake_nickname = value
+
+    def save_stake_nickname(self):
+        """編集中のニックネームを保存。"""
+        if not self.is_logged_in or self.editing_stake_id == 0:
+            return
+        _t = self.t
+        name = (self.editing_stake_nickname or "").strip()
+        if not name:
+            return rx.toast.error(_t["stake_nickname_required"])
+        if len(name) > 100:
+            return rx.toast.error(_t["stake_nickname_too_long"])
+        try:
+            ok = update_stake_address_nickname(self.user_id, self.editing_stake_id, name)
+        except Exception as e:  # noqa: BLE001
+            logger.exception("update_stake_address_nickname failed: %s", e)
+            return rx.toast.error(_t["stake_nickname_update_failed"])
+        if not ok:
+            return rx.toast.error(_t["stake_nickname_update_failed"])
+        self.stake_addresses = get_stake_addresses(self.user_id)
+        self.editing_stake_id = 0
+        self.editing_stake_nickname = ""
+        return rx.toast.success(_t["stake_nickname_updated"])
 
     def _load_stake_notification_settings(self):
         flat: dict[str, bool] = {}
@@ -1093,9 +1193,16 @@ class AuthState(rx.State):
         self.ga_favorites = get_ga_favorites(self.user_id)
         self.notification_settings = get_notification_settings(self.user_id)
         self._load_stake_notification_settings()
-        valid_tabs = {"favorites", "profile", "stake", "notification"}
-        tab = self.router.page.params.get("tab", "favorites")
-        self.active_tab = tab if tab in valid_tabs else "favorites"
+        valid_tabs = {"dashboard", "favorites", "profile", "stake", "notification"}
+        tab = self.router.page.params.get("tab", "dashboard")
+        self.active_tab = tab if tab in valid_tabs else "dashboard"
+        # ダッシュボードタブで開いたなら DashboardState.on_load を 1 度だけ発火
+        # (mypage の @template(on_load=...) では指定せず、ここから明示的に呼ぶ
+        #  ことで、active_tab 設定 → tabs.root の onValueChange → change_active_tab
+        #  経由の二重発火を回避する)
+        if self.active_tab == "dashboard":
+            from cardanoism.backend.dashboard_state import DashboardState
+            return DashboardState.on_load
 
 
 # ============================================================

@@ -136,6 +136,20 @@ def get_current_epoch() -> int | None:
     return data[0].get("epoch_no")
 
 
+def get_tip() -> dict | None:
+    """Koios `/tip` の生レスポンス (epoch_no / epoch_slot / block_time 等) を返す。
+
+    ダッシュボードでエポック残時間を計算するために使用する。
+    レスポンス例:
+      { "epoch_no": 567, "epoch_slot": 12345, "block_no": ..., "block_time": 1716000000, ... }
+    block_time は UNIX 秒 (UTC)。
+    """
+    data = _get("/tip")
+    if not data or not isinstance(data, list) or not data[0]:
+        return None
+    return data[0]
+
+
 def get_stake_address_from_addr(addr: str) -> str | None:
     """
     受信アドレス（addr1...）からステークアドレスを取得する。
@@ -379,6 +393,63 @@ def batch_account_reward_history(stake_addresses: list[str], epoch: int) -> dict
                 if sa:
                     reward_map[sa] = reward_map.get(sa, 0) + int(r.get("amount", 0))
     return reward_map
+
+
+def fetch_reward_history_recent(
+    stake_addresses: list[str], n_epochs: int = 30,
+) -> list[dict]:
+    """各 stake address の直近 N エポック分の raw 報酬履歴を取得する。
+
+    Koios `/account_reward_history` は `_epoch_no` を省略すると全履歴を返す。
+    PostgREST の `?order=earned_epoch.desc&limit=N` を併用して直近のみを抜き取る。
+
+    レスポンスは 1 行 = (stake_address × earned_epoch × type)。
+    type は member / leader / treasury / reserves / refund のいずれか。
+    呼び出し側で stake × epoch 軸に集計する (aggregate_rewards_by_epoch)。
+    """
+    if not stake_addresses:
+        return []
+    out: list[dict] = []
+    # 1 stake あたり最大 5 type/epoch のため安全マージンを取る
+    for chunk in _chunks(stake_addresses, KOIOS_BATCH_SIZE):
+        limit = max(1000, n_epochs * 5 * len(chunk))
+        path = f"/account_reward_history?order=earned_epoch.desc&limit={int(limit)}"
+        data = _post(path, {"_stake_addresses": chunk})
+        if data and isinstance(data, list):
+            out.extend(data)
+    return out
+
+
+def aggregate_rewards_by_epoch(
+    rows: list[dict],
+) -> list[tuple[str, int, int, str | None]]:
+    """fetch_reward_history_recent の戻り値を (stake, epoch) 軸に集計する。
+
+    type 別 (member/leader/treasury/...) 行を 1 epoch にまとめて
+    bulk_upsert_stake_rewards に渡せる tuple list を返す。
+
+    pool_id_bech32 は最初に見つかった非 None を採用 (member 行などに紐づくはず)。
+    """
+    agg: dict[tuple[str, int], dict] = {}
+    for r in rows:
+        sa = r.get("stake_address")
+        epoch = r.get("earned_epoch")
+        if not sa or epoch is None:
+            continue
+        try:
+            epoch_int = int(epoch)
+            amount = int(r.get("amount") or 0)
+        except (TypeError, ValueError):
+            continue
+        key = (str(sa), epoch_int)
+        slot = agg.setdefault(key, {"amount": 0, "pool_id": None})
+        slot["amount"] += amount
+        if slot["pool_id"] is None and r.get("pool_id_bech32"):
+            slot["pool_id"] = str(r.get("pool_id_bech32"))
+    return [
+        (sa, epoch, agg[(sa, epoch)]["amount"], agg[(sa, epoch)]["pool_id"])
+        for sa, epoch in agg
+    ]
 
 
 def _fetch_drep_name(drep_id: str) -> str:

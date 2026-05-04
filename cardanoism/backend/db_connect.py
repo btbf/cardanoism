@@ -1281,34 +1281,38 @@ def _attach_voting_summary(row: Dict[str, Any], protocol_params: dict | None) ->
         return str(v)
 
     def _donut(yes, no):
+        # 色覚多様性対応: 賛成=青 / 反対=オレンジ / 棄権=グレー (Wong 2011 パレット系)
         y_end = yes
         n_end = yes + no
         return (
             f"conic-gradient("
-            f"var(--green-9) 0% {y_end:.2f}%, "
-            f"var(--red-9) {y_end:.2f}% {n_end:.2f}%, "
+            f"var(--blue-9) 0% {y_end:.2f}%, "
+            f"var(--orange-9) {y_end:.2f}% {n_end:.2f}%, "
             f"var(--gray-5) {n_end:.2f}% 100%)"
         )
 
     row.update({
         "has_voting_summary": "1" if has_any else "",
-        "drep_yes_pct":       f"{drep_yes:.2f}",
-        "drep_no_pct":        f"{drep_no:.2f}",
-        "drep_abstain_pct":   f"{max(0.0, 100.0 - drep_yes - drep_no):.2f}",
+        "drep_yes_pct":       f"{drep_yes:.1f}",
+        "drep_yes_pct_donut": f"{drep_yes:.0f}",
+        "drep_no_pct":        f"{drep_no:.1f}",
+        "drep_abstain_pct":   f"{max(0.0, 100.0 - drep_yes - drep_no):.1f}",
         "drep_threshold_pct": f"{drep_th:.1f}" if drep_th is not None else "",
         "drep_status":        _status(drep_yes, drep_th),
         "drep_donut_bg":      _donut(drep_yes, drep_no),
         "drep_applicable":    _applicable("drep"),
-        "pool_yes_pct":       f"{pool_yes:.2f}",
-        "pool_no_pct":        f"{pool_no:.2f}",
-        "pool_abstain_pct":   f"{max(0.0, 100.0 - pool_yes - pool_no):.2f}",
+        "pool_yes_pct":       f"{pool_yes:.1f}",
+        "pool_yes_pct_donut": f"{pool_yes:.0f}",
+        "pool_no_pct":        f"{pool_no:.1f}",
+        "pool_abstain_pct":   f"{max(0.0, 100.0 - pool_yes - pool_no):.1f}",
         "pool_threshold_pct": f"{pool_th:.1f}" if pool_th is not None else "",
         "pool_status":        _status(pool_yes, pool_th),
         "pool_donut_bg":      _donut(pool_yes, pool_no),
         "pool_applicable":    _applicable("pool"),
-        "cc_yes_pct":         f"{cc_yes:.2f}",
-        "cc_no_pct":          f"{cc_no:.2f}",
-        "cc_abstain_pct":     f"{max(0.0, 100.0 - cc_yes - cc_no):.2f}",
+        "cc_yes_pct":         f"{cc_yes:.1f}",
+        "cc_yes_pct_donut":   f"{cc_yes:.0f}",
+        "cc_no_pct":          f"{cc_no:.1f}",
+        "cc_abstain_pct":     f"{max(0.0, 100.0 - cc_yes - cc_no):.1f}",
         "cc_threshold_pct":   f"{cc_th:.1f}" if cc_th is not None else "",
         "cc_status":          _status(cc_yes, cc_th),
         "cc_donut_bg":        _donut(cc_yes, cc_no),

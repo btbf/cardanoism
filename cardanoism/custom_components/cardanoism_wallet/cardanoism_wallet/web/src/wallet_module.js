@@ -260,15 +260,168 @@
     };
   }
 
-  // ── Phase 3: 委任切替 (一旦保留、将来別ブランチで再実装) ──
-  // Reflex 0.8 + Vite/Rolldown と Cardano lib (Mesh / Lucid) の WASM/Node API
-  // 依存が噛み合わず、現状は安定動作しないため Phase 3 はストップ。
-  // 委任ボタンクリック時は「準備中」を toast で返す。
+  // ── Phase 3: 委任切替 (pycardano + raw CIP-30 方式) ──
+  //
+  // フロー:
+  //   1. wallet から UTXOs / changeAddress / rewardAddress を取得
+  //   2. サーバ /api/tx/pool_delegation に POST して unsigned tx CBOR を貰う
+  //   3. wallet.signTx(cbor, partial=true) で full signed tx を取得
+  //   4. wallet.submitTx(signedTx) で送信
+  //
+  // この方式は MeshSDK/Lucid 不要で Vite/WASM 問題が発生しない。
 
-  async function delegateToPool(poolBech32, networkName) {
-    throw new Error(
-      "委任機能は現在準備中です (Phase 3 で実装予定)。"
-    );
+  /** Reflex backend の URL を組み立てる。
+   * dev: フロント :3000 ↔ バックエンド :8000 (別オリジン) のため絶対 URL が必要
+   * prod: 同オリジン配信 (reverse proxy 想定) なので相対パスで OK
+   */
+  function _apiBase() {
+    if (typeof window === "undefined") return "";
+    const loc = window.location;
+    if (loc.port === "3000") {
+      // dev mode: backend defaults to port 8000 (rxconfig の api_url と整合)
+      return `${loc.protocol}//${loc.hostname}:8000`;
+    }
+    return "";  // production: same origin
+  }
+
+  /** CIP-30 wallet から API オブジェクトを取得する (なければ enable し直す)。 */
+  async function _getWalletApi() {
+    if (_activeApi) return _activeApi;
+    const stored = getStoredWallet();
+    if (!stored) {
+      throw new Error("Wallet not connected. Please reconnect from My Page.");
+    }
+    const wallet = resolveWalletApi(stored);
+    if (!wallet) throw new Error("Wallet extension not found: " + stored);
+    _activeApi = await wallet.enable();
+    _activeWallet = stored;
+    return _activeApi;
+  }
+
+  /**
+   * 接続中ウォレットの reward address を指定 SPO に委任する。
+   * @param {string} poolBech32 - "pool1..." 形式
+   * @returns {Promise<{tx_hash:string}>}
+   */
+  async function delegateToPool(poolBech32) {
+    if (!poolBech32 || !poolBech32.startsWith("pool")) {
+      throw new Error("Invalid pool id: " + poolBech32);
+    }
+    const api = await _getWalletApi();
+
+    // CIP-30 でウォレット情報を取得
+    const utxos = await api.getUtxos();
+    if (!utxos || utxos.length === 0) {
+      throw new Error("ウォレットに UTXO がありません");
+    }
+    const changeAddress = await api.getChangeAddress();
+    const rewardAddrs = await api.getRewardAddresses();
+    if (!rewardAddrs || rewardAddrs.length === 0) {
+      throw new Error("Reward address not found");
+    }
+    const stakeAddress = rewardAddrs[0];
+
+    // サーバで unsigned tx を構築
+    const resp = await fetch(_apiBase() + "/wallet/tx/pool_delegation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stake_address: stakeAddress,
+        pool_id: poolBech32,
+        change_address: changeAddress,
+        utxos: utxos,
+      }),
+    });
+    if (!resp.ok) {
+      let detail = "";
+      try { detail = (await resp.json()).detail || ""; } catch (_) {}
+      throw new Error(`tx build failed (${resp.status}): ${detail || resp.statusText}`);
+    }
+    const { tx_cbor } = await resp.json();
+    if (!tx_cbor) throw new Error("Server did not return tx_cbor");
+    console.info("[cardanoism] tx_cbor (len=" + tx_cbor.length + "):", tx_cbor);
+
+    // CIP-30 signTx は witness set のみを返す (full tx ではない点に注意)
+    // 第二引数 partialSign=true は不正な input/output に怒られないモード
+    let witnessSet;
+    try {
+      witnessSet = await api.signTx(tx_cbor, true);
+    } catch (e) {
+      const msg = (e && (e.info || e.message)) || String(e);
+      throw new Error("signTx failed: " + msg);
+    }
+    console.info("[cardanoism] witnessSet (len=" + witnessSet.length + "):", witnessSet);
+
+    // サーバ経由で結合 + submit (実エラー取得 + Eternl の "unknown error" 回避)
+    return await _submitViaServer(tx_cbor, witnessSet);
+  }
+
+  /** unsigned tx と witness set をサーバ経由で結合して送信し tx_hash を返す。 */
+  async function _submitViaServer(unsignedTxCbor, witnessSetCbor) {
+    const resp = await fetch(_apiBase() + "/wallet/tx/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        unsigned_tx_cbor: unsignedTxCbor,
+        witness_set_cbor: witnessSetCbor,
+      }),
+    });
+    if (!resp.ok) {
+      let detail = "";
+      try { detail = (await resp.json()).detail || ""; } catch (_) {}
+      throw new Error(`submit failed (${resp.status}): ${detail || resp.statusText}`);
+    }
+    const { tx_hash } = await resp.json();
+    if (!tx_hash) throw new Error("Server did not return tx_hash");
+    return { tx_hash };
+  }
+
+  /**
+   * 接続中ウォレットの reward address を指定 DRep に委任する。
+   * @param {string} drepId - "drep1..." | "always_abstain" | "always_no_confidence"
+   * @returns {Promise<{tx_hash:string}>}
+   */
+  async function delegateToDRep(drepId) {
+    if (!drepId) throw new Error("DRep id is required");
+    const api = await _getWalletApi();
+
+    const utxos = await api.getUtxos();
+    if (!utxos || utxos.length === 0) {
+      throw new Error("ウォレットに UTXO がありません");
+    }
+    const changeAddress = await api.getChangeAddress();
+    const rewardAddrs = await api.getRewardAddresses();
+    if (!rewardAddrs || rewardAddrs.length === 0) {
+      throw new Error("Reward address not found");
+    }
+    const stakeAddress = rewardAddrs[0];
+
+    const resp = await fetch(_apiBase() + "/wallet/tx/drep_delegation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stake_address: stakeAddress,
+        drep_id: drepId,
+        change_address: changeAddress,
+        utxos: utxos,
+      }),
+    });
+    if (!resp.ok) {
+      let detail = "";
+      try { detail = (await resp.json()).detail || ""; } catch (_) {}
+      throw new Error(`tx build failed (${resp.status}): ${detail || resp.statusText}`);
+    }
+    const { tx_cbor } = await resp.json();
+    if (!tx_cbor) throw new Error("Server did not return tx_cbor");
+
+    let witnessSet;
+    try {
+      witnessSet = await api.signTx(tx_cbor, true);
+    } catch (e) {
+      const msg = (e && (e.info || e.message)) || String(e);
+      throw new Error("signTx failed: " + msg);
+    }
+    return await _submitViaServer(tx_cbor, witnessSet);
   }
 
   function getStoredWallet() {
@@ -287,6 +440,7 @@
     getAddress:       getAddress,
     signOwnership:    signOwnership,
     delegateToPool:   delegateToPool,
+    delegateToDRep:   delegateToDRep,
     getStoredWallet:  getStoredWallet,
     isConnected:      isConnected,
   };

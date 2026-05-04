@@ -14,7 +14,7 @@ import logging
 
 import reflex as rx
 
-from cardanoism.backend import auth_db, pool_search
+from cardanoism.backend import auth_db, drep_db, pool_search
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.backend.wallet_verify import (
     build_message,
@@ -44,6 +44,24 @@ def _js_call(expr: str) -> str:
     )
 
 
+# CIP-1694 の特殊 DRep。Koios の delegated_drep フィールドにそのまま入る値で、
+# dreps テーブルには存在しないため擬似メタデータをここで提供する。
+# given_name は空にしておき、UI 側 (drep_delegation_dialog.py) で drep_id を見て
+# i18n テキスト (drep_special_*) で表示分岐する。
+_SPECIAL_DREPS: dict[str, dict] = {
+    "always_abstain": {
+        "drep_id": "always_abstain",
+        "given_name": "",
+        "image_url": "",
+    },
+    "always_no_confidence": {
+        "drep_id": "always_no_confidence",
+        "given_name": "",
+        "image_url": "",
+    },
+}
+
+
 def _disconnect_js():
     """JS 側 (window.cardanoismWallet) を切断して localStorage をクリアする。"""
     return rx.call_script(
@@ -68,6 +86,8 @@ class WalletState(rx.State):
     network_id: int = 1
     # 接続中アドレスの現在の委任先 pool_id_bech32 (ステーキングページで強調表示用)
     current_delegated_pool_id: str = ""
+    # 接続中アドレスの現在の委任先 DRep ID (ガバナンス DRep 一覧で強調表示用)
+    current_delegated_drep_id: str = ""
 
     # ブートストラップ済みフラグ (二重発火防止)
     bootstrapped: bool = False
@@ -93,6 +113,13 @@ class WalletState(rx.State):
     delegate_current_pool: dict = {}
     delegating: bool = False
     last_delegate_tx_hash: str = ""
+
+    # DRep 委任用 (governance DRep 一覧から)
+    delegate_drep_dialog_open: bool = False
+    delegate_target_drep: dict = {}
+    delegate_current_drep: dict = {}
+    delegating_drep: bool = False
+    last_drep_delegate_tx_hash: str = ""
 
     # ── 派生プロパティ ──────────────────────────────
     @rx.var
@@ -245,10 +272,21 @@ class WalletState(rx.State):
             self.error = ""
 
             # この reward_address の現在の委任先を引き当てる
+            # Why: Always Abstain は Koios の delegated_drep が "drep_always_abstain"
+            # を返すケースで koios.get_stake_address_role が drep_id=None / role="abstain"
+            # にマップする (delegated_drep_id カラムが NULL になる) ので、
+            # role を見て補完しないとダイアログの「現在の委任先」が空白になる。
             self.current_delegated_pool_id = ""
+            self.current_delegated_drep_id = ""
             for a in (auth.stake_addresses or []):
                 if str(a.get("address", "")) == reward_address:
                     self.current_delegated_pool_id = str(a.get("delegated_pool_id") or "")
+                    drep_id_db = str(a.get("delegated_drep_id") or "")
+                    role = str(a.get("role") or "")
+                    if drep_id_db:
+                        self.current_delegated_drep_id = drep_id_db
+                    elif role == "abstain":
+                        self.current_delegated_drep_id = "always_abstain"
                     break
 
             return rx.toast.success(f"{self.wallet_label} に接続しました")
@@ -265,6 +303,7 @@ class WalletState(rx.State):
         self.reward_address = ""
         self.used_addresses = []
         self.current_delegated_pool_id = ""
+        self.current_delegated_drep_id = ""
         return rx.call_script(
             "(async () => { await window.cardanoismWallet.disconnect(); return true; })()"
         )
@@ -482,19 +521,41 @@ class WalletState(rx.State):
             self.delegate_current_pool = {}
 
     @rx.event
-    def submit_delegation(self):
-        """確認ダイアログから委任 tx を送信する (Phase 3 実装予定 / 現在スタブ)。
+    async def submit_delegation(self):
+        """確認ダイアログから委任 tx を組み立て、wallet で署名して送信する。
 
-        TODO: Phase 3 で MeshSDK or Lucid Evolution を使った tx 構築を別ブランチで実装。
-        現状は UI フローだけ完成しており、ボタン押下時は info toast を返すのみ。
+        サーバ側で pycardano が unsigned tx を構築 (/api/tx/pool_delegation)、
+        フロント側で wallet.signTx + submitTx を実行する方式。
         """
-        return [
-            rx.toast.info(
-                "委任機能は現在開発中です (近日対応予定)。",
-                duration=6000,
-            ),
-            WalletState.close_delegate_dialog,
+        if self.delegating:
+            return
+        if not self.connected:
+            return rx.toast.error("ウォレットが接続されていません")
+
+        pool_id = str((self.delegate_target_pool or {}).get("pool_id_bech32", "")).strip()
+        if not pool_id or not pool_id.startswith("pool"):
+            return rx.toast.error("有効な SPO が選択されていません")
+
+        auth = await self.get_state(AuthState)
+        if not auth.user_id:
+            return rx.toast.error("ログインが必要です")
+
+        registered = [
+            str(a.get("address", "")) for a in (auth.stake_addresses or [])
         ]
+        if self.reward_address not in registered:
+            return rx.toast.error(
+                "接続中ウォレットのアドレスが登録されていません。"
+                "マイページで登録 + 接続してから再度お試しください。"
+            )
+
+        self.delegating = True
+        return rx.call_script(
+            _js_call(
+                f"window.cardanoismWallet.delegateToPool({json.dumps(pool_id)})"
+            ),
+            callback=WalletState.delegation_result,
+        )
 
     @rx.event
     def delegation_result(self, result: dict):
@@ -518,5 +579,121 @@ class WalletState(rx.State):
         self.delegate_current_pool = {}
         return rx.toast.success(
             f"委任 tx を送信しました: {tx_hash[:10]}…{tx_hash[-6:]}",
+            duration=10000,
+        )
+
+    # ── DRep 委任 (governance DRep カードから) ──
+
+    @rx.event
+    async def request_delegate_to_drep(self, drep_id: str):
+        """DRep 一覧の「委任する」を押した時の入口。
+        対象 DRep を取得し、ウォレット接続済みなら確認ダイアログを開く。
+        """
+        drep_id = (drep_id or "").strip()
+        if not drep_id:
+            return rx.toast.error("無効な DRep です")
+
+        auth = await self.get_state(AuthState)
+        if not auth.user_id:
+            return rx.toast.error("ログインが必要です")
+
+        if not self.connected:
+            return rx.toast.error(
+                "ウォレットが未接続です。マイページのステークアドレスタブから接続してください。",
+                duration=8000,
+            )
+
+        try:
+            info = drep_db.get_drep(drep_id)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("get_drep failed: %s", e)
+            info = None
+        if not info:
+            return rx.toast.error("対象 DRep の情報が見つかりません")
+
+        current_info: dict = {}
+        cur = self.current_delegated_drep_id
+        if cur and cur != drep_id:
+            if cur in _SPECIAL_DREPS:
+                current_info = dict(_SPECIAL_DREPS[cur])
+            elif cur.startswith("drep"):
+                try:
+                    current_info = drep_db.get_drep(cur) or {}
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("current drep fetch failed: %s", e)
+                    current_info = {}
+
+        self.delegate_target_drep = dict(info)
+        self.delegate_current_drep = dict(current_info)
+        self.last_drep_delegate_tx_hash = ""
+        self.delegate_drep_dialog_open = True
+
+    @rx.event
+    def close_drep_delegate_dialog(self):
+        self.delegate_drep_dialog_open = False
+        self.delegate_target_drep = {}
+        self.delegate_current_drep = {}
+
+    @rx.event
+    def on_drep_delegate_dialog_open_change(self, is_open: bool):
+        if not is_open and self.delegate_drep_dialog_open:
+            self.delegate_drep_dialog_open = False
+            self.delegate_target_drep = {}
+            self.delegate_current_drep = {}
+
+    @rx.event
+    async def submit_drep_delegation(self):
+        """確認ダイアログから DRep 委任 tx を組み立て、wallet で署名して送信する。"""
+        if self.delegating_drep:
+            return
+        if not self.connected:
+            return rx.toast.error("ウォレットが接続されていません")
+
+        drep_id = str((self.delegate_target_drep or {}).get("drep_id", "")).strip()
+        if not drep_id:
+            return rx.toast.error("有効な DRep が選択されていません")
+
+        auth = await self.get_state(AuthState)
+        if not auth.user_id:
+            return rx.toast.error("ログインが必要です")
+
+        registered = [
+            str(a.get("address", "")) for a in (auth.stake_addresses or [])
+        ]
+        if self.reward_address not in registered:
+            return rx.toast.error(
+                "接続中ウォレットのアドレスが登録されていません。"
+                "マイページで登録 + 接続してから再度お試しください。"
+            )
+
+        self.delegating_drep = True
+        return rx.call_script(
+            _js_call(
+                f"window.cardanoismWallet.delegateToDRep({json.dumps(drep_id)})"
+            ),
+            callback=WalletState.drep_delegation_result,
+        )
+
+    @rx.event
+    def drep_delegation_result(self, result: dict):
+        self.delegating_drep = False
+        if not isinstance(result, dict):
+            return rx.toast.error("DRep 委任 tx の結果が不正です")
+        if "__error" in result:
+            msg = str(result["__error"])
+            logger.warning("drep delegation tx failed: %s", msg)
+            return rx.toast.error(f"DRep 委任に失敗しました: {msg}", duration=8000)
+        tx_hash = str(result.get("tx_hash", ""))
+        if not tx_hash:
+            return rx.toast.error("tx_hash が取得できませんでした")
+        self.last_drep_delegate_tx_hash = tx_hash
+        new_drep_id = str((self.delegate_target_drep or {}).get("drep_id", ""))
+        if new_drep_id:
+            self.current_delegated_drep_id = new_drep_id
+        self.delegate_drep_dialog_open = False
+        self.delegate_target_drep = {}
+        self.delegate_current_drep = {}
+        return rx.toast.success(
+            f"DRep 委任 tx を送信しました: {tx_hash[:10]}…{tx_hash[-6:]}",
             duration=10000,
         )
