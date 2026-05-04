@@ -10,7 +10,6 @@ mypage.py
 import reflex as rx
 from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
-from cardanoism.backend.dashboard_state import DashboardState
 from cardanoism.components.login_modal import login_modal
 from cardanoism.components.dashboard import dashboard
 from cardanoism.components.wallet_button import (
@@ -1289,7 +1288,7 @@ def notification_tab() -> rx.Component:
 @template(
     route="/mypage",
     title="マイページ | Cardanoism",
-    on_load=[AuthState.load_mypage, DashboardState.on_load],
+    on_load=AuthState.load_mypage,
 )
 def mypage() -> rx.Component:
     # ダッシュボードヒーロー意匠 (welcome + username + email + サブテキスト)
@@ -1364,7 +1363,7 @@ def mypage() -> rx.Component:
                     rx.tabs.content(stake_tab(), value="stake", padding_top="20px"),
                     rx.tabs.content(notification_tab(), value="notification", padding_top="20px"),
                     value=AuthState.active_tab,
-                    on_change=AuthState.set_active_tab,
+                    on_change=AuthState.change_active_tab,
                     width="100%",
                 ),
                 spacing="4",

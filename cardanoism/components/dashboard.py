@@ -53,6 +53,15 @@ def _section_card(title, icon: str, body, action=None) -> rx.Component:
     )
 
 
+def _section_spinner() -> rx.Component:
+    """セクション内データ取得中の中央スピナー。"""
+    return rx.flex(
+        rx.spinner(size="2"),
+        justify="center", align="center",
+        padding_y="20px", width="100%",
+    )
+
+
 # ── ヒーロー ────────────────────────────────────
 
 def _hero_section() -> rx.Component:
@@ -254,7 +263,7 @@ def _delegation_row(d: rx.Var) -> rx.Component:
 
 
 def _delegations_section() -> rx.Component:
-    body = rx.cond(
+    inner = rx.cond(
         DashboardState.delegations.length() > 0,
         rx.vstack(
             rx.foreach(
@@ -282,6 +291,7 @@ def _delegations_section() -> rx.Component:
             padding="8px 4px",
         ),
     )
+    body = rx.cond(DashboardState.delegations_loading, _section_spinner(), inner)
     return _section_card(
         AuthState.t["dashboard_delegations_title"],
         "compass",
@@ -397,7 +407,7 @@ def _drep_vote_row(v: rx.Var) -> rx.Component:
 
 
 def _drep_votes_section() -> rx.Component:
-    body = rx.cond(
+    inner = rx.cond(
         DashboardState.delegations.length() > 0,
         rx.vstack(
             rx.foreach(
@@ -414,6 +424,7 @@ def _drep_votes_section() -> rx.Component:
             spacing="2", align="center", padding="8px 4px",
         ),
     )
+    body = rx.cond(DashboardState.delegations_loading, _section_spinner(), inner)
     return _section_card(
         AuthState.t["dashboard_drep_votes_title"],
         "vote",
@@ -541,16 +552,18 @@ def _favorites_section() -> rx.Component:
         spacing="2", align="stretch", width="100%",
     )
 
+    inner = rx.grid(
+        catalyst_block,
+        governance_block,
+        columns={"base": "1", "md": "2"},
+        spacing="4",
+        width="100%",
+    )
+    body = rx.cond(DashboardState.favorites_loading, _section_spinner(), inner)
     return _section_card(
         AuthState.t["dashboard_favorites_title"],
         "star",
-        rx.grid(
-            catalyst_block,
-            governance_block,
-            columns={"base": "1", "md": "2"},
-            spacing="4",
-            width="100%",
-        ),
+        body,
         action=rx.link(
             rx.button(
                 rx.icon("external-link", size=12),
@@ -583,15 +596,17 @@ def _notification_summary_section() -> rx.Component:
             color=rx.cond(enabled, "var(--green-11)", "var(--gray-10)"),
         )
 
+    inner = rx.hstack(
+        _channel_chip("LINE", "line", "message-square"),
+        _channel_chip("Email", "email", "mail"),
+        _channel_chip("Telegram", "telegram", "send"),
+        spacing="2", align="center", wrap="wrap",
+    )
+    body = rx.cond(DashboardState.notifications_loading, _section_spinner(), inner)
     return _section_card(
         AuthState.t["dashboard_notifications_title"],
         "bell",
-        rx.hstack(
-            _channel_chip("LINE", "line", "message-square"),
-            _channel_chip("Email", "email", "mail"),
-            _channel_chip("Telegram", "telegram", "send"),
-            spacing="2", align="center", wrap="wrap",
-        ),
+        body,
         action=rx.link(
             rx.button(
                 rx.icon("settings", size=12),
@@ -648,13 +663,18 @@ def _epoch_treasury_section() -> rx.Component:
         ),
         spacing="0", align_items="start",
     )
+    inner = rx.grid(
+        epoch_box,
+        treasury_box,
+        columns={"base": "1", "sm": "2"},
+        spacing="4",
+        width="100%",
+    )
     return rx.box(
-        rx.grid(
-            epoch_box,
-            treasury_box,
-            columns={"base": "1", "sm": "2"},
-            spacing="4",
-            width="100%",
+        rx.cond(
+            DashboardState.epoch_treasury_loading,
+            _section_spinner(),
+            inner,
         ),
         padding="14px 18px",
         border_radius="12px",
@@ -786,7 +806,7 @@ def _pool_perf_row(p: rx.Var) -> rx.Component:
 
 
 def _pool_performances_section() -> rx.Component:
-    body = rx.cond(
+    inner = rx.cond(
         DashboardState.pool_performances.length() > 0,
         rx.vstack(
             rx.foreach(
@@ -800,6 +820,7 @@ def _pool_performances_section() -> rx.Component:
             size="2", color="var(--gray-10)",
         ),
     )
+    body = rx.cond(DashboardState.pool_perf_loading, _section_spinner(), inner)
     return _section_card(
         AuthState.t["dashboard_pool_perf_title"],
         "trending-up",
@@ -901,10 +922,23 @@ def _rewards_popover(p: rx.Var) -> rx.Component:
         spacing="3", align="stretch", width="100%",
     )
 
+    fetching_content = rx.hstack(
+        rx.spinner(size="2"),
+        rx.text(
+            AuthState.t["dashboard_rewards_fetching"],
+            size="2", color="var(--gray-11)",
+        ),
+        spacing="2", align="center", padding_y="6px",
+    )
+
     return rx.popover.root(
         trigger,
         rx.popover.content(
-            rx.cond(is_missing, missing_content, data_content),
+            rx.cond(
+                AuthState.rewards_backfilling,
+                fetching_content,
+                rx.cond(is_missing, missing_content, data_content),
+            ),
             min_width="280px",
             max_width="360px",
             padding="14px 16px",
@@ -980,7 +1014,7 @@ def _unvoted_gas_section() -> rx.Component:
         ),
         rx.fragment(),
     )
-    body = rx.cond(
+    inner = rx.cond(
         (DashboardState.unvoted_gas_self.length() == 0)
         & (DashboardState.unvoted_gas_delegated.length() == 0),
         rx.text(
@@ -993,6 +1027,7 @@ def _unvoted_gas_section() -> rx.Component:
             spacing="3", align="stretch", width="100%",
         ),
     )
+    body = rx.cond(DashboardState.unvoted_gas_loading, _section_spinner(), inner)
     return _section_card(
         AuthState.t["dashboard_unvoted_title"],
         "circle-alert",
@@ -1003,7 +1038,7 @@ def _unvoted_gas_section() -> rx.Component:
 # ── 締切が近い GA (Phase B) ────────────────────
 
 def _expiring_gas_section() -> rx.Component:
-    body = rx.cond(
+    inner = rx.cond(
         DashboardState.expiring_gas.length() > 0,
         rx.vstack(
             rx.foreach(
@@ -1017,6 +1052,7 @@ def _expiring_gas_section() -> rx.Component:
             size="2", color="var(--gray-10)",
         ),
     )
+    body = rx.cond(DashboardState.expiring_gas_loading, _section_spinner(), inner)
     return _section_card(
         AuthState.t["dashboard_expiring_title"],
         "hourglass",
@@ -1031,28 +1067,23 @@ def dashboard() -> rx.Component:
 
     ヒーロー (welcome + username) は呼び出し側 (マイページ) が
     タブ外のヘッダーとして表示するため、ここでは含めない。
+
+    レイアウト自体は即座に表示し、各セクションが個別に
+    ロード中スピナー → データ表示 へ切り替わる UX にしている。
     """
-    return rx.cond(
-        DashboardState.load,
-        rx.box(
-            rx.vstack(
-                _quick_actions_section(),
-                _epoch_treasury_section(),
-                _delegations_section(),
-                _pool_performances_section(),
-                _drep_votes_section(),
-                _unvoted_gas_section(),
-                _expiring_gas_section(),
-                _favorites_section(),
-                _notification_summary_section(),
-                spacing="4",
-                width="100%",
-            ),
+    return rx.box(
+        rx.vstack(
+            _quick_actions_section(),
+            _epoch_treasury_section(),
+            _delegations_section(),
+            _pool_performances_section(),
+            _drep_votes_section(),
+            _unvoted_gas_section(),
+            _expiring_gas_section(),
+            _favorites_section(),
+            _notification_summary_section(),
+            spacing="4",
             width="100%",
         ),
-        rx.flex(
-            rx.spinner(size="3"),
-            justify="center", align="center",
-            width="100%", padding_y="40px",
-        ),
+        width="100%",
     )

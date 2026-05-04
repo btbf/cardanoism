@@ -54,6 +54,15 @@ class DashboardState(rx.State):
     """ログイン時トップ (`/`) のダッシュボード用 State。"""
 
     load: bool = False
+    # セクションごとの「データ取得中」フラグ。on_load の各ステップで
+    # 順次 False に倒して、UI 側が rx.cond でスピナー → 中身に切替できるように。
+    favorites_loading: bool = False
+    delegations_loading: bool = False
+    pool_perf_loading: bool = False
+    unvoted_gas_loading: bool = False
+    expiring_gas_loading: bool = False
+    epoch_treasury_loading: bool = False
+    notifications_loading: bool = False
 
     # お気に入り (プレビュー上位 N + 総数)
     catalyst_favorites: list[dict[str, str]] = []
@@ -113,27 +122,89 @@ class DashboardState(rx.State):
 
     @rx.event
     async def on_load(self):
-        self.load = False
+        """段階的に各セクションのデータをロードする。
+
+        各 `_load_*` の前後で *_loading を切り替え、yield でフレームに反映する
+        ことで「データが揃ったセクションから順に表示」する UX を実現する。
+        """
+        # まずレイアウトを表示できるよう load=True にしつつ、全セクションを
+        # ロード中マーク。これで UI は各セクションでスピナーを出せる。
+        self.favorites_loading = True
+        self.delegations_loading = True
+        self.pool_perf_loading = True
+        self.unvoted_gas_loading = True
+        self.expiring_gas_loading = True
+        self.epoch_treasury_loading = True
+        self.notifications_loading = True
+        self.load = True
+        yield
+
         try:
             auth = await self.get_state(AuthState)
             if not auth.user_id:
-                # 未ログイン (通常は index.py 側で表示分岐するのでここは保険)
                 self._reset()
-                self.load = True
+                # ロード中フラグを全部 False に
+                self.favorites_loading = False
+                self.delegations_loading = False
+                self.pool_perf_loading = False
+                self.unvoted_gas_loading = False
+                self.expiring_gas_loading = False
+                self.epoch_treasury_loading = False
+                self.notifications_loading = False
                 return
 
+            # UI が dict[key] アクセスで undefined エラーにならないよう、
+            # データ取得前に全キーを空値で埋めておく。
+            stake_addrs = [
+                str(a.get("address") or "")
+                for a in (auth.stake_addresses or [])
+                if a.get("address")
+            ]
+            self.rewards_by_address = {a: [] for a in stake_addrs}
+            self.total_rewards_by_address = {a: "0" for a in stake_addrs}
+            yield
+
+            # 軽い処理から並べる (DB SELECT のみで Koios 不要なものを優先)
             self._load_favorites(auth.user_id)
+            self.favorites_loading = False
+            yield
+
             self._load_notifications(auth.user_id)
+            self.notifications_loading = False
+            yield
+
             self._load_delegations(auth.stake_addresses or [])
-            # Phase B
-            self._load_pool_performances(auth.stake_addresses or [])
-            self._load_rewards(auth.stake_addresses or [])
-            self._load_epoch_and_treasury()
+            self.delegations_loading = False
+            yield
+
             self._load_governance_actions(auth.stake_addresses or [])
+            self.unvoted_gas_loading = False
+            self.expiring_gas_loading = False
+            yield
+
+            # Koios `/totals` 1 回叩く (重め)
+            self._load_pool_performances(auth.stake_addresses or [])
+            self.pool_perf_loading = False
+            yield
+
+            # Koios `/tip` 1 回叩く
+            self._load_epoch_and_treasury()
+            self.epoch_treasury_loading = False
+            yield
+
+            # 報酬は popover で個別に表示するためグローバル loading 無し
+            self._load_rewards(auth.stake_addresses or [])
         except Exception as e:  # noqa: BLE001
             logger.exception("DashboardState.on_load: %s", e)
         finally:
-            self.load = True
+            # エラーで途中終了した場合もすべての loading を False にして UI を solidify
+            self.favorites_loading = False
+            self.delegations_loading = False
+            self.pool_perf_loading = False
+            self.unvoted_gas_loading = False
+            self.expiring_gas_loading = False
+            self.epoch_treasury_loading = False
+            self.notifications_loading = False
 
     # ── 内部ロード ──────────────────────────────
 
@@ -284,6 +355,14 @@ class DashboardState(rx.State):
                 entry["drep_id"] = "always_abstain"
 
             out.append(entry)
+
+        # UI 側で `drep_recent_votes[drep_id]` を参照するため、delegations に
+        # 含まれる全 drep_id (always_abstain 含む) を空リストで保証しておく。
+        # これがないと未取得 key へのアクセスで undefined エラーになる。
+        for entry in out:
+            drep_id = str(entry.get("drep_id") or "")
+            if drep_id:
+                votes_map.setdefault(drep_id, [])
 
         self.delegations = out
         self.drep_recent_votes = votes_map
