@@ -231,7 +231,7 @@ def build_treasury_chart_svg(history: list[dict]) -> str:
         x, _ = points_xy[i]
         parts.append(
             f'<text x="{x:.1f}" y="{H - pad_b + 18}" text-anchor="middle" '
-            f'font-size="10" fill="var(--gray-10)">Ep.{ep}</text>'
+            f'font-size="10" fill="var(--gray-10)">Epoch {ep}</text>'
         )
 
     parts.append("</svg>")

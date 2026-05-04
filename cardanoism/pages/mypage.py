@@ -64,7 +64,7 @@ def ga_favorite_card(fav: rx.Var[dict]) -> rx.Component:
                 ),
                 rx.hstack(
                     rx.badge(fav["proposal_type"], variant="soft", color_scheme="amber", size="1"),
-                    rx.text("Ep.", fav["proposed_epoch"].to(str), size="2", color="var(--gray-9)"),
+                    rx.text("Epoch ", fav["proposed_epoch"].to(str), size="2", color="var(--gray-9)"),
                     spacing="2",
                     wrap="wrap",
                 ),

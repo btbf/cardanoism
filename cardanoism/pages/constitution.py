@@ -164,7 +164,7 @@ def _header() -> rx.Component:
                             size="2", color="var(--gray-10)",
                         ),
                         rx.text(
-                            "Ep." + ConstitutionState.constitution_enacted_epoch.to_string(),
+                            "Epoch " + ConstitutionState.constitution_enacted_epoch.to_string(),
                             size="2", weight="medium", color="var(--gray-12)",
                         ),
                         spacing="1", align="baseline",
