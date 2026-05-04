@@ -231,22 +231,21 @@ def _delegation_row(d: rx.Var) -> rx.Component:
     )
 
     return rx.box(
-        rx.vstack(
-            rx.hstack(
-                rx.icon("wallet", size=14, color="var(--amber-11)"),
-                rx.text(d["nickname"], size="2", weight="bold", color="var(--gray-12)"),
-                verified_badge,
-                spacing="2", align="center", wrap="wrap", width="100%",
+        rx.hstack(
+            rx.icon("wallet", size=14, color="var(--amber-11)", flex_shrink="0"),
+            rx.text(
+                d["nickname"],
+                size="2", weight="bold", color="var(--gray-12)",
+                style={"whiteSpace": "nowrap"},
             ),
-            rx.hstack(
-                pool_label,
-                rx.box(width="1px", height="14px", background="var(--gray-5)", margin_x="6px", flex_shrink="0"),
-                drep_label,
-                spacing="2", align="center", wrap="wrap", width="100%",
-            ),
-            spacing="2", align="stretch", width="100%",
+            verified_badge,
+            rx.box(width="1px", height="14px", background="var(--gray-5)", flex_shrink="0"),
+            pool_label,
+            rx.box(width="1px", height="14px", background="var(--gray-5)", flex_shrink="0"),
+            drep_label,
+            spacing="3", align="center", wrap="wrap", width="100%",
         ),
-        padding="12px 14px",
+        padding="10px 14px",
         border_radius="8px",
         background="var(--gray-2)",
         border=f"1px solid {rx.color('gray', 4)}",
@@ -300,29 +299,100 @@ def _delegations_section() -> rx.Component:
 
 # ── DRep 直近投票 ──────────────────────────────
 
-def _drep_vote_row(v: rx.Var) -> rx.Component:
-    vote_color = rx.match(
-        v["vote"],
-        ("Yes", "var(--blue-11)"),
-        ("No", "var(--orange-11)"),
-        ("Abstain", "var(--gray-11)"),
-        "var(--gray-11)",
+def _drep_vote_badge(vote_var: rx.Var) -> rx.Component:
+    """vote 値に応じたバッジ。空文字 = 未投票 (rx.match の default で表示)。"""
+    return rx.match(
+        vote_var,
+        ("Yes",
+            rx.badge(AuthState.t["dashboard_vote_yes"], color_scheme="blue",
+                     variant="solid", size="1")),
+        ("No",
+            rx.badge(AuthState.t["dashboard_vote_no"], color_scheme="orange",
+                     variant="solid", size="1")),
+        ("Abstain",
+            rx.badge(AuthState.t["dashboard_vote_abstain"], color_scheme="gray",
+                     variant="solid", size="1")),
+        rx.badge(AuthState.t["dashboard_vote_unvoted"], color_scheme="gray",
+                 variant="soft", size="1"),
     )
-    return rx.link(
-        rx.hstack(
-            rx.badge(v["vote"], variant="soft", color_scheme="gray", size="1", style={"color": vote_color}),
+
+
+def _drep_vote_rationale_dialog(v: rx.Var) -> rx.Component:
+    """投票理由ダイアログ。rationale が空なら trigger 自体表示しない。"""
+    has_rationale = (v["rationale_ja"] != "") | (v["rationale"] != "")
+    rationale_text = rx.cond(
+        AuthState.language == "ja",
+        rx.cond(v["rationale_ja"] != "", v["rationale_ja"], v["rationale"]),
+        v["rationale"],
+    )
+    return rx.cond(
+        has_rationale,
+        rx.dialog.root(
+            rx.dialog.trigger(
+                rx.el.button(
+                    rx.icon("message-square", size=11, color="var(--gray-10)"),
+                    rx.text(AuthState.t["dashboard_vote_rationale"], size="1", color="var(--gray-11)"),
+                    style={
+                        "display": "inline-flex",
+                        "alignItems": "center",
+                        "gap": "4px",
+                        "padding": "2px 8px",
+                        "border": f"1px solid {rx.color('gray', 5)}",
+                        "borderRadius": "999px",
+                        "background": "transparent",
+                        "cursor": "pointer",
+                    },
+                    _hover={"background": rx.color("gray", 3)},
+                ),
+            ),
+            rx.dialog.content(
+                rx.dialog.title(AuthState.t["dashboard_vote_rationale_title"], size="4"),
+                rx.scroll_area(
+                    rx.text(
+                        rationale_text,
+                        size="2", color="var(--gray-12)",
+                        style={"whiteSpace": "pre-wrap", "lineHeight": "1.6"},
+                    ),
+                    type="auto", scrollbars="vertical",
+                    style={"maxHeight": "60vh"},
+                ),
+                rx.flex(
+                    rx.dialog.close(
+                        rx.button(
+                            AuthState.t["dashboard_vote_rationale_close"],
+                            size="2", variant="soft", color_scheme="gray", cursor="pointer",
+                        ),
+                    ),
+                    justify="end", margin_top="16px",
+                ),
+                max_width="640px",
+            ),
+        ),
+        rx.fragment(),
+    )
+
+
+def _drep_vote_row(v: rx.Var) -> rx.Component:
+    title = rx.cond(
+        AuthState.language == "ja",
+        rx.cond(v["title_ja"] != "", v["title_ja"], v["title"]),
+        v["title"],
+    )
+    return rx.hstack(
+        _drep_vote_badge(v["vote"]),
+        rx.link(
             rx.text(
-                rx.cond(v["proposal_title"] != "", v["proposal_title"], v["proposal_id"][:24] + "…"),
+                rx.cond(title != "", title, v["proposal_id"][:24] + "…"),
                 size="2", color="var(--gray-12)",
                 style={"overflow": "hidden", "textOverflow": "ellipsis", "whiteSpace": "nowrap"},
-                flex="1", min_width="0",
             ),
-            spacing="2", align="center", width="100%",
+            href="/governance/" + v["proposal_id"],
+            underline="hover",
+            color="inherit",
+            flex="1", min_width="0",
         ),
-        href="/governance/" + v["proposal_id"],
-        underline="hover",
-        color="inherit",
-        width="100%",
+        _drep_vote_rationale_dialog(v),
+        spacing="2", align="center", width="100%",
     )
 
 
@@ -599,33 +669,116 @@ def _epoch_treasury_section() -> rx.Component:
 
 # ── プール実績 (Phase B) ───────────────────────
 
-def _pool_perf_row(p: rx.Var) -> rx.Component:
-    return rx.box(
+def _pool_metric(label, value, unit: str = "", emphasis: bool = False) -> rx.Component:
+    """プール実績カードの 1 メトリクス (label + value + unit)。"""
+    value_color = "var(--blue-11)" if emphasis else "var(--gray-12)"
+    return rx.vstack(
+        rx.text(label, size="1", color="var(--gray-10)", style={"whiteSpace": "nowrap"}),
         rx.hstack(
-            rx.icon("server", size=14, color="var(--amber-11)", flex_shrink="0"),
-            rx.vstack(
-                rx.text(p["nickname"], size="1", color="var(--gray-10)"),
-                rx.text(
-                    rx.cond(p["pool_ticker"] != "", p["pool_ticker"], p["pool_name"]),
-                    size="2", weight="bold", color="var(--gray-12)",
-                ),
-                spacing="0", align_items="start",
+            rx.text(value, size="2", weight="bold", color=value_color),
+            rx.cond(
+                unit != "",
+                rx.text(unit, size="1", color="var(--gray-10)"),
+                rx.fragment(),
             ),
-            rx.spacer(),
-            rx.vstack(
-                rx.text(AuthState.t["dashboard_pool_blocks_5ep"], size="1", color="var(--gray-10)"),
-                rx.text(p["blocks_5ep_total"], size="3", weight="bold", color="var(--gray-12)"),
-                spacing="0", align_items="end",
-            ),
-            rx.vstack(
-                rx.text(AuthState.t["dashboard_pool_apy_avg"], size="1", color="var(--gray-10)"),
-                rx.text(p["apy_avg_pct"], "%", size="3", weight="bold", color="var(--blue-11)"),
-                spacing="0", align_items="end",
-            ),
-            spacing="4", align="center", width="100%", wrap="wrap",
+            spacing="1", align="baseline",
         ),
-        padding="12px 14px",
-        border_radius="8px",
+        spacing="0", align_items="start", min_width="0",
+    )
+
+
+def _pool_perf_row(p: rx.Var) -> rx.Component:
+    """委任先プール 1 件の実績カード (ヘッダ + メトリクスグリッド)。"""
+    # ヘッダ: nickname → ticker → pool_name (1 行)
+    header = rx.hstack(
+        rx.icon("server", size=16, color="var(--amber-11)", flex_shrink="0"),
+        rx.text(
+            p["nickname"],
+            size="2", weight="medium", color="var(--gray-11)",
+            style={"whiteSpace": "nowrap"},
+        ),
+        rx.icon("chevron-right", size=12, color="var(--gray-8)", flex_shrink="0"),
+        rx.cond(
+            p["ticker"] != "",
+            rx.badge(p["ticker"], variant="solid", color_scheme="amber", radius="full", size="1"),
+            rx.fragment(),
+        ),
+        rx.cond(
+            p["pool_name"] != "",
+            rx.text(
+                p["pool_name"],
+                size="3", weight="bold", color="var(--gray-12)",
+                style={
+                    "overflow": "hidden",
+                    "textOverflow": "ellipsis",
+                    "whiteSpace": "nowrap",
+                    "maxWidth": "320px",
+                },
+            ),
+            rx.fragment(),
+        ),
+        rx.spacer(),
+        rx.cond(
+            p["is_saturated"] == "1",
+            rx.badge(AuthState.t["staking_badge_saturated"], color_scheme="red", variant="soft", size="1"),
+            rx.cond(
+                p["is_saturated"] == "warn",
+                rx.badge(AuthState.t["staking_badge_warning"], color_scheme="amber", variant="soft", size="1"),
+                rx.fragment(),
+            ),
+        ),
+        # 報酬 popover (累積 + 直近 5ep をクリックで展開)
+        _rewards_popover(p),
+        spacing="2", align="center", width="100%", wrap="wrap",
+    )
+
+    # メトリクスグリッド (live_stake / 飽和率 / 委任者数 / margin / fixed_cost / 5ep / APY)
+    metrics = rx.grid(
+        _pool_metric(
+            AuthState.t["staking_metric_stake"],
+            rx.cond(AuthState.language == "ja", p["stake_ada_ja"], p["stake_ada_en"]),
+            "ADA",
+            emphasis=True,
+        ),
+        _pool_metric(
+            AuthState.t["staking_metric_saturation"],
+            p["saturation_pct"], "%",
+        ),
+        _pool_metric(
+            AuthState.t["staking_metric_delegators"],
+            p["delegators"],
+        ),
+        _pool_metric(
+            AuthState.t["staking_metric_margin"],
+            p["margin_pct"], "%",
+        ),
+        _pool_metric(
+            AuthState.t["staking_metric_fixed_cost"],
+            p["fixed_cost_ada"], "ADA",
+        ),
+        _pool_metric(
+            AuthState.t["staking_metric_recent5ep"],
+            p["history_total"],
+            emphasis=True,
+        ),
+        _pool_metric(
+            AuthState.t["staking_metric_apy"],
+            p["apy_avg"], "%",
+            emphasis=True,
+        ),
+        columns={"base": "2", "sm": "3", "md": "4", "lg": "7"},
+        spacing="3",
+        width="100%",
+    )
+
+    return rx.box(
+        rx.vstack(
+            header,
+            metrics,
+            spacing="3", align="stretch", width="100%",
+        ),
+        padding="14px 16px",
+        border_radius="10px",
         background="var(--gray-2)",
         border=f"1px solid {rx.color('gray', 4)}",
         width="100%",
@@ -654,113 +807,110 @@ def _pool_performances_section() -> rx.Component:
     )
 
 
-# ── 報酬 (Phase B) ─────────────────────────────
-
-def _reward_total_row(t: rx.Var) -> rx.Component:
-    return rx.hstack(
-        rx.icon("wallet", size=12, color="var(--amber-11)"),
-        rx.text(t["nickname"], size="1", color="var(--gray-10)"),
-        rx.spacer(),
-        rx.text(t["total_ada"], size="2", weight="bold", color="var(--gray-12)"),
-        rx.text("ADA", size="1", color="var(--gray-10)"),
-        spacing="2", align="baseline", width="100%",
-        padding="6px 10px",
-        border_radius="6px",
-        background="var(--gray-2)",
-    )
-
+# ── 報酬 popover (プール実績カード内に埋め込み) ───
 
 def _reward_recent_row(r: rx.Var) -> rx.Component:
+    """popover 内: エポック別 1 行。"""
     return rx.hstack(
         rx.text("ep", size="1", color="var(--gray-10)"),
         rx.text(r["epoch_no"], size="1", weight="medium", color="var(--gray-12)"),
-        rx.text(r["nickname"], size="1", color="var(--gray-10)"),
         rx.spacer(),
         rx.text(r["amount_ada"], size="2", weight="bold", color="var(--green-11)"),
         rx.text("ADA", size="1", color="var(--gray-10)"),
         spacing="2", align="baseline", width="100%",
-        padding="6px 10px",
+        padding="4px 8px",
         border_radius="6px",
         background="var(--gray-2)",
     )
 
 
-def _rewards_section() -> rx.Component:
-    totals_block = rx.cond(
-        DashboardState.total_rewards.length() > 0,
-        rx.vstack(
-            rx.text(AuthState.t["dashboard_rewards_total"], size="1", color="var(--gray-10)", weight="medium"),
-            rx.foreach(
-                DashboardState.total_rewards.to(list[dict[str, str]]),
-                _reward_total_row,
+def _rewards_popover(p: rx.Var) -> rx.Component:
+    """委任先プール実績カード右上に置く「報酬」popover ボタン。
+
+    通知 OFF (= キャッシュなし) の場合は CTA、それ以外は累積 + 直近 5ep を表示。
+    """
+    addr = p["address"]
+    is_missing = DashboardState.rewards_missing_addresses.contains(addr)
+    rewards = DashboardState.rewards_by_address[addr]
+    total_ada = DashboardState.total_rewards_by_address[addr]
+
+    trigger = rx.popover.trigger(
+        rx.el.button(
+            rx.icon("coins", size=12, color="var(--amber-11)"),
+            rx.text(
+                AuthState.t["dashboard_rewards_btn"],
+                size="1", color="var(--amber-12)",
+                style={"whiteSpace": "nowrap"},
             ),
-            spacing="1", align="stretch", width="100%",
+            style={
+                "display": "inline-flex",
+                "alignItems": "center",
+                "gap": "4px",
+                "padding": "4px 10px",
+                "border": f"1px solid {rx.color('amber', 7)}",
+                "borderRadius": "999px",
+                "background": "transparent",
+                "cursor": "pointer",
+                "transition": "background 0.15s",
+            },
+            _hover={"background": rx.color("amber", 3)},
         ),
-        rx.fragment(),
     )
 
-    recent_block = rx.cond(
-        DashboardState.recent_rewards.length() > 0,
-        rx.vstack(
-            rx.text(AuthState.t["dashboard_rewards_recent"], size="1", color="var(--gray-10)", weight="medium"),
-            rx.foreach(
-                DashboardState.recent_rewards.to(list[dict[str, str]]),
-                _reward_recent_row,
-            ),
-            spacing="1", align="stretch", width="100%",
-        ),
-        rx.fragment(),
-    )
-
-    missing_cta = rx.cond(
-        DashboardState.rewards_missing_addresses.length() > 0,
+    missing_content = rx.vstack(
         rx.hstack(
             rx.icon("info", size=14, color="var(--amber-11)"),
             rx.text(
                 AuthState.t["dashboard_rewards_missing_note"],
-                size="1", color="var(--gray-10)", line_height="1.5",
+                size="2", color="var(--gray-11)", line_height="1.5",
             ),
-            rx.spacer(),
-            rx.link(
-                rx.button(
-                    rx.icon("bell", size=12),
-                    rx.text(AuthState.t["dashboard_rewards_enable_notify"], size="1"),
-                    variant="soft", color_scheme="amber", size="1", cursor="pointer",
-                ),
-                href="/mypage?tab=notification", underline="none",
-            ),
-            spacing="2", align="center", width="100%",
-            padding="10px 12px",
-            border_radius="8px",
-            background=rx.color("amber", 2),
-            border=f"1px solid {rx.color('amber', 5)}",
+            spacing="2", align="start",
         ),
-        rx.fragment(),
-    )
-
-    body = rx.vstack(
-        rx.cond(
-            (DashboardState.total_rewards.length() == 0)
-            & (DashboardState.recent_rewards.length() == 0),
-            rx.text(
-                AuthState.t["dashboard_rewards_empty"],
-                size="2", color="var(--gray-10)",
+        rx.link(
+            rx.button(
+                rx.icon("bell", size=12),
+                rx.text(AuthState.t["dashboard_rewards_enable_notify"], size="2"),
+                color_scheme="amber", size="2", cursor="pointer",
             ),
-            rx.grid(
-                totals_block,
-                recent_block,
-                columns={"base": "1", "md": "2"},
-                spacing="4",
-                width="100%",
-            ),
+            href="/mypage?tab=notification", underline="none",
         ),
-        missing_cta,
         spacing="3", align="stretch", width="100%",
     )
-    return _section_card(
-        AuthState.t["dashboard_rewards_title"],
-        "coins",
-        body,
+
+    data_content = rx.vstack(
+        rx.hstack(
+            rx.text(AuthState.t["dashboard_rewards_total"], size="1", color="var(--gray-10)"),
+            rx.spacer(),
+            rx.text(total_ada, size="3", weight="bold", color="var(--gray-12)"),
+            rx.text("ADA", size="1", color="var(--gray-10)"),
+            spacing="2", align="baseline", width="100%",
+        ),
+        rx.divider(),
+        rx.text(AuthState.t["dashboard_rewards_recent"], size="1", color="var(--gray-10)", weight="medium"),
+        rx.cond(
+            rewards.length() > 0,
+            rx.vstack(
+                rx.foreach(rewards.to(list[dict[str, str]]), _reward_recent_row),
+                spacing="1", align="stretch", width="100%",
+            ),
+            rx.text(
+                AuthState.t["dashboard_rewards_empty_short"],
+                size="1", color="var(--gray-9)", style={"fontStyle": "italic"},
+            ),
+        ),
+        spacing="3", align="stretch", width="100%",
+    )
+
+    return rx.popover.root(
+        trigger,
+        rx.popover.content(
+            rx.cond(is_missing, missing_content, data_content),
+            min_width="280px",
+            max_width="360px",
+            padding="14px 16px",
+            side="bottom",
+            align="end",
+        ),
     )
 
 
@@ -890,10 +1040,9 @@ def dashboard() -> rx.Component:
                 _epoch_treasury_section(),
                 _delegations_section(),
                 _pool_performances_section(),
-                _rewards_section(),
+                _drep_votes_section(),
                 _unvoted_gas_section(),
                 _expiring_gas_section(),
-                _drep_votes_section(),
                 _favorites_section(),
                 _notification_summary_section(),
                 spacing="4",

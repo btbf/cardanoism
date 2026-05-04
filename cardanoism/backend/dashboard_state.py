@@ -84,12 +84,11 @@ class DashboardState(rx.State):
     # entry: { nickname, pool_id, pool_ticker, blocks_5ep_total, apy_avg_pct }
     pool_performances: list[dict[str, str]] = []
 
-    # 直近 5 エポック報酬 (stake_address × epoch)
-    # entry: { nickname, address, epoch_no, amount_ada, amount_lovelace_str }
-    recent_rewards: list[dict[str, str]] = []
-    # 累積報酬 (stake_address ごと)
-    # entry: { nickname, address, total_ada, total_lovelace_str }
-    total_rewards: list[dict[str, str]] = []
+    # stake_address 軸での報酬データ (プール実績カード内に popover で表示)
+    # rewards_by_address: { address: [{epoch_no, amount_ada}, ...] }
+    rewards_by_address: dict[str, list[dict[str, str]]] = {}
+    # total_rewards_by_address: { address: total_ada_str }
+    total_rewards_by_address: dict[str, str] = {}
     # 通知 OFF などで報酬キャッシュが無い stake_address
     rewards_missing_addresses: list[str] = []
 
@@ -149,8 +148,8 @@ class DashboardState(rx.State):
         self.notification_events = {}
         self.relay_warnings_count = 0
         self.pool_performances = []
-        self.recent_rewards = []
-        self.total_rewards = []
+        self.rewards_by_address = {}
+        self.total_rewards_by_address = {}
         self.rewards_missing_addresses = []
         self.unvoted_gas_self = []
         self.unvoted_gas_delegated = []
@@ -270,22 +269,16 @@ class DashboardState(rx.State):
                     d = None
                 if d:
                     entry["drep_name"] = str(d.get("given_name") or "")
-                # 直近投票は (drep_id, address) で重複しないようキャッシュ
+                # アクティブ GA × この DRep の投票状況を 1 SQL で取得 (LEFT JOIN)。
+                # 「投票していれば Yes/No/Abstain + rationale、未投票なら vote が空」になる。
                 if drep_id not in votes_map:
                     try:
-                        votes = get_votes_by_drep(drep_id, limit=DREP_VOTES_PREVIEW_LIMIT) or []
+                        votes_map[drep_id] = self._select_active_gas_with_drep_vote(drep_id)
                     except Exception as e:  # noqa: BLE001
-                        logger.warning("get_votes_by_drep(%s) failed: %s", drep_id, e)
-                        votes = []
-                    votes_map[drep_id] = [
-                        {
-                            "proposal_id":    str(v.get("proposal_id") or ""),
-                            "proposal_title": str(v.get("proposal_title") or v.get("title_ja") or v.get("title") or ""),
-                            "vote":           str(v.get("vote") or ""),
-                            "block_time":     str(v.get("block_time") or ""),
-                        }
-                        for v in votes[:DREP_VOTES_PREVIEW_LIMIT]
-                    ]
+                        logger.warning(
+                            "active GA + drep vote query failed (drep=%s): %s", drep_id, e,
+                        )
+                        votes_map[drep_id] = []
             elif str(addr.get("role") or "") == "abstain":
                 # always_abstain はテーブルに無いが UI で表示分岐したいので drep_id だけ補完
                 entry["drep_id"] = "always_abstain"
@@ -299,7 +292,28 @@ class DashboardState(rx.State):
     # ── Phase B ローダ ─────────────────────────────
 
     def _load_pool_performances(self, stake_addresses: list[dict]) -> None:
-        """委任先プールの直近実績 (block_history_5ep + apy_history_7ep) を整形する。"""
+        """委任先プールの実績 (live_stake / 飽和率 / 委任者数 / 5ep ブロック / 7ep APY 等) を整形する。
+
+        staking_spo.format_pool_card_data を流用して SPO 一覧と表記を揃える。
+        """
+        # 循環 import を避けるためここでのみ import
+        from cardanoism.pages.staking_spo import format_pool_card_data
+        from cardanoism.backend.koios import get_totals
+
+        # サチュレーション点を 1 回だけ計算する
+        # (45B ADA - 残リザーブ) / k=500
+        MAX_SUPPLY_LOVELACE = 45_000_000_000 * 1_000_000
+        OPTIMAL_POOL_COUNT_K = 500
+        saturation_point_lovelace = 0
+        try:
+            totals = get_totals() or {}
+            reserves = int(totals.get("reserves") or 0)
+            if reserves > 0:
+                soft_cap = MAX_SUPPLY_LOVELACE - reserves
+                saturation_point_lovelace = soft_cap // OPTIMAL_POOL_COUNT_K
+        except Exception as e:  # noqa: BLE001
+            logger.warning("get_totals for saturation calc failed: %s", e)
+
         out: list[dict[str, str]] = []
         seen_pools: set[str] = set()
         for addr in stake_addresses:
@@ -314,72 +328,52 @@ class DashboardState(rx.State):
                 continue
             if not p:
                 continue
-            blocks_total = 0
-            try:
-                bh = p.get("block_history_5ep")
-                parsed = json.loads(bh) if isinstance(bh, str) and bh else (bh or [])
-                if isinstance(parsed, list):
-                    blocks_total = sum(int(x or 0) for x in parsed[:5])
-            except (TypeError, ValueError, json.JSONDecodeError):
-                blocks_total = 0
-            apy_avg = 0.0
-            try:
-                ah = p.get("apy_history_7ep")
-                parsed = json.loads(ah) if isinstance(ah, str) and ah else (ah or [])
-                if isinstance(parsed, list) and parsed:
-                    nums = [float(x) for x in parsed if x is not None]
-                    if nums:
-                        apy_avg = sum(nums) / len(nums)
-            except (TypeError, ValueError, json.JSONDecodeError):
-                apy_avg = 0.0
-            out.append({
-                "nickname":         str(addr.get("nickname") or ""),
-                "pool_id":          pool_id,
-                "pool_ticker":      str(p.get("ticker") or ""),
-                "pool_name":        str(p.get("pool_name") or ""),
-                "blocks_5ep_total": str(blocks_total),
-                "apy_avg_pct":      f"{apy_avg:.2f}",
-            })
+            formatted = format_pool_card_data(
+                p,
+                saturation_point_lovelace=saturation_point_lovelace,
+            )
+            formatted["nickname"] = str(addr.get("nickname") or "")
+            # popover で rewards_by_address / total_rewards_by_address を引くために stake_address も保持
+            formatted["address"] = str(addr.get("address") or "")
+            out.append(formatted)
         self.pool_performances = out
 
     def _load_rewards(self, stake_addresses: list[dict]) -> None:
-        """stake_rewards テーブルから直近 N エポック分と累積を取得する。"""
+        """stake_rewards テーブルから直近 N エポック分と累積を取得し、address 軸で dict 化する。
+
+        プール実績カード内の popover で `rewards_by_address[address]` で参照する。
+        """
         addrs = [
             str(a.get("address") or "") for a in stake_addresses if a.get("address")
         ]
         if not addrs:
-            self.recent_rewards = []
-            self.total_rewards = []
+            self.rewards_by_address = {}
+            self.total_rewards_by_address = {}
             self.rewards_missing_addresses = []
             return
 
-        nick_map = {
-            str(a.get("address") or ""): str(a.get("nickname") or "")
-            for a in stake_addresses
-        }
-
         rows = get_recent_rewards(addrs, n_epochs=RECENT_REWARDS_EPOCHS)
-        recent: list[dict[str, str]] = []
+        by_addr: dict[str, list[dict[str, str]]] = {}
         for r in rows:
             sa = str(r.get("stake_address") or "")
             lov = int(r.get("amount_lovelace") or 0)
-            recent.append({
-                "nickname":   nick_map.get(sa, ""),
-                "address":    sa,
+            by_addr.setdefault(sa, []).append({
                 "epoch_no":   str(r.get("epoch_no") or ""),
                 "amount_ada": format_ada(lov, integer=False) if lov else "0",
             })
-        self.recent_rewards = recent
+        # 取れなかったアドレスは空リストで埋めて UI 側の参照ミスを避ける
+        for sa in addrs:
+            by_addr.setdefault(sa, [])
+        self.rewards_by_address = by_addr
 
         totals_map = get_total_rewards(addrs)
-        self.total_rewards = [
-            {
-                "nickname":   nick_map.get(sa, ""),
-                "address":    sa,
-                "total_ada":  format_ada(total, integer=False) if total else "0",
-            }
+        self.total_rewards_by_address = {
+            sa: (format_ada(total, integer=False) if total else "0")
             for sa, total in totals_map.items()
-        ]
+        }
+        # キャッシュ無しアドレスも空文字で初期化
+        for sa in addrs:
+            self.total_rewards_by_address.setdefault(sa, "0")
 
         cached = has_rewards_for_addresses(addrs)
         self.rewards_missing_addresses = [a for a in addrs if a not in cached]
@@ -507,6 +501,47 @@ class DashboardState(rx.State):
                 "epochs_left":   epochs_left,
             })
         return out
+
+    @staticmethod
+    def _select_active_gas_with_drep_vote(drep_id: str) -> list[dict[str, str]]:
+        """active GA に対して指定 DRep の投票状況を LEFT JOIN で取得する。
+
+        戻り値の vote が空文字なら「未投票」、Yes/No/Abstain なら投票済み。
+        rationale_ja / rationale が含まれていれば UI で「理由ボタン」を出せる。
+        """
+        if not drep_id:
+            return []
+        sql = (
+            "SELECT g.proposal_id, g.title, g.title_ja, g.proposal_type, g.expiration, "
+            "       v.vote, v.rationale, v.rationale_ja, v.meta_url "
+            "FROM governance_actions g "
+            "LEFT JOIN proposal_votes v ON g.proposal_id = v.proposal_id "
+            "                          AND v.voter_role = 'DRep' "
+            "                          AND v.voter_id = ? "
+            "WHERE g.ratified_epoch IS NULL "
+            "  AND g.dropped_epoch IS NULL "
+            "  AND g.expired_epoch IS NULL "
+            "  AND g.enacted_epoch IS NULL "
+            "ORDER BY g.expiration ASC "
+            f"LIMIT {DREP_VOTES_PREVIEW_LIMIT}"
+        )
+        with get_db() as (cursor, _):
+            cursor.execute(sql, (drep_id,))
+            rows = [dict(r) for r in cursor.fetchall()]
+        return [
+            {
+                "proposal_id":   str(r.get("proposal_id") or ""),
+                "title":         str(r.get("title") or ""),
+                "title_ja":      str(r.get("title_ja") or ""),
+                "proposal_type": str(r.get("proposal_type") or ""),
+                "expiration":    "" if r.get("expiration") is None else str(r.get("expiration")),
+                "vote":          str(r.get("vote") or ""),
+                "rationale":     str(r.get("rationale") or ""),
+                "rationale_ja":  str(r.get("rationale_ja") or ""),
+                "meta_url":      str(r.get("meta_url") or ""),
+            }
+            for r in rows
+        ]
 
     @staticmethod
     def _select_unvoted_gas_for_dreps(
