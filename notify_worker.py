@@ -2555,7 +2555,10 @@ def main():
             send_test(args.test)
         return
 
-    if args.event in ("all", "pool", "drep", "reminder"):
+    # Phase 4 (Ogmios listener) で stake_addresses.delegated_pool_id / delegated_drep_id を
+    # 即時更新するようになったため、cron 側のリフレッシュは reminder の 1 時間ごとだけで十分。
+    # listener が落ちている時のフォールバックを兼ねる。
+    if args.event in ("all", "reminder"):
         refresh_stake_delegations()
     if args.event in ("all", "pool"):
         check_pool_events()

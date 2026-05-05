@@ -44,6 +44,27 @@ from cardanoism.backend.mail_notify import build_html, build_text
 from cardanoism.backend.koios import get_proposal_title, get_pool_name, get_pool_epoch_stats, get_pool_apy
 from cardanoism.backend.recent_blocks_db import insert_block, trim_old_blocks, delete_blocks_after_slot
 from cardanoism.backend.mempool_db import upsert_mempool_state
+from cardanoism.backend.listener_db import rollback_listener_state
+from cardanoism.backend.listener_governance import (
+    record_proposal_from_event,
+    record_vote_from_event,
+)
+from cardanoism.backend.listener_dreps import (
+    record_drep_registration,
+    record_drep_retirement,
+    record_drep_update,
+)
+from cardanoism.backend.listener_pools import (
+    record_pool_registration,
+    record_pool_retirement,
+)
+from cardanoism.backend.listener_stake import (
+    record_stake_delegation,
+    record_vote_delegation,
+    record_stake_and_vote_delegation,
+    record_combined_registration_and_delegation,
+)
+from cardanoism.backend.listener_epoch_sync import trigger_epoch_syncs
 
 logger = logging.getLogger("ogmios_listener")
 
@@ -476,7 +497,7 @@ def _notify_drep_vote(drep_id: str, vote_str: str, gov_tx_hash: str, gov_index: 
 # ブロック処理
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _process_cert(cert: dict) -> None:
+def _process_cert(cert: dict, slot: int) -> None:
     cert_type = cert.get("type")
 
     if cert_type == "stakePoolRetirement":
@@ -484,6 +505,11 @@ def _process_cert(cert: dict) -> None:
         pool_id = pool.get("id", "")
         retiring_epoch = pool.get("retirementEpoch", 0)
         logger.info("pool_retire 検知: pool=%s epoch=%d", pool_id, retiring_epoch)
+        # Phase 3: pools テーブルに反映
+        try:
+            record_pool_retirement(cert, slot)
+        except Exception as e:
+            logger.exception("listener: pool 引退 DB 書込み失敗: %s", e)
         _notify_pool_retire(pool_id, retiring_epoch)
 
     elif cert_type == "stakePoolRegistration":
@@ -500,22 +526,81 @@ def _process_cert(cert: dict) -> None:
             return
         logger.info("pool_registration 検知: pool=%s margin=%.4f cost=%d pledge=%d",
                     pool_id, margin, cost_lovelace, pledge_lovelace)
+        # Phase 3: pools テーブルに反映
+        try:
+            record_pool_registration(cert, slot)
+        except Exception as e:
+            logger.exception("listener: pool 登録 DB 書込み失敗: %s", e)
         _notify_pool_fee_change(pool_id, margin, cost_lovelace, pledge_lovelace)
 
+    # ── Phase 2: DRep cert ─────────────────────────────────────────────────
+    elif cert_type == "delegateRepresentativeRegistration":
+        try:
+            record_drep_registration(cert, slot)
+        except Exception as e:
+            logger.exception("listener: DRep 登録 DB 書込み失敗: %s", e)
 
-def _process_tx(tx: dict) -> None:
+    elif cert_type == "delegateRepresentativeRetirement":
+        try:
+            record_drep_retirement(cert, slot)
+        except Exception as e:
+            logger.exception("listener: DRep 退任 DB 書込み失敗: %s", e)
+
+    elif cert_type == "delegateRepresentativeUpdate":
+        try:
+            record_drep_update(cert, slot)
+        except Exception as e:
+            logger.exception("listener: DRep 更新 DB 書込み失敗: %s", e)
+
+    # ── Phase 4: 委任 cert ─────────────────────────────────────────────────
+    elif cert_type == "stakeDelegation":
+        try:
+            record_stake_delegation(cert, slot)
+        except Exception as e:
+            logger.exception("listener: stake 委任 DB 書込み失敗: %s", e)
+
+    elif cert_type == "voteDelegation":
+        try:
+            record_vote_delegation(cert, slot)
+        except Exception as e:
+            logger.exception("listener: vote 委任 DB 書込み失敗: %s", e)
+
+    elif cert_type == "stakeAndVoteDelegation":
+        try:
+            record_stake_and_vote_delegation(cert, slot)
+        except Exception as e:
+            logger.exception("listener: stake+vote 委任 DB 書込み失敗: %s", e)
+
+    elif cert_type in (
+        "stakeRegistrationAndDelegation",
+        "stakeRegistrationAndVoteDelegation",
+        "stakeRegistrationAndStakeAndVoteDelegation",
+    ):
+        try:
+            record_combined_registration_and_delegation(cert, slot)
+        except Exception as e:
+            logger.exception("listener: stake 登録 + 委任合体 cert DB 書込み失敗: %s", e)
+
+
+def _process_tx(tx: dict, slot: int, current_epoch: int) -> None:
     tx_id = tx.get("id", "")
 
     for cert in tx.get("certificates", []):
         try:
-            _process_cert(cert)
+            _process_cert(cert, slot)
         except Exception as e:
             logger.exception("cert 処理エラー tx=%s: %s", tx_id, e)
 
-    for proposal in tx.get("proposals", []):
+    for proposal_idx, proposal in enumerate(tx.get("proposals", []) or []):
         try:
             action_type = proposal.get("action", {}).get("type", "")
-            logger.info("governance_action 検知: tx=%s type=%s", tx_id, action_type)
+            logger.info("governance_action 検知: tx=%s idx=%d type=%s", tx_id, proposal_idx, action_type)
+            # Phase 1: governance_actions に直接 INSERT
+            try:
+                record_proposal_from_event(tx_id, proposal_idx, proposal, slot, current_epoch)
+            except Exception as e:
+                logger.exception("listener: GA DB 書込み失敗 tx=%s idx=%d: %s", tx_id, proposal_idx, e)
+            # 通知発火 (Phase 1 では従来どおり)
             _notify_governance_action(tx_id, action_type)
         except Exception as e:
             logger.exception("proposal 処理エラー tx=%s: %s", tx_id, e)
@@ -523,7 +608,14 @@ def _process_tx(tx: dict) -> None:
     for vote in tx.get("votes", []):
         try:
             voter = vote.get("voter", {})
-            if voter.get("role") != "delegateRepresentative":
+            voter_role = voter.get("role")
+            # Phase 1: 全 voter role を proposal_votes に書く (DRep / SPO / CC)
+            try:
+                record_vote_from_event(vote, slot)
+            except Exception as e:
+                logger.exception("listener: vote DB 書込み失敗 tx=%s: %s", tx_id, e)
+            # 通知発火は従来どおり DRep のみ
+            if voter_role != "delegateRepresentative":
                 continue
             drep_id = voter.get("id", "")
             vote_str = vote.get("vote", "")
@@ -552,9 +644,14 @@ def _process_block(block: dict, prev_epoch: int) -> int:
                     _notify_pool_epoch_performance(prev_epoch)
                 except Exception as e:
                     logger.exception("pool_epoch_performance 通知エラー: %s", e)
+                # Phase 5: エポック境界に依存する各種 *_sync を非同期で発火
+                try:
+                    trigger_epoch_syncs(current_epoch)
+                except Exception as e:
+                    logger.exception("epoch_start sync 起動エラー: %s", e)
 
     for tx in block.get("transactions", []):
-        _process_tx(tx)
+        _process_tx(tx, slot, current_epoch)
 
     # ライブブロック一覧用に記録（ダッシュボード /staking で表示）
     _record_recent_block(block, current_epoch)
@@ -695,14 +792,15 @@ async def _run(ogmios_url: str, from_tip: bool = False) -> None:
             elif direction == "backward":
                 point = result.get("point", {})
                 if not isinstance(point, dict):
-                    # "origin" 文字列の場合: カーソル + recent_blocks 全消し
-                    logger.info("rollback: origin まで巻き戻し → recent_blocks 全削除")
+                    # "origin" 文字列の場合: カーソル + 全 listener-managed テーブル全消し
+                    logger.info("rollback: origin まで巻き戻し")
                     try:
                         deleted = delete_blocks_after_slot(0)
                         if deleted:
                             logger.info("rollback: recent_blocks から %d 件削除", deleted)
                     except Exception as e:
                         logger.warning("rollback の recent_blocks 削除失敗: %s", e)
+                    rollback_listener_state(0)
                     prev_epoch = -1
                     continue
                 slot = point.get("slot", 0)
@@ -716,6 +814,8 @@ async def _run(ogmios_url: str, from_tip: bool = False) -> None:
                         logger.info("rollback: slot > %d のブロックを %d 件削除", slot, deleted)
                 except Exception as e:
                     logger.warning("rollback の recent_blocks 削除失敗: %s", e)
+                # listener-managed テーブルも巻き戻す (Phase 1〜4 で対象が増える)
+                rollback_listener_state(int(slot))
                 if slot:
                     prev_epoch = _epoch_from_slot(slot)
 

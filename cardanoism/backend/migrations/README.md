@@ -32,6 +32,10 @@ Cardanoism の MariaDB スキーマ定義。
 | 019 | `019_constitution_cache.sql` | constitution_cache（憲法本文 + 日本語訳キャッシュ、id=1 固定） |
 | 020 | `020_treasury_history.sql` | treasury_history（エポックごとのトレジャリー残高履歴） |
 | 021 | `021_governance_ai_analysis_facts.sql` | governance_ai_analysis をファクト整理ベースに変更（スコア / verdict / KPI 等を廃止、proposal_facts_json / rule_checks_json 追加） |
+| 022 | `022_stake_address_verification.sql` | stake_addresses に verified / verified_at + wallet_verification_nonces |
+| 023 | `023_pools_apy.sql` | pools.apy_history_7ep |
+| 024 | `024_stake_rewards.sql` | stake_rewards（ステークアドレスごとのエポック別報酬） |
+| 025 | `025_listener_event_slot.sql` | governance_actions / proposal_votes / dreps / pools / stake_addresses に last_event_slot を追加（Ogmios listener の rollback 対応） |
 
 ## 適用例
 

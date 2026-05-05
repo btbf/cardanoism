@@ -257,7 +257,8 @@ def upsert_proposal(fields: dict) -> bool:
                 dropped_epoch, expired_epoch, expiration,
                 block_time, meta_url, meta_hash, meta_is_valid,
                 title, `abstract`, motivation, rationale, references_json,
-                action_anchor_url, action_anchor_hash
+                action_anchor_url, action_anchor_hash,
+                last_event_slot
             ) VALUES (
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
@@ -265,7 +266,8 @@ def upsert_proposal(fields: dict) -> bool:
                 ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
-                ?, ?
+                ?, ?,
+                ?
             )
             ON DUPLICATE KEY UPDATE
                 -- ステータスエポック + 引き出し情報 + action anchor を更新
@@ -277,6 +279,8 @@ def upsert_proposal(fields: dict) -> bool:
                 withdrawal_json           = VALUES(withdrawal_json),
                 action_anchor_url         = VALUES(action_anchor_url),
                 action_anchor_hash        = VALUES(action_anchor_hash),
+                -- last_event_slot は listener が書いた値を保持 (Koios 由来 NULL で上書きしない)
+                last_event_slot           = COALESCE(VALUES(last_event_slot), last_event_slot),
                 updated_at                = NOW()
             """,
             (
@@ -291,6 +295,7 @@ def upsert_proposal(fields: dict) -> bool:
                 fields["title"],           fields["abstract"],
                 fields["motivation"],      fields["rationale"],        fields["references_json"],
                 fields.get("action_anchor_url"), fields.get("action_anchor_hash"),
+                fields.get("last_event_slot"),
             ),
         )
         conn.commit()
