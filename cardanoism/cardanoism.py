@@ -56,6 +56,15 @@ _GA_TRACKING_ID = "G-EEG3K7D578"
 _GA_INLINE_SCRIPT = (
     "window.dataLayer = window.dataLayer || [];"
     "function gtag(){dataLayer.push(arguments);}"
+    # Consent Mode v2: ユーザー同意を得るまで GA は cookieless / no-ping
+    # CookieConsentState がユーザー操作後に gtag('consent','update',...) で許可へ切替える
+    "gtag('consent', 'default', {"
+    "  analytics_storage: 'denied',"
+    "  ad_storage: 'denied',"
+    "  ad_user_data: 'denied',"
+    "  ad_personalization: 'denied',"
+    "  wait_for_update: 500"
+    "});"
     "gtag('js', new Date());"
     # send_page_view: false で auto 発火を止め、自前で全 navigation 通知する
     f"gtag('config', '{_GA_TRACKING_ID}', {{ send_page_view: false }});"
