@@ -476,7 +476,7 @@ def _notify_spo_pending_vote(tx_id: str, action_type_raw: str) -> None:
         )
         flex_and_log(
             addr["line_notify_id"], user_id, "spo_pending_vote", dedup_key, alt,
-            line_flex.drep_new_governance_action(label, gov_url, lang=lang),
+            line_flex.spo_pending_vote(label, gov_url, lang=lang),
         )
 
     for addr in email_addrs:

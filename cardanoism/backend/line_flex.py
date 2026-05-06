@@ -692,3 +692,71 @@ def drep_delegation_reminder(
         url,
         t["footer_governance"],
     )
+
+
+# ============================================================
+# treasury_withdrawal_enacted
+# ============================================================
+
+def treasury_withdrawal_enacted(
+    title: str,
+    enacted_epoch: int,
+    url: str,
+    lang: str = "ja",
+) -> dict:
+    """トレジャリー引き出し提案が enacted (施行) されたときの全ユーザー向け通知。"""
+    t = get_flex(lang)
+    return _bubble(
+        _header(t["treasury_enacted_title"], t["treasury_enacted_subtitle"]),
+        [
+            {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "sm",
+                "contents": [
+                    _row(t["treasury_enacted_proposal_label"], title or "-", TEXT_PRIMARY),
+                    _row(t["treasury_enacted_epoch_label"], f"Epoch {enacted_epoch}", TEXT_DOWN),
+                ],
+            },
+        ],
+        url,
+        t["footer_governance"],
+    )
+
+
+# ============================================================
+# spo_pending_vote
+# ============================================================
+
+def spo_pending_vote(
+    proposal_type_label: str,
+    url: str,
+    lang: str = "ja",
+) -> dict:
+    """SPO 投票対象の新ガバナンスアクション提出通知。drep_new_governance_action と
+    類似のレイアウトだが SPO 文脈を強調する。
+    """
+    t = get_flex(lang)
+    return _bubble(
+        _header(t["spo_pending_vote_title"], t["spo_pending_vote_subtitle"]),
+        [
+            {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "sm",
+                "contents": [
+                    _row(t["drep_new_gov_type_label"], proposal_type_label, TEXT_PRIMARY),
+                ],
+            },
+            {
+                "type": "text",
+                "text": t["spo_pending_vote_hint"],
+                "size": "xs",
+                "color": TEXT_SECONDARY,
+                "wrap": True,
+                "margin": "md",
+            },
+        ],
+        url,
+        t["footer_governance"],
+    )

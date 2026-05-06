@@ -1582,6 +1582,17 @@ FLEX_JA: dict[str, str] = {
 
     # APY
     "apy_label": "APY",
+
+    # treasury_withdrawal_enacted
+    "treasury_enacted_title":          "🏛️ トレジャリー引き出し",
+    "treasury_enacted_subtitle":       "引き出し提案が施行されました",
+    "treasury_enacted_proposal_label": "提案タイトル",
+    "treasury_enacted_epoch_label":    "施行エポック",
+
+    # spo_pending_vote
+    "spo_pending_vote_title":    "👑 SPO 投票対象 GA",
+    "spo_pending_vote_subtitle": "あなたのプールが投票可能な提案です",
+    "spo_pending_vote_hint":     "プールに代わって投票することを検討してください",
 }
 
 FLEX_EN: dict[str, str] = {
@@ -1672,6 +1683,17 @@ FLEX_EN: dict[str, str] = {
 
     # APY
     "apy_label": "APY",
+
+    # treasury_withdrawal_enacted
+    "treasury_enacted_title":          "🏛️ Treasury Withdrawal",
+    "treasury_enacted_subtitle":       "Withdrawal proposal enacted",
+    "treasury_enacted_proposal_label": "Proposal title",
+    "treasury_enacted_epoch_label":    "Enacted epoch",
+
+    # spo_pending_vote
+    "spo_pending_vote_title":    "👑 SPO-eligible GA",
+    "spo_pending_vote_subtitle": "Your pool can vote on this proposal",
+    "spo_pending_vote_hint":     "Consider casting a vote on behalf of your pool",
 }
 
 

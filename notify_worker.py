@@ -2043,18 +2043,13 @@ def check_treasury_events():
             if already_sent(u["id"], "treasury_withdrawal_enacted", dk):
                 continue
             lang = u.get("language", "ja")
-            msg = (
-                f"🏛️ 【トレジャリー引き出しが施行されました】\n"
-                f"タイトル: {title}\n"
-                f"施行エポック: {enacted_epoch}\n"
-                f"詳細: {proposal_url}"
+            alt = (
+                f"【Cardanoism】トレジャリー引き出しが施行: {title}"
                 if lang == "ja" else
-                f"🏛️ [Treasury Withdrawal Enacted]\n"
-                f"Title: {title}\n"
-                f"Enacted Epoch: {enacted_epoch}\n"
-                f"Details: {proposal_url}"
+                f"[Cardanoism] Treasury withdrawal enacted: {title}"
             )
-            push_and_log(u["line_notify_id"], u["id"], "treasury_withdrawal_enacted", dk, msg)
+            contents = line_flex.treasury_withdrawal_enacted(title, enacted_epoch, proposal_url, lang=lang)
+            flex_and_log(u["line_notify_id"], u["id"], "treasury_withdrawal_enacted", dk, alt, contents)
 
         for u in email_users:
             dk = dedup_base + "_email"
@@ -2264,19 +2259,37 @@ _DUMMY = {
     "epoch": 624,
     "reward_epoch": 622,
     "amount_ada": 12.345678,
+    "leader_amount_ada": 245.678901,
     "apy": 3.45,
+    "active_stake_ada": 5_000_000.0,
+    "saturation_pct": 78.5,
+    "block_cnt": 3,
+    "proposal_title": "Treasury Withdrawal — DUMMY Title",
+    "proposal_action_type_ja": "国庫引き出し",
+    "proposal_action_type_en": "Treasury Withdrawals",
+    "old_margin_pct": 1.0,
+    "new_margin_pct": 2.0,
+    "old_fixed_ada": 170.0,
+    "new_fixed_ada": 340.0,
     "_lang": "ja",  # テスト送信時の言語（_get_user_info で上書きされる）
 }
 
 _ALL_TEST_EVENTS = [
     "epoch_start",
+    "pool_retire",
+    "pool_fee_change",
     "pool_saturation",
     "pool_pledge_shortage",
     "pool_reward_received",
+    "pool_reward_received_leader",
     "pool_epoch_performance",
     "pool_delegation_reminder",
+    "drep_new_governance_action",
+    "drep_vote",
     "drep_status_change",
     "drep_delegation_reminder",
+    "treasury_withdrawal_enacted",
+    "spo_pending_vote",
 ]
 
 
@@ -2285,6 +2298,31 @@ def _build_dummy_flex(ev: str) -> tuple[str, dict] | None:
     d = _DUMMY
     lang = d.get("_lang", "ja")
     ja = lang == "ja"
+    action_label = d["proposal_action_type_ja"] if ja else d["proposal_action_type_en"]
+
+    if ev == "epoch_start":
+        return (
+            f"【Cardanoism】Epoch {d['epoch']} が始まりました" if ja
+            else f"[Cardanoism] Epoch {d['epoch']} has started",
+            line_flex.epoch_start(d["epoch"], CARDANOISM_URL, lang=lang),
+        )
+    if ev == "pool_retire":
+        return (
+            f"【Cardanoism】委任先プール「{d['pool_name']}」が引退予告を出しました" if ja
+            else f"[Cardanoism] Pool '{d['pool_name']}' announced retirement",
+            line_flex.pool_retire(d["pool_name"], d["epoch"] + 5, d["nickname"], CARDANOISM_URL, lang=lang),
+        )
+    if ev == "pool_fee_change":
+        return (
+            f"【Cardanoism】委任先プール「{d['pool_name']}」の手数料が変更されました" if ja
+            else f"[Cardanoism] Pool '{d['pool_name']}' fees changed",
+            line_flex.pool_fee_change(
+                d["pool_name"],
+                d["old_margin_pct"], d["new_margin_pct"],
+                d["old_fixed_ada"], d["new_fixed_ada"],
+                d["apy"], d["nickname"], CARDANOISM_URL, lang=lang,
+            ),
+        )
     if ev == "pool_saturation":
         return (
             f"【Cardanoism】委任先プール「{d['pool_name']}」が飽和ラインを超えました（108.3%）" if ja else f"[Cardanoism] Pool '{d['pool_name']}' exceeded saturation (108.3%)",
@@ -2298,12 +2336,50 @@ def _build_dummy_flex(ev: str) -> tuple[str, dict] | None:
     if ev == "pool_reward_received":
         return (
             f"【Cardanoism】Epoch {d['reward_epoch']} 分の報酬が入金されました" if ja else f"[Cardanoism] Rewards for Epoch {d['reward_epoch']} have arrived",
-            line_flex.pool_reward_received(d["reward_epoch"], d["amount_ada"], d["apy"], d["nickname"], CARDANOISM_URL, lang=lang),
+            line_flex.pool_reward_received(
+                d["reward_epoch"], d["amount_ada"], d["apy"], d["nickname"], CARDANOISM_URL,
+                lang=lang, is_leader=False,
+            ),
+        )
+    if ev == "pool_reward_received_leader":
+        return (
+            f"【Cardanoism】Epoch {d['reward_epoch']} の SPO 報酬 (Leader) が入金されました" if ja
+            else f"[Cardanoism] SPO leader rewards for Epoch {d['reward_epoch']} have arrived",
+            line_flex.pool_reward_received(
+                d["reward_epoch"], d["leader_amount_ada"], d["apy"], d["nickname"], CARDANOISM_URL,
+                lang=lang, is_leader=True,
+            ),
+        )
+    if ev == "pool_epoch_performance":
+        return (
+            f"【Cardanoism】Epoch {d['epoch'] - 1} のプール実績通知" if ja
+            else f"[Cardanoism] Pool performance for Epoch {d['epoch'] - 1}",
+            line_flex.pool_epoch_performance(
+                d["pool_name"], d["epoch"] - 1,
+                d["active_stake_ada"], d["saturation_pct"], d["block_cnt"], d["apy"],
+                d["nickname"], CARDANOISM_URL, lang=lang,
+            ),
         )
     if ev == "pool_delegation_reminder":
         return (
             "【Cardanoism】委任から90日が経過しました。委任先プールを確認しましょう" if ja else "[Cardanoism] 90 days since delegation. Please check your pool.",
             line_flex.pool_delegation_reminder(d["pool_name"], 90, d["apy"], d["nickname"], CARDANOISM_URL, lang=lang),
+        )
+    if ev == "drep_new_governance_action":
+        return (
+            f"【Cardanoism】新しいガバナンスアクションが提出されました: {action_label}" if ja
+            else f"[Cardanoism] New governance action submitted: {action_label}",
+            line_flex.drep_new_governance_action(action_label, f"{CARDANOISM_URL}/governance", lang=lang),
+        )
+    if ev == "drep_vote":
+        vote_label = "賛成" if ja else "Yes"
+        return (
+            f"【Cardanoism】委任先DRep「{d['drep_name']}」が投票しました: {vote_label}" if ja
+            else f"[Cardanoism] Delegated DRep '{d['drep_name']}' voted: {vote_label}",
+            line_flex.drep_vote(
+                d["drep_name"], "yes", d["proposal_title"], d["nickname"],
+                f"{CARDANOISM_URL}/governance", lang=lang,
+            ),
         )
     if ev == "drep_status_change":
         return (
@@ -2314,6 +2390,20 @@ def _build_dummy_flex(ev: str) -> tuple[str, dict] | None:
         return (
             "【Cardanoism】委任から90日が経過しました。委任先DRepを確認しましょう" if ja else "[Cardanoism] 90 days since delegation. Please check your DRep.",
             line_flex.drep_delegation_reminder(d["drep_name"], 90, d["nickname"], f"{CARDANOISM_URL}/governance", lang=lang),
+        )
+    if ev == "treasury_withdrawal_enacted":
+        return (
+            f"【Cardanoism】トレジャリー引き出しが施行: {d['proposal_title']}" if ja
+            else f"[Cardanoism] Treasury withdrawal enacted: {d['proposal_title']}",
+            line_flex.treasury_withdrawal_enacted(
+                d["proposal_title"], d["epoch"], f"{CARDANOISM_URL}/governance/treasury", lang=lang,
+            ),
+        )
+    if ev == "spo_pending_vote":
+        return (
+            f"【Cardanoism】SPO 投票対象の新ガバナンスアクション: {action_label}" if ja
+            else f"[Cardanoism] New SPO-eligible governance action: {action_label}",
+            line_flex.spo_pending_vote(action_label, f"{CARDANOISM_URL}/governance", lang=lang),
         )
     return None
 
