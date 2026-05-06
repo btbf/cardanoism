@@ -36,6 +36,10 @@ Cardanoism の MariaDB スキーマ定義。
 | 023 | `023_pools_apy.sql` | pools.apy_history_7ep |
 | 024 | `024_stake_rewards.sql` | stake_rewards（ステークアドレスごとのエポック別報酬） |
 | 025 | `025_listener_event_slot.sql` | governance_actions / proposal_votes / dreps / pools / stake_addresses に last_event_slot を追加（Ogmios listener の rollback 対応） |
+| 026 | `026_stake_addresses_spo.sql` | stake_addresses.spo_pool_id (SPO 識別) |
+| 027 | `027_stake_rewards_type.sql` | stake_rewards.reward_type (member / leader / other 分離) + UNIQUE KEY 変更 |
+| 028 | `028_governance_actions_spo_target.sql` | governance_actions.spo_target (SPO 投票対象判定) |
+| 029 | `029_notification_channels_telegram.sql` | notification_channels.channel_type ENUM に 'telegram' を追加（既存 DB の古い ENUM 補完用、冪等） |
 
 ## 適用例
 
