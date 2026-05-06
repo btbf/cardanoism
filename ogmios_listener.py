@@ -182,9 +182,14 @@ def _set_pool_fee_state(pool_id: str, value: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _notify_pool_epoch_performance(prev_epoch: int) -> None:
+    from cardanoism.backend.notify_templates import deliver
+    from cardanoism.backend.notify_templates.pool_epoch_performance import (
+        context as build_ctx, EVENT_TYPE,
+    )
     addrs = _merge_stake_channels(
         get_stake_addrs_with_event("pool_epoch_performance"),
         get_stake_addrs_with_email_event("pool_epoch_performance"),
+        get_stake_addrs_with_telegram_event("pool_epoch_performance"),
     )
     addrs = [a for a in addrs if a.get("delegated_pool_id")]
     if not addrs:
@@ -206,55 +211,17 @@ def _notify_pool_epoch_performance(prev_epoch: int) -> None:
         stats = stats_cache.get(pool_id)
         if not stats:
             continue
-
-        user_id = addr["user_id"]
-        lang = addr.get("language", "ja")
         pool_name = addr.get("delegated_pool_name") or get_pool_name(pool_id) or pool_id[:12]
-        nickname = addr["nickname"]
-        dedup_key = f"pool_epoch_perf_{addr['stake_id']}_{prev_epoch}"
-
-        if addr.get("line_notify_id") and not already_sent(user_id, "pool_epoch_performance", dedup_key):
-            alt = (f"【Cardanoism】Epoch {prev_epoch} の{pool_name}実績が確定しました" if lang == "ja"
-                   else f"[Cardanoism] Epoch {prev_epoch} performance for {pool_name}")
-            flex_and_log(addr["line_notify_id"], user_id, "pool_epoch_performance", dedup_key, alt,
-                         line_flex.pool_epoch_performance(
-                             pool_name=pool_name, epoch_no=prev_epoch,
-                             active_stake_ada=stats["active_stake_ada"],
-                             saturation_pct=stats["saturation_pct"],
-                             block_cnt=stats["block_cnt"],
-                             apy=stats["apy"],
-                             nickname=nickname, url=CARDANOISM_URL, lang=lang,
-                             apy_epoch_no=apy_epoch if stats["apy"] is not None else None,
-                         ))
-
-        if addr.get("email_addr"):
-            dk = dedup_key + "_email"
-            if not already_sent(user_id, "pool_epoch_performance", dk):
-                subj = (f"Epoch {prev_epoch} の{pool_name}実績が確定しました" if lang == "ja"
-                        else f"Epoch {prev_epoch} performance for {pool_name}")
-                if lang == "ja":
-                    ls = [f"ウォレット: {nickname}", f"プール: {pool_name}", f"エポック: {prev_epoch}"]
-                    if stats["active_stake_ada"] is not None:
-                        ls.append(f"有効ステーク: {stats['active_stake_ada'] / 1_000_000:,.1f}M ADA")
-                    if stats["saturation_pct"] is not None:
-                        ls.append(f"飽和度: {stats['saturation_pct']:.1f}%")
-                    if stats["block_cnt"] is not None:
-                        ls.append(f"ブロック生成数: {stats['block_cnt']}")
-                    if stats["apy"] is not None:
-                        ls.append(f"APY（Ep.{apy_epoch} 実績）: {stats['apy']:.2f}%")
-                else:
-                    ls = [f"Wallet: {nickname}", f"Pool: {pool_name}", f"Epoch: {prev_epoch}"]
-                    if stats["active_stake_ada"] is not None:
-                        ls.append(f"Active Stake: {stats['active_stake_ada'] / 1_000_000:,.1f}M ADA")
-                    if stats["saturation_pct"] is not None:
-                        ls.append(f"Saturation: {stats['saturation_pct']:.1f}%")
-                    if stats["block_cnt"] is not None:
-                        ls.append(f"Blocks Minted: {stats['block_cnt']}")
-                    if stats["apy"] is not None:
-                        ls.append(f"APY (Ep.{apy_epoch}): {stats['apy']:.2f}%")
-                email_and_log(addr["email_addr"], user_id, "pool_epoch_performance", dk, subj,
-                              build_html(subj, ls, CARDANOISM_URL, "マイページを開く" if lang == "ja" else "Open MyPage", lang),
-                              build_text(subj, ls, CARDANOISM_URL, lang))
+        ctx = build_ctx(
+            pool_name=pool_name, prev_epoch=prev_epoch,
+            active_stake_ada=stats["active_stake_ada"],
+            saturation_pct=stats["saturation_pct"],
+            block_cnt=stats["block_cnt"],
+            apy=stats["apy"], apy_epoch=apy_epoch if stats["apy"] is not None else None,
+            nickname=addr["nickname"], base_url=CARDANOISM_URL,
+        )
+        deliver(addr, EVENT_TYPE, ctx,
+                dedup_base=f"pool_epoch_perf_{addr['stake_id']}_{prev_epoch}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -262,28 +229,29 @@ def _notify_pool_epoch_performance(prev_epoch: int) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _notify_epoch_start(epoch: int) -> None:
-    for user in get_users_with_event("epoch_start"):
-        dedup_key = f"epoch_{epoch}"
-        if already_sent(user["id"], "epoch_start", dedup_key):
-            continue
-        lang = user.get("language", "ja")
-        alt = (f"【Cardanoism】新しいエポック（Epoch {epoch}）が始まりました" if lang == "ja"
-               else f"[Cardanoism] New epoch started (Epoch {epoch})")
-        flex_and_log(user["line_notify_id"], user["id"], "epoch_start", dedup_key, alt,
-                     line_flex.epoch_start(epoch, CARDANOISM_URL, lang=lang))
+    """新エポック開始通知。3 チャンネル統合送信を notify_templates 経由で行う。"""
+    from cardanoism.backend.notify_templates import (
+        deliver, merge_user_channels,
+    )
+    from cardanoism.backend.notify_templates.epoch_start import (
+        context as build_ctx, EVENT_TYPE,
+    )
 
-    for user in get_users_with_email_event("epoch_start"):
-        dedup_key = f"epoch_{epoch}_email"
-        if already_sent(user["id"], "epoch_start", dedup_key):
-            continue
-        lang = user.get("language", "ja")
-        subj = (f"新しいエポック（Epoch {epoch}）が始まりました" if lang == "ja"
-                else f"New epoch started (Epoch {epoch})")
-        ls = ([f"Epoch {epoch} が始まりました。", "Cardanoism でガバナンス情報や委任状況をご確認ください。"] if lang == "ja"
-              else [f"Epoch {epoch} has started.", "Check governance info and delegation status on Cardanoism."])
-        email_and_log(user["email_addr"], user["id"], "epoch_start", dedup_key, subj,
-                      build_html(subj, ls, CARDANOISM_URL, "Cardanoismを開く" if lang == "ja" else "Open Cardanoism", lang),
-                      build_text(subj, ls, CARDANOISM_URL, lang))
+    line_users = get_users_with_event("epoch_start")
+    email_users = get_users_with_email_event("epoch_start")
+    try:
+        from notify_worker import get_users_with_telegram_event
+        tg_users = get_users_with_telegram_event("epoch_start")
+    except Exception:
+        tg_users = []
+
+    addrs = merge_user_channels(line_users, email_users, tg_users)
+    if not addrs:
+        return
+
+    ctx = build_ctx(epoch, CARDANOISM_URL)
+    for addr in addrs:
+        deliver(addr, EVENT_TYPE, ctx, dedup_base=f"epoch_{epoch}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -291,35 +259,23 @@ def _notify_epoch_start(epoch: int) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _notify_pool_retire(pool_id: str, retiring_epoch: int) -> None:
+    from cardanoism.backend.notify_templates import deliver
+    from cardanoism.backend.notify_templates.pool_retire import context as build_ctx, EVENT_TYPE
     addrs = _merge_stake_channels(
         get_stake_addrs_with_event("pool_retire"),
         get_stake_addrs_with_email_event("pool_retire"),
+        get_stake_addrs_with_telegram_event("pool_retire"),
     )
     for addr in addrs:
         if addr.get("delegated_pool_id") != pool_id:
             continue
-        user_id = addr["user_id"]
-        lang = addr.get("language", "ja")
         pool_name = addr.get("delegated_pool_name") or get_pool_name(pool_id) or pool_id[:12]
-        nickname = addr["nickname"]
-        dedup_key = f"pool_retire_{addr['stake_id']}_{retiring_epoch}"
-
-        if addr.get("line_notify_id") and not already_sent(user_id, "pool_retire", dedup_key):
-            alt = (f"【Cardanoism】委任先プール「{pool_name}」が Epoch {retiring_epoch} にリタイアします" if lang == "ja"
-                   else f"[Cardanoism] Pool '{pool_name}' will retire at Epoch {retiring_epoch}")
-            flex_and_log(addr["line_notify_id"], user_id, "pool_retire", dedup_key, alt,
-                         line_flex.pool_retire(pool_name, retiring_epoch, nickname, CARDANOISM_URL, lang=lang))
-
-        if addr.get("email_addr"):
-            dk = dedup_key + "_email"
-            if not already_sent(user_id, "pool_retire", dk):
-                subj = (f"委任先プール「{pool_name}」が Epoch {retiring_epoch} にリタイアします" if lang == "ja"
-                        else f"Pool '{pool_name}' will retire at Epoch {retiring_epoch}")
-                ls = ([f"ウォレット: {nickname}", f"プール「{pool_name}」は Epoch {retiring_epoch} にリタイアする予定です。", "委任先の変更をご検討ください。"] if lang == "ja"
-                      else [f"Wallet: {nickname}", f"Pool '{pool_name}' is scheduled to retire at Epoch {retiring_epoch}.", "Please consider changing your delegation."])
-                email_and_log(addr["email_addr"], user_id, "pool_retire", dk, subj,
-                              build_html(subj, ls, CARDANOISM_URL, "マイページを開く" if lang == "ja" else "Open MyPage", lang),
-                              build_text(subj, ls, CARDANOISM_URL, lang))
+        ctx = build_ctx(
+            pool_name=pool_name, retiring_epoch=retiring_epoch,
+            nickname=addr["nickname"], base_url=CARDANOISM_URL,
+        )
+        deliver(addr, EVENT_TYPE, ctx,
+                dedup_base=f"pool_retire_{addr['stake_id']}_{retiring_epoch}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -341,6 +297,7 @@ def _notify_pool_fee_change(pool_id: str, margin: float, fixed_cost: int, pledge
     addrs = _merge_stake_channels(
         get_stake_addrs_with_event("pool_fee_change"),
         get_stake_addrs_with_email_event("pool_fee_change"),
+        get_stake_addrs_with_telegram_event("pool_fee_change"),
     )
     addrs = [a for a in addrs if a.get("delegated_pool_id") == pool_id]
     if not addrs:
@@ -356,56 +313,21 @@ def _notify_pool_fee_change(pool_id: str, margin: float, fixed_cost: int, pledge
     fixed_ada = fixed_cost / 1_000_000
     pledge_ada = pledge / 1_000_000
 
-    fee_changed = (old_margin_pct != margin_pct or old_fixed_ada != fixed_ada)
-    # old_pledge_ada が None（旧フォーマット）の場合も pledge 変化として扱う
-    pledge_changed = (old_pledge_ada != pledge_ada)
+    from cardanoism.backend.notify_templates import deliver
+    from cardanoism.backend.notify_templates.pool_fee_change import context as build_ctx, EVENT_TYPE
 
     for addr in addrs:
-        user_id = addr["user_id"]
-        lang = addr.get("language", "ja")
         pool_name = addr.get("delegated_pool_name") or get_pool_name(pool_id) or pool_id[:12]
-        nickname = addr["nickname"]
-        dedup_key = f"pool_fee_change_{addr['stake_id']}_{current_val}"
-
-        if addr.get("line_notify_id") and not already_sent(user_id, "pool_fee_change", dedup_key):
-            alt = (f"【Cardanoism】委任先プール「{pool_name}」の手数料が変更されました" if lang == "ja"
-                   else f"[Cardanoism] Pool '{pool_name}' fee has changed")
-            flex_and_log(addr["line_notify_id"], user_id, "pool_fee_change", dedup_key, alt,
-                         line_flex.pool_fee_change(
-                             pool_name=pool_name, old_margin_pct=old_margin_pct, new_margin_pct=margin_pct,
-                             old_fixed_ada=old_fixed_ada, new_fixed_ada=fixed_ada, apy=None,
-                             nickname=nickname, url=CARDANOISM_URL, lang=lang,
-                             old_pledge_ada=old_pledge_ada, new_pledge_ada=pledge_ada,
-                         ))
-
-        if addr.get("email_addr"):
-            dk = dedup_key + "_email"
-            if not already_sent(user_id, "pool_fee_change", dk):
-                subj = (f"委任先プール「{pool_name}」の手数料が変更されました" if lang == "ja"
-                        else f"Pool '{pool_name}' fee has changed")
-                if lang == "ja":
-                    ls = [f"ウォレット: {nickname}"]
-                    if fee_changed:
-                        ls += [f"変動手数料: {old_margin_pct:.2f}% → {margin_pct:.2f}%",
-                               f"固定手数料: {old_fixed_ada:.0f} ADA → {fixed_ada:.0f} ADA"]
-                    if pledge_changed:
-                        if old_pledge_ada is not None:
-                            ls.append(f"誓約: {old_pledge_ada:.0f} ADA → {pledge_ada:.0f} ADA")
-                        else:
-                            ls.append(f"誓約: {pledge_ada:.0f} ADA")
-                else:
-                    ls = [f"Wallet: {nickname}"]
-                    if fee_changed:
-                        ls += [f"Margin: {old_margin_pct:.2f}% → {margin_pct:.2f}%",
-                               f"Fixed cost: {old_fixed_ada:.0f} ADA → {fixed_ada:.0f} ADA"]
-                    if pledge_changed:
-                        if old_pledge_ada is not None:
-                            ls.append(f"Pledge: {old_pledge_ada:.0f} ADA → {pledge_ada:.0f} ADA")
-                        else:
-                            ls.append(f"Pledge: {pledge_ada:.0f} ADA")
-                email_and_log(addr["email_addr"], user_id, "pool_fee_change", dk, subj,
-                              build_html(subj, ls, CARDANOISM_URL, "マイページを開く" if lang == "ja" else "Open MyPage", lang),
-                              build_text(subj, ls, CARDANOISM_URL, lang))
+        ctx = build_ctx(
+            pool_name=pool_name,
+            old_margin_pct=old_margin_pct, new_margin_pct=margin_pct,
+            old_fixed_ada=old_fixed_ada,   new_fixed_ada=fixed_ada,
+            old_pledge_ada=old_pledge_ada, new_pledge_ada=pledge_ada,
+            apy=None,
+            nickname=addr["nickname"], base_url=CARDANOISM_URL,
+        )
+        deliver(addr, EVENT_TYPE, ctx,
+                dedup_base=f"pool_fee_change_{addr['stake_id']}_{current_val}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -413,34 +335,24 @@ def _notify_pool_fee_change(pool_id: str, margin: float, fixed_cost: int, pledge
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _notify_governance_action(tx_id: str, action_type_raw: str) -> None:
-    gov_url = f"{CARDANOISM_URL}/governance"
+    from cardanoism.backend.notify_templates import deliver
+    from cardanoism.backend.notify_templates.drep_new_governance_action import (
+        context as build_ctx, EVENT_TYPE,
+    )
 
-    for addr in get_stake_addrs_with_event("drep_new_governance_action"):
-        user_id = addr["user_id"]
-        lang = addr.get("language", "ja")
-        dedup_key = f"new_gov_{tx_id}_{addr['stake_id']}"
-        if already_sent(user_id, "drep_new_governance_action", dedup_key):
-            continue
-        label = (_GA_TYPE_MAP_JA if lang == "ja" else _GA_TYPE_MAP_EN).get(action_type_raw, action_type_raw)
-        alt = (f"【Cardanoism】新しいガバナンスアクションが提出されました: {label}" if lang == "ja"
-               else f"[Cardanoism] New governance action submitted: {label}")
-        flex_and_log(addr["line_notify_id"], user_id, "drep_new_governance_action", dedup_key, alt,
-                     line_flex.drep_new_governance_action(label, gov_url, lang=lang))
+    addrs = _merge_stake_channels(
+        get_stake_addrs_with_event("drep_new_governance_action"),
+        get_stake_addrs_with_email_event("drep_new_governance_action"),
+        get_stake_addrs_with_telegram_event("drep_new_governance_action"),
+    )
+    if not addrs:
+        return
 
-    for addr in get_stake_addrs_with_email_event("drep_new_governance_action"):
-        user_id = addr["user_id"]
+    for addr in addrs:
         lang = addr.get("language", "ja")
-        dk = f"new_gov_{tx_id}_{addr['stake_id']}_email"
-        if already_sent(user_id, "drep_new_governance_action", dk):
-            continue
         label = (_GA_TYPE_MAP_JA if lang == "ja" else _GA_TYPE_MAP_EN).get(action_type_raw, action_type_raw)
-        subj = (f"新しいガバナンスアクションが提出されました: {label}" if lang == "ja"
-                else f"New governance action submitted: {label}")
-        ls = ([f"新しいガバナンスアクション（{label}）が提出されました。", "Cardanoism でアクションの詳細を確認できます。"] if lang == "ja"
-              else [f"A new governance action ({label}) has been submitted.", "Check the details on Cardanoism."])
-        email_and_log(addr["email_addr"], user_id, "drep_new_governance_action", dk, subj,
-                      build_html(subj, ls, gov_url, "ガバナンスを確認" if lang == "ja" else "Check Governance", lang),
-                      build_text(subj, ls, gov_url, lang))
+        ctx = build_ctx(action_label=label, base_url=CARDANOISM_URL)
+        deliver(addr, EVENT_TYPE, ctx, dedup_base=f"new_gov_{tx_id}_{addr['stake_id']}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -453,56 +365,26 @@ def _notify_spo_pending_vote(tx_id: str, action_type_raw: str) -> None:
     対象判定は spo_pool_id が NULL でない stake_address のみ。通知設定 spo_pending_vote
     が ON のチャンネルに送信。
     """
-    gov_url = f"{CARDANOISM_URL}/governance"
-    label_map = _GA_TYPE_MAP_JA  # action_type_raw は Ogmios の camelCase
+    from cardanoism.backend.notify_templates import deliver
+    from cardanoism.backend.notify_templates.spo_pending_vote import (
+        context as build_ctx, EVENT_TYPE,
+    )
 
-    def _spo_only(addrs: list) -> list:
-        return [a for a in addrs if a.get("spo_pool_id")]
+    addrs = _merge_stake_channels(
+        get_stake_addrs_with_event("spo_pending_vote"),
+        get_stake_addrs_with_email_event("spo_pending_vote"),
+        get_stake_addrs_with_telegram_event("spo_pending_vote"),
+    )
+    addrs = [a for a in addrs if a.get("spo_pool_id")]
+    if not addrs:
+        return
 
-    line_addrs = _spo_only(get_stake_addrs_with_event("spo_pending_vote"))
-    email_addrs = _spo_only(get_stake_addrs_with_email_event("spo_pending_vote"))
-
-    for addr in line_addrs:
-        user_id = addr["user_id"]
+    for addr in addrs:
         lang = addr.get("language", "ja")
-        dedup_key = f"spo_pending_{tx_id}_{addr['stake_id']}"
-        if already_sent(user_id, "spo_pending_vote", dedup_key):
-            continue
         label = (_GA_TYPE_MAP_JA if lang == "ja" else _GA_TYPE_MAP_EN).get(action_type_raw, action_type_raw)
-        alt = (
-            f"【Cardanoism】SPO 投票対象の新ガバナンスアクション: {label}"
-            if lang == "ja" else
-            f"[Cardanoism] New SPO-eligible governance action: {label}"
-        )
-        flex_and_log(
-            addr["line_notify_id"], user_id, "spo_pending_vote", dedup_key, alt,
-            line_flex.spo_pending_vote(label, gov_url, lang=lang),
-        )
-
-    for addr in email_addrs:
-        user_id = addr["user_id"]
-        lang = addr.get("language", "ja")
-        dk = f"spo_pending_{tx_id}_{addr['stake_id']}_email"
-        if already_sent(user_id, "spo_pending_vote", dk):
-            continue
-        label = (_GA_TYPE_MAP_JA if lang == "ja" else _GA_TYPE_MAP_EN).get(action_type_raw, action_type_raw)
-        subj = (
-            f"SPO 投票対象の新ガバナンスアクション: {label}"
-            if lang == "ja" else
-            f"New SPO-eligible governance action: {label}"
-        )
-        ls = (
-            [f"SPO が投票可能な新しいガバナンスアクション（{label}）が提出されました。",
-             "あなたのプールに代わって投票することを検討してください。"]
-            if lang == "ja" else
-            [f"A new governance action ({label}) eligible for SPO voting has been submitted.",
-             "Consider casting a vote on behalf of your pool."]
-        )
-        email_and_log(
-            addr["email_addr"], user_id, "spo_pending_vote", dk, subj,
-            build_html(subj, ls, gov_url, "ガバナンスを確認" if lang == "ja" else "Check Governance", lang),
-            build_text(subj, ls, gov_url, lang),
-        )
+        ctx = build_ctx(action_label=label, base_url=CARDANOISM_URL)
+        deliver(addr, EVENT_TYPE, ctx,
+                dedup_base=f"spo_pending_{tx_id}_{addr['stake_id']}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -510,49 +392,29 @@ def _notify_spo_pending_vote(tx_id: str, action_type_raw: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _notify_drep_vote(drep_id: str, vote_str: str, gov_tx_hash: str, gov_index: int) -> None:
+    from cardanoism.backend.notify_templates import deliver
+    from cardanoism.backend.notify_templates.drep_vote import (
+        context as build_ctx, EVENT_TYPE,
+    )
     addrs = _merge_stake_channels(
         get_stake_addrs_with_event("drep_vote"),
         get_stake_addrs_with_email_event("drep_vote"),
+        get_stake_addrs_with_telegram_event("drep_vote"),
     )
     addrs = [a for a in addrs if a.get("delegated_drep_id") == drep_id]
     if not addrs:
         return
 
     proposal_title = get_proposal_title(gov_tx_hash, gov_index) if gov_tx_hash else None
-    gov_url = f"{CARDANOISM_URL}/governance"
-    vote_lower = vote_str.lower()
-    vote_label_ja = {"yes": "賛成", "no": "反対", "abstain": "棄権"}.get(vote_lower, vote_str)
-    vote_label_en = {"yes": "Yes", "no": "No", "abstain": "Abstain"}.get(vote_lower, vote_str)
 
     for addr in addrs:
-        user_id = addr["user_id"]
-        lang = addr.get("language", "ja")
         drep_name = addr.get("delegated_drep_name") or drep_id[:12]
-        nickname = addr["nickname"]
-        dedup_key = f"drep_vote_{addr['stake_id']}_{gov_tx_hash}_{gov_index}"
-
-        if addr.get("line_notify_id") and not already_sent(user_id, "drep_vote", dedup_key):
-            vote_label = vote_label_ja if lang == "ja" else vote_label_en
-            alt = (f"【Cardanoism】委任先DRep「{drep_name}」が投票しました（{vote_label}）" if lang == "ja"
-                   else f"[Cardanoism] Delegated DRep '{drep_name}' voted ({vote_label})")
-            flex_and_log(addr["line_notify_id"], user_id, "drep_vote", dedup_key, alt,
-                         line_flex.drep_vote(drep_name, vote_str, proposal_title, nickname, gov_url, lang=lang))
-
-        if addr.get("email_addr"):
-            dk = dedup_key + "_email"
-            if not already_sent(user_id, "drep_vote", dk):
-                vote_label = vote_label_ja if lang == "ja" else vote_label_en
-                subj = (f"委任先DRep「{drep_name}」が投票しました（{vote_label}）" if lang == "ja"
-                        else f"Delegated DRep '{drep_name}' voted ({vote_label})")
-                ls_ja = [f"ウォレット: {nickname}", f"DRep: {drep_name}", f"投票結果: {vote_label_ja}"]
-                ls_en = [f"Wallet: {nickname}", f"DRep: {drep_name}", f"Vote: {vote_label_en}"]
-                if proposal_title:
-                    ls_ja.append(f"対象: {proposal_title}")
-                    ls_en.append(f"Proposal: {proposal_title}")
-                ls = ls_ja if lang == "ja" else ls_en
-                email_and_log(addr["email_addr"], user_id, "drep_vote", dk, subj,
-                              build_html(subj, ls, gov_url, "ガバナンスを確認" if lang == "ja" else "Check Governance", lang),
-                              build_text(subj, ls, gov_url, lang))
+        ctx = build_ctx(
+            drep_name=drep_name, vote=vote_str, proposal_title=proposal_title,
+            nickname=addr["nickname"], base_url=CARDANOISM_URL,
+        )
+        deliver(addr, EVENT_TYPE, ctx,
+                dedup_base=f"drep_vote_{addr['stake_id']}_{gov_tx_hash}_{gov_index}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
