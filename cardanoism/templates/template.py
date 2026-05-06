@@ -6,8 +6,10 @@ from cardanoism import styles
 #from cardanoism.components.sidebar import sidebar
 from cardanoism.components.navbar import navbar_icons
 from cardanoism.components.footer import footer_three_columns
+from cardanoism.components.cookie_banner import cookie_banner
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.backend.fiat_state import FiatRateState
+from cardanoism.backend.cookie_consent_state import CookieConsentState
 from typing import Callable
 
 import reflex as rx
@@ -71,8 +73,13 @@ def template(
         # Get the meta tags for the page.
         all_meta = [*default_meta, *(meta or [])]
 
-        # on_load にAuthState.check_auth・言語検出・法定通貨レート読込を必ず含める
-        _base_load = [AuthState.check_auth, AuthState.detect_browser_language, FiatRateState.load_rates]
+        # on_load にAuthState.check_auth・言語検出・法定通貨レート読込・Cookie 同意状態を必ず含める
+        _base_load = [
+            AuthState.check_auth,
+            AuthState.detect_browser_language,
+            FiatRateState.load_rates,
+            CookieConsentState.initialize_on_load,
+        ]
         if on_load is None:
             combined_on_load = _base_load
         elif isinstance(on_load, list):
@@ -93,6 +100,7 @@ def template(
                     **styles.template_page_style,
                 ),
                 footer_three_columns(),
+                cookie_banner(),
                 align="start",
                 position="relative",
                 style={"scrollbar_gutter": "stable", "min-height": "100vh", "display": "flex", "flex_direction": "column"},

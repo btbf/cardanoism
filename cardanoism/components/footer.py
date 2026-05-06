@@ -1,6 +1,9 @@
 import reflex as rx
 from reflex.style import set_color_mode, color_mode
 
+from cardanoism.backend.auth_state import AuthState
+from cardanoism.components.cookie_banner import cookie_settings_link
+
 
 
 def footer_item(text: str, href: str) -> rx.Component:
@@ -87,18 +90,34 @@ def socials() -> rx.Component:
     )
 
 
+def _legal_links() -> rx.Component:
+    """フッター下部のプライバシーポリシー / 利用規約 / Cookie 設定 / お問い合わせリンク。"""
+    item_style = {
+        "fontSize": "13px",
+        "color": "var(--gray-10)",
+    }
+
+    def _sep():
+        return rx.text("·", color="var(--gray-7)", style={"fontSize": "13px"})
+
+    return rx.flex(
+        rx.link(rx.text(AuthState.t["nav_privacy"], style=item_style), href="/privacy"),
+        _sep(),
+        rx.link(rx.text(AuthState.t["nav_terms"], style=item_style), href="/terms"),
+        _sep(),
+        cookie_settings_link("nav_cookie_settings"),
+        _sep(),
+        rx.link(rx.text(AuthState.t["nav_contact"], style=item_style), href="/contact"),
+        spacing="2",
+        align="center",
+        justify_content=["center", "center", "start"],
+        flex_wrap="wrap",
+    )
+
+
 def footer_three_columns() -> rx.Component:
     return rx.el.footer(
         rx.vstack(
-            # rx.flex(
-            #     footer_items_1(),
-            #     footer_items_2(),
-            #     footer_items_3(),
-            #     justify="between",
-            #     spacing="6",
-            #     flex_direction=["column", "column", "row"],
-            #     width="100%",
-            # ),
             rx.divider(),
             rx.flex(
                 rx.hstack(
@@ -145,6 +164,7 @@ def footer_three_columns() -> rx.Component:
                 flex_direction=["column", "column", "row"],
                 width="100%",
             ),
+            _legal_links(),
             spacing="5",
             max_width="1130px",
             margin_x="auto",

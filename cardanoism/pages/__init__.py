@@ -14,6 +14,8 @@ from .governance_drep_detail import governance_drep_detail_page
 from .constitution import constitution_page
 from .staking import staking_page
 from .staking_spo import staking_spo_page
+from .privacy import privacy_page
+from .terms import terms_page
 from .auth import (
     line_login_redirect,
     line_callback,
