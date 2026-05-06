@@ -444,6 +444,68 @@ def _notify_governance_action(tx_id: str, action_type_raw: str) -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# 通知発火: spo_pending_vote (SPO 対象 GA が新規提出された)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _notify_spo_pending_vote(tx_id: str, action_type_raw: str) -> None:
+    """SPO 対象の新規 GA が提出されたとき、SPO 設定があるユーザーへ催促通知。
+
+    対象判定は spo_pool_id が NULL でない stake_address のみ。通知設定 spo_pending_vote
+    が ON のチャンネルに送信。
+    """
+    gov_url = f"{CARDANOISM_URL}/governance"
+    label_map = _GA_TYPE_MAP_JA  # action_type_raw は Ogmios の camelCase
+
+    def _spo_only(addrs: list) -> list:
+        return [a for a in addrs if a.get("spo_pool_id")]
+
+    line_addrs = _spo_only(get_stake_addrs_with_event("spo_pending_vote"))
+    email_addrs = _spo_only(get_stake_addrs_with_email_event("spo_pending_vote"))
+
+    for addr in line_addrs:
+        user_id = addr["user_id"]
+        lang = addr.get("language", "ja")
+        dedup_key = f"spo_pending_{tx_id}_{addr['stake_id']}"
+        if already_sent(user_id, "spo_pending_vote", dedup_key):
+            continue
+        label = (_GA_TYPE_MAP_JA if lang == "ja" else _GA_TYPE_MAP_EN).get(action_type_raw, action_type_raw)
+        alt = (
+            f"【Cardanoism】SPO 投票対象の新ガバナンスアクション: {label}"
+            if lang == "ja" else
+            f"[Cardanoism] New SPO-eligible governance action: {label}"
+        )
+        flex_and_log(
+            addr["line_notify_id"], user_id, "spo_pending_vote", dedup_key, alt,
+            line_flex.drep_new_governance_action(label, gov_url, lang=lang),
+        )
+
+    for addr in email_addrs:
+        user_id = addr["user_id"]
+        lang = addr.get("language", "ja")
+        dk = f"spo_pending_{tx_id}_{addr['stake_id']}_email"
+        if already_sent(user_id, "spo_pending_vote", dk):
+            continue
+        label = (_GA_TYPE_MAP_JA if lang == "ja" else _GA_TYPE_MAP_EN).get(action_type_raw, action_type_raw)
+        subj = (
+            f"SPO 投票対象の新ガバナンスアクション: {label}"
+            if lang == "ja" else
+            f"New SPO-eligible governance action: {label}"
+        )
+        ls = (
+            [f"SPO が投票可能な新しいガバナンスアクション（{label}）が提出されました。",
+             "あなたのプールに代わって投票することを検討してください。"]
+            if lang == "ja" else
+            [f"A new governance action ({label}) eligible for SPO voting has been submitted.",
+             "Consider casting a vote on behalf of your pool."]
+        )
+        email_and_log(
+            addr["email_addr"], user_id, "spo_pending_vote", dk, subj,
+            build_html(subj, ls, gov_url, "ガバナンスを確認" if lang == "ja" else "Check Governance", lang),
+            build_text(subj, ls, gov_url, lang),
+        )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # 通知発火: drep_vote
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -600,8 +662,17 @@ def _process_tx(tx: dict, slot: int, current_epoch: int) -> None:
                 record_proposal_from_event(tx_id, proposal_idx, proposal, slot, current_epoch)
             except Exception as e:
                 logger.exception("listener: GA DB 書込み失敗 tx=%s idx=%d: %s", tx_id, proposal_idx, e)
-            # 通知発火 (Phase 1 では従来どおり)
+            # 通知発火: 全員向け (drep_new_governance_action)
             _notify_governance_action(tx_id, action_type)
+            # SPO 対象の場合は SPO 専用通知も発火
+            try:
+                from cardanoism.backend.spo_targets import compute_spo_target
+                from cardanoism.backend.listener_governance import _ACTION_TYPE_MAP
+                proposal_type_pascal = _ACTION_TYPE_MAP.get(action_type, action_type)
+                if compute_spo_target(proposal_type_pascal, proposal.get("action")):
+                    _notify_spo_pending_vote(tx_id, action_type)
+            except Exception as e:
+                logger.exception("listener: spo_pending_vote 通知失敗: %s", e)
         except Exception as e:
             logger.exception("proposal 処理エラー tx=%s: %s", tx_id, e)
 

@@ -19,6 +19,7 @@ from pycardano.crypto.bech32 import bech32_encode, convertbits, Encoding  # type
 
 from cardanoism.backend.governance import upsert_proposal as governance_upsert
 from cardanoism.backend.vote_db import upsert_vote as vote_upsert
+from cardanoism.backend.spo_targets import compute_spo_target
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +160,9 @@ def record_proposal_from_event(
     if proposal_type == "TreasuryWithdrawals":
         withdrawal_total, withdrawal_json = _extract_withdrawals(action)
 
+    # SPO 投票対象判定 (security group の ParameterChange 等)
+    spo_target = compute_spo_target(proposal_type, action)
+
     fields = {
         "proposal_id":      proposal_id,
         "proposal_tx_hash": tx_hash,
@@ -186,6 +190,7 @@ def record_proposal_from_event(
         "action_anchor_url":  None,
         "action_anchor_hash": None,
         "last_event_slot":  int(slot),
+        "spo_target":       spo_target,
     }
 
     try:

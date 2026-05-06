@@ -31,6 +31,7 @@ from cardanoism.backend.vote_db import get_votes_by_drep
 from cardanoism.backend.stake_rewards_db import (
     get_recent_rewards,
     get_total_rewards,
+    get_total_rewards_by_type,
     has_rewards_for_addresses,
 )
 from cardanoism.backend.koios import get_tip
@@ -68,6 +69,10 @@ class DashboardState(rx.State):
     governance_favorites: list[dict[str, str]] = []
     governance_fav_count: int = 0
 
+    # アドレスフィルタ ("" = 全アドレス表示 / それ以外は該当 address のみ表示)
+    # 4 アドレス以上登録時の認知負荷軽減用 (チップで切替)。
+    filter_address: str = ""
+
     # 委任先サマリー (stake_address 単位)
     # 各 entry: nickname / address / verified / pool_id / pool_ticker / pool_name /
     #          relay_alive / drep_id / drep_name / drep_role
@@ -92,16 +97,23 @@ class DashboardState(rx.State):
     pool_performances: list[dict[str, str]] = []
 
     # stake_address 軸での報酬データ (プール実績カード内に popover で表示)
-    # rewards_by_address: { address: [{epoch_no, amount_ada}, ...] }
+    # rewards_by_address: { address: [{epoch_no, amount_ada, leader_ada}, ...] }
+    #   amount_ada = 全 type 合算 (非 SPO 表示用)
+    #   leader_ada = leader のみ (SPO 表示用)
     rewards_by_address: dict[str, list[dict[str, str]]] = {}
-    # total_rewards_by_address: { address: total_ada_str }
+    # 累積 (非 SPO 用、合算)
     total_rewards_by_address: dict[str, str] = {}
+    # 累積 (SPO 用、leader のみ)
+    total_rewards_leader_by_address: dict[str, str] = {}
     # 通知 OFF などで報酬キャッシュが無い stake_address
     rewards_missing_addresses: list[str] = []
 
     # 未投票 GA: 本人 DRep が未投票な active GA
     # entry: { proposal_id, title, title_ja, proposal_type, expiration, drep_id, drep_name }
     unvoted_gas_self: list[dict[str, str]] = []
+    # 未投票 GA (SPO): 自分のプール (spo_pool_id) が未投票な SPO 対象 active GA
+    # entry: { proposal_id, title, title_ja, proposal_type, expiration, pool_id }
+    unvoted_gas_spo: list[dict[str, str]] = []
     # 委任先 DRep が未投票な active GA
     unvoted_gas_delegated: list[dict[str, str]] = []
 
@@ -113,6 +125,45 @@ class DashboardState(rx.State):
     # トレジャリー残高ミニカード
     treasury_balance_ada: str = ""
     treasury_epoch_str: str = ""
+
+    # ── computed vars (フィルタ適用後のリスト) ──────────────────
+
+    @rx.var
+    def filtered_delegations(self) -> list[dict[str, str]]:
+        if not self.filter_address:
+            return self.delegations
+        return [d for d in self.delegations if d.get("address") == self.filter_address]
+
+    @rx.var
+    def filtered_pool_performances(self) -> list[dict[str, str]]:
+        if not self.filter_address:
+            return self.pool_performances
+        return [p for p in self.pool_performances if p.get("address") == self.filter_address]
+
+    @rx.var
+    def filter_chips(self) -> list[dict[str, str]]:
+        """フィルタチップに表示する選択肢一覧。entry: {value, label, active}。
+        登録 stake_address が 4 件以上のときだけ意味がある (UI 側で件数判定)。
+        """
+        items: list[dict[str, str]] = [{
+            "value":  "",
+            "label":  "全アドレス",
+            "active": "1" if self.filter_address == "" else "",
+        }]
+        for d in self.delegations:
+            addr = str(d.get("address") or "")
+            if not addr:
+                continue
+            items.append({
+                "value":  addr,
+                "label":  str(d.get("nickname") or addr[:12] + "…"),
+                "active": "1" if self.filter_address == addr else "",
+            })
+        return items
+
+    @rx.event
+    def set_filter_address(self, value: str):
+        self.filter_address = value or ""
 
     @rx.event
     async def on_load(self):
@@ -214,6 +265,7 @@ class DashboardState(rx.State):
         self.rewards_missing_addresses = []
         self.unvoted_gas_self = []
         self.unvoted_gas_delegated = []
+        self.unvoted_gas_spo = []
         self.current_epoch_str = ""
         self.next_epoch_in_seconds = 0
         self.next_epoch_in_label = ""
@@ -403,6 +455,8 @@ class DashboardState(rx.State):
             formatted["nickname"] = str(addr.get("nickname") or "")
             # popover で rewards_by_address / total_rewards_by_address を引くために stake_address も保持
             formatted["address"] = str(addr.get("address") or "")
+            # SPO 判定: 報酬 popover が member/leader 分離表示する判断材料
+            formatted["is_spo"] = "1" if addr.get("spo_pool_id") else ""
             out.append(formatted)
         self.pool_performances = out
 
@@ -421,27 +475,50 @@ class DashboardState(rx.State):
             return
 
         rows = get_recent_rewards(addrs, n_epochs=RECENT_REWARDS_EPOCHS)
-        by_addr: dict[str, list[dict[str, str]]] = {}
+        # rows 1 行 = (stake, epoch, type) なので epoch ごとに type 別に集約する
+        # by_addr_by_epoch[addr][epoch] = {"member": N, "leader": N, "other": N}
+        by_addr_by_epoch: dict[str, dict[int, dict[str, int]]] = {}
         for r in rows:
             sa = str(r.get("stake_address") or "")
+            try:
+                ep = int(r.get("epoch_no") or 0)
+            except (TypeError, ValueError):
+                continue
+            rt = str(r.get("reward_type") or "other")
+            if rt not in ("member", "leader", "other"):
+                rt = "other"
             lov = int(r.get("amount_lovelace") or 0)
-            by_addr.setdefault(sa, []).append({
-                "epoch_no":   str(r.get("epoch_no") or ""),
-                "amount_ada": format_ada(lov, integer=False) if lov else "0",
-            })
-        # 取れなかったアドレスは空リストで埋めて UI 側の参照ミスを避ける
+            slot = by_addr_by_epoch.setdefault(sa, {}).setdefault(
+                ep, {"member": 0, "leader": 0, "other": 0}
+            )
+            slot[rt] = slot.get(rt, 0) + lov
+
+        by_addr: dict[str, list[dict[str, str]]] = {}
         for sa in addrs:
-            by_addr.setdefault(sa, [])
+            epoch_map = by_addr_by_epoch.get(sa, {})
+            items: list[dict[str, str]] = []
+            for ep in sorted(epoch_map.keys(), reverse=True):
+                v = epoch_map[ep]
+                total_lov = v["member"] + v["leader"] + v["other"]
+                items.append({
+                    "epoch_no":   str(ep),
+                    "amount_ada": format_ada(total_lov, integer=False) if total_lov else "0",
+                    "leader_ada": format_ada(v["leader"], integer=False) if v["leader"] else "0",
+                })
+            by_addr[sa] = items
         self.rewards_by_address = by_addr
 
-        totals_map = get_total_rewards(addrs)
-        self.total_rewards_by_address = {
-            sa: (format_ada(total, integer=False) if total else "0")
-            for sa, total in totals_map.items()
-        }
-        # キャッシュ無しアドレスも空文字で初期化
+        # 累積: 非 SPO は全 type 合算、SPO は leader のみ
+        totals_by_type = get_total_rewards_by_type(addrs)
+        total_all: dict[str, str] = {}
+        total_leader: dict[str, str] = {}
         for sa in addrs:
-            self.total_rewards_by_address.setdefault(sa, "0")
+            t = totals_by_type.get(sa, {"member": 0, "leader": 0, "other": 0})
+            total_lov = t.get("member", 0) + t.get("leader", 0) + t.get("other", 0)
+            total_all[sa] = format_ada(total_lov, integer=False) if total_lov else "0"
+            total_leader[sa] = format_ada(t.get("leader", 0), integer=False) if t.get("leader") else "0"
+        self.total_rewards_by_address = total_all
+        self.total_rewards_leader_by_address = total_leader
 
         cached = has_rewards_for_addresses(addrs)
         self.rewards_missing_addresses = [a for a in addrs if a not in cached]
@@ -521,6 +598,18 @@ class DashboardState(rx.State):
         except Exception as e:  # noqa: BLE001
             logger.warning("unvoted_gas_delegated failed: %s", e)
             self.unvoted_gas_delegated = []
+
+        # SPO 未投票 GA: spo_pool_id が登録されている stake_address のプールが未投票
+        spo_pool_ids = list({
+            str(a.get("spo_pool_id"))
+            for a in stake_addresses
+            if a.get("spo_pool_id")
+        })
+        try:
+            self.unvoted_gas_spo = self._select_unvoted_gas_for_spos(spo_pool_ids, cur_epoch)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("unvoted_gas_spo failed: %s", e)
+            self.unvoted_gas_spo = []
 
     # ── 内部 SQL ───────────────────────────────────
 
@@ -627,5 +716,73 @@ class DashboardState(rx.State):
                 "drep_threshold_pct": str(r.get("drep_threshold_pct") or ""),
                 "drep_status":        str(r.get("drep_status") or ""),
                 "drep_applicable":    str(r.get("drep_applicable") or "no"),
+            })
+        return out
+
+    @staticmethod
+    def _select_unvoted_gas_for_spos(
+        pool_ids: list[str], current_epoch: int,
+    ) -> list[dict[str, str]]:
+        """指定プール (= ユーザーが SPO としてマークされたアドレスの pool) が
+        未投票な SPO 対象 active GA を返す。pool_ids が空ならスキップ。
+
+        判定: spo_target=1 かつ active GA かつ NOT EXISTS (proposal_votes WHERE voter_role='SPO').
+        """
+        if not pool_ids:
+            return []
+        placeholders = ",".join(["?"] * len(pool_ids))
+        where = [
+            "g.spo_target = 1",
+            "g.ratified_epoch IS NULL",
+            "g.dropped_epoch IS NULL",
+            "g.expired_epoch IS NULL",
+            "g.enacted_epoch IS NULL",
+            "NOT EXISTS ("
+            "  SELECT 1 FROM proposal_votes v "
+            f"  WHERE v.proposal_id = g.proposal_id "
+            f"    AND v.voter_role = 'SPO' "
+            f"    AND v.voter_id IN ({placeholders})"
+            ")",
+        ]
+        params: list = list(pool_ids)
+        if current_epoch > 0:
+            where.append("g.expiration > ?")
+            params.append(current_epoch)
+        sql = (
+            "SELECT g.proposal_id, g.title, g.title_ja, g.proposal_type, "
+            "g.expiration, g.block_time, g.proposed_epoch, "
+            "s.pool_yes_pct, s.pool_no_pct, "
+            "s.drep_yes_pct, s.drep_no_pct, "
+            "s.committee_yes_pct, s.committee_no_pct "
+            "FROM governance_actions g "
+            "LEFT JOIN proposal_voting_summary s ON g.proposal_id = s.proposal_id "
+            f"WHERE {' AND '.join(where)} "
+            "ORDER BY g.expiration ASC "
+            f"LIMIT {UNVOTED_GA_LIMIT}"
+        )
+        with get_db() as (cursor, _):
+            cursor.execute(sql, params)
+            rows = [dict(r) for r in cursor.fetchall()]
+
+        from cardanoism.backend.params_db import get_protocol_params
+        protocol_params = get_protocol_params() or {}
+
+        out: list[dict[str, str]] = []
+        for r in rows:
+            exp = r.get("expiration")
+            _attach_voting_summary(r, protocol_params)
+            out.append({
+                "proposal_id":     str(r.get("proposal_id") or ""),
+                "title":           str(r.get("title") or ""),
+                "title_ja":        str(r.get("title_ja") or ""),
+                "proposal_type":   str(r.get("proposal_type") or ""),
+                "expiration":      "" if exp is None else str(exp),
+                "expiration_date": _epoch_to_date(
+                    exp, r.get("proposed_epoch"), r.get("block_time"),
+                ),
+                "pool_yes_pct":       str(r.get("pool_yes_pct") or "0"),
+                "pool_threshold_pct": str(r.get("pool_threshold_pct") or ""),
+                "pool_status":        str(r.get("pool_status") or ""),
+                "pool_applicable":    str(r.get("pool_applicable") or "no"),
             })
         return out

@@ -380,7 +380,9 @@ def batch_account_update_history(stake_addresses: list[str]) -> dict[str, list]:
 
 def batch_account_reward_history(stake_addresses: list[str], epoch: int) -> dict[str, int]:
     """複数アドレスの指定エポック報酬合計を一括取得（1,000件チャンク対応）。
-    戻り値: {stake_address: lovelace合計}
+    戻り値: {stake_address: lovelace合計} (type 区別せず合算)
+
+    Type 別が必要なら batch_account_reward_history_by_type を使う。
     """
     if not stake_addresses:
         return {}
@@ -393,6 +395,36 @@ def batch_account_reward_history(stake_addresses: list[str], epoch: int) -> dict
                 if sa:
                     reward_map[sa] = reward_map.get(sa, 0) + int(r.get("amount", 0))
     return reward_map
+
+
+def batch_account_reward_history_by_type(
+    stake_addresses: list[str], epoch: int,
+) -> dict[tuple[str, str], int]:
+    """指定エポックの報酬を type 別に取得する。
+
+    戻り値: {(stake_address, type): lovelace合計}
+            type は member / leader / other に正規化済み。
+    """
+    if not stake_addresses:
+        return {}
+    out: dict[tuple[str, str], int] = {}
+    for chunk in _chunks(stake_addresses, KOIOS_BATCH_SIZE):
+        data = _post("/account_reward_history", {"_stake_addresses": chunk, "_epoch_no": epoch})
+        if not data or not isinstance(data, list):
+            continue
+        for r in data:
+            sa = r.get("stake_address")
+            if not sa:
+                continue
+            t = r.get("type")
+            t_norm = t if t in ("member", "leader") else "other"
+            try:
+                amt = int(r.get("amount") or 0)
+            except (TypeError, ValueError):
+                continue
+            key = (sa, t_norm)
+            out[key] = out.get(key, 0) + amt
+    return out
 
 
 def fetch_reward_history_recent(
@@ -422,15 +454,18 @@ def fetch_reward_history_recent(
 
 def aggregate_rewards_by_epoch(
     rows: list[dict],
-) -> list[tuple[str, int, int, str | None]]:
-    """fetch_reward_history_recent の戻り値を (stake, epoch) 軸に集計する。
+) -> list[tuple[str, int, int, str | None, str]]:
+    """fetch_reward_history_recent の戻り値を (stake, epoch, type) 軸に集計する。
 
-    type 別 (member/leader/treasury/...) 行を 1 epoch にまとめて
-    bulk_upsert_stake_rewards に渡せる tuple list を返す。
+    1 stake × 1 epoch でも type ごと (member / leader / other) に別行を返す。
+    Koios は同一 (stake, epoch, type) で複数行になることはほぼないが、念のため合算。
+
+    treasury / reserves / refund は "other" にまとめる (UI 表示優先度が低いため)。
 
     pool_id_bech32 は最初に見つかった非 None を採用 (member 行などに紐づくはず)。
+    戻り値タプル: (stake_address, epoch, amount_lovelace, pool_id_or_None, reward_type)
     """
-    agg: dict[tuple[str, int], dict] = {}
+    agg: dict[tuple[str, int, str], dict] = {}
     for r in rows:
         sa = r.get("stake_address")
         epoch = r.get("earned_epoch")
@@ -441,14 +476,16 @@ def aggregate_rewards_by_epoch(
             amount = int(r.get("amount") or 0)
         except (TypeError, ValueError):
             continue
-        key = (str(sa), epoch_int)
+        t = r.get("type")
+        t_norm = t if t in ("member", "leader") else "other"
+        key = (str(sa), epoch_int, t_norm)
         slot = agg.setdefault(key, {"amount": 0, "pool_id": None})
         slot["amount"] += amount
         if slot["pool_id"] is None and r.get("pool_id_bech32"):
             slot["pool_id"] = str(r.get("pool_id_bech32"))
     return [
-        (sa, epoch, agg[(sa, epoch)]["amount"], agg[(sa, epoch)]["pool_id"])
-        for sa, epoch in agg
+        (sa, epoch, agg[(sa, epoch, t)]["amount"], agg[(sa, epoch, t)]["pool_id"], t)
+        for sa, epoch, t in agg
     ]
 
 

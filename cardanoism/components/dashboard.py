@@ -267,7 +267,7 @@ def _delegations_section() -> rx.Component:
         DashboardState.delegations.length() > 0,
         rx.vstack(
             rx.foreach(
-                DashboardState.delegations.to(list[dict[str, str]]),
+                DashboardState.filtered_delegations,
                 _delegation_row,
             ),
             spacing="2", align="stretch", width="100%",
@@ -810,7 +810,7 @@ def _pool_performances_section() -> rx.Component:
         DashboardState.pool_performances.length() > 0,
         rx.vstack(
             rx.foreach(
-                DashboardState.pool_performances.to(list[dict[str, str]]),
+                DashboardState.filtered_pool_performances,
                 _pool_perf_row,
             ),
             spacing="2", align="stretch", width="100%",
@@ -831,7 +831,7 @@ def _pool_performances_section() -> rx.Component:
 # ── 報酬 popover (プール実績カード内に埋め込み) ───
 
 def _reward_recent_row(r: rx.Var) -> rx.Component:
-    """popover 内: エポック別 1 行。"""
+    """popover 内: エポック別 1 行 (合算)。通常委任者用。"""
     return rx.hstack(
         rx.text("Epoch", size="1", color="var(--gray-10)"),
         rx.text(r["epoch_no"], size="1", weight="medium", color="var(--gray-12)"),
@@ -845,15 +845,34 @@ def _reward_recent_row(r: rx.Var) -> rx.Component:
     )
 
 
+def _reward_recent_row_spo(r: rx.Var) -> rx.Component:
+    """popover 内: エポック別 1 行 (SPO 用 / leader 報酬のみ表示)。"""
+    return rx.hstack(
+        rx.icon("crown", size=10, color="var(--amber-11)"),
+        rx.text("Epoch", size="1", color="var(--gray-10)"),
+        rx.text(r["epoch_no"], size="1", weight="medium", color="var(--gray-12)"),
+        rx.spacer(),
+        rx.text(r["leader_ada"], size="2", weight="bold", color="var(--amber-11)"),
+        rx.text("ADA", size="1", color="var(--gray-10)"),
+        spacing="2", align="baseline", width="100%",
+        padding="4px 8px",
+        border_radius="6px",
+        background="var(--gray-2)",
+    )
+
+
 def _rewards_popover(p: rx.Var) -> rx.Component:
     """委任先プール実績カード右上に置く「報酬」popover ボタン。
 
     通知 OFF (= キャッシュなし) の場合は CTA、それ以外は累積 + 直近 5ep を表示。
+    SPO の場合は member / leader 分離表示。
     """
     addr = p["address"]
+    is_spo = p["is_spo"] != ""
     is_missing = DashboardState.rewards_missing_addresses.contains(addr)
     rewards = DashboardState.rewards_by_address[addr]
     total_ada = DashboardState.total_rewards_by_address[addr]
+    total_leader = DashboardState.total_rewards_leader_by_address[addr]
 
     trigger = rx.popover.trigger(
         rx.el.button(
@@ -898,7 +917,17 @@ def _rewards_popover(p: rx.Var) -> rx.Component:
         spacing="3", align="stretch", width="100%",
     )
 
-    data_content = rx.vstack(
+    # 累積表示: SPO は leader 累積のみ、通常委任者は合算
+    total_block = rx.cond(
+        is_spo,
+        rx.hstack(
+            rx.icon("crown", size=14, color="var(--amber-11)"),
+            rx.text(AuthState.t["dashboard_rewards_leader"], size="1", color="var(--amber-11)"),
+            rx.spacer(),
+            rx.text(total_leader, size="3", weight="bold", color="var(--amber-11)"),
+            rx.text("ADA", size="1", color="var(--gray-10)"),
+            spacing="2", align="baseline", width="100%",
+        ),
         rx.hstack(
             rx.text(AuthState.t["dashboard_rewards_total"], size="1", color="var(--gray-10)"),
             rx.spacer(),
@@ -906,19 +935,32 @@ def _rewards_popover(p: rx.Var) -> rx.Component:
             rx.text("ADA", size="1", color="var(--gray-10)"),
             spacing="2", align="baseline", width="100%",
         ),
-        rx.divider(),
-        rx.text(AuthState.t["dashboard_rewards_recent"], size="1", color="var(--gray-10)", weight="medium"),
+    )
+
+    recent_block = rx.cond(
+        rewards.length() > 0,
         rx.cond(
-            rewards.length() > 0,
+            is_spo,
+            rx.vstack(
+                rx.foreach(rewards.to(list[dict[str, str]]), _reward_recent_row_spo),
+                spacing="2", align="stretch", width="100%",
+            ),
             rx.vstack(
                 rx.foreach(rewards.to(list[dict[str, str]]), _reward_recent_row),
                 spacing="1", align="stretch", width="100%",
             ),
-            rx.text(
-                AuthState.t["dashboard_rewards_empty_short"],
-                size="1", color="var(--gray-9)", style={"fontStyle": "italic"},
-            ),
         ),
+        rx.text(
+            AuthState.t["dashboard_rewards_empty_short"],
+            size="1", color="var(--gray-9)", style={"fontStyle": "italic"},
+        ),
+    )
+
+    data_content = rx.vstack(
+        total_block,
+        rx.divider(),
+        rx.text(AuthState.t["dashboard_rewards_recent"], size="1", color="var(--gray-10)", weight="medium"),
+        recent_block,
         spacing="3", align="stretch", width="100%",
     )
 
@@ -1001,6 +1043,57 @@ def _ga_link_row(g: rx.Var) -> rx.Component:
     )
 
 
+def _ga_link_row_spo(g: rx.Var) -> rx.Component:
+    """SPO 未投票 GA 1 件: 締切日付 + タイトル + SPO 投票率バー。"""
+    title = rx.cond(
+        AuthState.language == "ja",
+        rx.cond(g["title_ja"] != "", g["title_ja"], g["title"]),
+        g["title"],
+    )
+    deadline_badge = rx.cond(
+        g["expiration_date"] != "",
+        rx.badge(
+            AuthState.t["dashboard_ga_deadline_label"],
+            g["expiration_date"],
+            color_scheme="amber", variant="soft", size="1",
+            style={"flexShrink": "0", "whiteSpace": "nowrap"},
+        ),
+        rx.fragment(),
+    )
+    return rx.box(
+        rx.vstack(
+            rx.link(
+                rx.hstack(
+                    deadline_badge,
+                    rx.text(
+                        rx.cond(title != "", title, g["proposal_id"][:24] + "…"),
+                        size="2", weight="medium", color="var(--gray-12)",
+                        style={"overflow": "hidden", "textOverflow": "ellipsis", "whiteSpace": "nowrap"},
+                        flex="1", min_width="0",
+                    ),
+                    spacing="2", align="center", width="100%",
+                ),
+                href="/governance/" + g["proposal_id"],
+                underline="hover",
+                color="inherit",
+                width="100%",
+            ),
+            _vote_progress_bar(
+                "SPO",
+                g["pool_yes_pct"],
+                g["pool_threshold_pct"],
+                g["pool_applicable"],
+            ),
+            spacing="2", align="stretch", width="100%",
+        ),
+        padding="10px 12px",
+        border_radius="8px",
+        background="var(--gray-2)",
+        border=f"1px solid {rx.color('gray', 4)}",
+        width="100%",
+    )
+
+
 def _unvoted_gas_section() -> rx.Component:
     self_block = rx.cond(
         DashboardState.unvoted_gas_self.length() > 0,
@@ -1032,9 +1125,29 @@ def _unvoted_gas_section() -> rx.Component:
         ),
         rx.fragment(),
     )
+    spo_block = rx.cond(
+        DashboardState.unvoted_gas_spo.length() > 0,
+        rx.vstack(
+            rx.hstack(
+                rx.icon("crown", size=12, color="var(--amber-11)"),
+                rx.text(
+                    AuthState.t["dashboard_unvoted_spo_label"],
+                    size="1", color="var(--amber-11)", weight="medium",
+                ),
+                spacing="1", align="center",
+            ),
+            rx.foreach(
+                DashboardState.unvoted_gas_spo.to(list[dict[str, str]]),
+                _ga_link_row_spo,
+            ),
+            spacing="2", align="stretch", width="100%",
+        ),
+        rx.fragment(),
+    )
     inner = rx.cond(
         (DashboardState.unvoted_gas_self.length() == 0)
-        & (DashboardState.unvoted_gas_delegated.length() == 0),
+        & (DashboardState.unvoted_gas_delegated.length() == 0)
+        & (DashboardState.unvoted_gas_spo.length() == 0),
         rx.text(
             AuthState.t["dashboard_unvoted_empty"],
             size="2", color="var(--gray-10)",
@@ -1042,6 +1155,7 @@ def _unvoted_gas_section() -> rx.Component:
         rx.vstack(
             self_block,
             delegated_block,
+            spo_block,
             spacing="3", align="stretch", width="100%",
         ),
     )
@@ -1151,6 +1265,49 @@ def _vote_progress_bar(
 
 # ── ダッシュボード本体 ──────────────────────────
 
+def _filter_chip(c: rx.Var) -> rx.Component:
+    """アドレスフィルタチップ 1 件 (active 切替対応)。"""
+    is_active = c["active"] != ""
+    return rx.el.button(
+        rx.text(c["label"], size="1", weight="medium"),
+        on_click=DashboardState.set_filter_address(c["value"]),
+        style={
+            "padding": "4px 12px",
+            "borderRadius": "999px",
+            "fontSize": "12px",
+            "cursor": "pointer",
+            "transition": "background 0.15s, color 0.15s, border-color 0.15s",
+            "whiteSpace": "nowrap",
+            "border": "1px solid transparent",
+        },
+        background=rx.cond(is_active, rx.color("amber", 9), rx.color("gray", 3)),
+        color=rx.cond(is_active, "white", "var(--gray-11)"),
+        border_color=rx.cond(is_active, rx.color("amber", 8), "transparent"),
+        _hover=rx.cond(
+            is_active,
+            {},
+            {"background": rx.color("gray", 4), "color": "var(--gray-12)"},
+        ),
+    )
+
+
+def _address_filter_section() -> rx.Component:
+    """アドレスフィルタチップ。登録 4 件以上のときだけ表示。"""
+    return rx.cond(
+        DashboardState.delegations.length() >= 4,
+        rx.box(
+            rx.hstack(
+                rx.icon("filter", size=14, color="var(--gray-10)"),
+                rx.foreach(DashboardState.filter_chips, _filter_chip),
+                spacing="2", align="center", wrap="wrap", width="100%",
+            ),
+            padding="8px 4px",
+            width="100%",
+        ),
+        rx.fragment(),
+    )
+
+
 def dashboard() -> rx.Component:
     """ログインユーザー向けトップダッシュボード本体（ヒーローを除く）。
 
@@ -1164,6 +1321,7 @@ def dashboard() -> rx.Component:
         rx.vstack(
             _quick_actions_section(),
             _epoch_treasury_section(),
+            _address_filter_section(),
             _delegations_section(),
             _pool_performances_section(),
             _drep_votes_section(),

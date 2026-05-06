@@ -439,10 +439,30 @@ def stake_address_card(addr: rx.Var[dict]) -> rx.Component:
             on_click=AuthState.delete_stake_address_handler(addr["id"]),
         ),
     )
+    spo_badge = rx.cond(
+        addr["spo_pool_id"],
+        rx.tooltip(
+            rx.badge(
+                rx.icon("crown", size=12),
+                rx.text("SPO", weight="bold", size="1"),
+                variant="solid",
+                color_scheme="amber",
+                size="1",
+            ),
+            content=addr["spo_pool_id"],
+        ),
+        rx.fragment(),
+    )
     return rx.box(
         rx.hstack(
             rx.vstack(
-                nickname_block,
+                rx.hstack(
+                    nickname_block,
+                    spo_badge,
+                    spacing="2",
+                    align="center",
+                    wrap="wrap",
+                ),
                 # 受信アドレス（メイン表示）
                 rx.cond(
                     addr["wallet_address"],

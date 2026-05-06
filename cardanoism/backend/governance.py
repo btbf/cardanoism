@@ -177,6 +177,8 @@ def _extract_action_anchor(item: dict, body: dict) -> tuple[str | None, str | No
 
 def _extract_fields(item: dict) -> dict:
     """Koios レスポンスの1件を DB カラムに対応するフィールド辞書に変換する。"""
+    from cardanoism.backend.spo_targets import compute_spo_target
+
     meta = item.get("meta_json") or {}
     body = meta.get("body") or {}
     refs = body.get("references") or []
@@ -184,6 +186,10 @@ def _extract_fields(item: dict) -> dict:
     deposit = item.get("deposit")
     meta_is_valid = item.get("meta_is_valid")
     action_anchor_url, action_anchor_hash = _extract_action_anchor(item, body)
+    spo_target = compute_spo_target(
+        item.get("proposal_type") or "",
+        item.get("proposed_action"),
+    )
 
     # TreasuryWithdrawals の引き出し配列（[{amount, stake_address}, ...]）を集計
     withdrawal = item.get("withdrawal")
@@ -225,6 +231,7 @@ def _extract_fields(item: dict) -> dict:
         "references_json":  json.dumps(refs, ensure_ascii=False) if refs else None,
         "action_anchor_url":  action_anchor_url,
         "action_anchor_hash": action_anchor_hash,
+        "spo_target":         spo_target,
     }
 
 
@@ -258,7 +265,8 @@ def upsert_proposal(fields: dict) -> bool:
                 block_time, meta_url, meta_hash, meta_is_valid,
                 title, `abstract`, motivation, rationale, references_json,
                 action_anchor_url, action_anchor_hash,
-                last_event_slot
+                last_event_slot,
+                spo_target
             ) VALUES (
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
@@ -267,6 +275,7 @@ def upsert_proposal(fields: dict) -> bool:
                 ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?,
+                ?,
                 ?
             )
             ON DUPLICATE KEY UPDATE
@@ -281,6 +290,8 @@ def upsert_proposal(fields: dict) -> bool:
                 action_anchor_hash        = VALUES(action_anchor_hash),
                 -- last_event_slot は listener が書いた値を保持 (Koios 由来 NULL で上書きしない)
                 last_event_slot           = COALESCE(VALUES(last_event_slot), last_event_slot),
+                -- spo_target も同様。listener が確定値を持つので上書き優先 (NULL なら既存維持)
+                spo_target                = COALESCE(VALUES(spo_target), spo_target),
                 updated_at                = NOW()
             """,
             (
@@ -296,6 +307,7 @@ def upsert_proposal(fields: dict) -> bool:
                 fields["motivation"],      fields["rationale"],        fields["references_json"],
                 fields.get("action_anchor_url"), fields.get("action_anchor_hash"),
                 fields.get("last_event_slot"),
+                fields.get("spo_target"),
             ),
         )
         conn.commit()

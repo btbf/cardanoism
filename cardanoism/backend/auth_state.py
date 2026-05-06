@@ -23,6 +23,8 @@ from cardanoism.backend.auth_db import (
     update_stake_address_role,
     delete_stake_address,
     update_stake_address_nickname,
+    detect_spo_pool_id,
+    update_stake_address_spo,
     get_favorite_ids,
     get_favorites,
     add_favorite,
@@ -860,6 +862,13 @@ class AuthState(rx.State):
                     info.get("pool_id"),
                     info.get("pool_name"),
                 )
+                # SPO 判定: pools.reward_addr / owners と突合
+                try:
+                    spo_pool_id = detect_spo_pool_id(address)
+                    if spo_pool_id:
+                        update_stake_address_spo(new_entry["id"], spo_pool_id)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("SPO 判定失敗 (addr=%s): %s", address, e)
                 self.stake_addresses = get_stake_addresses(self.user_id)
             self.stake_role_loading = False
             # 登録した stake_address の過去報酬を裏で取得して stake_rewards にキャッシュする。

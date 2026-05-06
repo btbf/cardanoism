@@ -41,6 +41,7 @@ from cardanoism.backend.koios import (
     _post, _get, get_current_epoch,
     get_pool_apy, batch_account_info,
     batch_account_update_history, batch_account_reward_history,
+    batch_account_reward_history_by_type,
     KOIOS_BATCH_SIZE, _chunks,
 )
 from cardanoism.backend.line_notify import send_line_push, send_line_flex
@@ -277,6 +278,7 @@ def get_stake_addrs_with_email_event(event_type: str) -> list[dict]:
                    sa.role, sa.created_at,
                    sa.delegated_pool_id, sa.delegated_pool_name,
                    sa.delegated_drep_id, sa.delegated_drep_name,
+                   sa.spo_pool_id,
                    u.id AS user_id, nc.channel_value AS email_addr,
                    COALESCE(u.language, 'ja') AS language
             FROM stake_addresses sa
@@ -317,6 +319,7 @@ def get_stake_addrs_with_telegram_event(event_type: str) -> list[dict]:
                    sa.role, sa.created_at,
                    sa.delegated_pool_id, sa.delegated_pool_name,
                    sa.delegated_drep_id, sa.delegated_drep_name,
+                   sa.spo_pool_id,
                    u.id AS user_id, nc.channel_value AS telegram_chat_id,
                    COALESCE(u.language, 'ja') AS language
             FROM stake_addresses sa
@@ -401,6 +404,7 @@ def get_stake_addrs_with_event(event_type: str) -> list[dict]:
                    sa.role, sa.created_at,
                    sa.delegated_pool_id, sa.delegated_pool_name,
                    sa.delegated_drep_id, sa.delegated_drep_name,
+                   sa.spo_pool_id,
                    u.id AS user_id, nc.channel_value AS line_notify_id,
                    COALESCE(u.language, 'ja') AS language
             FROM stake_addresses sa
@@ -647,6 +651,10 @@ def _check_pool_reward_received_batch(
     """
     報酬入金通知を全対象アドレスに対して /account_reward_history 1回で一括処理する。
     Cardanoでは Epoch N のスナップショット → Epoch N+2 で報酬が確定・入金される。
+
+    SPO の場合 (spo_pool_id 設定済み): leader (オペレーター報酬) を「SPO 報酬」として
+    通知し、member (ステーク報酬) は混乱を避けるため通知しない (合算は Flex 内で表示)。
+    通常委任者の場合: member 報酬を従来どおり通知。
     """
     if current_epoch is None:
         return
@@ -663,64 +671,95 @@ def _check_pool_reward_received_batch(
     if not reward_addrs:
         return
 
-    # 1,000件チャンクで一括取得
-    reward_map = batch_account_reward_history(
+    # type 別に取得 (1 アドレス × 1 epoch で member / leader / other がそれぞれ別行)
+    reward_by_type = batch_account_reward_history_by_type(
         [a["address"] for a in reward_addrs], reward_epoch
     )
-    if not reward_map:
+    if not reward_by_type:
         return
 
-    # ダッシュボード用キャッシュ: 取得した報酬を stake_rewards テーブルに upsert する。
-    # 通知判定とは独立に保存するので、reward_map に含まれる全アドレスが対象。
-    # pool_id は通知ループ内で addr から引けるため、後続でまとめて辞書化してから渡す。
+    # ダッシュボード用キャッシュ: type 別に upsert
     addr_to_pool = {
         a["address"]: (a.get("delegated_pool_id") or None)
         for a in reward_addrs
     }
     try:
         bulk_upsert_stake_rewards(
-            (sa, reward_epoch, lovelace, addr_to_pool.get(sa))
-            for sa, lovelace in reward_map.items()
+            (sa, reward_epoch, lovelace, addr_to_pool.get(sa), rt)
+            for (sa, rt), lovelace in reward_by_type.items()
         )
     except Exception as _e:  # noqa: BLE001
         logger.warning("stake_rewards cache upsert failed: %s", _e)
 
     # 各アドレスに通知
     for addr in reward_addrs:
-        total_lovelace = reward_map.get(addr["address"], 0)
-        if total_lovelace <= 0:
-            continue
+        sa = addr["address"]
+        member_lov = reward_by_type.get((sa, "member"), 0)
+        leader_lov = reward_by_type.get((sa, "leader"), 0)
+        is_spo = bool(addr.get("spo_pool_id"))
 
-        amount_ada = total_lovelace / 1_000_000
+        # SPO の場合: leader のみ通知 (member は無視)。leader=0 なら通知しない。
+        # 非 SPO: 従来通り member ベースで通知。
+        if is_spo:
+            primary_lov = leader_lov
+        else:
+            primary_lov = member_lov + leader_lov  # 委任者の場合は合算 (通常 leader=0)
+        if primary_lov <= 0:
+            continue
+        primary_ada = primary_lov / 1_000_000
+
         stake_id = addr["stake_id"]
         user_id = addr["user_id"]
         line_id = addr["line_notify_id"]
         lang = addr.get("language", "ja")
-        pool_name = addr.get("delegated_pool_name") or (addr.get("delegated_pool_id") or "")[:12]
         nickname = addr["nickname"]
         apy = pool_apys.get(addr.get("delegated_pool_id") or "")
 
         dedup_key = f"reward_{stake_id}_{reward_epoch}"
-        alt_text = (
-            f"【Cardanoism】Epoch {reward_epoch} 分の報酬が入金されました"
-            if lang == "ja" else
-            f"[Cardanoism] Rewards for Epoch {reward_epoch} have arrived"
+        if is_spo:
+            alt_text = (
+                f"【Cardanoism】Epoch {reward_epoch} の SPO 報酬 (Leader) が入金されました"
+                if lang == "ja" else
+                f"[Cardanoism] SPO leader rewards for Epoch {reward_epoch} have arrived"
+            )
+        else:
+            alt_text = (
+                f"【Cardanoism】Epoch {reward_epoch} 分の報酬が入金されました"
+                if lang == "ja" else
+                f"[Cardanoism] Rewards for Epoch {reward_epoch} have arrived"
+            )
+        contents = line_flex.pool_reward_received(
+            reward_epoch, primary_ada, apy, nickname, CARDANOISM_URL,
+            lang=lang, is_leader=is_spo,
         )
-        contents = line_flex.pool_reward_received(reward_epoch, amount_ada, apy, nickname, CARDANOISM_URL, lang=lang)
         flex_and_log(line_id, user_id, "pool_reward_received", dedup_key, alt_text, contents)
         if addr.get("email_addr"):
             dk = dedup_key + "_email"
             if not already_sent(user_id, "pool_reward_received", dk):
-                subj = (
-                    f"Epoch {reward_epoch} 分の報酬が入金されました"
-                    if lang == "ja" else
-                    f"Rewards for Epoch {reward_epoch} have arrived"
-                )
-                ls = (
-                    [f"ウォレット: {nickname}", f"Epoch {reward_epoch} の報酬: {amount_ada:.6f} ADA"]
-                    if lang == "ja" else
-                    [f"Wallet: {nickname}", f"Epoch {reward_epoch} reward: {amount_ada:.6f} ADA"]
-                )
+                if is_spo:
+                    subj = (
+                        f"Epoch {reward_epoch} の SPO 報酬 (Leader) が入金されました"
+                        if lang == "ja" else
+                        f"SPO leader rewards for Epoch {reward_epoch} have arrived"
+                    )
+                    ls = (
+                        [f"ウォレット: {nickname}",
+                         f"Epoch {reward_epoch} の SPO 報酬 (Leader): {primary_ada:.6f} ADA"]
+                        if lang == "ja" else
+                        [f"Wallet: {nickname}",
+                         f"Epoch {reward_epoch} SPO reward (leader): {primary_ada:.6f} ADA"]
+                    )
+                else:
+                    subj = (
+                        f"Epoch {reward_epoch} 分の報酬が入金されました"
+                        if lang == "ja" else
+                        f"Rewards for Epoch {reward_epoch} have arrived"
+                    )
+                    ls = (
+                        [f"ウォレット: {nickname}", f"Epoch {reward_epoch} の報酬: {primary_ada:.6f} ADA"]
+                        if lang == "ja" else
+                        [f"Wallet: {nickname}", f"Epoch {reward_epoch} reward: {primary_ada:.6f} ADA"]
+                    )
                 email_and_log(
                     addr["email_addr"], user_id, "pool_reward_received", dk, subj,
                     build_html(subj, ls, CARDANOISM_URL, "マイページを開く" if lang == "ja" else "Open MyPage", lang),
@@ -729,9 +768,20 @@ def _check_pool_reward_received_batch(
         if addr.get("telegram_chat_id"):
             dk = dedup_key + "_telegram"
             if not already_sent(user_id, "pool_reward_received", dk):
-                tg_text = (f"💰 <b>ステーキング報酬入金</b>\nウォレット: {nickname}\nEpoch {reward_epoch} 報酬: {amount_ada:.6f} ADA"
-                           if lang == "ja" else
-                           f"💰 <b>Staking Reward Received</b>\nWallet: {nickname}\nEpoch {reward_epoch} reward: {amount_ada:.6f} ADA")
+                if is_spo:
+                    tg_text = (
+                        f"👑 <b>SPO 報酬 (Leader) 入金</b>\nウォレット: {nickname}\n"
+                        f"Epoch {reward_epoch} SPO 報酬: {primary_ada:.6f} ADA"
+                        if lang == "ja" else
+                        f"👑 <b>SPO Leader Reward Received</b>\nWallet: {nickname}\n"
+                        f"Epoch {reward_epoch} SPO reward: {primary_ada:.6f} ADA"
+                    )
+                else:
+                    tg_text = (
+                        f"💰 <b>ステーキング報酬入金</b>\nウォレット: {nickname}\nEpoch {reward_epoch} 報酬: {primary_ada:.6f} ADA"
+                        if lang == "ja" else
+                        f"💰 <b>Staking Reward Received</b>\nWallet: {nickname}\nEpoch {reward_epoch} reward: {primary_ada:.6f} ADA"
+                    )
                 telegram_and_log(addr["telegram_chat_id"], user_id, "pool_reward_received", dk, tg_text)
 
 
@@ -1701,6 +1751,28 @@ def check_pool_sync():
     inserted = bulk_upsert_pools(records)
     logger.info("プール同期 完了: %d / %d 件 upsert (extended=%d)", inserted, len(records), len(extended_map))
 
+    # SPO 判定の再 sync (24h fallback)。pools.reward_addr / owners が更新された後に走る。
+    try:
+        from cardanoism.backend.auth_db import refresh_all_spo_roles
+        checked, updated = refresh_all_spo_roles()
+        logger.info("SPO 判定 再 sync 完了: %d 件チェック / %d 件更新", checked, updated)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("SPO 判定 再 sync 失敗 (継続): %s", e)
+
+
+def check_spo_role_initial_sync():
+    """初期セットアップ用: 全 stake_addresses の spo_pool_id を一括で再判定する。
+
+    pool_sync が完了している前提。新規 VPS デプロイ時の手順に組み込む。
+    """
+    logger.info("SPO 判定 初期投入 開始")
+    try:
+        from cardanoism.backend.auth_db import refresh_all_spo_roles
+        checked, updated = refresh_all_spo_roles()
+        logger.info("SPO 判定 初期投入 完了: %d 件チェック / %d 件更新", checked, updated)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("SPO 判定 初期投入 失敗: %s", e)
+
 
 def check_drep_sync():
     """
@@ -2484,7 +2556,7 @@ def main():
     parser.add_argument(
         "--event",
         default="all",
-        choices=["all", "pool", "drep", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync"],
+        choices=["all", "pool", "drep", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync", "spo_role_initial_sync"],
         help="実行するイベントグループ",
     )
     parser.add_argument(
@@ -2603,6 +2675,10 @@ def main():
     # 憲法同期 + 翻訳: --event constitution_sync で明示指定（"all" には含めない）
     if args.event == "constitution_sync":
         check_constitution_sync()
+
+    # SPO 判定 初期投入: --event spo_role_initial_sync で明示指定（"all" には含めない）
+    if args.event == "spo_role_initial_sync":
+        check_spo_role_initial_sync()
 
     logger.info("完了")
 

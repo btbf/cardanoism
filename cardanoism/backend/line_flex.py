@@ -388,17 +388,36 @@ def pool_reward_received(
     nickname: str,
     url: str,
     lang: str = "ja",
+    is_leader: bool = False,
 ) -> dict:
+    """報酬入金通知。
+
+    Args:
+        is_leader: True の場合は SPO の Leader 報酬として表示。amount_ada は leader 分。
+    """
     t = get_flex(lang)
+    if is_leader:
+        title = "SPO 報酬 (Leader)" if lang == "ja" else "SPO Reward (Leader)"
+        subtitle = (
+            f"Epoch {reward_epoch} のオペレーター報酬が入金されました"
+            if lang == "ja" else
+            f"Epoch {reward_epoch} operator rewards have arrived"
+        )
+        amount_label = "SPO 報酬 (Leader)" if lang == "ja" else "SPO reward (leader)"
+    else:
+        title = t["pool_reward_title"]
+        subtitle = t["pool_reward_subtitle"].format(epoch=reward_epoch)
+        amount_label = t["pool_reward_amount_label"]
+
     rows = [
         _row(t["pool_reward_epoch_label"], f"Epoch {reward_epoch}", TEXT_PRIMARY),
-        _row(t["pool_reward_amount_label"], f"{amount_ada:,.4f} ADA", TEXT_DOWN),
+        _row(amount_label, f"{amount_ada:,.4f} ADA", TEXT_DOWN),
     ]
     if apy is not None:
         rows.append(_row(t["apy_label"], f"{apy:.2f}%", TEXT_APY))
 
     return _bubble(
-        _header(t["pool_reward_title"], t["pool_reward_subtitle"].format(epoch=reward_epoch)),
+        _header(title, subtitle),
         [
             {
                 "type": "box",
