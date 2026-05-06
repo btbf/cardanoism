@@ -986,12 +986,12 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
 
 
 def notification_channel_section() -> rx.Component:
-    """通知チャンネル選択セクション（メール・LINE連携済みの場合のみ表示）。"""
+    """通知チャンネル選択セクション（メール・LINE・Telegram いずれか連携済みの場合に表示）。"""
     has_email = AuthState.email_notify_channel != ""
     has_line = AuthState.line_notify_channel != ""
-    # どちらか1つでもある場合に表示
+    has_telegram = AuthState.telegram_chat_id != ""
     return rx.cond(
-        has_email | has_line,
+        has_email | has_line | has_telegram,
         rx.box(
             rx.vstack(
                 rx.hstack(
@@ -1032,7 +1032,7 @@ def notification_channel_section() -> rx.Component:
                         ),
                         rx.box(),
                     ),
-                    # 両方ある場合の区切り線
+                    # email + line の区切り線
                     rx.cond(
                         has_email & has_line,
                         rx.divider(),
@@ -1051,6 +1051,33 @@ def notification_channel_section() -> rx.Component:
                             rx.switch(
                                 checked=AuthState.line_notify_enabled,
                                 on_change=AuthState.set_line_notify_enabled,
+                                color_scheme="amber",
+                            ),
+                            justify="between",
+                            align="center",
+                            width="100%",
+                        ),
+                        rx.box(),
+                    ),
+                    # (line | email) + telegram の区切り線
+                    rx.cond(
+                        (has_email | has_line) & has_telegram,
+                        rx.divider(),
+                        rx.box(),
+                    ),
+                    # Telegram通知チャンネル
+                    rx.cond(
+                        has_telegram,
+                        rx.hstack(
+                            rx.hstack(
+                                rx.icon("send", size=16, color="#229ED9"),
+                                rx.text(AuthState.t["notification_channel_telegram"], size="3", weight="medium"),
+                                spacing="2",
+                                align="center",
+                            ),
+                            rx.switch(
+                                checked=AuthState.telegram_notify_enabled,
+                                on_change=AuthState.set_telegram_notify_enabled,
                                 color_scheme="amber",
                             ),
                             justify="between",
