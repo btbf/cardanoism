@@ -388,17 +388,36 @@ def pool_reward_received(
     nickname: str,
     url: str,
     lang: str = "ja",
+    is_leader: bool = False,
 ) -> dict:
+    """報酬入金通知。
+
+    Args:
+        is_leader: True の場合は SPO の Leader 報酬として表示。amount_ada は leader 分。
+    """
     t = get_flex(lang)
+    if is_leader:
+        title = "SPO 報酬 (Leader)" if lang == "ja" else "SPO Reward (Leader)"
+        subtitle = (
+            f"Epoch {reward_epoch} のオペレーター報酬が入金されました"
+            if lang == "ja" else
+            f"Epoch {reward_epoch} operator rewards have arrived"
+        )
+        amount_label = "SPO 報酬 (Leader)" if lang == "ja" else "SPO reward (leader)"
+    else:
+        title = t["pool_reward_title"]
+        subtitle = t["pool_reward_subtitle"].format(epoch=reward_epoch)
+        amount_label = t["pool_reward_amount_label"]
+
     rows = [
         _row(t["pool_reward_epoch_label"], f"Epoch {reward_epoch}", TEXT_PRIMARY),
-        _row(t["pool_reward_amount_label"], f"{amount_ada:,.4f} ADA", TEXT_DOWN),
+        _row(amount_label, f"{amount_ada:,.4f} ADA", TEXT_DOWN),
     ]
     if apy is not None:
         rows.append(_row(t["apy_label"], f"{apy:.2f}%", TEXT_APY))
 
     return _bubble(
-        _header(t["pool_reward_title"], t["pool_reward_subtitle"].format(epoch=reward_epoch)),
+        _header(title, subtitle),
         [
             {
                 "type": "box",
@@ -669,6 +688,74 @@ def drep_delegation_reminder(
                 ],
             },
             _wallet_row(nickname, lang),
+        ],
+        url,
+        t["footer_governance"],
+    )
+
+
+# ============================================================
+# treasury_withdrawal_enacted
+# ============================================================
+
+def treasury_withdrawal_enacted(
+    title: str,
+    enacted_epoch: int,
+    url: str,
+    lang: str = "ja",
+) -> dict:
+    """トレジャリー引き出し提案が enacted (施行) されたときの全ユーザー向け通知。"""
+    t = get_flex(lang)
+    return _bubble(
+        _header(t["treasury_enacted_title"], t["treasury_enacted_subtitle"]),
+        [
+            {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "sm",
+                "contents": [
+                    _row(t["treasury_enacted_proposal_label"], title or "-", TEXT_PRIMARY),
+                    _row(t["treasury_enacted_epoch_label"], f"Epoch {enacted_epoch}", TEXT_DOWN),
+                ],
+            },
+        ],
+        url,
+        t["footer_governance"],
+    )
+
+
+# ============================================================
+# spo_pending_vote
+# ============================================================
+
+def spo_pending_vote(
+    proposal_type_label: str,
+    url: str,
+    lang: str = "ja",
+) -> dict:
+    """SPO 投票対象の新ガバナンスアクション提出通知。drep_new_governance_action と
+    類似のレイアウトだが SPO 文脈を強調する。
+    """
+    t = get_flex(lang)
+    return _bubble(
+        _header(t["spo_pending_vote_title"], t["spo_pending_vote_subtitle"]),
+        [
+            {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "sm",
+                "contents": [
+                    _row(t["drep_new_gov_type_label"], proposal_type_label, TEXT_PRIMARY),
+                ],
+            },
+            {
+                "type": "text",
+                "text": t["spo_pending_vote_hint"],
+                "size": "xs",
+                "color": TEXT_SECONDARY,
+                "wrap": True,
+                "margin": "md",
+            },
         ],
         url,
         t["footer_governance"],

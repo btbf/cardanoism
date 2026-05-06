@@ -13,6 +13,14 @@
 
 リアルタイムバックエンド（`docs/realtime-notification-backend.md`）と並行稼働する独立プロセス。
 
+> **Phase 1〜5 (Ogmios listener DB 直書き) 適用後の運用**
+>
+> Ogmios listener が GA / 投票 / DRep cert / Pool cert / 委任 cert を即時 DB 反映し、
+> エポック境界で各種 `*_sync` を自動発火するようになりました。
+>
+> このため `notify_worker.py` の各 `*_sync` cron は **listener が落ちている間のフォールバック**
+> として低頻度 (24 時間に 1 回深夜) で動かす運用に変わります。詳細は § 4-1。
+
 > 新規 VPS への一括デプロイは [`initial-setup.md`](initial-setup.md) に全体手順をまとめている。本ドキュメントは Koios ポーリング個別の詳細。
 
 ---
@@ -117,7 +125,10 @@ VPS への CLI / Service Token セットアップは `docs/realtime-notification
 
 ## 4. cron 設定
 
-### 4-1. 推奨スケジュール
+### 4-1. 推奨スケジュール (Ogmios listener 駆動を前提とした最小構成)
+
+Ogmios listener が GA / 投票 / DRep cert / Pool cert / 委任 cert の各イベントを即時 DB 反映するため、
+従来の `*_sync` 系 cron は **listener 停止時のフォールバック** として 24 時間に 1 回だけ走らせる構成に変更。
 
 ```cron
 # /etc/cron.d/cardanoism-notify
@@ -130,11 +141,11 @@ TOKEN_FILE=/etc/cardanoism/infisical.token
 ENV=mainnet
 RUN="$INF run --env=$ENV --token=$(cat $TOKEN_FILE) --"
 
-# ── 通知 ─────────────────────────────────────────────
-# プール系（saturation / pledge / reward）
+# ── 通知 (常時) ───────────────────────────────────────────
+# プール系（saturation / pledge / reward） — エポック計算値なので cron 必須
 */30 * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event pool         >> /var/log/cardanoism/notify.log 2>&1
 
-# DRep 系（status_change）
+# DRep 系（status_change） — drep_activity で active/inactive 判定するので cron
 */30 * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event drep         >> /var/log/cardanoism/notify.log 2>&1
 
 # 委任リマインダー（pool / drep）
@@ -143,27 +154,28 @@ RUN="$INF run --env=$ENV --token=$(cat $TOKEN_FILE) --"
 # トレジャリー引き出し提案の enacted 検知
 0    * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event treasury     >> /var/log/cardanoism/notify.log 2>&1
 
-# ── キャッシュ同期 ───────────────────────────────────
-# トレジャリー残高・履歴・NCL
-*/15 * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event treasury_sync >> /var/log/cardanoism/sync.log 2>&1
-
-# 法定通貨レート（CoinGecko）
+# ── オフチェーン同期 (常時) ──────────────────────────────
+# 法定通貨レート (CoinGecko)
 */10 * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event fiat_sync     >> /var/log/cardanoism/sync.log 2>&1
 
-# DRep 一覧・メタデータ
-0    */2 * * * cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event drep_sync    >> /var/log/cardanoism/sync.log 2>&1
+# プールリレー TCP 疎通確認
+0    */6 * * * cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event relay_check  >> /var/log/cardanoism/sync.log 2>&1
 
-# 投票履歴（GA 詳細用）
-*/30 * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event vote_sync     >> /var/log/cardanoism/sync.log 2>&1
-
-# 投票集計
-*/30 * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event summary_sync  >> /var/log/cardanoism/sync.log 2>&1
-
-# プロトコルパラメータ・CC メンバー
-0    */6 * * * cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event params_sync  >> /var/log/cardanoism/sync.log 2>&1
-
-# 投票理由の翻訳（OpenAI、無料枠の上限注意）
+# 投票理由の翻訳 (OpenAI、無料枠の上限注意)
 0    */4 * * * cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event vote_rationale_sync >> /var/log/cardanoism/sync.log 2>&1
+
+# ── フォールバック (listener 停止対策、24 時間に 1 回深夜) ─────
+# 通常は Ogmios listener が epoch_start を検知したタイミングでこれらを発火するが、
+# listener が落ちている間でもデータが完全停止しないように 1 日 1 回バックアップで回す。
+0    3 * * *   cardanoism cd $WORKDIR && $RUN $PY cardanoism/backend/governance.py --no-translate >> /var/log/cardanoism/sync.log 2>&1
+30   3 * * *   cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event params_sync             >> /var/log/cardanoism/sync.log 2>&1
+0    4 * * *   cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event treasury_sync           >> /var/log/cardanoism/sync.log 2>&1
+30   4 * * *   cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event drep_sync               >> /var/log/cardanoism/sync.log 2>&1
+0    5 * * *   cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event pool_sync               >> /var/log/cardanoism/sync.log 2>&1
+30   5 * * *   cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event pool_block_history_sync >> /var/log/cardanoism/sync.log 2>&1
+0    6 * * *   cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event vote_sync               >> /var/log/cardanoism/sync.log 2>&1
+30   6 * * *   cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event summary_sync            >> /var/log/cardanoism/sync.log 2>&1
+0    7 * * *   cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event constitution_sync      >> /var/log/cardanoism/sync.log 2>&1
 ```
 
 cron は `$()` を直接展開できないため、`$RUN` 変数を組み立てる際に `$(cat ...)` を頭に出している点に注意。動かない場合は `--token-file=$TOKEN_FILE` 指定に切替えるか、wrapper script を用意する。
@@ -176,16 +188,72 @@ sudo install -m 0644 cron.d-cardanoism-notify /etc/cron.d/cardanoism-notify
 
 ### 4-2. cron スケジュールの考え方
 
+#### 常時 cron (listener 状態に関係なく走る)
+
 | 種類 | 頻度 | 理由 |
 |------|------|------|
-| 通知（`pool` / `drep`） | 30分 | チェーン更新は数十秒〜数分単位だが、Koios 側の rate limit と通知の即時性のバランス |
-| `reminder` | 1時間 | 日次集計の差分処理。1時間で十分 |
-| `treasury` | 1時間 | エポック単位で更新されるため十分 |
-| `fiat_sync` | 10分 | UI で常時表示されるため短め |
-| `treasury_sync` / `vote_sync` / `summary_sync` | 15-30分 | UI 表示の最新性とサーバー負荷のバランス |
-| `params_sync` | 6時間 | プロトコルパラメータはエポックでしか変化しない |
-| `drep_sync` | 2時間 | DRep 数が多くフェッチが重い。低頻度で運用 |
-| `vote_rationale_sync` | 4時間 | OpenAI コスト抑制 |
+| 通知（`pool` / `drep`） | 30 分 | エポック計算値や DRep activity 判定が必要なので cron 不可避 |
+| `reminder` | 1 時間 | 日次集計の差分処理。`refresh_stake_delegations` も同タイミング |
+| `treasury` | 1 時間 | enacted 検知。listener も拾えるが軽量な safety net |
+| `fiat_sync` | 10 分 | UI で常時表示されるため短め (オフチェーン CoinGecko) |
+| `relay_check` | 6 時間 | TCP 疎通テスト (オフチェーン) |
+| `vote_rationale_sync` | 4 時間 | OpenAI 翻訳。コスト抑制のため低頻度 |
+
+#### フォールバック cron (24 時間に 1 回、深夜に集中)
+
+通常は Ogmios listener が epoch_start を検知したときに `*_sync` チェーンを起動する。
+listener が長時間停止していてもデータが完全停止しないよう、**1 日 1 回だけ深夜にバックアップ実行**する。
+
+| 種類 | 起動時刻 | 通常駆動 |
+|------|---------|---------|
+| `governance.py --no-translate` | 03:00 | listener 経由で逐次反映 + epoch_start でステータス確定 |
+| `params_sync` | 03:30 | listener: epoch_start |
+| `treasury_sync` | 04:00 | listener: epoch_start |
+| `drep_sync` | 04:30 | listener: epoch_start + DRep cert 検知 |
+| `pool_sync` | 05:00 | listener: epoch_start + Pool cert 検知 |
+| `pool_block_history_sync` | 05:30 | listener: epoch_start |
+| `vote_sync` | 06:00 | listener: 投票即時反映 |
+| `summary_sync` | 06:30 | listener: epoch_start |
+| `constitution_sync` | 07:00 | listener: epoch_start |
+
+> **listener が動いている限り**、これらの cron 実行はほぼ「no-op (= 既に最新)」になる。
+> Koios コール量は通常時とフォールバック時で大きく差がついて、平時は 1/10 程度に抑えられる。
+
+### 4-3. listener の状態監視
+
+Phase 1〜5 によりデータの新鮮度は **Ogmios listener が動いているか** に依存するようになりました。
+fallback cron が 24 時間に 1 回しか走らないため、listener 停止を早期検知することが重要です。
+
+#### journalctl で稼働確認
+
+```bash
+# 直近 5 分間でブロック処理ログが出ていれば正常
+sudo journalctl -u cardanoism-ogmios-listener --since "5 minutes ago" | grep "ブロック受信"
+```
+
+#### DB 経由の鮮度チェック
+
+```sql
+-- listener が直近に書いた slot を見る (各テーブル)
+SELECT 'governance_actions' AS tbl, MAX(last_event_slot) AS last_slot FROM governance_actions
+UNION ALL
+SELECT 'proposal_votes',                MAX(last_event_slot) FROM proposal_votes
+UNION ALL
+SELECT 'dreps',                         MAX(last_event_slot) FROM dreps
+UNION ALL
+SELECT 'pools',                         MAX(last_event_slot) FROM pools
+UNION ALL
+SELECT 'stake_addresses',               MAX(last_event_slot) FROM stake_addresses;
+```
+
+最新の slot が **数十分以上更新されていない** 場合、listener が詰まっている / 落ちている可能性が高い。
+
+#### 推奨アラート
+
+systemd の `OnFailure=` や外部監視 (Healthchecks.io / UptimeRobot 等) で:
+
+- `cardanoism-ogmios-listener.service` の状態 `active (running)` を 5 分間隔で確認
+- もしくは `cat /var/lib/cardanoism/ogmios.cursor` の `mtime` が 10 分以上古ければアラート
 
 ---
 

@@ -30,6 +30,8 @@ POOL_NOTIFICATION_EVENT_TYPES = [
     "pool_reward_received",
     "pool_epoch_performance",
     "pool_delegation_reminder",
+    # SPO 投票催促 (spo_pool_id が設定された stake_address でのみ意味あり)
+    "spo_pending_vote",
 ]
 
 # DRep委任者のみ
@@ -281,6 +283,7 @@ def get_stake_addresses(user_id: int) -> list:
             "SELECT id, address, wallet_address, nickname, role, "
             "delegated_drep_id, delegated_drep_name, "
             "delegated_pool_id, delegated_pool_name, "
+            "spo_pool_id, "
             "verified, verified_at, created_at "
             "FROM stake_addresses WHERE user_id = ? ORDER BY created_at ASC",
             (user_id,),
@@ -400,6 +403,62 @@ def update_stake_address_role(
             (role, drep_id, drep_name, pool_id, pool_name, address_id),
         )
         conn.commit()
+
+
+def detect_spo_pool_id(stake_address: str) -> str | None:
+    """指定 stake address が SPO の reward_addr または owner であれば pool_id を返す。
+
+    複数プールに該当するケースは最初の 1 件 (LIMIT 1) のみ。
+    pool_status='retired' は対象外。
+    """
+    if not stake_address:
+        return None
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT pool_id_bech32 FROM pools
+            WHERE (pool_status IS NULL OR pool_status != 'retired')
+              AND (
+                  reward_addr = ?
+                  OR (owners IS NOT NULL AND JSON_CONTAINS(owners, JSON_QUOTE(?), '$'))
+              )
+            ORDER BY pool_status = 'registered' DESC, pool_id_bech32 ASC
+            LIMIT 1
+            """,
+            (stake_address, stake_address),
+        )
+        row = cursor.fetchone()
+        return (row.get("pool_id_bech32") if row else None) or None
+
+
+def update_stake_address_spo(address_id: int, pool_id: str | None) -> None:
+    """stake_addresses.spo_pool_id を更新。SPO でなくなった場合は NULL を渡す。"""
+    with get_db() as (cursor, conn):
+        cursor.execute(
+            "UPDATE stake_addresses SET spo_pool_id = ? WHERE id = ?",
+            (pool_id, address_id),
+        )
+        conn.commit()
+
+
+def refresh_all_spo_roles() -> tuple[int, int]:
+    """全 stake_addresses について SPO 判定を再スキャンする。
+
+    戻り値: (チェック件数, SPO として更新した件数)
+    """
+    checked = 0
+    updated = 0
+    with get_db() as (cursor, conn):
+        cursor.execute("SELECT id, address, spo_pool_id FROM stake_addresses")
+        rows = [dict(r) for r in cursor.fetchall()]
+
+    for row in rows:
+        checked += 1
+        new_pool_id = detect_spo_pool_id(row["address"])
+        if new_pool_id != row.get("spo_pool_id"):
+            update_stake_address_spo(row["id"], new_pool_id)
+            updated += 1
+    return checked, updated
 
 
 def delete_stake_address(address_id: int, user_id: int) -> None:

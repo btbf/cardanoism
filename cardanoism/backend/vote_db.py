@@ -33,10 +33,10 @@ def upsert_vote(data: dict[str, Any]) -> None:
             """
             INSERT INTO proposal_votes (
                 proposal_id, voter_role, voter_id, voter_hex, voter_has_script,
-                vote, block_time, meta_url, meta_hash
+                vote, block_time, meta_url, meta_hash, last_event_slot
             ) VALUES (
                 ?, ?, ?, ?, ?,
-                ?, ?, ?, ?
+                ?, ?, ?, ?, ?
             )
             ON DUPLICATE KEY UPDATE
                 voter_hex        = IF(VALUES(block_time) IS NOT NULL AND (block_time IS NULL OR VALUES(block_time) >= block_time), VALUES(voter_hex),        voter_hex),
@@ -44,7 +44,9 @@ def upsert_vote(data: dict[str, Any]) -> None:
                 vote             = IF(VALUES(block_time) IS NOT NULL AND (block_time IS NULL OR VALUES(block_time) >= block_time), VALUES(vote),             vote),
                 meta_url         = IF(VALUES(block_time) IS NOT NULL AND (block_time IS NULL OR VALUES(block_time) >= block_time), VALUES(meta_url),         meta_url),
                 meta_hash        = IF(VALUES(block_time) IS NOT NULL AND (block_time IS NULL OR VALUES(block_time) >= block_time), VALUES(meta_hash),        meta_hash),
-                block_time       = IF(VALUES(block_time) IS NOT NULL AND (block_time IS NULL OR VALUES(block_time) >= block_time), VALUES(block_time),       block_time)
+                block_time       = IF(VALUES(block_time) IS NOT NULL AND (block_time IS NULL OR VALUES(block_time) >= block_time), VALUES(block_time),       block_time),
+                -- listener が書いた slot を保持 (Koios 由来 NULL で上書きしない)
+                last_event_slot  = COALESCE(VALUES(last_event_slot), last_event_slot)
             """,
             (
                 data.get("proposal_id"),
@@ -56,6 +58,7 @@ def upsert_vote(data: dict[str, Any]) -> None:
                 _to_dt(data.get("block_time")),
                 data.get("meta_url"),
                 data.get("meta_hash"),
+                data.get("last_event_slot"),
             ),
         )
         conn.commit()

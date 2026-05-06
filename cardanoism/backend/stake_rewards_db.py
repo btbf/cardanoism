@@ -14,27 +14,39 @@ from cardanoism.backend.db_connect import get_db
 logger = logging.getLogger(__name__)
 
 
+_VALID_REWARD_TYPES = ("member", "leader", "other")
+
+
+def _normalize_reward_type(t: str | None) -> str:
+    """Koios の type を 'member' / 'leader' / 'other' の 3 値に正規化。"""
+    if t in ("member", "leader"):
+        return t
+    return "other"
+
+
 def bulk_upsert_stake_rewards(
-    rewards: Iterable[tuple[str, int, int, str | None]],
+    rewards: Iterable[tuple[str, int, int, str | None, str | None]],
 ) -> int:
     """報酬データを一括 upsert する。
 
     Args:
-        rewards: (stake_address, epoch_no, amount_lovelace, pool_id_or_None) の iterable
+        rewards: (stake_address, epoch_no, amount_lovelace, pool_id_or_None, reward_type) の iterable
+                 reward_type は 'member' / 'leader' / 'other' のいずれか。
+                 None または未対応値は 'other' に正規化される。
 
     Returns:
         影響行数（INSERT + UPDATE 合算）
     """
     rows = [
-        (addr, int(epoch), int(amount or 0), pool_id)
-        for addr, epoch, amount, pool_id in rewards
+        (addr, int(epoch), int(amount or 0), pool_id, _normalize_reward_type(rt))
+        for addr, epoch, amount, pool_id, rt in rewards
         if addr and epoch is not None
     ]
     if not rows:
         return 0
     sql = (
-        "INSERT INTO stake_rewards (stake_address, epoch_no, amount_lovelace, pool_id) "
-        "VALUES (?, ?, ?, ?) "
+        "INSERT INTO stake_rewards (stake_address, epoch_no, amount_lovelace, pool_id, reward_type) "
+        "VALUES (?, ?, ?, ?, ?) "
         "ON DUPLICATE KEY UPDATE "
         "  amount_lovelace = VALUES(amount_lovelace), "
         "  pool_id         = COALESCE(VALUES(pool_id), pool_id)"
@@ -52,18 +64,18 @@ def bulk_upsert_stake_rewards(
 def get_recent_rewards(stake_addresses: list[str], n_epochs: int = 5) -> list[dict]:
     """指定アドレスの直近 n エポック分の報酬を返す。
 
-    戻り値は epoch_no DESC, stake_address ASC でソート済み。
-    キャッシュが無いアドレスは含まれない。
+    戻り値: 1 行 = 1 (stake, epoch, type)。同じ epoch でも member / leader が別行で返る。
+    epoch_no DESC, stake_address ASC, reward_type ASC でソート済み。
     """
     if not stake_addresses:
         return []
     placeholders = ",".join(["?"] * len(stake_addresses))
     sql = (
-        f"SELECT stake_address, epoch_no, amount_lovelace, pool_id "
+        f"SELECT stake_address, epoch_no, amount_lovelace, pool_id, reward_type "
         f"FROM stake_rewards "
         f"WHERE stake_address IN ({placeholders}) "
-        f"ORDER BY epoch_no DESC, stake_address ASC "
-        f"LIMIT {int(n_epochs) * len(stake_addresses)}"
+        f"ORDER BY epoch_no DESC, stake_address ASC, reward_type ASC "
+        f"LIMIT {int(n_epochs) * len(stake_addresses) * 3}"
     )
     try:
         with get_db() as (cursor, _):
@@ -75,7 +87,7 @@ def get_recent_rewards(stake_addresses: list[str], n_epochs: int = 5) -> list[di
 
 
 def get_total_rewards(stake_addresses: list[str]) -> dict[str, int]:
-    """指定アドレスの累積報酬 (lovelace) を返す。
+    """指定アドレスの累積報酬 (lovelace) を返す (type 区別せず合算)。
 
     戻り値: {stake_address: total_lovelace}
     キャッシュが無いアドレスは 0 として含まれる。
@@ -97,6 +109,37 @@ def get_total_rewards(stake_addresses: list[str]) -> dict[str, int]:
                 out[str(row["stake_address"])] = int(row["total"] or 0)
     except Exception as e:  # noqa: BLE001
         logger.exception("get_total_rewards failed: %s", e)
+    return out
+
+
+def get_total_rewards_by_type(stake_addresses: list[str]) -> dict[str, dict[str, int]]:
+    """指定アドレスの累積報酬を type 別に返す。
+
+    戻り値: {stake_address: {"member": N, "leader": N, "other": N}}
+    """
+    if not stake_addresses:
+        return {}
+    placeholders = ",".join(["?"] * len(stake_addresses))
+    sql = (
+        f"SELECT stake_address, reward_type, SUM(amount_lovelace) AS total "
+        f"FROM stake_rewards "
+        f"WHERE stake_address IN ({placeholders}) "
+        f"GROUP BY stake_address, reward_type"
+    )
+    out: dict[str, dict[str, int]] = {
+        addr: {"member": 0, "leader": 0, "other": 0} for addr in stake_addresses
+    }
+    try:
+        with get_db() as (cursor, _):
+            cursor.execute(sql, stake_addresses)
+            for row in cursor.fetchall():
+                addr = str(row["stake_address"])
+                rtype = str(row["reward_type"] or "other")
+                if rtype not in _VALID_REWARD_TYPES:
+                    rtype = "other"
+                out.setdefault(addr, {"member": 0, "leader": 0, "other": 0})[rtype] = int(row["total"] or 0)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("get_total_rewards_by_type failed: %s", e)
     return out
 
 
