@@ -38,12 +38,18 @@ def render_email(ctx: dict, lang: str) -> tuple[str, list[str], str, str]:
 def render_telegram(ctx: dict, lang: str) -> str:
     if lang == "ja":
         return (
-            f"⏰ <b>新エポック開始</b>\n"
-            f"Epoch {ctx['epoch']} が始まりました。"
+            "<b>⏰ Cardanoism — 新エポック開始</b>\n"
+            "\n"
+            f"🆕 Epoch {ctx['epoch']} が始まりました\n"
+            "\n"
+            f'→ <a href="{ctx["base_url"]}">ダッシュボードを開く</a>'
         )
     return (
-        f"⏰ <b>New Epoch Started</b>\n"
-        f"Epoch {ctx['epoch']} has started."
+        "<b>⏰ Cardanoism — New Epoch Started</b>\n"
+        "\n"
+        f"🆕 Epoch {ctx['epoch']} has started\n"
+        "\n"
+        f'→ <a href="{ctx["base_url"]}">Open Dashboard</a>'
     )
 
 

@@ -52,18 +52,25 @@ def render_email(ctx: dict, lang: str) -> tuple[str, list[str], str, str]:
 
 
 def render_telegram(ctx: dict, lang: str) -> str:
+    mypage_url = f"{ctx['base_url']}/mypage?tab=stake"
     if lang == "ja":
         return (
-            f"📋 <b>DRepステータス変更</b>\n"
-            f"ウォレット: {ctx['nickname']}\n"
-            f"DRep: {ctx['drep_name']}\n"
-            f"ステータス: {ctx['old_status']} → {ctx['new_status']}"
+            "<b>📋 Cardanoism — DRepステータス変更通知</b>\n"
+            "\n"
+            f"👤 {ctx['drep_name']}\n"
+            f"🔄 ステータス: {ctx['old_status']} → {ctx['new_status']}\n"
+            f"💼 {ctx['nickname']}で委任中\n"
+            "\n"
+            f'→ <a href="{mypage_url}">マイページで委任先を確認</a>'
         )
     return (
-        f"📋 <b>DRep Status Changed</b>\n"
-        f"Wallet: {ctx['nickname']}\n"
-        f"DRep: {ctx['drep_name']}\n"
-        f"Status: {ctx['old_status']} → {ctx['new_status']}"
+        "<b>📋 Cardanoism — DRep Status Changed</b>\n"
+        "\n"
+        f"👤 {ctx['drep_name']}\n"
+        f"🔄 Status: {ctx['old_status']} → {ctx['new_status']}\n"
+        f"💼 Delegated from {ctx['nickname']}\n"
+        "\n"
+        f'→ <a href="{mypage_url}">Check delegation on MyPage</a>'
     )
 
 

@@ -41,7 +41,7 @@ from notify_worker import (
 )
 from cardanoism.backend import line_flex
 from cardanoism.backend.mail_notify import build_html, build_text
-from cardanoism.backend.koios import get_proposal_title, get_pool_name, get_pool_epoch_stats, get_pool_apy
+from cardanoism.backend.koios import get_proposal_title, get_proposal_info, get_pool_name, get_pool_epoch_stats, get_pool_apy
 from cardanoism.backend.recent_blocks_db import insert_block, trim_old_blocks, delete_blocks_after_slot
 from cardanoism.backend.mempool_db import upsert_mempool_state
 from cardanoism.backend.listener_db import rollback_listener_state
@@ -334,11 +334,12 @@ def _notify_pool_fee_change(pool_id: str, margin: float, fixed_cost: int, pledge
 # 通知発火: drep_new_governance_action
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _notify_governance_action(tx_id: str, action_type_raw: str) -> None:
+def _notify_governance_action(tx_id: str, proposal_idx: int, action_type_raw: str) -> None:
     from cardanoism.backend.notify_templates import deliver
     from cardanoism.backend.notify_templates.drep_new_governance_action import (
         context as build_ctx, EVENT_TYPE,
     )
+    from cardanoism.backend.listener_governance import encode_proposal_id
 
     addrs = _merge_stake_channels(
         get_stake_addrs_with_event("drep_new_governance_action"),
@@ -348,18 +349,20 @@ def _notify_governance_action(tx_id: str, action_type_raw: str) -> None:
     if not addrs:
         return
 
+    proposal_id = encode_proposal_id(tx_id, proposal_idx) or ""
+
     for addr in addrs:
         lang = addr.get("language", "ja")
         label = (_GA_TYPE_MAP_JA if lang == "ja" else _GA_TYPE_MAP_EN).get(action_type_raw, action_type_raw)
-        ctx = build_ctx(action_label=label, base_url=CARDANOISM_URL)
-        deliver(addr, EVENT_TYPE, ctx, dedup_base=f"new_gov_{tx_id}_{addr['stake_id']}")
+        ctx = build_ctx(action_label=label, base_url=CARDANOISM_URL, proposal_id=proposal_id)
+        deliver(addr, EVENT_TYPE, ctx, dedup_base=f"new_gov_{tx_id}_{proposal_idx}_{addr['stake_id']}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 通知発火: spo_pending_vote (SPO 対象 GA が新規提出された)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _notify_spo_pending_vote(tx_id: str, action_type_raw: str) -> None:
+def _notify_spo_pending_vote(tx_id: str, proposal_idx: int, action_type_raw: str) -> None:
     """SPO 対象の新規 GA が提出されたとき、SPO 設定があるユーザーへ催促通知。
 
     対象判定は spo_pool_id が NULL でない stake_address のみ。通知設定 spo_pending_vote
@@ -369,6 +372,7 @@ def _notify_spo_pending_vote(tx_id: str, action_type_raw: str) -> None:
     from cardanoism.backend.notify_templates.spo_pending_vote import (
         context as build_ctx, EVENT_TYPE,
     )
+    from cardanoism.backend.listener_governance import encode_proposal_id
 
     addrs = _merge_stake_channels(
         get_stake_addrs_with_event("spo_pending_vote"),
@@ -379,12 +383,14 @@ def _notify_spo_pending_vote(tx_id: str, action_type_raw: str) -> None:
     if not addrs:
         return
 
+    proposal_id = encode_proposal_id(tx_id, proposal_idx) or ""
+
     for addr in addrs:
         lang = addr.get("language", "ja")
         label = (_GA_TYPE_MAP_JA if lang == "ja" else _GA_TYPE_MAP_EN).get(action_type_raw, action_type_raw)
-        ctx = build_ctx(action_label=label, base_url=CARDANOISM_URL)
+        ctx = build_ctx(action_label=label, base_url=CARDANOISM_URL, proposal_id=proposal_id)
         deliver(addr, EVENT_TYPE, ctx,
-                dedup_base=f"spo_pending_{tx_id}_{addr['stake_id']}")
+                dedup_base=f"spo_pending_{tx_id}_{proposal_idx}_{addr['stake_id']}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -405,13 +411,17 @@ def _notify_drep_vote(drep_id: str, vote_str: str, gov_tx_hash: str, gov_index: 
     if not addrs:
         return
 
-    proposal_title = get_proposal_title(gov_tx_hash, gov_index) if gov_tx_hash else None
+    info = get_proposal_info(gov_tx_hash, gov_index) if gov_tx_hash else None
+    proposal_title = (info or {}).get("title") or None
+    action_type    = (info or {}).get("proposal_type") or None
+    proposal_id    = (info or {}).get("proposal_id") or None
 
     for addr in addrs:
         drep_name = addr.get("delegated_drep_name") or drep_id[:12]
         ctx = build_ctx(
             drep_name=drep_name, vote=vote_str, proposal_title=proposal_title,
             nickname=addr["nickname"], base_url=CARDANOISM_URL,
+            action_type=action_type, proposal_id=proposal_id,
         )
         deliver(addr, EVENT_TYPE, ctx,
                 dedup_base=f"drep_vote_{addr['stake_id']}_{gov_tx_hash}_{gov_index}")
@@ -525,14 +535,14 @@ def _process_tx(tx: dict, slot: int, current_epoch: int) -> None:
             except Exception as e:
                 logger.exception("listener: GA DB 書込み失敗 tx=%s idx=%d: %s", tx_id, proposal_idx, e)
             # 通知発火: 全員向け (drep_new_governance_action)
-            _notify_governance_action(tx_id, action_type)
+            _notify_governance_action(tx_id, proposal_idx, action_type)
             # SPO 対象の場合は SPO 専用通知も発火
             try:
                 from cardanoism.backend.spo_targets import compute_spo_target
                 from cardanoism.backend.listener_governance import _ACTION_TYPE_MAP
                 proposal_type_pascal = _ACTION_TYPE_MAP.get(action_type, action_type)
                 if compute_spo_target(proposal_type_pascal, proposal.get("action")):
-                    _notify_spo_pending_vote(tx_id, action_type)
+                    _notify_spo_pending_vote(tx_id, proposal_idx, action_type)
             except Exception as e:
                 logger.exception("listener: spo_pending_vote 通知失敗: %s", e)
         except Exception as e:

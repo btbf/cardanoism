@@ -893,6 +893,17 @@ def get_proposal_title(proposal_tx_hash: str, proposal_index: int = 0) -> str | 
     /proposal_list (GET) で全件取得し、proposal_tx_hash と index で照合して
     meta_json.body.title を返す。取得できない場合は proposal_type を返す。
     """
+    info = get_proposal_info(proposal_tx_hash, proposal_index)
+    if not info:
+        return None
+    return info.get("title") or info.get("proposal_type") or None
+
+
+def get_proposal_info(proposal_tx_hash: str, proposal_index: int = 0) -> dict | None:
+    """ガバナンスアクションの基本情報を返す。
+
+    戻り値: {"title": str, "proposal_id": str, "proposal_type": str} or None
+    """
     data = _get("/proposal_list")
     if not data or not isinstance(data, list):
         return None
@@ -901,8 +912,9 @@ def get_proposal_title(proposal_tx_hash: str, proposal_index: int = 0) -> str | 
         item_id = f"{item.get('proposal_tx_hash') or ''}#{item.get('proposal_index') or 0}"
         if item_id == target_id:
             body = (item.get("meta_json") or {}).get("body") or {}
-            title = _extract_str(body.get("title"))
-            if title:
-                return title
-            return _extract_str(item.get("proposal_type")) or None
+            return {
+                "title":         _extract_str(body.get("title")),
+                "proposal_id":   _extract_str(item.get("proposal_id")),
+                "proposal_type": _extract_str(item.get("proposal_type")),
+            }
     return None

@@ -18,6 +18,7 @@ def context(
     nickname: str,
     is_leader: bool,
     base_url: str,
+    pool_name: str | None = None,
 ) -> dict:
     return {
         "reward_epoch": int(reward_epoch),
@@ -26,6 +27,7 @@ def context(
         "nickname":     nickname,
         "is_leader":    bool(is_leader),
         "base_url":     base_url,
+        "pool_name":    pool_name or "",
     }
 
 
@@ -79,29 +81,55 @@ def render_email(ctx: dict, lang: str) -> tuple[str, list[str], str, str]:
 
 
 def render_telegram(ctx: dict, lang: str) -> str:
+    mypage_url = f"{ctx['base_url']}/mypage?tab=stake"
+    pool_name = ctx.get("pool_name") or ""
     if ctx["is_leader"]:
         if lang == "ja":
-            return (
-                f"👑 <b>SPO 報酬 (Leader) 入金</b>\n"
-                f"ウォレット: {ctx['nickname']}\n"
-                f"Epoch {ctx['reward_epoch']} SPO 報酬: {ctx['primary_ada']:.6f} ADA"
-            )
-        return (
-            f"👑 <b>SPO Leader Reward Received</b>\n"
-            f"Wallet: {ctx['nickname']}\n"
-            f"Epoch {ctx['reward_epoch']} SPO reward: {ctx['primary_ada']:.6f} ADA"
-        )
+            lines = ["<b>👑 Cardanoism — SPO 報酬入金通知</b>", ""]
+            if pool_name:
+                lines.append(f"🏊 {pool_name}")
+            lines += [
+                f"📅 Epoch {ctx['reward_epoch']}",
+                f"💰 Leader 報酬: {ctx['primary_ada']:.6f} ADA",
+                f"💼 {ctx['nickname']}で運用中",
+                "",
+                f'→ <a href="{mypage_url}">マイページで報酬履歴を確認</a>',
+            ]
+        else:
+            lines = ["<b>👑 Cardanoism — SPO Leader Reward Received</b>", ""]
+            if pool_name:
+                lines.append(f"🏊 {pool_name}")
+            lines += [
+                f"📅 Epoch {ctx['reward_epoch']}",
+                f"💰 Leader reward: {ctx['primary_ada']:.6f} ADA",
+                f"💼 Operated by {ctx['nickname']}",
+                "",
+                f'→ <a href="{mypage_url}">View reward history on MyPage</a>',
+            ]
+        return "\n".join(lines)
     if lang == "ja":
-        return (
-            f"💰 <b>ステーキング報酬入金</b>\n"
-            f"ウォレット: {ctx['nickname']}\n"
-            f"Epoch {ctx['reward_epoch']} 報酬: {ctx['primary_ada']:.6f} ADA"
-        )
-    return (
-        f"💰 <b>Staking Reward Received</b>\n"
-        f"Wallet: {ctx['nickname']}\n"
-        f"Epoch {ctx['reward_epoch']} reward: {ctx['primary_ada']:.6f} ADA"
-    )
+        lines = ["<b>💰 Cardanoism — ステーキング報酬入金通知</b>", ""]
+        if pool_name:
+            lines.append(f"🏊 {pool_name}")
+        lines += [
+            f"📅 Epoch {ctx['reward_epoch']}",
+            f"💰 報酬: {ctx['primary_ada']:.6f} ADA",
+            f"💼 {ctx['nickname']}で委任中",
+            "",
+            f'→ <a href="{mypage_url}">マイページで報酬履歴を確認</a>',
+        ]
+    else:
+        lines = ["<b>💰 Cardanoism — Staking Reward Received</b>", ""]
+        if pool_name:
+            lines.append(f"🏊 {pool_name}")
+        lines += [
+            f"📅 Epoch {ctx['reward_epoch']}",
+            f"💰 Reward: {ctx['primary_ada']:.6f} ADA",
+            f"💼 Delegated from {ctx['nickname']}",
+            "",
+            f'→ <a href="{mypage_url}">View reward history on MyPage</a>',
+        ]
+    return "\n".join(lines)
 
 
 register(EVENT_TYPE, __import__(__name__, fromlist=["_"]))

@@ -52,18 +52,29 @@ def render_email(ctx: dict, lang: str) -> tuple[str, list[str], str, str]:
 
 
 def render_telegram(ctx: dict, lang: str) -> str:
+    mypage_url = f"{ctx['base_url']}/mypage?tab=stake"
     if lang == "ja":
         return (
-            f"🔔 <b>委任リマインダー</b>\n"
-            f"ウォレット: {ctx['nickname']}\n"
-            f"プール: {ctx['pool_name']}\n"
-            f"委任から {ctx['milestone']} 日が経過しました。委任先を確認しましょう。"
+            "<b>🔔 Cardanoism — プール委任リマインダー</b>\n"
+            "\n"
+            f"🏊 {ctx['pool_name']}\n"
+            f"📅 委任から {ctx['milestone']} 日経過\n"
+            f"💼 {ctx['nickname']}で委任中\n"
+            "\n"
+            "委任先プールの状態を確認しましょう。\n"
+            "\n"
+            f'→ <a href="{mypage_url}">マイページで委任先を確認</a>'
         )
     return (
-        f"🔔 <b>Delegation Reminder</b>\n"
-        f"Wallet: {ctx['nickname']}\n"
-        f"Pool: {ctx['pool_name']}\n"
-        f"{ctx['milestone']} days since delegation. Please review your pool."
+        "<b>🔔 Cardanoism — Pool Delegation Reminder</b>\n"
+        "\n"
+        f"🏊 {ctx['pool_name']}\n"
+        f"📅 {ctx['milestone']} days since delegation\n"
+        f"💼 Delegated from {ctx['nickname']}\n"
+        "\n"
+        "Please review the status of your pool.\n"
+        "\n"
+        f'→ <a href="{mypage_url}">Check delegation on MyPage</a>'
     )
 
 

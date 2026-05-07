@@ -78,32 +78,41 @@ def render_email(ctx: dict, lang: str) -> tuple[str, list[str], str, str]:
 
 
 def render_telegram(ctx: dict, lang: str) -> str:
-    head_ja = "💱 <b>プール手数料変更</b>"
-    head_en = "💱 <b>Pool Fee Changed</b>"
+    mypage_url = f"{ctx['base_url']}/mypage?tab=stake"
     if lang == "ja":
-        lines = [head_ja, f"ウォレット: {ctx['nickname']}", f"プール: {ctx['pool_name']}"]
+        lines = ["<b>💱 Cardanoism — プール手数料変更通知</b>", "", f"🏊 {ctx['pool_name']}"]
         if ctx["fee_changed"]:
             lines += [
-                f"変動: {ctx['old_margin_pct']:.2f}% → {ctx['new_margin_pct']:.2f}%",
-                f"固定: {ctx['old_fixed_ada']:.0f} ADA → {ctx['new_fixed_ada']:.0f} ADA",
+                f"📊 変動手数料: {ctx['old_margin_pct']:.2f}% → {ctx['new_margin_pct']:.2f}%",
+                f"💰 固定手数料: {ctx['old_fixed_ada']:,.0f} ADA → {ctx['new_fixed_ada']:,.0f} ADA",
             ]
         if ctx["pledge_changed"]:
             if ctx["old_pledge_ada"] is not None:
-                lines.append(f"誓約: {ctx['old_pledge_ada']:.0f} ADA → {ctx['new_pledge_ada']:.0f} ADA")
+                lines.append(f"🔒 誓約: {ctx['old_pledge_ada']:,.0f} ADA → {ctx['new_pledge_ada']:,.0f} ADA")
             else:
-                lines.append(f"誓約: {ctx['new_pledge_ada']:.0f} ADA")
+                lines.append(f"🔒 誓約: {ctx['new_pledge_ada']:,.0f} ADA")
+        lines += [
+            f"💼 {ctx['nickname']}で委任中",
+            "",
+            f'→ <a href="{mypage_url}">マイページで委任先を確認</a>',
+        ]
     else:
-        lines = [head_en, f"Wallet: {ctx['nickname']}", f"Pool: {ctx['pool_name']}"]
+        lines = ["<b>💱 Cardanoism — Pool Fee Changed</b>", "", f"🏊 {ctx['pool_name']}"]
         if ctx["fee_changed"]:
             lines += [
-                f"Margin: {ctx['old_margin_pct']:.2f}% → {ctx['new_margin_pct']:.2f}%",
-                f"Fixed cost: {ctx['old_fixed_ada']:.0f} ADA → {ctx['new_fixed_ada']:.0f} ADA",
+                f"📊 Margin: {ctx['old_margin_pct']:.2f}% → {ctx['new_margin_pct']:.2f}%",
+                f"💰 Fixed cost: {ctx['old_fixed_ada']:,.0f} ADA → {ctx['new_fixed_ada']:,.0f} ADA",
             ]
         if ctx["pledge_changed"]:
             if ctx["old_pledge_ada"] is not None:
-                lines.append(f"Pledge: {ctx['old_pledge_ada']:.0f} ADA → {ctx['new_pledge_ada']:.0f} ADA")
+                lines.append(f"🔒 Pledge: {ctx['old_pledge_ada']:,.0f} ADA → {ctx['new_pledge_ada']:,.0f} ADA")
             else:
-                lines.append(f"Pledge: {ctx['new_pledge_ada']:.0f} ADA")
+                lines.append(f"🔒 Pledge: {ctx['new_pledge_ada']:,.0f} ADA")
+        lines += [
+            f"💼 Delegated from {ctx['nickname']}",
+            "",
+            f'→ <a href="{mypage_url}">Check delegation on MyPage</a>',
+        ]
     return "\n".join(lines)
 
 
