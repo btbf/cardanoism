@@ -7,14 +7,18 @@ from cardanoism.backend.notify_templates._dispatcher import register
 EVENT_TYPE = "drep_new_governance_action"
 
 
-def context(*, action_label: str, base_url: str) -> dict:
+def context(*, action_label: str, base_url: str,
+            proposal_id: str | None = None) -> dict:
     """action_label は表示用 (国庫引き出し / Treasury Withdrawals 等の lang 別文字列)。
     呼出側で _GA_TYPE_MAP_JA / _EN を使って解決済みの値を渡す前提。
     """
+    pid = proposal_id or ""
     return {
         "action_label": action_label,
         "base_url":     base_url,
         "gov_url":      f"{base_url}/governance",
+        "proposal_id":  pid,
+        "proposal_url": f"{base_url}/governance/{pid}" if pid else f"{base_url}/governance",
     }
 
 
@@ -49,14 +53,22 @@ def render_email(ctx: dict, lang: str) -> tuple[str, list[str], str, str]:
 def render_telegram(ctx: dict, lang: str) -> str:
     if lang == "ja":
         return (
-            f"🗳️ <b>新ガバナンスアクション</b>\n"
-            f"種類: {ctx['action_label']}\n"
-            f"{ctx['gov_url']}"
+            "<b>🗳️ Cardanoism — 新ガバナンスアクション通知</b>\n"
+            "\n"
+            f"📋 提案タイプ: {ctx['action_label']}\n"
+            "\n"
+            "新しいガバナンスアクションが提出されました。\n"
+            "\n"
+            f'→ <a href="{ctx["proposal_url"]}">提案を確認する</a>'
         )
     return (
-        f"🗳️ <b>New Governance Action</b>\n"
-        f"Type: {ctx['action_label']}\n"
-        f"{ctx['gov_url']}"
+        "<b>🗳️ Cardanoism — New Governance Action</b>\n"
+        "\n"
+        f"📋 Proposal Type: {ctx['action_label']}\n"
+        "\n"
+        "A new governance action has been submitted.\n"
+        "\n"
+        f'→ <a href="{ctx["proposal_url"]}">View proposal</a>'
     )
 
 

@@ -50,18 +50,25 @@ def render_email(ctx: dict, lang: str) -> tuple[str, list[str], str, str]:
 
 
 def render_telegram(ctx: dict, lang: str) -> str:
+    mypage_url = f"{ctx['base_url']}/mypage?tab=stake"
     if lang == "ja":
         return (
-            f"⚠️ <b>プールリタイア通知</b>\n"
-            f"ウォレット: {ctx['nickname']}\n"
-            f"プール: {ctx['pool_name']}\n"
-            f"リタイア予定: Epoch {ctx['retiring_epoch']}"
+            "<b>⚠️ Cardanoism — プールリタイア通知</b>\n"
+            "\n"
+            f"🏊 {ctx['pool_name']}\n"
+            f"📅 リタイア予定: Epoch {ctx['retiring_epoch']}\n"
+            f"💼 {ctx['nickname']}で委任中\n"
+            "\n"
+            f'→ <a href="{mypage_url}">マイページで委任先を変更</a>'
         )
     return (
-        f"⚠️ <b>Pool Retirement</b>\n"
-        f"Wallet: {ctx['nickname']}\n"
-        f"Pool: {ctx['pool_name']}\n"
-        f"Retiring at Epoch {ctx['retiring_epoch']}"
+        "<b>⚠️ Cardanoism — Pool Retirement</b>\n"
+        "\n"
+        f"🏊 {ctx['pool_name']}\n"
+        f"📅 Retiring at Epoch {ctx['retiring_epoch']}\n"
+        f"💼 Delegated from {ctx['nickname']}\n"
+        "\n"
+        f'→ <a href="{mypage_url}">Change delegation on MyPage</a>'
     )
 
 

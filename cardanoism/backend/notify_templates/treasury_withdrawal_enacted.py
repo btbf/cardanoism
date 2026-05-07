@@ -53,16 +53,24 @@ def render_email(ctx: dict, lang: str) -> tuple[str, list[str], str, str]:
 def render_telegram(ctx: dict, lang: str) -> str:
     if lang == "ja":
         return (
-            f"🏛️ <b>トレジャリー引き出しが施行</b>\n"
-            f"タイトル: {ctx['proposal_title']}\n"
-            f"施行エポック: Epoch {ctx['enacted_epoch']}\n"
-            f"{ctx['proposal_url']}"
+            "<b>🏛️ Cardanoism — トレジャリー引き出し施行通知</b>\n"
+            "\n"
+            f"📋 提案タイトル: {ctx['proposal_title']}\n"
+            f"📅 施行エポック: Epoch {ctx['enacted_epoch']}\n"
+            "\n"
+            "トレジャリー引き出しが施行されました。\n"
+            "\n"
+            f'→ <a href="{ctx["proposal_url"]}">提案を確認する</a>'
         )
     return (
-        f"🏛️ <b>Treasury Withdrawal Enacted</b>\n"
-        f"Title: {ctx['proposal_title']}\n"
-        f"Enacted Epoch: {ctx['enacted_epoch']}\n"
-        f"{ctx['proposal_url']}"
+        "<b>🏛️ Cardanoism — Treasury Withdrawal Enacted</b>\n"
+        "\n"
+        f"📋 Proposal Title: {ctx['proposal_title']}\n"
+        f"📅 Enacted Epoch: {ctx['enacted_epoch']}\n"
+        "\n"
+        "A treasury withdrawal has been enacted.\n"
+        "\n"
+        f'→ <a href="{ctx["proposal_url"]}">View proposal</a>'
     )
 
 

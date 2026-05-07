@@ -688,6 +688,7 @@ def _check_pool_reward_received_batch(
             nickname=addr["nickname"],
             is_leader=is_spo,
             base_url=CARDANOISM_URL,
+            pool_name=addr.get("delegated_pool_name") or "",
         )
         deliver(addr, EVENT_TYPE, ctx, dedup_base=f"reward_{addr['stake_id']}_{reward_epoch}")
 
@@ -2110,7 +2111,9 @@ _DUMMY = {
     "active_stake_ada": 5_000_000.0,
     "saturation_pct": 78.5,
     "block_cnt": 3,
-    "proposal_title": "Treasury Withdrawal — DUMMY Title",
+    "proposal_title": "DUMMY Title",
+    "proposal_id": "gov_action1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "proposal_action_type_raw": "treasuryWithdrawals",
     "proposal_action_type_ja": "国庫引き出し",
     "proposal_action_type_en": "Treasury Withdrawals",
     "old_margin_pct": 1.0,
@@ -2190,11 +2193,13 @@ def _build_dummy_ctx(ev: str) -> tuple[str, dict] | None:
         return ("pool_reward_received", pool_reward_received.context(
             reward_epoch=d["reward_epoch"], primary_ada=d["amount_ada"],
             apy=d["apy"], nickname=d["nickname"], is_leader=False, base_url=base_url,
+            pool_name=d["pool_name"],
         ))
     if ev == "pool_reward_received_leader":
         return ("pool_reward_received", pool_reward_received.context(
             reward_epoch=d["reward_epoch"], primary_ada=d["leader_amount_ada"],
             apy=d["apy"], nickname=d["nickname"], is_leader=True, base_url=base_url,
+            pool_name=d["pool_name"],
         ))
     if ev == "pool_epoch_performance":
         return ("pool_epoch_performance", pool_epoch_performance.context(
@@ -2211,11 +2216,14 @@ def _build_dummy_ctx(ev: str) -> tuple[str, dict] | None:
     if ev == "drep_new_governance_action":
         return ("drep_new_governance_action", drep_new_governance_action.context(
             action_label=action_label, base_url=base_url,
+            proposal_id=d["proposal_id"],
         ))
     if ev == "drep_vote":
         return ("drep_vote", drep_vote.context(
             drep_name=d["drep_name"], vote="yes", proposal_title=d["proposal_title"],
             nickname=d["nickname"], base_url=base_url,
+            action_type=d["proposal_action_type_raw"],
+            proposal_id=d["proposal_id"],
         ))
     if ev == "drep_status_change":
         return ("drep_status_change", drep_status_change.context(
@@ -2235,6 +2243,7 @@ def _build_dummy_ctx(ev: str) -> tuple[str, dict] | None:
     if ev == "spo_pending_vote":
         return ("spo_pending_vote", spo_pending_vote.context(
             action_label=action_label, base_url=base_url,
+            proposal_id=d["proposal_id"],
         ))
     return None
 

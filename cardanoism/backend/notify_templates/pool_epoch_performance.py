@@ -73,32 +73,43 @@ def render_email(ctx: dict, lang: str) -> tuple[str, list[str], str, str]:
 
 
 def render_telegram(ctx: dict, lang: str) -> str:
+    mypage_url = f"{ctx['base_url']}/mypage?tab=stake"
     if lang == "ja":
         lines = [
-            "📊 <b>プール実績通知</b>",
-            f"ウォレット: {ctx['nickname']}",
-            f"プール: {ctx['pool_name']}",
-            f"Epoch {ctx['prev_epoch']} 確定",
+            "<b>📊 Cardanoism — プール実績通知</b>",
+            "",
+            f"🏊 {ctx['pool_name']}",
+            f"📅 Epoch {ctx['prev_epoch']} 確定",
         ]
         if ctx["block_cnt"] is not None:
-            lines.append(f"ブロック生成数: {ctx['block_cnt']}")
+            lines.append(f"🧱 ブロック生成数: {ctx['block_cnt']}")
         if ctx["saturation_pct"] is not None:
-            lines.append(f"飽和度: {ctx['saturation_pct']:.1f}%")
+            lines.append(f"📈 飽和度: {ctx['saturation_pct']:.1f}%")
         if ctx["apy"] is not None:
-            lines.append(f"APY: {ctx['apy']:.2f}%")
+            lines.append(f"💹 APY: {ctx['apy']:.2f}%")
+        lines += [
+            f"💼 {ctx['nickname']}で委任中",
+            "",
+            f'→ <a href="{mypage_url}">マイページで実績を確認</a>',
+        ]
     else:
         lines = [
-            "📊 <b>Pool Performance</b>",
-            f"Wallet: {ctx['nickname']}",
-            f"Pool: {ctx['pool_name']}",
-            f"Epoch {ctx['prev_epoch']} confirmed",
+            "<b>📊 Cardanoism — Pool Performance</b>",
+            "",
+            f"🏊 {ctx['pool_name']}",
+            f"📅 Epoch {ctx['prev_epoch']} confirmed",
         ]
         if ctx["block_cnt"] is not None:
-            lines.append(f"Blocks: {ctx['block_cnt']}")
+            lines.append(f"🧱 Blocks: {ctx['block_cnt']}")
         if ctx["saturation_pct"] is not None:
-            lines.append(f"Saturation: {ctx['saturation_pct']:.1f}%")
+            lines.append(f"📈 Saturation: {ctx['saturation_pct']:.1f}%")
         if ctx["apy"] is not None:
-            lines.append(f"APY: {ctx['apy']:.2f}%")
+            lines.append(f"💹 APY: {ctx['apy']:.2f}%")
+        lines += [
+            f"💼 Delegated from {ctx['nickname']}",
+            "",
+            f'→ <a href="{mypage_url}">View performance on MyPage</a>',
+        ]
     return "\n".join(lines)
 
 

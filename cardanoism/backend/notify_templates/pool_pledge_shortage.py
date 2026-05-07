@@ -55,18 +55,31 @@ def render_email(ctx: dict, lang: str) -> tuple[str, list[str], str, str]:
 
 
 def render_telegram(ctx: dict, lang: str) -> str:
+    mypage_url = f"{ctx['base_url']}/mypage?tab=stake"
     if lang == "ja":
         return (
-            f"⚠️ <b>誓約不足アラート</b>\n"
-            f"ウォレット: {ctx['nickname']}\n"
-            f"プール: {ctx['pool_name']}\n"
-            f"誓約: {ctx['pledged_ada']:,.0f} ADA / 実績: {ctx['live_ada']:,.0f} ADA"
+            "<b>⚠️ Cardanoism — 誓約不足通知</b>\n"
+            "\n"
+            f"🏊 {ctx['pool_name']}\n"
+            f"🔒 誓約: {ctx['pledged_ada']:,.0f} ADA\n"
+            f"📊 実績: {ctx['live_ada']:,.0f} ADA\n"
+            f"💼 {ctx['nickname']}で委任中\n"
+            "\n"
+            "誓約不足のプールは報酬が減少する場合があります。\n"
+            "\n"
+            f'→ <a href="{mypage_url}">マイページで委任先を確認</a>'
         )
     return (
-        f"⚠️ <b>Pledge Shortage Alert</b>\n"
-        f"Wallet: {ctx['nickname']}\n"
-        f"Pool: {ctx['pool_name']}\n"
-        f"Pledge: {ctx['pledged_ada']:,.0f} ADA / Live: {ctx['live_ada']:,.0f} ADA"
+        "<b>⚠️ Cardanoism — Pledge Shortage Alert</b>\n"
+        "\n"
+        f"🏊 {ctx['pool_name']}\n"
+        f"🔒 Pledge: {ctx['pledged_ada']:,.0f} ADA\n"
+        f"📊 Live: {ctx['live_ada']:,.0f} ADA\n"
+        f"💼 Delegated from {ctx['nickname']}\n"
+        "\n"
+        "Pools with insufficient pledge may have reduced rewards.\n"
+        "\n"
+        f'→ <a href="{mypage_url}">Check delegation on MyPage</a>'
     )
 
 
