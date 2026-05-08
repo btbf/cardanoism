@@ -325,7 +325,13 @@ def navbar_icons() -> rx.Component:
         rx.hstack(
             logo,
             rx.hstack(
-                auth_section(),
+                # ログイン済みのみアバターを表示。未ログインのログインボタンは
+                # 三本線メニュー内 (バッジ) に集約してトップバーをスッキリさせる。
+                rx.cond(
+                    AuthState.is_logged_in,
+                    auth_section(),
+                    rx.fragment(),
+                ),
                 rx.menu.root(
                     rx.menu.trigger(
                         rx.box(
@@ -360,7 +366,28 @@ def navbar_icons() -> rx.Component:
                                 rx.menu.item(rx.link(AuthState.t["nav_mypage"], href="/mypage", width="100%", underline="none", color="var(--gray-12)")),
                                 rx.menu.item(rx.text(AuthState.t["nav_logout"], size="3", color="var(--red-9)", on_click=AuthState.logout, cursor="pointer", width="100%")),
                             ),
-                            rx.menu.item(rx.link(AuthState.t["nav_login"], href="/login", width="100%", underline="none", color="var(--gray-12)")),
+                            rx.menu.item(
+                                rx.link(
+                                    rx.box(
+                                        rx.text(
+                                            AuthState.t["nav_login"],
+                                            size="2",
+                                            weight="bold",
+                                            style={"color": "#111"},
+                                        ),
+                                        padding="6px 16px",
+                                        border_radius="9999px",
+                                        style={
+                                            "background": f"linear-gradient(135deg, {ACCENT}, {ACCENT_DARK})",
+                                            "display": "inline-flex",
+                                            "alignItems": "center",
+                                            "boxShadow": "0 2px 8px rgba(255,207,0,0.35)",
+                                        },
+                                    ),
+                                    href="/login",
+                                    underline="none",
+                                ),
+                            ),
                         ),
                     ),
                 ),
