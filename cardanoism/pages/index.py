@@ -610,7 +610,7 @@ def _mock_wallet() -> rx.Component:
     return rx.hstack(
         _mock_chip("Eternl", F_WALLET),
         _mock_chip("Lace",   F_WALLET),
-        _mock_chip("Nami",   F_WALLET),
+        _mock_chip("Typhon", F_WALLET),
         _mock_chip("Yoroi",  F_WALLET),
         spacing="1", wrap="wrap",
     )
