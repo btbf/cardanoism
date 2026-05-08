@@ -6,6 +6,9 @@ import os
 import re
 import secrets
 import logging
+import hmac
+import hashlib
+import time as _time
 from urllib.parse import urlparse, parse_qs
 
 import reflex as rx
@@ -52,6 +55,58 @@ LINE_REDIRECT_URI = os.getenv("LINE_REDIRECT_URI", "")
 def _env(key: str) -> str:
     """環境変数を呼び出し時に取得する。"""
     return os.getenv(key, "")
+
+
+# ── OAuth state 署名 ──────────────────────────────────────────────
+# Reflex State (server-side session) に依存しない HMAC 署名で CSRF を検証する。
+# モバイルで LINE Universal Link 等により WebView を跨ぐと session が切れて
+# self.oauth_state が失われ state_mismatch になる問題を回避する。
+_OAUTH_STATE_SECRET = (
+    os.getenv("OAUTH_STATE_SECRET")
+    or os.getenv("LINE_CLIENT_SECRET")
+    or os.getenv("GOOGLE_CLIENT_SECRET")
+    or "_dev-fallback-do-not-use_"
+)
+_OAUTH_STATE_TTL_SECONDS = 600  # 10 分以内のコールバックのみ受け付ける
+
+
+def _make_signed_state(provider: str, mode: str = "login") -> str:
+    """形式: provider.mode.timestamp.nonce.signature
+
+    HMAC-SHA256 で署名するためサーバ State を持たずに検証可能。
+    """
+    timestamp = int(_time.time())
+    nonce = secrets.token_urlsafe(8)
+    payload = f"{provider}.{mode}.{timestamp}.{nonce}"
+    sig = hmac.new(
+        _OAUTH_STATE_SECRET.encode(), payload.encode(), hashlib.sha256
+    ).hexdigest()[:16]
+    return f"{payload}.{sig}"
+
+
+def _verify_signed_state(state: str, expected_provider: str) -> tuple[bool, str]:
+    """state を検証。戻り値: (valid, mode)。失敗時は (False, "")。"""
+    if not state:
+        return False, ""
+    parts = state.split(".")
+    if len(parts) != 5:
+        return False, ""
+    provider, mode, ts_str, nonce, sig = parts
+    if provider != expected_provider:
+        return False, ""
+    try:
+        ts = int(ts_str)
+    except ValueError:
+        return False, ""
+    if int(_time.time()) - ts > _OAUTH_STATE_TTL_SECONDS:
+        return False, ""
+    payload = f"{provider}.{mode}.{ts}.{nonce}"
+    expected_sig = hmac.new(
+        _OAUTH_STATE_SECRET.encode(), payload.encode(), hashlib.sha256
+    ).hexdigest()[:16]
+    if not hmac.compare_digest(sig, expected_sig):
+        return False, ""
+    return True, mode
 
 
 class AuthState(rx.State):
@@ -322,9 +377,7 @@ class AuthState(rx.State):
 
     def start_line_login(self):
         """LINE認証ページへリダイレクトする。"""
-        csrf = secrets.token_urlsafe(16)
-        self.oauth_state = csrf
-        state_param = f"login.{csrf}"
+        state_param = _make_signed_state("line", "login")
 
         auth_url = (
             "https://access.line.me/oauth2/v2.1/authorize"
@@ -343,9 +396,7 @@ class AuthState(rx.State):
         if not self.is_logged_in:
             self.show_login_modal = True
             return
-        csrf = secrets.token_urlsafe(16)
-        self.oauth_state = csrf
-        state_param = f"connect.{csrf}"
+        state_param = _make_signed_state("line", "connect")
 
         auth_url = (
             "https://access.line.me/oauth2/v2.1/authorize"
@@ -373,18 +424,12 @@ class AuthState(rx.State):
             self.auth_error = "LINEログインがキャンセルされました"
             return rx.redirect("/login?error=line_denied")
 
-        # state から mode と csrf を分離
-        oauth_mode = "login"
-        csrf_token = state
-        if state and "." in state:
-            parts = state.split(".", 1)
-            oauth_mode = parts[0] if parts[0] in ("login", "connect") else "login"
-            csrf_token = parts[1]
-
-        if not csrf_token or csrf_token != self.oauth_state:
-            logger.warning("LINE OAuth state mismatch: got=%s expected=%s", csrf_token, self.oauth_state)
-            dest = "/mypage?tab=notification&error=state_mismatch" if oauth_mode == "connect" else "/login?error=state_mismatch"
-            return rx.redirect(dest)
+        # HMAC 署名 state を検証 (Reflex State 不要なので WebView 切替でも壊れない)
+        valid, oauth_mode = _verify_signed_state(state, "line")
+        if not valid:
+            logger.warning("LINE OAuth state invalid (HMAC mismatch or expired): %s", state[:24])
+            # mode 不明なので login 側にリダイレクト（connect 失敗もほぼここ）
+            return rx.redirect("/login?error=state_mismatch")
 
         if not code:
             return rx.redirect("/login?error=no_code")
@@ -522,15 +567,14 @@ class AuthState(rx.State):
 
     def start_google_login(self):
         """Google認証ページへリダイレクトする。"""
-        csrf = secrets.token_urlsafe(16)
-        self.oauth_state = csrf
+        state_param = _make_signed_state("google", "login")
 
         auth_url = (
             "https://accounts.google.com/o/oauth2/v2/auth"
             f"?response_type=code"
             f"&client_id={_env('GOOGLE_CLIENT_ID')}"
             f"&redirect_uri={_env('GOOGLE_REDIRECT_URI')}"
-            f"&state={csrf}"
+            f"&state={state_param}"
             f"&scope=openid%20email%20profile"
         )
         return rx.redirect(auth_url)
@@ -550,8 +594,9 @@ class AuthState(rx.State):
         if error:
             return rx.redirect("/login?error=google_denied")
 
-        if not state or state != self.oauth_state:
-            logger.warning("Google OAuth state mismatch")
+        valid, _mode = _verify_signed_state(state, "google")
+        if not valid:
+            logger.warning("Google OAuth state invalid (HMAC mismatch or expired): %s", state[:24])
             return rx.redirect("/login?error=state_mismatch")
 
         if not code:
