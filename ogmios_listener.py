@@ -726,11 +726,17 @@ async def _run(ogmios_url: str, from_tip: bool = False) -> None:
             direction = result.get("direction")
             if direction == "forward":
                 block = result.get("block", {})
-                logger.info("ブロック受信 slot=%s", block.get("slot", "?"))
+                logger.info(
+                    "ブロック受信 height=%s slot=%s",
+                    block.get("height", "?"), block.get("slot", "?"),
+                )
                 try:
                     prev_epoch = _process_block(block, prev_epoch)
                 except Exception as e:
-                    logger.exception("ブロック処理エラー (slot=%s): %s", block.get("slot", "?"), e)
+                    logger.exception(
+                        "ブロック処理エラー (height=%s slot=%s): %s",
+                        block.get("height", "?"), block.get("slot", "?"), e,
+                    )
 
             elif direction == "backward":
                 point = result.get("point", {})

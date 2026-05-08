@@ -613,7 +613,7 @@ UI_JA: dict[str, str] = {
     "hero_heading": "カルダノをもっと身近に！",
     "hero_subtitle": "ステーキング報酬、委任先DRepの投票、プールやガバナンスの重要な動きをLINE・Telegram・Emailで受け取れます。毎日ウォレットや投票履歴を見に行かなくても、必要な変化をCardanoismが届けます。",
     "hero_cta_primary": "通知を設定する",
-    "hero_cta_secondary": "ガバナンスを見る",
+    "hero_cta_secondary": "ステークプールをチェック",
     "home_preview_label": "通知センター",
     "home_preview_badge": "即時通知",
     "home_preview_reward_title": "ステーキング報酬を検知",
@@ -652,13 +652,6 @@ UI_JA: dict[str, str] = {
     "home_explore_governance": "ガバナンスを見る",
     "home_explore_drep": "DRepを探す",
     "home_explore_catalyst": "Catalystを見る",
-
-    # ── 新ホーム: Live Stats Bar ─────────────────────────────
-    "home_stats_kicker":         "LIVE NETWORK",
-    "home_stats_treasury":       "トレジャリー残高",
-    "home_stats_active_ga":      "投票中ガバナンスアクション",
-    "home_stats_dreps":          "有効DRep",
-    "home_stats_blocks":         "直近 24h ブロック",
 
     # ── 新ホーム: Feature Showcase ──────────────────────────
     "home_features_kicker":      "FEATURES",
@@ -1363,7 +1356,7 @@ UI_EN: dict[str, str] = {
     "hero_heading": "Bring Cardano closer.",
     "hero_subtitle": "Receive staking rewards, your delegated DRep's votes, pool updates, and important governance events through LINE, Telegram, or Email. Cardanoism delivers the changes that matter without making you check wallets and vote history every day.",
     "hero_cta_primary": "Set up notifications",
-    "hero_cta_secondary": "View governance",
+    "hero_cta_secondary": "Check stake pools",
     "home_preview_label": "Notification center",
     "home_preview_badge": "Instant",
     "home_preview_reward_title": "Staking reward detected",
@@ -1403,12 +1396,6 @@ UI_EN: dict[str, str] = {
     "home_explore_drep": "Find DReps",
     "home_explore_catalyst": "View Catalyst",
 
-    # ── New home: Live Stats ──
-    "home_stats_kicker":         "LIVE NETWORK",
-    "home_stats_treasury":       "Treasury",
-    "home_stats_active_ga":      "Active GAs",
-    "home_stats_dreps":          "Active DReps",
-    "home_stats_blocks":         "Blocks (24h)",
 
     # ── New home: Feature Showcase ──
     "home_features_kicker":      "FEATURES",
