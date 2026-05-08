@@ -263,6 +263,7 @@ def navbar_icons() -> rx.Component:
                     [
                         ("lightbulb",    AuthState.t["gov_subnav_why"],          "/governance/why"),
                         ("gavel",        AuthState.t["gov_subnav_actions"],      "/governance"),
+                        ("table-2",      AuthState.t["gov_subnav_matrix"],       "/governance/matrix"),
                         ("landmark",     AuthState.t["gov_subnav_treasury"],     "/governance/treasury"),
                         ("users",        AuthState.t["gov_subnav_drep"],         "/governance/drep"),
                         ("scroll-text",  AuthState.t["gov_subnav_constitution"], "/governance/constitution"),

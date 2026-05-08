@@ -231,7 +231,24 @@ UI_JA: dict[str, str] = {
     "gov_subnav_actions": "ガバナンス提案",
     "gov_subnav_drep": "代表者 (DRep)",
     "gov_subnav_treasury": "トレジャリー",
+    "gov_subnav_matrix": "投票マトリクス",
     "gov_subnav_constitution": "Cardano 憲法",
+
+    # 投票マトリクスページ
+    "matrix_title":              "DRep × ガバナンス提案 投票マトリクス",
+    "matrix_desc":               "登録 DRep が現在進行中のガバナンス提案にどう投票したか早見表で確認できます。セルにマウスを乗せると投票理由が表示されます。",
+    "matrix_search_placeholder": "DRep 名で検索",
+    "matrix_status_label":       "ステータス",
+    "matrix_gas_per_page":       "GA 最大表示数",
+    "matrix_gas_total":          "GA 総数:",
+    "matrix_per_page":           "DRep 最大表示数",
+    "matrix_col_drep":           "DRep",
+    "matrix_total":              "登録 DRep 総数:",
+    "matrix_empty":              "表示できる DRep がありません。",
+    "matrix_legend_yes":         "賛成",
+    "matrix_legend_no":          "反対",
+    "matrix_legend_abstain":     "棄権",
+    "matrix_legend_no_vote":     "未投票",
 
     # ── /governance/why 啓発ページ ──
     # S1: ガバナンスとは？
@@ -645,21 +662,21 @@ UI_JA: dict[str, str] = {
 
     # ── 新ホーム: Feature Showcase ──────────────────────────
     "home_features_kicker":      "FEATURES",
-    "home_features_title":       "ガバナンス参加を加速する 6 つの機能",
-    "home_features_subtitle":    "登録したステークアドレスを起点に、提案の理解から投票判断まで一気通貫でサポートします。",
+    "home_features_title":       "カルダノ参加を身近にする 6 つの機能",
+    "home_features_subtitle":    "ステーキング・ガバナンス・Catalyst を 1 つのダッシュボードで。委任手続きから通知・投票判断まで、必要な情報と操作をまとめて提供します。",
 
-    "home_f_ai_title":           "AI による提案の自動整理",
-    "home_f_ai_desc":            "GA 提案を中立的に要約し、引き出し額・受取先・期間などのキーファクトを自動抽出。",
-    "home_f_drep_title":         "委任先 DRep の投票表示",
-    "home_f_drep_desc":          "登録ステークアドレスから委任先 DRep を引き、各 GA への投票結果と理由を一目で確認。",
-    "home_f_constitution_title": "Cardano 憲法 完全日本語訳",
-    "home_f_constitution_desc":  "施行中の最新バージョンの原文と日本語訳を並列表示。改訂時も自動追従します。",
+    "home_f_notify_title":       "ステーキング報酬とプール状態を即時通知",
+    "home_f_notify_desc":        "エポック報酬入金・プール手数料・飽和度・誓約変化を LINE / Telegram / メールで即時配信。",
+    "home_f_wallet_title":       "ウォレット連携で委任もブラウザ完結",
+    "home_f_wallet_desc":        "Cardano ウォレットを接続して、プール委任・DRep 委任の手続きをサイト内で完結。",
+    "home_f_ai_title":           "AI 提案要約 + 全 DRep 投票早見表",
+    "home_f_ai_desc":            "GA を AI が中立的に要約し、登録 DRep の投票結果と理由をマトリクスで一覧確認。",
+    "home_f_catalyst_title":     "Catalyst 提案を一画面で管理",
+    "home_f_catalyst_desc":      "Fund・ステータスで絞り込み、お気に入り保存、進捗追跡まで Catalyst をワンストップ。",
     "home_f_treasury_title":     "トレジャリー残高グラフ",
     "home_f_treasury_desc":      "NCL 期間中のエポック別残高推移と引き出し履歴を可視化。",
-    "home_f_notify_title":       "リアルタイム通知",
-    "home_f_notify_desc":        "報酬・DRep 投票・プール変化を LINE / Telegram / Email で即時配信。",
-    "home_f_ga_title":           "ガバナンスアクション日本語化",
-    "home_f_ga_desc":            "提出された全 GA のタイトル・本文・条件をリアルタイムで日本語化し、原文と並列で表示。",
+    "home_f_constitution_title": "Cardano 憲法 完全日本語訳",
+    "home_f_constitution_desc":  "施行中の最新バージョンの原文と日本語訳を並列表示。改訂時も自動追従します。",
 
     # ── 新ホーム: Constitution Highlight ────────────────────
     "home_constitution_kicker":     "CARDANO CONSTITUTION",
@@ -972,7 +989,24 @@ UI_EN: dict[str, str] = {
     "gov_subnav_actions": "GA Proposals",
     "gov_subnav_drep": "DReps",
     "gov_subnav_treasury": "Treasury",
+    "gov_subnav_matrix": "Vote Matrix",
     "gov_subnav_constitution": "Constitution",
+
+    # Vote matrix page
+    "matrix_title":              "DRep × Governance Action Vote Matrix",
+    "matrix_desc":               "Quick-reference matrix of how registered DReps voted on currently active governance actions. Hover a cell to see the vote rationale.",
+    "matrix_search_placeholder": "Search DRep name",
+    "matrix_status_label":       "Status",
+    "matrix_gas_per_page":       "Max GAs shown",
+    "matrix_gas_total":          "Total GAs:",
+    "matrix_per_page":           "Max DReps shown",
+    "matrix_col_drep":           "DRep",
+    "matrix_total":              "Total DReps:",
+    "matrix_empty":              "No DReps to display.",
+    "matrix_legend_yes":         "Yes",
+    "matrix_legend_no":          "No",
+    "matrix_legend_abstain":     "Abstain",
+    "matrix_legend_no_vote":     "Not voted",
 
     # ── /governance/why page ──
     # S1: What is governance?
@@ -1378,21 +1412,21 @@ UI_EN: dict[str, str] = {
 
     # ── New home: Feature Showcase ──
     "home_features_kicker":      "FEATURES",
-    "home_features_title":       "Six tools to accelerate your governance participation",
-    "home_features_subtitle":    "From understanding proposals to making your vote decision — Cardanoism guides you end-to-end based on your registered stake addresses.",
+    "home_features_title":       "Six tools that bring Cardano participation closer",
+    "home_features_subtitle":    "Manage staking, governance, and Catalyst from a single dashboard. From delegation to notifications and vote decisions — everything you need in one place.",
 
-    "home_f_ai_title":           "AI proposal summary",
-    "home_f_ai_desc":            "Neutral 6–10 sentence summaries plus auto-extracted key facts (amount, recipient, period, etc.).",
-    "home_f_drep_title":         "Your DRep's vote",
-    "home_f_drep_desc":          "Look up how your delegated DRep voted on each GA, including their rationale.",
-    "home_f_constitution_title": "Cardano Constitution in Japanese",
-    "home_f_constitution_desc":  "Current ratified version shown side-by-side: original English + Japanese translation.",
+    "home_f_notify_title":       "Real-time staking & pool alerts",
+    "home_f_notify_desc":        "Reward arrivals, pool fees, saturation, and pledge changes — pushed instantly via LINE / Telegram / Email.",
+    "home_f_wallet_title":       "Browser-native delegation via wallet",
+    "home_f_wallet_desc":        "Connect your Cardano wallet to delegate to pools or DReps directly on Cardanoism.",
+    "home_f_ai_title":           "AI summaries + DRep vote matrix",
+    "home_f_ai_desc":            "Neutral AI summaries of GAs plus a quick-reference matrix of how registered DReps voted, with rationales.",
+    "home_f_catalyst_title":     "Catalyst proposals at a glance",
+    "home_f_catalyst_desc":      "Filter by Fund and status, save favorites, and track funding outcomes — Catalyst made simple.",
     "home_f_treasury_title":     "Treasury balance chart",
     "home_f_treasury_desc":      "Per-epoch treasury balance trend across the active NCL period, plus withdrawal history.",
-    "home_f_notify_title":       "Real-time notifications",
-    "home_f_notify_desc":        "Push rewards, DRep votes, and pool changes via LINE / Telegram / Email.",
-    "home_f_ga_title":           "Governance actions in Japanese",
-    "home_f_ga_desc":            "Every submitted GA's title, body, and conditions translated to Japanese in real time, shown side-by-side with the original.",
+    "home_f_constitution_title": "Cardano Constitution in Japanese",
+    "home_f_constitution_desc":  "Original English alongside the AI-translated Japanese version. Always synced to the latest enacted version.",
 
     # ── New home: Constitution Highlight ──
     "home_constitution_kicker":     "CARDANO CONSTITUTION",

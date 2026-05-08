@@ -18,12 +18,15 @@ ACCENT_DARK = "#c7a300"
 TEXT_MUTED = "var(--gray-10)"
 
 # 機能ごとのアクセントカラー
-F_AI    = "#7c5cff"   # 紫: AI
-F_DREP  = "#3b82f6"   # 青: DRep
-F_CONST = "#0ea5e9"   # 水色: 憲法
-F_TRES  = "#16a34a"   # 緑: トレジャリー
-F_NOTI  = "#f97316"   # オレンジ: 通知
-F_GA    = "#ec4899"   # ピンク: GA 日本語化
+F_AI     = "#7c5cff"   # 紫: AI 提案要約 + 投票マトリクス
+F_WALLET = "#10b981"   # エメラルド: ウォレット連携
+F_CAT    = "#eab308"   # 黄: Catalyst
+F_CONST  = "#0ea5e9"   # 水色: 憲法
+F_TRES   = "#16a34a"   # 緑: トレジャリー
+F_NOTI   = "#f97316"   # オレンジ: ステーキング通知
+# 旧カード用 (mock 関数で参照され続けている)
+F_DREP   = "#3b82f6"   # 青: DRep
+F_GA     = "#ec4899"   # ピンク: GA 日本語化
 F_BLK   = "#e11d48"   # 赤: ライブブロック
 
 LINE_BRAND = "#06C755"
@@ -682,6 +685,27 @@ def _mock_notify() -> rx.Component:
     )
 
 
+def _mock_wallet() -> rx.Component:
+    """ウォレット連携 mock。主要 Cardano ウォレット名のチップ。"""
+    return rx.hstack(
+        _mock_chip("Eternl", F_WALLET),
+        _mock_chip("Lace",   F_WALLET),
+        _mock_chip("Nami",   F_WALLET),
+        _mock_chip("Yoroi",  F_WALLET),
+        spacing="1", wrap="wrap",
+    )
+
+
+def _mock_catalyst() -> rx.Component:
+    """Catalyst 管理 mock。Fund 番号とステータスのチップ。"""
+    return rx.hstack(
+        _mock_chip("Fund 12", F_CAT),
+        _mock_chip("Fund 13", F_CAT),
+        _mock_chip("Fund 14", F_CAT),
+        spacing="1", wrap="wrap",
+    )
+
+
 def _mock_ga_ja() -> rx.Component:
     """GA 日本語化を表すミニ mock。EN→JA バッジ + サンプルタイトル。"""
     return rx.vstack(
@@ -720,7 +744,7 @@ def features_section() -> rx.Component:
                 AuthState.t["home_features_subtitle"],
             ),
             rx.grid(
-                # 1. リアルタイム通知
+                # 1. ステーキング報酬・プール状態の即時通知
                 _feature_card(
                     "bell", F_NOTI,
                     AuthState.t["home_f_notify_title"],
@@ -728,31 +752,31 @@ def features_section() -> rx.Component:
                     href="/mypage?tab=notification",
                     mock=_mock_notify(),
                 ),
-                # 2. ガバナンスアクション日本語化
+                # 2. ウォレット連携で委任完結
                 _feature_card(
-                    "languages", F_GA,
-                    AuthState.t["home_f_ga_title"],
-                    AuthState.t["home_f_ga_desc"],
-                    href="/governance",
-                    mock=_mock_ga_ja(),
+                    "wallet", F_WALLET,
+                    AuthState.t["home_f_wallet_title"],
+                    AuthState.t["home_f_wallet_desc"],
+                    href="/staking",
+                    mock=_mock_wallet(),
                 ),
-                # 3. AI による提案概要整理
+                # 3. AI 提案要約 + 投票マトリクス
                 _feature_card(
                     "sparkles", F_AI,
                     AuthState.t["home_f_ai_title"],
                     AuthState.t["home_f_ai_desc"],
-                    href="/governance",
+                    href="/governance/matrix",
                     mock=_mock_ai(),
                 ),
-                # 4. 委任先 DRep 投票表示
+                # 4. Catalyst 提案管理
                 _feature_card(
-                    "user-check", F_DREP,
-                    AuthState.t["home_f_drep_title"],
-                    AuthState.t["home_f_drep_desc"],
-                    href="/governance",
-                    mock=_mock_drep(),
+                    "list-checks", F_CAT,
+                    AuthState.t["home_f_catalyst_title"],
+                    AuthState.t["home_f_catalyst_desc"],
+                    href="/catalyst",
+                    mock=_mock_catalyst(),
                 ),
-                # 5. トレジャリー残高シミュレーション
+                # 5. トレジャリー残高グラフ
                 _feature_card(
                     "trending-up", F_TRES,
                     AuthState.t["home_f_treasury_title"],
