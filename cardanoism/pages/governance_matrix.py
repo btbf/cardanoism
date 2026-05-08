@@ -419,61 +419,70 @@ def _ga_header_cell(ga) -> rx.Component:
 
 
 def _drep_name_cell(row) -> rx.Component:
-    """先頭列 (DRep 名 + アバター)、左 sticky。"""
+    """先頭列 (DRep 名 + アバター)、左 sticky。クリックで /drep/<drep_id> へ。"""
+    name_text = rx.cond(
+        row["given_name"] != "",
+        rx.text(
+            row["given_name"],
+            size="2",
+            weight="medium",
+            color="var(--gray-12)",
+            style={
+                "whiteSpace":    "nowrap",
+                "overflow":      "hidden",
+                "textOverflow":  "ellipsis",
+                "maxWidth":      "180px",
+            },
+        ),
+        rx.text(
+            AuthState.t["drep_no_name"],
+            size="2",
+            color="var(--gray-10)",
+        ),
+    )
+    avatar = rx.cond(
+        row["image_url"] != "",
+        rx.image(
+            src=row["image_url"],
+            width="24px", height="24px",
+            border_radius="50%",
+            style={"objectFit": "cover", "flexShrink": "0"},
+        ),
+        rx.center(
+            rx.icon("user-round", size=14, color="var(--gray-9)"),
+            width="24px", height="24px",
+            border_radius="50%",
+            background="var(--gray-4)",
+            style={"flexShrink": "0"},
+        ),
+    )
     return rx.el.td(
-        rx.hstack(
-            rx.cond(
-                row["image_url"] != "",
-                rx.image(
-                    src=row["image_url"],
-                    width="24px", height="24px",
-                    border_radius="50%",
-                    style={"objectFit": "cover", "flexShrink": "0"},
-                ),
-                rx.center(
-                    rx.icon("user-round", size=14, color="var(--gray-9)"),
-                    width="24px", height="24px",
-                    border_radius="50%",
-                    background="var(--gray-4)",
-                    style={"flexShrink": "0"},
-                ),
-            ),
-            rx.vstack(
-                rx.cond(
-                    row["given_name"] != "",
+        rx.link(
+            rx.hstack(
+                avatar,
+                rx.vstack(
+                    name_text,
                     rx.text(
-                        row["given_name"],
-                        size="2",
-                        weight="medium",
-                        color="var(--gray-12)",
+                        row["drep_id_short"],
+                        size="1",
                         style={
-                            "whiteSpace":    "nowrap",
-                            "overflow":      "hidden",
-                            "textOverflow":  "ellipsis",
-                            "maxWidth":      "180px",
+                            "fontFamily": "ui-monospace, monospace",
+                            "fontSize":   "10px",
+                            "color":      "var(--gray-10)",
                         },
                     ),
-                    rx.text(
-                        AuthState.t["drep_no_name"],
-                        size="2",
-                        color="var(--gray-10)",
-                    ),
+                    spacing="0",
+                    align_items="start",
+                    style={"minWidth": "0"},
                 ),
-                rx.text(
-                    row["drep_id_short"],
-                    size="1",
-                    style={
-                        "fontFamily": "ui-monospace, monospace",
-                        "fontSize":   "10px",
-                        "color":      "var(--gray-10)",
-                    },
-                ),
-                spacing="0",
-                align_items="start",
-                style={"minWidth": "0"},
+                spacing="2",
+                align="center",
             ),
-            spacing="2",
-            align="center",
+            href="/drep/" + row["drep_id"],
+            color="inherit",
+            underline="none",
+            style={"display": "block"},
+            _hover={"color": "var(--amber-11)"},
         ),
         style={
             "position":     "sticky",
@@ -525,6 +534,13 @@ def _matrix_row(row) -> rx.Component:
     return rx.el.tr(
         _drep_name_cell(row),
         rx.foreach(row["cells"], _vote_cell),
+        style={
+            "transition": "background 0.15s",
+            # 行 hover で sticky な DRep セル含めセル背景を上書き
+            "&:hover td": {
+                "background": "var(--amber-3)",
+            },
+        },
     )
 
 
