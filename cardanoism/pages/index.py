@@ -727,12 +727,15 @@ def features_section() -> rx.Component:
 
 def constitution_highlight_section() -> rx.Component:
     def _version_badge() -> rx.Component:
-        # 関数で都度生成して、複数箇所で安全に再利用できるようにする
         return rx.cond(
             HomeState.constitution_version_label != "",
             rx.box(
-                rx.text(HomeState.constitution_version_label, size="2", weight="bold", color="white"),
-                padding="4px 14px",
+                rx.text(
+                    HomeState.constitution_version_label,
+                    size="1", weight="bold", color="white",
+                    style={"whiteSpace": "nowrap"},
+                ),
+                padding="4px 12px",
                 border_radius="999px",
                 background=F_CONST,
                 style={"flexShrink": "0"},
@@ -740,135 +743,135 @@ def constitution_highlight_section() -> rx.Component:
             rx.fragment(),
         )
 
+    # 左カラム: 啓発コンテンツ
+    left_col = rx.vstack(
+        rx.text(
+            AuthState.t["home_constitution_kicker"],
+            size="1", weight="bold", color=F_CONST, letter_spacing="0.18em",
+        ),
+        rx.heading(
+            AuthState.t["home_constitution_title"],
+            as_="h2",
+            size={"base": "5", "sm": "6", "md": "7"},
+            weight="bold",
+            line_height="1.25",
+            style={"wordBreak": "break-word", "overflowWrap": "anywhere", "maxWidth": "100%"},
+        ),
+        rx.text(
+            AuthState.t["home_constitution_subtitle"],
+            size={"base": "2", "md": "3"},
+            color=TEXT_MUTED, line_height="1.75",
+            style={"wordBreak": "break-word", "maxWidth": "100%"},
+        ),
+        rx.flex(
+            rx.text(
+                AuthState.t["home_constitution_version_label"],
+                size="2", color=TEXT_MUTED,
+            ),
+            _version_badge(),
+            spacing="2",
+            align="center",
+            wrap="wrap",
+        ),
+        rx.link(
+            rx.button(
+                rx.icon("scroll-text", size=16),
+                AuthState.t["home_constitution_cta"],
+                rx.icon("arrow-right", size=16),
+                size="3",
+                background=F_CONST,
+                color="white",
+                cursor="pointer",
+                padding="0 22px",
+                _hover={"background": "#0284c7"},
+                style={"boxShadow": f"0 12px 32px -10px {F_CONST}"},
+            ),
+            href="/governance/constitution",
+            underline="none",
+        ),
+        spacing="4",
+        align_items="start",
+        width="100%",
+        style={"minWidth": "0", "flex": "1 1 50%"},
+    )
+
+    # 右カラム: 憲法プレビューカード
+    preview_card = rx.box(
+        rx.vstack(
+            rx.flex(
+                rx.icon("scroll-text", size=18, color=F_CONST),
+                rx.text(
+                    AuthState.t["home_constitution_preview_doc_title"],
+                    size="2", weight="bold", color="var(--gray-12)",
+                    style={"flex": "1 1 auto", "minWidth": "0"},
+                ),
+                _version_badge(),
+                spacing="2",
+                align="center",
+                width="100%",
+                wrap="wrap",
+            ),
+            rx.divider(),
+            rx.text(
+                AuthState.t["home_constitution_preview_article_en"],
+                size="2", weight="bold", color="var(--gray-12)",
+            ),
+            rx.text(
+                AuthState.t["home_constitution_preview_quote_en"],
+                size="1", color=TEXT_MUTED, line_height="1.6",
+                style={"fontStyle": "italic", "wordBreak": "break-word"},
+            ),
+            rx.text(
+                AuthState.t["home_constitution_preview_article_ja"],
+                size="2", weight="bold", color="var(--gray-12)",
+                style={"marginTop": "8px"},
+            ),
+            rx.text(
+                AuthState.t["home_constitution_preview_quote_ja"],
+                size="1", color=TEXT_MUTED, line_height="1.6",
+                style={"wordBreak": "break-word"},
+            ),
+            spacing="2",
+            align_items="start",
+            width="100%",
+        ),
+        padding=["18px", "20px", "22px"],
+        border=f"1px solid {F_CONST}33",
+        border_radius="16px",
+        background=rx.color_mode_cond(
+            "rgba(255,255,255,0.95)", "rgba(255,255,255,0.04)",
+        ),
+        backdrop_filter="blur(10px)",
+        box_shadow=f"0 22px 60px -28px {F_CONST}55",
+        width="100%",
+        style={
+            "minWidth": "0",
+            "flex": "1 1 50%",
+            "boxSizing": "border-box",
+        },
+    )
+
     return rx.box(
         _shell(
             rx.flex(
-                rx.vstack(
-                    rx.text(
-                        AuthState.t["home_constitution_kicker"],
-                        size="1", weight="bold", color=F_CONST, letter_spacing="0.18em",
-                    ),
-                    rx.heading(
-                        AuthState.t["home_constitution_title"],
-                        as_="h2",
-                        size={"base": "6", "md": "7"},
-                        weight="bold",
-                        line_height="1.25",
-                        max_width="640px",
-                        style={"wordBreak": "break-word", "overflowWrap": "anywhere"},
-                    ),
-                    rx.text(
-                        AuthState.t["home_constitution_subtitle"],
-                        size="3", color=TEXT_MUTED, line_height="1.75",
-                        max_width="600px",
-                        style={"wordBreak": "break-word"},
-                    ),
-                    rx.flex(
-                        rx.text(
-                            AuthState.t["home_constitution_version_label"],
-                            size="2", color=TEXT_MUTED,
-                        ),
-                        _version_badge(),
-                        spacing="2",
-                        align="center",
-                        wrap="wrap",
-                    ),
-                    rx.link(
-                        rx.button(
-                            rx.icon("scroll-text", size=16),
-                            AuthState.t["home_constitution_cta"],
-                            rx.icon("arrow-right", size=16),
-                            size="3",
-                            background=F_CONST,
-                            color="white",
-                            cursor="pointer",
-                            padding="0 22px",
-                            _hover={"background": "#0284c7"},
-                            style={"boxShadow": f"0 12px 32px -10px {F_CONST}"},
-                        ),
-                        href="/governance/constitution",
-                        underline="none",
-                    ),
-                    spacing="4",
-                    align_items="start",
-                    flex="1",
-                    width="100%",
-                    min_width="0",
-                ),
-                rx.box(
-                    rx.box(
-                        rx.vstack(
-                            rx.flex(
-                                rx.icon("scroll-text", size=18, color=F_CONST),
-                                rx.text(
-                                    AuthState.t["home_constitution_preview_doc_title"],
-                                    size="2", weight="bold", color="var(--gray-12)",
-                                    style={
-                                        "minWidth": "0",
-                                        "overflow": "hidden",
-                                        "textOverflow": "ellipsis",
-                                        "whiteSpace": "nowrap",
-                                    },
-                                ),
-                                rx.spacer(),
-                                _version_badge(),
-                                spacing="2",
-                                align="center",
-                                width="100%",
-                                wrap="wrap",
-                            ),
-                            rx.divider(),
-                            # 英語原文ブロック
-                            rx.text(
-                                AuthState.t["home_constitution_preview_article_en"],
-                                size="2", weight="bold", color="var(--gray-12)",
-                            ),
-                            rx.text(
-                                AuthState.t["home_constitution_preview_quote_en"],
-                                size="1", color=TEXT_MUTED, line_height="1.6",
-                                style={"fontStyle": "italic"},
-                            ),
-                            # 日本語訳ブロック
-                            rx.text(
-                                AuthState.t["home_constitution_preview_article_ja"],
-                                size="2", weight="bold", color="var(--gray-12)",
-                                style={"marginTop": "8px"},
-                            ),
-                            rx.text(
-                                AuthState.t["home_constitution_preview_quote_ja"],
-                                size="1", color=TEXT_MUTED, line_height="1.6",
-                            ),
-                            spacing="2", align_items="start",
-                        ),
-                        padding="20px 22px",
-                        border=f"1px solid {F_CONST}33",
-                        border_radius="16px",
-                        background=rx.color_mode_cond(
-                            "rgba(255,255,255,0.95)", "rgba(255,255,255,0.04)",
-                        ),
-                        backdrop_filter="blur(10px)",
-                        box_shadow=f"0 22px 60px -28px {F_CONST}55",
-                    ),
-                    flex="0 0 auto",
-                    width=["100%", "100%", "420px"],
-                    style={"animation": "cdn_float 8s ease-in-out infinite"},
-                ),
+                left_col,
+                preview_card,
                 direction={"base": "column", "md": "row"},
-                align="center",
-                spacing="8",
+                align={"base": "stretch", "md": "center"},
+                spacing={"base": "5", "md": "8"},
                 width="100%",
+                style={"minWidth": "0"},
             ),
-            padding_y=["48px", "60px", "76px"],
+            padding_y=["40px", "52px", "72px"],
         ),
         background=rx.color_mode_cond(
             "linear-gradient(135deg, #f0f9ff 0%, #ecfeff 100%)",
             "linear-gradient(135deg, #0c1422 0%, #0a1820 100%)",
         ),
-        width="100vw",
-        margin_left="calc(-50vw + 50%)",
-        margin_right="calc(-50vw + 50%)",
+        width="100%",
         border_top=f"1px solid {rx.color('gray', 4)}",
         border_bottom=f"1px solid {rx.color('gray', 4)}",
+        style={"overflow": "hidden"},
     )
 
 
