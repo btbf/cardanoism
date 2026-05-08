@@ -780,13 +780,17 @@ class AuthState(rx.State):
     # ログアウト
     # ============================================================
 
-    def logout(self):
-        if self.session_token:
-            try:
-                delete_session(self.session_token)
-            except Exception as e:
-                logger.warning("Failed to delete session: %s", e)
+    @rx.event(background=True)
+    async def delete_session_async(self, token: str):
+        """セッション DB 削除をバックグラウンドで実行 (logout の体感速度向上)。"""
+        try:
+            delete_session(token)
+        except Exception as e:
+            logger.warning("Failed to delete session async: %s", e)
 
+    def logout(self):
+        # 1) State をまず即座にクリアして UI をログアウト状態に
+        token = self.session_token
         self.session_token = ""
         self.is_logged_in = False
         self.user_id = 0
@@ -801,7 +805,14 @@ class AuthState(rx.State):
         self.favorites = []
         self.ga_favorite_ids = []
         self.ga_favorites = []
-        return rx.redirect("/")
+
+        # 2) DB 削除はバックグラウンド (ネットワーク往復で UI を待たせない)
+        events: list = []
+        if token:
+            events.append(AuthState.delete_session_async(token))
+        # 3) 即座にホームへリダイレクト
+        events.append(rx.redirect("/"))
+        return events
 
     # ============================================================
     # プロフィール編集
