@@ -11,6 +11,7 @@ from .governance_why import governance_why_page
 from .governance_treasury import governance_treasury_page
 from .governance_drep import governance_drep_page
 from .governance_drep_detail import governance_drep_detail_page
+from .governance_matrix import governance_matrix_page
 from .constitution import constitution_page
 from .staking import staking_page
 from .staking_spo import staking_spo_page
