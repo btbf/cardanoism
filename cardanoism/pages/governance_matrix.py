@@ -432,12 +432,21 @@ def _drep_name_cell(row) -> rx.Component:
                 "overflow":      "hidden",
                 "textOverflow":  "ellipsis",
                 "maxWidth":      "180px",
+                "@media (max-width: 768px)": {
+                    "maxWidth": "100px",
+                    "fontSize": "12px",
+                },
             },
         ),
         rx.text(
             AuthState.t["drep_no_name"],
             size="2",
             color="var(--gray-10)",
+            style={
+                "@media (max-width: 768px)": {
+                    "fontSize": "12px",
+                },
+            },
         ),
     )
     avatar = rx.cond(
@@ -469,6 +478,10 @@ def _drep_name_cell(row) -> rx.Component:
                             "fontFamily": "ui-monospace, monospace",
                             "fontSize":   "10px",
                             "color":      "var(--gray-10)",
+                            # モバイルでは ID を非表示にして DRep 列を狭くする
+                            "@media (max-width: 768px)": {
+                                "display": "none",
+                            },
                         },
                     ),
                     spacing="0",
@@ -494,6 +507,11 @@ def _drep_name_cell(row) -> rx.Component:
             "borderBottom": "1px solid var(--gray-5)",
             "minWidth":     "220px",
             "maxWidth":     "240px",
+            "@media (max-width: 768px)": {
+                "minWidth": "140px",
+                "maxWidth": "150px",
+                "padding":  "6px 8px",
+            },
         },
     )
 
@@ -577,6 +595,11 @@ def _matrix_table() -> rx.Component:
                                 "borderRight":  "1px solid var(--gray-6)",
                                 "minWidth":     "220px",
                                 "textAlign":    "left",
+                                "@media (max-width: 768px)": {
+                                    "minWidth": "140px",
+                                    "maxWidth": "150px",
+                                    "padding":  "6px 8px",
+                                },
                             },
                         ),
                         rx.foreach(VoteMatrixState.gas, _ga_header_cell),
