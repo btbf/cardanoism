@@ -562,29 +562,55 @@ def stake_tab() -> rx.Component:
                     rx.text(AuthState.t["stake_new_title"], size="4", weight="medium"),
                     # ── ウォレットで自動取得 ──────────────
                     rx.box(
-                        rx.hstack(
-                            rx.icon("wallet", size=16, color="var(--amber-11)"),
-                            rx.vstack(
-                                rx.text("ウォレットから自動取得", size="2", weight="medium"),
-                                rx.text(
-                                    "対応ウォレットを選ぶとアクティブアドレスが自動入力されます",
-                                    size="1", color="var(--gray-10)",
+                        rx.vstack(
+                            rx.flex(
+                                rx.icon("wallet", size=16, color="var(--amber-11)",
+                                        style={"flexShrink": "0"}),
+                                rx.vstack(
+                                    rx.text(
+                                        AuthState.t["stake_wallet_auto_title"],
+                                        size="2", weight="medium",
+                                    ),
+                                    rx.text(
+                                        AuthState.t["stake_wallet_auto_desc"],
+                                        size="1", color="var(--gray-10)",
+                                        style={"wordBreak": "break-word"},
+                                    ),
+                                    spacing="0", align_items="start",
+                                    style={"minWidth": "0", "flex": "1 1 auto"},
                                 ),
-                                spacing="0", align_items="start",
-                            ),
-                            rx.spacer(),
-                            wallet_register_picker_menu(
-                                rx.button(
-                                    rx.icon("wallet", size=12),
-                                    rx.text("ウォレットで取得", size="1"),
-                                    rx.icon("chevron-down", size=12),
-                                    size="2",
-                                    variant="soft",
-                                    color_scheme="amber",
-                                    cursor="pointer",
+                                rx.spacer(),
+                                wallet_register_picker_menu(
+                                    rx.button(
+                                        rx.icon("wallet", size=12),
+                                        rx.text(
+                                            AuthState.t["stake_wallet_pick_button"],
+                                            size="1",
+                                        ),
+                                        rx.icon("chevron-down", size=12),
+                                        size="2",
+                                        variant="soft",
+                                        color_scheme="amber",
+                                        cursor="pointer",
+                                    ),
                                 ),
+                                spacing="3",
+                                align="center",
+                                width="100%",
+                                wrap="wrap",
                             ),
-                            align="center",
+                            # モバイルユーザー向け注意書き
+                            rx.text(
+                                AuthState.t["stake_wallet_mobile_note"],
+                                size="1",
+                                color="var(--amber-11)",
+                                style={
+                                    "wordBreak": "break-word",
+                                    "lineHeight": "1.6",
+                                },
+                            ),
+                            spacing="2",
+                            align_items="start",
                             width="100%",
                         ),
                         padding="12px 14px",
@@ -595,7 +621,10 @@ def stake_tab() -> rx.Component:
                     ),
                     rx.hstack(
                         rx.divider(flex="1"),
-                        rx.text("または手動で入力", size="1", color="var(--gray-9)"),
+                        rx.text(
+                            AuthState.t["stake_wallet_or_manual"],
+                            size="1", color="var(--gray-9)",
+                        ),
                         rx.divider(flex="1"),
                         spacing="3", align="center", width="100%",
                     ),
