@@ -89,6 +89,16 @@ class StakingDashboardState(rx.State):
     mempool_fullness_bar: str = "0.0"
     mempool_updated_label: str = ""
 
+    @rx.var
+    def live_blocks_strip(self) -> list[dict[str, str]]:
+        """TOP ページ向け: Mempool + 最新 6 ブロックの 1 行ストリップ用。
+        末尾の connector は 1 行で完結するよう空文字に上書き。
+        """
+        items = [dict(b) for b in self.live_blocks[:6]]
+        if items:
+            items[-1]["connector"] = ""
+        return items
+
     def _fetch_summary(self):
         """ネットワーク集計とサチュレーション関連を取得する（軽い処理）。"""
         try:
@@ -488,6 +498,25 @@ DASHBOARD_CSS = """
   0%, 100% { filter: brightness(1.0); }
   50%      { filter: brightness(1.18); }
 }
+/* 新ブロック到着: 右上から流れ込んでくる演出。
+   opacity / transform / filter を組み合わせ、ブロックチェーンに滑り込む感を出す。 */
+@keyframes cdn_cube_enter {
+  0% {
+    opacity: 0;
+    transform: translate(18px, -10px) scale(0.86);
+    filter: blur(3px) brightness(1.5);
+  }
+  55% {
+    opacity: 1;
+    transform: translate(-2px, 2px) scale(1.05);
+    filter: blur(0) brightness(1.2);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+    filter: blur(0) brightness(1);
+  }
+}
 @keyframes cdn_chain_shine {
   0%, 100% { opacity: 0.55; }
   50%      { opacity: 0.95; }
@@ -718,7 +747,8 @@ DASHBOARD_CSS = """
    --cube-* の CSS 変数が gradient と ::before/::after の background を駆動しているので、
    この変数を keyframe で動かすだけで前面・上面・右面が同期して amber → green → amber と変化する。 */
 .cdn-cube-block.cdn-cube-new {
-  animation: cdn_cube_color_flash 2.6s ease-in-out;
+  animation: cdn_cube_enter 0.7s cubic-bezier(0.16, 1, 0.3, 1) both,
+             cdn_cube_color_flash 2.6s ease-in-out 0.2s;
 }
 /* コンテンツ層は z-index 2 (将来のオーバーレイに備えて確保) */
 .cdn-cube-content {

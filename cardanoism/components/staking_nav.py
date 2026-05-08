@@ -53,9 +53,10 @@ def staking_subnav(active: str) -> rx.Component:
     """ステーキング共通のサブナビゲーション。
 
     Args:
-        active: 現在のタブ（"dashboard" | "spo"）
+        active: 現在のタブ（"why" | "dashboard" | "spo"）
     """
     return rx.hstack(
+        _pill(AuthState.t["staking_subnav_why"], "/staking/why", "lightbulb", active == "why"),
         _pill(AuthState.t["staking_subnav_dashboard"], "/staking", "layout-dashboard", active == "dashboard"),
         _pill(AuthState.t["staking_subnav_spo"], "/staking/spo", "server", active == "spo"),
         spacing="2",

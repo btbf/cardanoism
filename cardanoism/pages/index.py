@@ -367,7 +367,7 @@ def hero_section() -> rx.Component:
                 color="var(--gray-12)",
                 cursor="pointer",
             ),
-            href="/governance",
+            href="/staking",
             underline="none",
         ),
         spacing="3",
@@ -416,86 +416,6 @@ def hero_section() -> rx.Component:
         margin_right="calc(-50vw + 50%)",
         overflow="hidden",
         border_bottom=f"1px solid {rx.color('gray', 4)}",
-    )
-
-
-# ─── Live Stats Bar ──────────────────────────────────────────────────────────
-
-def _stat_cell(icon: str, label, value_ja, value_en=None, color: str = ACCENT_DARK) -> rx.Component:
-    value = value_en if value_en is not None else value_ja
-    display = rx.cond(AuthState.language == "en", value, value_ja)
-    return rx.box(
-        rx.vstack(
-            rx.hstack(
-                rx.icon(icon, size=14, color=color),
-                rx.text(label, size="1", color=TEXT_MUTED, weight="medium",
-                        letter_spacing="0.04em"),
-                spacing="2", align="center",
-            ),
-            rx.text(
-                display,
-                size="6", weight="bold", color="var(--gray-12)",
-                style={"letterSpacing": "-0.02em"},
-            ),
-            spacing="2",
-            align_items="start",
-            width="100%",
-        ),
-        padding="20px 22px",
-        border=f"1px solid {rx.color('gray', 5)}",
-        border_radius="14px",
-        background=rx.color_mode_cond("rgba(255,255,255,0.85)", "rgba(255,255,255,0.025)"),
-        height="100%",
-    )
-
-
-def stats_section() -> rx.Component:
-    return _shell(
-        rx.vstack(
-            rx.hstack(
-                rx.box(
-                    width="6px", height="6px", border_radius="999px",
-                    background="#22c55e",
-                    style={"animation": "cdn_pulse 2.2s ease-in-out infinite"},
-                ),
-                rx.text(AuthState.t["home_stats_kicker"], size="1",
-                        color=ACCENT_DARK, weight="bold", letter_spacing="0.18em"),
-                spacing="2", align="center",
-            ),
-            rx.grid(
-                _stat_cell(
-                    "landmark",
-                    AuthState.t["home_stats_treasury"],
-                    HomeState.treasury_ada_ja,
-                    HomeState.treasury_ada_en,
-                    color="#16a34a",
-                ),
-                _stat_cell(
-                    "vote",
-                    AuthState.t["home_stats_active_ga"],
-                    HomeState.active_ga_count,
-                    color="#3b82f6",
-                ),
-                _stat_cell(
-                    "users",
-                    AuthState.t["home_stats_dreps"],
-                    HomeState.drep_count,
-                    color="#7c5cff",
-                ),
-                _stat_cell(
-                    "boxes",
-                    AuthState.t["home_stats_blocks"],
-                    HomeState.blocks_24h,
-                    color="#e11d48",
-                ),
-                columns={"base": "2", "sm": "2", "md": "4"},
-                spacing="3",
-                width="100%",
-            ),
-            spacing="3",
-            width="100%",
-        ),
-        padding_y=["28px", "36px", "48px"],
     )
 
 
@@ -690,7 +610,7 @@ def _mock_wallet() -> rx.Component:
     return rx.hstack(
         _mock_chip("Eternl", F_WALLET),
         _mock_chip("Lace",   F_WALLET),
-        _mock_chip("Nami",   F_WALLET),
+        _mock_chip("Typhon", F_WALLET),
         _mock_chip("Yoroi",  F_WALLET),
         spacing="1", wrap="wrap",
     )
@@ -806,16 +726,19 @@ def features_section() -> rx.Component:
 # ─── Constitution Highlight ──────────────────────────────────────────────────
 
 def constitution_highlight_section() -> rx.Component:
-    version_badge = rx.cond(
-        HomeState.constitution_version_label != "",
-        rx.box(
-            rx.text(HomeState.constitution_version_label, size="2", weight="bold", color="white"),
-            padding="4px 14px",
-            border_radius="999px",
-            background=F_CONST,
-        ),
-        rx.fragment(),
-    )
+    def _version_badge() -> rx.Component:
+        # 関数で都度生成して、複数箇所で安全に再利用できるようにする
+        return rx.cond(
+            HomeState.constitution_version_label != "",
+            rx.box(
+                rx.text(HomeState.constitution_version_label, size="2", weight="bold", color="white"),
+                padding="4px 14px",
+                border_radius="999px",
+                background=F_CONST,
+                style={"flexShrink": "0"},
+            ),
+            rx.fragment(),
+        )
 
     return rx.box(
         _shell(
@@ -827,21 +750,28 @@ def constitution_highlight_section() -> rx.Component:
                     ),
                     rx.heading(
                         AuthState.t["home_constitution_title"],
-                        as_="h2", size="7", weight="bold", line_height="1.25",
+                        as_="h2",
+                        size={"base": "6", "md": "7"},
+                        weight="bold",
+                        line_height="1.25",
                         max_width="640px",
+                        style={"wordBreak": "break-word", "overflowWrap": "anywhere"},
                     ),
                     rx.text(
                         AuthState.t["home_constitution_subtitle"],
                         size="3", color=TEXT_MUTED, line_height="1.75",
                         max_width="600px",
+                        style={"wordBreak": "break-word"},
                     ),
-                    rx.hstack(
+                    rx.flex(
                         rx.text(
                             AuthState.t["home_constitution_version_label"],
                             size="2", color=TEXT_MUTED,
                         ),
-                        version_badge,
-                        spacing="2", align="center",
+                        _version_badge(),
+                        spacing="2",
+                        align="center",
+                        wrap="wrap",
                     ),
                     rx.link(
                         rx.button(
@@ -862,20 +792,30 @@ def constitution_highlight_section() -> rx.Component:
                     spacing="4",
                     align_items="start",
                     flex="1",
+                    width="100%",
                     min_width="0",
                 ),
                 rx.box(
                     rx.box(
                         rx.vstack(
-                            rx.hstack(
+                            rx.flex(
                                 rx.icon("scroll-text", size=18, color=F_CONST),
                                 rx.text(
                                     AuthState.t["home_constitution_preview_doc_title"],
                                     size="2", weight="bold", color="var(--gray-12)",
+                                    style={
+                                        "minWidth": "0",
+                                        "overflow": "hidden",
+                                        "textOverflow": "ellipsis",
+                                        "whiteSpace": "nowrap",
+                                    },
                                 ),
                                 rx.spacer(),
-                                version_badge,
-                                spacing="2", align="center", width="100%",
+                                _version_badge(),
+                                spacing="2",
+                                align="center",
+                                width="100%",
+                                wrap="wrap",
                             ),
                             rx.divider(),
                             # 英語原文ブロック
@@ -1048,7 +988,6 @@ def index() -> rx.Component:
     return rx.box(
         rx.html(HOME_CSS),
         hero_section(),
-        stats_section(),
         features_section(),
         constitution_highlight_section(),
         setup_section(),

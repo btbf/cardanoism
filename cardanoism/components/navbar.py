@@ -259,6 +259,14 @@ def navbar_icons() -> rx.Component:
             rx.hstack(
                 nav_pill(AuthState.t["nav_home"], "/"),
                 nav_with_submenu(
+                    AuthState.t["nav_staking"], "/staking",
+                    [
+                        ("lightbulb",        AuthState.t["staking_subnav_why"],       "/staking/why"),
+                        ("layout-dashboard", AuthState.t["staking_subnav_dashboard"], "/staking"),
+                        ("server",           AuthState.t["staking_subnav_spo"],       "/staking/spo"),
+                    ],
+                ),
+                nav_with_submenu(
                     AuthState.t["nav_governance"], "/governance",
                     [
                         ("lightbulb",    AuthState.t["gov_subnav_why"],          "/governance/why"),
@@ -267,13 +275,6 @@ def navbar_icons() -> rx.Component:
                         ("landmark",     AuthState.t["gov_subnav_treasury"],     "/governance/treasury"),
                         ("users",        AuthState.t["gov_subnav_drep"],         "/governance/drep"),
                         ("scroll-text",  AuthState.t["gov_subnav_constitution"], "/governance/constitution"),
-                    ],
-                ),
-                nav_with_submenu(
-                    AuthState.t["nav_staking"], "/staking",
-                    [
-                        ("layout-dashboard", AuthState.t["staking_subnav_dashboard"], "/staking"),
-                        ("server",           AuthState.t["staking_subnav_spo"],       "/staking/spo"),
                     ],
                 ),
                 nav_with_submenu(
@@ -342,10 +343,10 @@ def navbar_icons() -> rx.Component:
                             rx.link(AuthState.t["nav_home"], href="/", width="100%", underline="none", color="var(--gray-12)"),
                         ),
                         rx.menu.item(
-                            rx.link(AuthState.t["nav_governance"], href="/governance", width="100%", underline="none", color="var(--gray-12)"),
+                            rx.link(AuthState.t["nav_staking"], href="/staking", width="100%", underline="none", color="var(--gray-12)"),
                         ),
                         rx.menu.item(
-                            rx.link(AuthState.t["nav_staking"], href="/staking", width="100%", underline="none", color="var(--gray-12)"),
+                            rx.link(AuthState.t["nav_governance"], href="/governance", width="100%", underline="none", color="var(--gray-12)"),
                         ),
                         rx.menu.item(
                             rx.link(AuthState.t["nav_catalyst"], href="/catalyst", width="100%", underline="none", color="var(--gray-12)"),
