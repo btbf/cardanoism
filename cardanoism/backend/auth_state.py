@@ -8,6 +8,7 @@ import secrets
 import logging
 import hmac
 import hashlib
+import base64
 import time as _time
 from urllib.parse import urlparse, parse_qs
 
@@ -107,6 +108,51 @@ def _verify_signed_state(state: str, expected_provider: str) -> tuple[bool, str]
     if not hmac.compare_digest(sig, expected_sig):
         return False, ""
     return True, mode
+
+
+def _derive_twitter_verifier_from_nonce(nonce: str) -> str:
+    """Twitter PKCE の code_verifier を nonce から決定的に導出する。
+
+    同じ nonce + 同じ secret → 同じ verifier なので、コールバック時に
+    state からだけで verifier を再現できる (Reflex State 不要)。
+    """
+    seed = hmac.new(
+        _OAUTH_STATE_SECRET.encode(),
+        f"twitter-verifier.{nonce}".encode(),
+        hashlib.sha256,
+    ).digest()
+    return base64.urlsafe_b64encode(seed).rstrip(b"=").decode()  # 43 chars (RFC 7636)
+
+
+def _make_twitter_state_and_verifier() -> tuple[str, str]:
+    """Twitter login 開始時の (state, code_verifier) を生成。
+
+    state は signed state (provider=twitter)、verifier は nonce から派生。
+    """
+    timestamp = int(_time.time())
+    nonce = secrets.token_urlsafe(16)
+    payload = f"twitter.login.{timestamp}.{nonce}"
+    sig = hmac.new(
+        _OAUTH_STATE_SECRET.encode(), payload.encode(), hashlib.sha256
+    ).hexdigest()[:16]
+    state = f"{payload}.{sig}"
+    verifier = _derive_twitter_verifier_from_nonce(nonce)
+    return state, verifier
+
+
+def _verify_twitter_state(state: str) -> tuple[bool, str]:
+    """state を検証し、対応する code_verifier を返す。
+
+    戻り値: (valid, code_verifier)。失敗時は (False, "")。
+    """
+    valid, _mode = _verify_signed_state(state, "twitter")
+    if not valid:
+        return False, ""
+    parts = state.split(".")
+    if len(parts) != 5:
+        return False, ""
+    nonce = parts[3]
+    return True, _derive_twitter_verifier_from_nonce(nonce)
 
 
 class AuthState(rx.State):
@@ -664,25 +710,22 @@ class AuthState(rx.State):
     # ============================================================
 
     def start_twitter_login(self):
-        """X(Twitter)認証ページへリダイレクトする（PKCE）。"""
-        import hashlib
-        import base64
+        """X(Twitter)認証ページへリダイレクトする（PKCE）。
 
-        csrf = secrets.token_urlsafe(16)
-        code_verifier = secrets.token_urlsafe(64)
+        state と code_verifier を HMAC で導出するため、Reflex State に
+        頼らず (= モバイル WebView 切替に耐える) PKCE が成立する。
+        """
+        state, code_verifier = _make_twitter_state_and_verifier()
         code_challenge = base64.urlsafe_b64encode(
             hashlib.sha256(code_verifier.encode()).digest()
         ).rstrip(b"=").decode()
-
-        self.oauth_state = csrf
-        self._twitter_code_verifier = code_verifier
 
         auth_url = (
             "https://twitter.com/i/oauth2/authorize"
             f"?response_type=code"
             f"&client_id={_env('TWITTER_CLIENT_ID')}"
             f"&redirect_uri={_env('TWITTER_REDIRECT_URI')}"
-            f"&state={csrf}"
+            f"&state={state}"
             f"&scope=tweet.read%20users.read"
             f"&code_challenge={code_challenge}"
             f"&code_challenge_method=S256"
@@ -691,7 +734,6 @@ class AuthState(rx.State):
 
     def handle_twitter_callback(self):
         """X(Twitter) OAuth コールバック処理。"""
-        import base64
         import requests as http_requests
 
         raw_path = self.router.page.raw_path
@@ -705,8 +747,9 @@ class AuthState(rx.State):
         if error:
             return rx.redirect("/login?error=twitter_denied")
 
-        if not state or state != self.oauth_state:
-            logger.warning("Twitter OAuth state mismatch")
+        valid, code_verifier = _verify_twitter_state(state)
+        if not valid:
+            logger.warning("Twitter OAuth state invalid (HMAC mismatch or expired): %s", state[:24])
             return rx.redirect("/login?error=state_mismatch")
 
         if not code:
@@ -726,7 +769,7 @@ class AuthState(rx.State):
                     "grant_type": "authorization_code",
                     "code": code,
                     "redirect_uri": _env("TWITTER_REDIRECT_URI"),
-                    "code_verifier": self._twitter_code_verifier,
+                    "code_verifier": code_verifier,
                 },
                 timeout=10,
             )
