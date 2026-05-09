@@ -33,6 +33,7 @@ from cardanoism.backend.price import (
     format_jpy_short,
     format_usd_short,
 )
+from cardanoism.components.breadcrumb import breadcrumb
 from cardanoism.components.governance_nav import governance_subnav
 from cardanoism.components.login_modal import login_modal
 
@@ -486,17 +487,7 @@ def _fiat_inline(jpy_var, usd_var, color: str = "var(--gray-10)", size: str = "2
 
 
 def _breadcrumb() -> rx.Component:
-    return rx.hstack(
-        rx.link(rx.icon("home", size=16), href="/", underline="none", color_scheme="gray"),
-        rx.icon("chevron-right", size=14, color="gray"),
-        rx.link(AuthState.t["nav_governance"], href="/governance", size="2", underline="hover", color_scheme="gray"),
-        rx.icon("chevron-right", size=14, color="gray"),
-        rx.text(AuthState.t["gov_subnav_treasury"], size="2", weight="medium"),
-        spacing="2",
-        align="center",
-        width="100%",
-        padding_top="15px",
-    )
+    return breadcrumb([("nav_governance", "/governance")], "gov_subnav_treasury")
 
 
 # ─── トレジャリー残高 折れ線グラフ ─────────────────────────────────────────────

@@ -20,6 +20,7 @@ from cardanoism.backend.fiat_db import get_fiat_rate
 from cardanoism.backend.koios import get_totals
 from cardanoism.backend.pool_db import get_pools, count_pools
 from cardanoism.backend.price import format_ada, format_ada_short_ja, format_ada_short_en
+from cardanoism.components.breadcrumb import breadcrumb
 from cardanoism.components.staking_nav import staking_subnav
 from cardanoism.components.delegation_dialog import delegation_dialog
 
@@ -287,17 +288,7 @@ class StakingSPOState(rx.State):
 
 
 def _breadcrumb() -> rx.Component:
-    return rx.hstack(
-        rx.link(rx.icon("home", size=16), href="/", underline="none", color_scheme="gray"),
-        rx.icon("chevron-right", size=14, color="gray"),
-        rx.link(AuthState.t["nav_staking"], href="/staking", size="2", underline="hover", color_scheme="gray"),
-        rx.icon("chevron-right", size=14, color="gray"),
-        rx.text(AuthState.t["staking_subnav_spo"], size="2", weight="medium"),
-        spacing="2",
-        align="center",
-        width="100%",
-        padding_top="15px",
-    )
+    return breadcrumb([("nav_staking", "/staking")], "staking_subnav_spo")
 
 
 def _saturation_bar(p) -> rx.Component:

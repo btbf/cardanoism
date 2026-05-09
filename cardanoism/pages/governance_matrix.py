@@ -45,6 +45,7 @@ from cardanoism.backend.vote_matrix_db import (
     get_dreps_for_matrix,
     get_votes_for_matrix,
 )
+from cardanoism.components.breadcrumb import breadcrumb
 from cardanoism.components.governance_nav import governance_subnav
 
 logger = logging.getLogger(__name__)
@@ -295,18 +296,7 @@ class VoteMatrixState(rx.State):
 
 
 def _breadcrumb() -> rx.Component:
-    return rx.hstack(
-        rx.link(rx.icon("home", size=16), href="/", underline="none", color_scheme="gray"),
-        rx.icon("chevron-right", size=14, color="gray"),
-        rx.link(AuthState.t["nav_governance"], href="/governance",
-                size="2", underline="hover", color_scheme="gray"),
-        rx.icon("chevron-right", size=14, color="gray"),
-        rx.text(AuthState.t["gov_subnav_matrix"], size="2", weight="medium"),
-        spacing="2",
-        align="center",
-        width="100%",
-        padding_top="15px",
-    )
+    return breadcrumb([("nav_governance", "/governance")], "gov_subnav_matrix")
 
 
 def _filter_bar() -> rx.Component:
