@@ -13,6 +13,7 @@ import reflex as rx
 from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.backend.plan_config import PLANS, BETA_MODE, COMPARISON_SECTIONS, PlanDetails
+from cardanoism.components.breadcrumb import breadcrumb
 
 logger = logging.getLogger(__name__)
 
@@ -51,12 +52,7 @@ def _shell(*children, **kw) -> rx.Component:
 
 
 def _breadcrumb() -> rx.Component:
-    return rx.hstack(
-        rx.link(rx.icon("home", size=16), href="/", underline="none", color_scheme="gray"),
-        rx.icon("chevron-right", size=14, color="gray"),
-        rx.text(AuthState.t["pricing_title"], size="2", weight="medium"),
-        spacing="2", align="center", width="100%", padding_top="15px",
-    )
+    return breadcrumb([], "pricing_title")
 
 
 def _hero() -> rx.Component:

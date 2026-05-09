@@ -39,6 +39,7 @@ from cardanoism.backend.treasury_db import (
 from cardanoism.backend.drep_db import get_dreps, sum_total_delegation
 from cardanoism.backend.koios import get_current_epoch
 from cardanoism.backend.price import format_ada, format_ada_short_ja, format_ada_short_en
+from cardanoism.components.breadcrumb import breadcrumb
 from cardanoism.components.governance_nav import governance_subnav
 from cardanoism.components.login_modal import login_modal
 
@@ -269,16 +270,7 @@ def _bold_metric(value: str, unit: str = "", color: str = "var(--amber-11)") -> 
 
 
 def _breadcrumb() -> rx.Component:
-    return rx.hstack(
-        rx.link(rx.icon("home", size=16), href="/", underline="none", color_scheme="gray"),
-        rx.icon("chevron-right", size=14, color="gray"),
-        rx.link(AuthState.t["nav_governance"], href="/governance",
-                size="2", underline="hover", color_scheme="gray"),
-        rx.icon("chevron-right", size=14, color="gray"),
-        rx.text(AuthState.t["gov_subnav_why"], size="2", weight="medium"),
-        spacing="2", align="center", width="100%",
-        padding_top="15px",
-    )
+    return breadcrumb([("nav_governance", "/governance")], "gov_subnav_why")
 
 
 # ─── S1: ガバナンスとは？ ─────────────────────────────────

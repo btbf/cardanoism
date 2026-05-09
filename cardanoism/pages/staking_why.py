@@ -24,6 +24,7 @@ import reflex as rx
 from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.components.staking_nav import staking_subnav
+from cardanoism.components.breadcrumb import breadcrumb
 
 
 ACCENT       = "#ffcf00"
@@ -77,15 +78,7 @@ def _section_heading(kicker, title, subtitle=None) -> rx.Component:
 
 
 def _breadcrumb() -> rx.Component:
-    return rx.hstack(
-        rx.link(rx.icon("home", size=16), href="/", underline="none", color_scheme="gray"),
-        rx.icon("chevron-right", size=14, color="gray"),
-        rx.link(AuthState.t["nav_staking"], href="/staking",
-                size="2", underline="hover", color_scheme="gray"),
-        rx.icon("chevron-right", size=14, color="gray"),
-        rx.text(AuthState.t["staking_subnav_why"], size="2", weight="medium"),
-        spacing="2", align="center", width="100%", padding_top="15px",
-    )
+    return breadcrumb([("nav_staking", "/staking")], "staking_subnav_why")
 
 
 def _bullet_card(icon: str, color: str, title_key: str, desc_key: str) -> rx.Component:

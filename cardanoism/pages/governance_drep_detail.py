@@ -17,6 +17,7 @@ from cardanoism.backend.drep_db import get_drep, sum_total_delegation
 from cardanoism.backend.vote_db import get_votes_by_drep, count_votes_by_drep
 from cardanoism.backend.fiat_db import get_fiat_rate
 from cardanoism.backend.price import format_ada, format_jpy_short, format_usd_short
+from cardanoism.components.breadcrumb import breadcrumb
 from cardanoism.components.governance_nav import governance_subnav
 from cardanoism.components.login_modal import login_modal
 from cardanoism.components.governance_card import _vote_badge
@@ -179,18 +180,9 @@ class DrepDetailState(rx.State):
 
 
 def _breadcrumb() -> rx.Component:
-    return rx.hstack(
-        rx.link(rx.icon("home", size=16), href="/", underline="none", color_scheme="gray"),
-        rx.icon("chevron-right", size=14, color="gray"),
-        rx.link(AuthState.t["nav_governance"], href="/governance", size="2", underline="hover", color_scheme="gray"),
-        rx.icon("chevron-right", size=14, color="gray"),
-        rx.link(AuthState.t["gov_subnav_drep"], href="/governance/drep", size="2", underline="hover", color_scheme="gray"),
-        rx.icon("chevron-right", size=14, color="gray"),
-        rx.text(AuthState.t["drep_detail_breadcrumb"], size="2", weight="medium"),
-        spacing="2",
-        align="center",
-        width="100%",
-        padding_top="15px",
+    return breadcrumb(
+        [("nav_governance", "/governance"), ("gov_subnav_drep", "/governance/drep")],
+        "drep_detail_breadcrumb",
     )
 
 

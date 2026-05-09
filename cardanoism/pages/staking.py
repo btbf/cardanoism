@@ -24,6 +24,7 @@ from cardanoism.backend.recent_blocks_db import get_recent_blocks
 from cardanoism.backend.mempool_db import get_mempool_state
 
 import json as _json
+from cardanoism.components.breadcrumb import breadcrumb
 from cardanoism.components.staking_nav import staking_subnav
 from cardanoism.components.login_modal import login_modal
 
@@ -421,15 +422,7 @@ class StakingDashboardState(rx.State):
 
 
 def _breadcrumb() -> rx.Component:
-    return rx.hstack(
-        rx.link(rx.icon("home", size=16), href="/", underline="none", color_scheme="gray"),
-        rx.icon("chevron-right", size=14, color="gray"),
-        rx.text(AuthState.t["nav_staking"], size="2", weight="medium"),
-        spacing="2",
-        align="center",
-        width="100%",
-        padding_top="15px",
-    )
+    return breadcrumb([], "nav_staking")
 
 
 def _stat_card(icon: str, label, value, sub=None, accent: str = "var(--amber-9)") -> rx.Component:
