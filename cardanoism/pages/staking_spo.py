@@ -780,36 +780,39 @@ def _filter_bar() -> rx.Component:
         ),
         rx.cond(
             StakingSPOState.sort == "random",
-            rx.el.button(
-                rx.icon("shuffle", size=14, color="var(--gray-12)"),
-                rx.text(
-                    AuthState.t["staking_reshuffle"],
-                    color="var(--gray-12)",
+            # シャッフルボタンはモバイルでは非表示
+            rx.tablet_and_desktop(
+                rx.el.button(
+                    rx.icon("shuffle", size=14, color="var(--gray-12)"),
+                    rx.text(
+                        AuthState.t["staking_reshuffle"],
+                        color="var(--gray-12)",
+                        style={
+                            "fontSize": "13px",
+                            "fontWeight": "600",
+                            "letterSpacing": "0.02em",
+                        },
+                    ),
+                    on_click=StakingSPOState.reshuffle,
+                    cursor="pointer",
                     style={
-                        "fontSize": "13px",
-                        "fontWeight": "600",
-                        "letterSpacing": "0.02em",
+                        "display": "inline-flex",
+                        "alignItems": "center",
+                        "gap": "8px",
+                        "padding": "9px 18px",
+                        "borderRadius": "999px",
+                        "background": "transparent",
+                        "border": "1px solid var(--gray-6)",
+                        "transition": "background 0.15s ease, border-color 0.15s ease, transform 0.15s ease",
+                        "lineHeight": "1.0",
+                        "flexShrink": "0",
+                    },
+                    _hover={
+                        "background": rx.color_mode_cond("var(--gray-3)", "rgba(255,255,255,0.04)"),
+                        "border_color": "var(--gray-8)",
+                        "transform": "translateY(-1px)",
                     },
                 ),
-                on_click=StakingSPOState.reshuffle,
-                cursor="pointer",
-                style={
-                    "display": "inline-flex",
-                    "alignItems": "center",
-                    "gap": "8px",
-                    "padding": "9px 18px",
-                    "borderRadius": "999px",
-                    "background": "transparent",
-                    "border": "1px solid var(--gray-6)",
-                    "transition": "background 0.15s ease, border-color 0.15s ease, transform 0.15s ease",
-                    "lineHeight": "1.0",
-                    "flexShrink": "0",
-                },
-                _hover={
-                    "background": rx.color_mode_cond("var(--gray-3)", "rgba(255,255,255,0.04)"),
-                    "border_color": "var(--gray-8)",
-                    "transform": "translateY(-1px)",
-                },
             ),
             rx.fragment(),
         ),

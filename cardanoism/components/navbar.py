@@ -284,6 +284,7 @@ def navbar_icons() -> rx.Component:
                         ("layers",    AuthState.t["nav_funds_list"],     "/catalyst/funds"),
                     ],
                 ),
+                nav_pill(AuthState.t["nav_pricing"], "/pricing"),
                 # マイページはログイン時のみ表示
                 rx.cond(
                     AuthState.is_logged_in,
@@ -356,6 +357,9 @@ def navbar_icons() -> rx.Component:
                         ),
                         rx.menu.item(
                             rx.link(AuthState.t["nav_catalyst"], href="/catalyst", width="100%", underline="none", color="var(--gray-12)"),
+                        ),
+                        rx.menu.item(
+                            rx.link(AuthState.t["nav_pricing"], href="/pricing", width="100%", underline="none", color="var(--gray-12)"),
                         ),
                         rx.menu.separator(),
                         rx.menu.item(lang_toggle()),

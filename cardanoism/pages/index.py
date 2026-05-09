@@ -333,6 +333,13 @@ def hero_section() -> rx.Component:
         weight="bold",
         line_height="1.05",
         letter_spacing="-0.02em",
+        # モバイルだけ size 9 (60px) と size 8 (48px) の中間ぐらいに
+        style={
+            "@media (max-width: 640px)": {
+                "fontSize": "54px",
+                "lineHeight": "1.05",
+            },
+        },
     )
     subtitle = rx.text(
         AuthState.t["hero_subtitle"],
@@ -855,7 +862,8 @@ def constitution_highlight_section() -> rx.Component:
         _shell(
             rx.flex(
                 left_col,
-                preview_card,
+                # プレビューカードは tablet/desktop のみ表示 (モバイルでは非表示)
+                rx.tablet_and_desktop(preview_card),
                 direction={"base": "column", "md": "row"},
                 align={"base": "stretch", "md": "center"},
                 spacing={"base": "5", "md": "8"},

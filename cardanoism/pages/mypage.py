@@ -1131,6 +1131,143 @@ def notification_channel_section() -> rx.Component:
     )
 
 
+def subscription_tab() -> rx.Component:
+    """サブスクリプション管理タブ (Phase 0: 表示のみ、決済は近日対応)。"""
+    # tier 名 → i18n key (plan_config の name_key と揃える)
+    tier_name = rx.match(
+        AuthState.subscription_tier,
+        ("free",     AuthState.t["plan_free_name"]),
+        ("light",    AuthState.t["plan_light_name"]),
+        ("standard", AuthState.t["plan_standard_name"]),
+        ("plus",     AuthState.t["plan_plus_name"]),
+        ("pro",      AuthState.t["plan_pro_name"]),
+        AuthState.t["plan_free_name"],
+    )
+    status_label = rx.match(
+        AuthState.subscription_status,
+        ("active",   AuthState.t["subscription_status_active"]),
+        ("canceled", AuthState.t["subscription_status_canceled"]),
+        ("expired",  AuthState.t["subscription_status_expired"]),
+        ("past_due", AuthState.t["subscription_status_past_due"]),
+        AuthState.t["subscription_status_active"],
+    )
+    status_color = rx.match(
+        AuthState.subscription_status,
+        ("active",   "var(--green-9)"),
+        ("canceled", "var(--gray-9)"),
+        ("expired",  "var(--gray-9)"),
+        ("past_due", "var(--red-9)"),
+        "var(--gray-9)",
+    )
+    billing_label = rx.match(
+        AuthState.subscription_billing_cycle,
+        ("monthly", AuthState.t["subscription_billing_monthly"]),
+        ("yearly",  AuthState.t["subscription_billing_yearly"]),
+        "",
+    )
+
+    info_row = lambda label, value: rx.hstack(
+        rx.text(label, size="2", color="var(--gray-10)", style={"flexShrink": "0"}),
+        rx.spacer(),
+        rx.text(value, size="2", weight="medium", color="var(--gray-12)"),
+        spacing="3", align="center", width="100%", wrap="wrap",
+    )
+
+    return rx.vstack(
+        # ベータ通知
+        rx.box(
+            rx.vstack(
+                rx.hstack(
+                    rx.icon("info", size=16, color="var(--amber-11)"),
+                    rx.text(
+                        AuthState.t["subscription_beta_note"],
+                        size="2", color="var(--amber-12)", line_height="1.6",
+                        style={"wordBreak": "break-word"},
+                    ),
+                    spacing="2", align="start",
+                ),
+                spacing="0", width="100%",
+            ),
+            padding="14px 16px",
+            border=f"1px solid var(--amber-7)",
+            border_radius="12px",
+            background=rx.color_mode_cond("rgba(255,243,199,0.55)", "rgba(120,80,0,0.18)"),
+            width="100%",
+        ),
+
+        # 現在のプラン
+        rx.box(
+            rx.vstack(
+                rx.text(AuthState.t["subscription_current_plan"], size="2",
+                        weight="medium", color="var(--gray-10)"),
+                rx.hstack(
+                    rx.icon("crown", size=20, color="var(--amber-10)"),
+                    rx.text(tier_name, size="6", weight="bold", color="var(--gray-12)",
+                            style={"letterSpacing": "-0.02em"}),
+                    spacing="2", align="center",
+                ),
+                rx.divider(),
+                info_row(AuthState.t["subscription_status"],
+                         rx.text(status_label, size="2", weight="bold", color=status_color)),
+                rx.cond(
+                    AuthState.subscription_billing_cycle != "",
+                    info_row(AuthState.t["subscription_billing_monthly"].split("プラン")[0]
+                             if False else "Billing", billing_label),
+                    rx.fragment(),
+                ),
+                rx.cond(
+                    AuthState.subscription_started_at != "",
+                    info_row(AuthState.t["subscription_started_at"],
+                             AuthState.subscription_started_at),
+                    rx.fragment(),
+                ),
+                rx.cond(
+                    AuthState.subscription_period_end != "",
+                    info_row(AuthState.t["subscription_period_end"],
+                             AuthState.subscription_period_end),
+                    rx.fragment(),
+                ),
+                spacing="3", align_items="start", width="100%",
+            ),
+            padding="20px 22px",
+            border=f"1px solid {rx.color('gray', 5)}",
+            border_radius="14px",
+            background=rx.color_mode_cond("rgba(255,255,255,0.7)", "rgba(255,255,255,0.025)"),
+            width="100%",
+        ),
+
+        # アクション
+        rx.flex(
+            rx.link(
+                rx.button(
+                    rx.icon("layers", size=14),
+                    AuthState.t["subscription_view_plans"],
+                    rx.icon("arrow-right", size=14),
+                    size="3",
+                    cursor="pointer",
+                    color_scheme="amber",
+                ),
+                href="/pricing",
+                underline="none",
+            ),
+            rx.button(
+                rx.icon("x", size=14),
+                AuthState.t["subscription_cancel"],
+                size="3",
+                variant="soft",
+                color_scheme="gray",
+                cursor="not-allowed",
+                disabled=True,
+            ),
+            spacing="3", wrap="wrap",
+        ),
+
+        spacing="4",
+        align_items="start",
+        width="100%",
+    )
+
+
 def notification_tab() -> rx.Component:
     return rx.vstack(
         # 通知チャンネル選択
@@ -1367,7 +1504,40 @@ def notification_tab() -> rx.Component:
     on_load=AuthState.load_mypage,
 )
 def mypage() -> rx.Component:
-    # ダッシュボードヒーロー意匠 (welcome + username + email + サブテキスト)
+    # 現在のプランをサブスクタブと同じ tier 名で表示するバッジ
+    plan_badge_only = rx.match(
+        AuthState.subscription_tier,
+        ("free",
+         rx.badge(rx.icon("crown", size=14), AuthState.t["plan_free_name"],
+                  color_scheme="gray",   variant="solid", size="2", radius="full")),
+        ("light",
+         rx.badge(rx.icon("crown", size=14), AuthState.t["plan_light_name"],
+                  color_scheme="amber",  variant="solid", size="2", radius="full")),
+        ("standard",
+         rx.badge(rx.icon("crown", size=14), AuthState.t["plan_standard_name"],
+                  color_scheme="blue",   variant="solid", size="2", radius="full")),
+        ("plus",
+         rx.badge(rx.icon("crown", size=14), AuthState.t["plan_plus_name"],
+                  color_scheme="violet", variant="solid", size="2", radius="full")),
+        ("pro",
+         rx.badge(rx.icon("crown", size=14), AuthState.t["plan_pro_name"],
+                  color_scheme="sky",    variant="solid", size="2", radius="full")),
+        rx.fragment(),
+    )
+    plan_badge = rx.cond(
+        AuthState.subscription_tier != "",
+        rx.hstack(
+            rx.text(
+                AuthState.t["subscription_membership_label"], "：",
+                size="2", color="var(--gray-10)",
+            ),
+            plan_badge_only,
+            spacing="1", align="center",
+        ),
+        rx.fragment(),
+    )
+
+    # ダッシュボードヒーロー意匠 (welcome + username + plan badge + email + サブテキスト)
     hero = rx.box(
         rx.hstack(
             rx.cond(
@@ -1382,7 +1552,8 @@ def mypage() -> rx.Component:
                         size="3", color="var(--gray-10)",
                     ),
                     rx.heading(AuthState.username, size="6", weight="bold"),
-                    spacing="2", align="baseline", wrap="wrap",
+                    plan_badge,
+                    spacing="2", align="center", wrap="wrap",
                 ),
                 rx.text(AuthState.email, size="2", color="var(--gray-9)"),
                 rx.text(
@@ -1431,6 +1602,10 @@ def mypage() -> rx.Component:
                             rx.hstack(rx.icon("bell", size=14), rx.text(AuthState.t["tab_notification"]), spacing="1"),
                             value="notification",
                         ),
+                        rx.tabs.trigger(
+                            rx.hstack(rx.icon("crown", size=14), rx.text(AuthState.t["tab_subscription"]), spacing="1"),
+                            value="subscription",
+                        ),
                         wrap="wrap",
                     ),
                     rx.tabs.content(dashboard(), value="dashboard", padding_top="20px"),
@@ -1438,6 +1613,7 @@ def mypage() -> rx.Component:
                     rx.tabs.content(profile_tab(), value="profile", padding_top="20px"),
                     rx.tabs.content(stake_tab(), value="stake", padding_top="20px"),
                     rx.tabs.content(notification_tab(), value="notification", padding_top="20px"),
+                    rx.tabs.content(subscription_tab(), value="subscription", padding_top="20px"),
                     value=AuthState.active_tab,
                     on_change=AuthState.change_active_tab,
                     width="100%",
