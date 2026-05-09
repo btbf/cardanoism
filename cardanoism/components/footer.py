@@ -101,11 +101,15 @@ def _legal_links() -> rx.Component:
         return rx.text("·", color="var(--gray-7)", style={"fontSize": "13px"})
 
     return rx.flex(
+        rx.link(rx.text(AuthState.t["nav_company"], style=item_style), href="/company"),
+        _sep(),
         rx.link(rx.text(AuthState.t["nav_pricing"], style=item_style), href="/pricing"),
         _sep(),
         rx.link(rx.text(AuthState.t["nav_privacy"], style=item_style), href="/privacy"),
         _sep(),
         rx.link(rx.text(AuthState.t["nav_terms"], style=item_style), href="/terms"),
+        _sep(),
+        rx.link(rx.text(AuthState.t["nav_tokushoho"], style=item_style), href="/tokushoho"),
         _sep(),
         cookie_settings_link("nav_cookie_settings"),
         _sep(),
