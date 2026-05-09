@@ -204,6 +204,13 @@ class AuthState(rx.State):
     rewards_backfilling: bool = False
     active_tab: str = "dashboard"
 
+    # サブスクリプション表示用 (Phase 0 - 表示のみ、変更操作は将来)
+    subscription_tier:           str = ""
+    subscription_status:         str = ""
+    subscription_billing_cycle:  str = ""
+    subscription_started_at:     str = ""
+    subscription_period_end:     str = ""
+
 
     # お気に入り（catalyst）
     favorites: list[dict] = []
@@ -985,6 +992,29 @@ class AuthState(rx.State):
         self.stake_addresses = get_stake_addresses(self.user_id)
         self._load_stake_notification_settings()
 
+    def _load_subscription(self) -> None:
+        """サブスクリプション情報を State に反映する (Phase 0: 表示のみ)。"""
+        try:
+            from cardanoism.backend.subscription_db import get_user_subscription
+            sub = get_user_subscription(self.user_id) or {}
+        except Exception as e:
+            logger.debug("_load_subscription failed: %s", e)
+            sub = {}
+
+        def _fmt(dt) -> str:
+            if not dt:
+                return ""
+            try:
+                return dt.strftime("%Y-%m-%d") if hasattr(dt, "strftime") else str(dt)
+            except Exception:
+                return ""
+
+        self.subscription_tier          = str(sub.get("tier") or "")
+        self.subscription_status        = str(sub.get("status") or "")
+        self.subscription_billing_cycle = str(sub.get("billing_cycle") or "")
+        self.subscription_started_at    = _fmt(sub.get("started_at"))
+        self.subscription_period_end    = _fmt(sub.get("current_period_end"))
+
     def change_active_tab(self, tab: str):
         """タブ切替ハンドラ。ダッシュボードタブを「他タブから」開いた時にデータ再ロードする。
 
@@ -1301,7 +1331,8 @@ class AuthState(rx.State):
         self.ga_favorites = get_ga_favorites(self.user_id)
         self.notification_settings = get_notification_settings(self.user_id)
         self._load_stake_notification_settings()
-        valid_tabs = {"dashboard", "favorites", "profile", "stake", "notification"}
+        self._load_subscription()
+        valid_tabs = {"dashboard", "favorites", "profile", "stake", "notification", "subscription"}
         tab = self.router.page.params.get("tab", "dashboard")
         self.active_tab = tab if tab in valid_tabs else "dashboard"
         # ダッシュボードタブで開いたなら DashboardState.on_load を 1 度だけ発火

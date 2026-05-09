@@ -153,6 +153,23 @@ def get_or_create_user_by_provider(
                 (user_id, email),
             )
 
+        # サブスク行を自動作成 (Phase 0: ベータ期間中は全員 standard 相当の機能解放)
+        # tier 既定値や note は subscription_db.py で集中管理。
+        # 循環 import を避けるため定数だけここで参照する。
+        try:
+            from cardanoism.backend.subscription_db import (
+                DEFAULT_TIER_FOR_NEW_USER, DEFAULT_TIER_NOTE,
+            )
+            cursor.execute(
+                "INSERT IGNORE INTO subscriptions (user_id, tier, status, note) "
+                "VALUES (?, ?, 'active', ?)",
+                (user_id, DEFAULT_TIER_FOR_NEW_USER, DEFAULT_TIER_NOTE),
+            )
+        except Exception:
+            # subscriptions テーブル未作成 (マイグレーション未適用) でも
+            # ユーザー登録自体は失敗させない。
+            pass
+
         conn.commit()
         cursor.execute(f"{_USER_SELECT} WHERE id = ?", (user_id,))
         return dict(cursor.fetchone())

@@ -40,6 +40,7 @@ Cardanoism の MariaDB スキーマ定義。
 | 027 | `027_stake_rewards_type.sql` | stake_rewards.reward_type (member / leader / other 分離) + UNIQUE KEY 変更 |
 | 028 | `028_governance_actions_spo_target.sql` | governance_actions.spo_target (SPO 投票対象判定) |
 | 029 | `029_notification_channels_telegram.sql` | notification_channels.channel_type ENUM に 'telegram' を追加（既存 DB の古い ENUM 補完用、冪等） |
+| 030 | `030_subscriptions.sql` | subscriptions（サブスク基盤テーブル）+ ベータ向けに既存ユーザーへ tier=standard 行を backfill |
 
 ## 適用例
 
