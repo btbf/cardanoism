@@ -13,6 +13,7 @@ import reflex as rx
 
 from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
+from cardanoism.components.markdown_doc import bilingual_markdown
 
 
 _PRIVACY_JA = """\
@@ -47,6 +48,40 @@ _PRIVACY_JA = """\
 ### 1-3. ブロックチェーン公開情報
 
 本サービスは Cardano ブロックチェーンの公開情報 (ステークアドレスの委任状況、投票履歴、報酬等) を表示します。これらは元々パブリックな情報であり、当社が個別に収集する個人情報ではありません。
+
+### 1-4. 通知チャンネル連携時に取得する情報
+
+ユーザーが LINE / Telegram / メールでの通知配信を有効にした場合、当社は以下の情報を取得・保管します。これらは通知配信の目的にのみ使用し、第三者へ販売・広告利用することはありません。
+
+| チャンネル | 取得項目 | 取得経路 | 保管場所 |
+|----|----|----|----|
+| LINE | LINE ユーザー ID (LINE Login OpenID Connect の `sub` クレーム)、表示名 (任意) | LINE OAuth 連携時に取得 | 当社 DB (`notification_channels` テーブル) |
+| Telegram | Telegram chat ID、ユーザー名 (任意) | Telegram Bot との連携時に取得 | 当社 DB (`notification_channels` テーブル) |
+| メール | メールアドレス | プロフィール編集または OAuth 提供 | 当社 DB (`users` / `notification_channels` テーブル) |
+
+**LINE 連携時の追加事項:**
+- LINE ユーザー ID は LINE のお友だち追加 / 連携解除によりユーザーが管理できます
+- 通知配信は LINE Messaging API を通じて行います (LINE 株式会社が当該データを処理する範囲は同社のプライバシーポリシーに従います)
+- 通知配信を停止したい場合は、本サービスのマイページ > 通知管理タブから個別チャンネル / イベント単位で OFF にできます
+- LINE 公式アカウント側でのブロックでも通知は届かなくなります
+
+各通知チャンネルの連携は、本サービスのマイページからいつでも解除できます。解除すると当社 DB から該当のチャンネル識別子は削除されます (送信ログは法令上の保管期間内のみ保管)。
+
+### 1-5. 決済処理時の情報共有 (Stripe)
+
+有料プランをご利用の場合、決済処理は Stripe, Inc. (米国) を通じて行われます。当社が直接保持する決済関連情報と、Stripe 側で処理・保管される情報は以下のとおりです。
+
+| 情報 | 当社で保持 | Stripe で保持 |
+|------|------------|----------------|
+| クレジットカード番号、有効期限、セキュリティコード | **保持しません** | 保持 (PCI DSS 準拠) |
+| Stripe Customer ID | 保持 | 保持 |
+| Stripe Subscription ID | 保持 | 保持 |
+| 課金履歴 (金額、決済日時、ステータス) | 保持 | 保持 |
+| お客様の氏名、請求先住所 | 保持しません | Stripe 側で保管 |
+
+Stripe は世界的な決済プロバイダであり、PCI DSS Level 1 認証を保有しています。Stripe におけるお客様情報の取扱いは、[Stripe 社のプライバシーポリシー](https://stripe.com/privacy) に従います。
+
+決済情報は国際的に処理されるため、米国その他の国・地域への国際データ移転を伴います (第 5 章 国際データ移転 をご参照ください)。
 
 ---
 
@@ -308,6 +343,40 @@ Last updated: May 7, 2026
 
 The Service displays publicly available Cardano blockchain information (stake address delegation status, voting history, rewards, etc.). These are public on-chain data, not personal information collected by us.
 
+### 1-4. Information Collected When You Connect a Notification Channel
+
+When you enable notifications via LINE / Telegram / email, we collect and store the following data. This data is used solely to deliver notifications and is never sold or used for third-party advertising.
+
+| Channel | Data collected | Source | Stored in |
+|----|----|----|----|
+| LINE | LINE user ID (the `sub` claim from LINE Login OpenID Connect), display name (optional) | LINE OAuth flow | Our DB (`notification_channels` table) |
+| Telegram | Telegram chat ID, username (optional) | Telegram Bot connection | Our DB (`notification_channels` table) |
+| Email | Email address | Profile settings or OAuth provider | Our DB (`users` / `notification_channels` table) |
+
+**Additional notes for LINE:**
+- You can manage the LINE user ID by adding/removing the LINE friend or revoking the connection from your LINE account
+- Notifications are delivered through the LINE Messaging API (data processed by LY Corporation is governed by their own privacy policy)
+- You can disable notifications per channel or per event from My Page > Notifications tab in this Service
+- Blocking the LINE Official Account also stops delivery
+
+You can disconnect any notification channel from your My Page at any time. Once disconnected, the channel identifier is removed from our DB (delivery logs are retained only within the period required by law).
+
+### 1-5. Information Shared During Payment Processing (Stripe)
+
+When you subscribe to a paid plan, payment processing is handled by Stripe, Inc. (United States). The following table shows what we hold directly versus what is processed and stored by Stripe.
+
+| Information | Held by us | Held by Stripe |
+|------|------------|----------------|
+| Credit card number, expiry, CVV | **Not held** | Held (PCI DSS compliant) |
+| Stripe Customer ID | Held | Held |
+| Stripe Subscription ID | Held | Held |
+| Billing history (amount, date, status) | Held | Held |
+| Cardholder name, billing address | Not held | Held by Stripe |
+
+Stripe is a global payment processor certified to PCI DSS Level 1. Stripe's handling of your information is subject to [Stripe's Privacy Policy](https://stripe.com/privacy).
+
+Payment information is processed internationally, including transfers to the United States and other regions (please see Section 5 — International Data Transfers).
+
 ---
 
 ## 2. Purposes of Use and Legal Bases for Processing
@@ -539,15 +608,4 @@ For inquiries regarding this Policy, requests concerning retained personal data,
 
 @template(route="/privacy", title="Privacy Policy | Cardanoism")
 def privacy_page() -> rx.Component:
-    return rx.box(
-        rx.cond(
-            AuthState.language == "ja",
-            rx.markdown(_PRIVACY_JA),
-            rx.markdown(_PRIVACY_EN),
-        ),
-        max_width="900px",
-        width="100%",
-        margin_x="auto",
-        padding_x="16px",
-        padding_y="24px",
-    )
+    return bilingual_markdown(_PRIVACY_JA, _PRIVACY_EN)

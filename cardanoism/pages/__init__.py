@@ -19,6 +19,9 @@ from .staking_why import staking_why_page
 from .privacy import privacy_page
 from .terms import terms_page
 from .pricing import pricing_page
+from .tokushoho import tokushoho_page
+from .company import company_page
+from .maintenance import maintenance_page
 from .auth import (
     line_login_redirect,
     line_callback,

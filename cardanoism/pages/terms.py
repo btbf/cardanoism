@@ -10,6 +10,7 @@ import reflex as rx
 
 from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
+from cardanoism.components.markdown_doc import bilingual_markdown
 
 
 _TERMS_JA = """\
@@ -72,10 +73,50 @@ _TERMS_JA = """\
 
 ## 6. 有料プラン (サブスクリプション)
 
+### 6-1. 一般
+
 1. 当社は本サービスの一部機能を有料プラン (サブスクリプション) として提供することがあります。
-2. 有料プランの価格、内容、契約期間、更新方法、解約方法等は、本サービス上に別途掲示する条件によります。
-3. 一度支払われた料金は、法令に別段の定めがある場合を除き返金されません。
-4. ユーザーが料金の支払いを怠った場合、当社は当該ユーザーの有料機能の利用を停止することができます。
+2. 有料プランの価格、内容、契約期間等は、[プラン一覧ページ](/pricing) および [特定商取引法に基づく表記](/tokushoho) に記載の内容に従います。
+
+### 6-2. 決済
+
+1. 決済は Stripe, Inc. を通じて行われ、お支払い方法はクレジットカードに対応します (Visa / Mastercard / JCB / American Express / Diners Club)。
+2. 当社はカード情報を直接保持しません。決済情報の取扱いは [Stripe 社のプライバシーポリシー](https://stripe.com/privacy) に従います。
+
+### 6-3. 自動更新
+
+1. 月額プランはお申込み日と同じ日付に**毎月自動更新**されます (例: 5 日に申込 → 翌月 5 日、翌々月 5 日…)。
+2. 年額プランは申込み日と同じ日付に**毎年自動更新**されます。
+3. 解約の意思表示がない限り、契約は同条件で自動継続するものとします。
+
+### 6-4. 解約
+
+1. ユーザーは、ログイン後の [マイページ > サブスクリプションタブ](/mypage?tab=subscription) からいつでも解約できます。
+2. 解約後も、現在の課金期間の末日までは有料機能をご利用いただけます。
+3. 次回更新日以降は課金されません。
+4. 解約後の再開はいつでも可能ですが、過去の利用期間は引き継がれません。
+
+### 6-5. 価格変更
+
+1. 当社は、合理的な範囲で有料プランの価格を変更することができます。
+2. 価格変更時は、変更日の **30 日前まで**に本サービスおよびご登録のメールアドレスにて通知します。
+3. 価格変更に同意できない場合、ユーザーは変更日までに解約することができます。
+
+### 6-6. 支払い失敗時の取り扱い
+
+1. 自動更新時にカード会社等の事由で決済が失敗した場合、当社は所定の期間 (3 日後 / 5 日後 / 7 日後) にリトライします。
+2. リトライ期間中も繰返し失敗した場合、有料機能の利用を一時停止し、Free プランに自動的にダウングレードされる場合があります。
+3. 再度有効な支払い方法を登録すれば、いつでもプランを再開できます。
+
+### 6-7. 返金
+
+1. 既にお支払いいただいた期間分の料金は、法令に別段の定めがある場合または [特定商取引法に基づく表記](/tokushoho) に定める例外事由に該当する場合を除き、**返金いたしません**。
+2. 重大なサービス障害等の例外事由が発生した場合、個別に返金等の対応を検討します。
+
+### 6-8. ベータ期間
+
+1. 本サービスはベータ期間中、有料プランの一部機能を全ユーザーに無料で開放することがあります。
+2. ベータ期間の終了および機能開放範囲の変更は、当社の裁量で行うことができ、その際は事前に本サービス上で告知します。
 
 ---
 
@@ -236,10 +277,50 @@ The specific features may change without notice.
 
 ## 6. Paid Plans (Subscriptions)
 
+### 6-1. General
+
 1. We may offer some features of the Service as paid plans (subscriptions).
-2. The pricing, content, contract period, renewal, and cancellation terms of paid plans are governed by separately posted conditions on the Service.
-3. Once paid, fees are non-refundable except as required by law.
-4. If a user fails to pay fees, we may suspend the user's access to paid features.
+2. Pricing, contents, and contract period are listed on the [Pricing page](/pricing) and the [Commercial Transactions Notice](/tokushoho).
+
+### 6-2. Payments
+
+1. Payments are processed through Stripe, Inc. and accepted via credit cards (Visa / Mastercard / JCB / American Express / Diners Club).
+2. We do not directly hold card details. Stripe handles them in accordance with the [Stripe Privacy Policy](https://stripe.com/privacy).
+
+### 6-3. Auto-renewal
+
+1. Monthly plans **renew automatically every month** on the same date as the original signup.
+2. Yearly plans **renew automatically every year** on the same date.
+3. Unless cancelled, the contract continues automatically under the same terms.
+
+### 6-4. Cancellation
+
+1. You can cancel anytime from [My Page > Subscription tab](/mypage?tab=subscription) after signing in.
+2. After cancellation, you may continue to use paid features until the end of the current billing period.
+3. You will not be charged for the next billing cycle.
+4. You can resubscribe at any time, but past usage periods are not carried over.
+
+### 6-5. Price changes
+
+1. We may change paid plan prices within reasonable bounds.
+2. We will notify you of any price change via the Service and the registered email address **at least 30 days in advance**.
+3. If you do not agree to the new price, you may cancel before the change takes effect.
+
+### 6-6. Failed payments
+
+1. If a renewal payment fails (e.g., due to card issuer reasons), we will retry on a defined schedule (3 / 5 / 7 days later).
+2. If retries continue to fail, paid features may be suspended and the account may be downgraded to the Free plan.
+3. Once a valid payment method is registered, you can resume the plan at any time.
+
+### 6-7. Refunds
+
+1. Fees already paid for the elapsed billing period are **non-refundable**, except as required by law or as specified in the [Commercial Transactions Notice](/tokushoho).
+2. In the case of a major service outage or other exceptional events, we will consider refunds on a case-by-case basis.
+
+### 6-8. Beta period
+
+1. During the beta period, we may offer paid-plan features for free to all users.
+2. Termination of the beta period and changes to the scope of free features are at our discretion, and will be announced on the Service in advance.
 
 ---
 
@@ -342,15 +423,4 @@ For inquiries regarding these Terms, please contact us at:
 
 @template(route="/terms", title="Terms of Service | Cardanoism")
 def terms_page() -> rx.Component:
-    return rx.box(
-        rx.cond(
-            AuthState.language == "ja",
-            rx.markdown(_TERMS_JA),
-            rx.markdown(_TERMS_EN),
-        ),
-        max_width="900px",
-        width="100%",
-        margin_x="auto",
-        padding_x="16px",
-        padding_y="24px",
-    )
+    return bilingual_markdown(_TERMS_JA, _TERMS_EN)
