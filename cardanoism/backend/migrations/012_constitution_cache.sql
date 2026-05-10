@@ -1,6 +1,6 @@
 -- ============================================================
--- 019_constitution_cache.sql
--- Cardano 憲法本文の原文 + 日本語訳キャッシュ（id=1 固定の単一行）
+-- 012_constitution_cache.sql
+-- Cardano 憲法本文の原文 + 日本語訳キャッシュ (id=1 固定の単一行)
 --
 -- 最新 enacted NewConstitution の本文を IPFS から取得し、Catalyst でも使われる
 -- Translator (cardanoism/translate/engine.py) で翻訳して保存する。

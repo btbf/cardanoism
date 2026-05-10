@@ -3,8 +3,9 @@
 -- DRep キャッシュ
 --
 -- - Koios /drep_list + /drep_metadata の結果をマージしてキャッシュ
--- - image_url に data URI（base64 画像）が入るため MEDIUMTEXT
+-- - image_url に data URI (base64 画像) が入るため MEDIUMTEXT
 -- - 同期は notify_worker.py --event drep_sync
+-- - last_event_slot は Ogmios listener が DRep cert を反映した最終 slot (rollback 対応)
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS dreps (
@@ -28,9 +29,11 @@ CREATE TABLE IF NOT EXISTS dreps (
     meta_url         TEXT         DEFAULT NULL,
     meta_hash        VARCHAR(64)  DEFAULT NULL,
     meta_is_valid    TINYINT(1)   DEFAULT NULL,
+    last_event_slot  BIGINT       DEFAULT NULL,
     fetched_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    KEY idx_amount (amount DESC),
-    KEY idx_active (active),
-    KEY idx_name   (given_name)
+    KEY idx_amount          (amount DESC),
+    KEY idx_active          (active),
+    KEY idx_name            (given_name),
+    KEY idx_dreps_event_slot(last_event_slot)
 );

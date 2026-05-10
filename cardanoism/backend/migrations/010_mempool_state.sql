@@ -1,11 +1,11 @@
 -- ============================================================
--- 014_mempool_state.sql
+-- 010_mempool_state.sql
 -- Ogmios Mempool Monitoring の最新スナップショット (id=1 固定の単一行)
 --
 -- - tx_count       : mempool 内の待機中 tx 数
 -- - byte_size      : mempool 内の合計バイト数
 -- - capacity_bytes : mempool 容量上限 (bytes)
--- - 更新は ogmios_listener.py の mempool poller (10秒間隔)
+-- - 更新は ogmios_listener.py の mempool poller (10 秒間隔)
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS mempool_state (

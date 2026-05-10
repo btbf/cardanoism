@@ -1,46 +1,30 @@
 # Migrations
 
-Cardanoism の MariaDB スキーマ定義。
+Cardanoism の MariaDB スキーマ定義（最終形）。
 
 ## 適用方針
 
-すべて `CREATE TABLE IF NOT EXISTS` で構成された **冪等** な統合スキーマ。番号順に1回流せばよい。
-再実行しても既存テーブルには影響しない（既存テーブルが先勝ち）。
+すべて `CREATE TABLE IF NOT EXISTS` で構成された **冪等** な統合スキーマ。
+番号順に 1 回流せばよい。再実行しても既存テーブルには影響しない（既存テーブルが先勝ち）。
 
 ## 適用順
 
-| # | ファイル | 内容 |
-|---|---------|------|
+| # | ファイル | テーブル / 内容 |
+|---|---------|----------------|
 | 001 | `001_users_auth.sql` | users / user_sessions / user_providers / notification_channels / telegram_connect_tokens |
-| 002 | `002_user_data.sql` | stake_addresses / favorites |
+| 002 | `002_user_data.sql` | stake_addresses / favorites / wallet_verification_nonces |
 | 003 | `003_notifications.sql` | notification_settings / stake_notification_settings / notification_check_state / notification_log |
 | 004 | `004_governance.sql` | governance_actions / proposal_votes / proposal_voting_summary / protocol_params / cc_members |
 | 005 | `005_dreps.sql` | dreps |
-| 006 | `006_treasury.sql` | treasury_snapshot / treasury_withdrawal / ncl_active |
+| 006 | `006_treasury.sql` | treasury_snapshot / treasury_history / treasury_withdrawal / ncl_active |
 | 007 | `007_fiat_rate.sql` | fiat_rate |
 | 008 | `008_pools.sql` | pools |
-| 009 | `009_pools_icon.sql` | pools.pool_icon_url 追加 (ALTER) |
-| 010 | `010_pools_meta_hash.sql` | pools.meta_hash を VARCHAR(128) に拡張 (ALTER) |
-| 011 | `011_pools_extended.sql` | pools に extended metadata 由来カラムを追加 (logo / about / social) |
-| 012 | `012_pools_relay_check.sql` | pools にリレー疎通結果カラムを追加 (relay_alive / relay_checked_at) |
-| 013 | `013_recent_blocks.sql` | recent_blocks（直近100件のブロック履歴） |
-| 014 | `014_mempool_state.sql` | mempool_state（id=1 固定の Ogmios mempool スナップショット） |
-| 015 | `015_recent_blocks_size.sql` | recent_blocks に block_size (bytes) を追加 (ALTER) |
-| 016 | `016_pools_block_history.sql` | pools に block_history_5ep (直近5エポックのブロック数) を追加 (ALTER) |
-| 017 | `017_governance_ai_analysis.sql` | governance_ai_analysis（GA AI 分析結果 + ジョブステート） |
-| 018 | `018_governance_actions_action_anchor.sql` | governance_actions に action_anchor_url / action_anchor_hash 追加 (ALTER) |
-| 019 | `019_constitution_cache.sql` | constitution_cache（憲法本文 + 日本語訳キャッシュ、id=1 固定） |
-| 020 | `020_treasury_history.sql` | treasury_history（エポックごとのトレジャリー残高履歴） |
-| 021 | `021_governance_ai_analysis_facts.sql` | governance_ai_analysis をファクト整理ベースに変更（スコア / verdict / KPI 等を廃止、proposal_facts_json / rule_checks_json 追加） |
-| 022 | `022_stake_address_verification.sql` | stake_addresses に verified / verified_at + wallet_verification_nonces |
-| 023 | `023_pools_apy.sql` | pools.apy_history_7ep |
-| 024 | `024_stake_rewards.sql` | stake_rewards（ステークアドレスごとのエポック別報酬） |
-| 025 | `025_listener_event_slot.sql` | governance_actions / proposal_votes / dreps / pools / stake_addresses に last_event_slot を追加（Ogmios listener の rollback 対応） |
-| 026 | `026_stake_addresses_spo.sql` | stake_addresses.spo_pool_id (SPO 識別) |
-| 027 | `027_stake_rewards_type.sql` | stake_rewards.reward_type (member / leader / other 分離) + UNIQUE KEY 変更 |
-| 028 | `028_governance_actions_spo_target.sql` | governance_actions.spo_target (SPO 投票対象判定) |
-| 029 | `029_notification_channels_telegram.sql` | notification_channels.channel_type ENUM に 'telegram' を追加（既存 DB の古い ENUM 補完用、冪等） |
-| 030 | `030_subscriptions.sql` | subscriptions（サブスク基盤テーブル）+ ベータ向けに既存ユーザーへ tier=standard 行を backfill |
+| 009 | `009_recent_blocks.sql` | recent_blocks（直近 100 件のブロック履歴） |
+| 010 | `010_mempool_state.sql` | mempool_state（id=1 固定の Ogmios mempool スナップショット） |
+| 011 | `011_governance_ai_analysis.sql` | governance_ai_analysis（GA AI 分析結果 + ジョブステート） |
+| 012 | `012_constitution_cache.sql` | constitution_cache（憲法本文 + 日本語訳キャッシュ、id=1 固定） |
+| 013 | `013_stake_rewards.sql` | stake_rewards（エポック × reward_type 別の報酬キャッシュ） |
+| 014 | `014_subscriptions.sql` | subscriptions（サブスク基盤）+ ベータ向け既存ユーザー backfill |
 
 ## 適用例
 
@@ -63,6 +47,16 @@ done
 
 ## 設計上の留意点
 
-- ENUM の値は変更頻度が低い（`role`、`channel_type`、`provider` など）。値を増やす場合は追加マイグレーションで `MODIFY COLUMN` する
-- `protocol_params`、`treasury_snapshot`、`ncl_active`、`fiat_rate` は **id=1 固定の単一行** で運用する（`INSERT ... ON DUPLICATE KEY UPDATE` で上書き）
+- ENUM の値は変更頻度が低い（`role`、`channel_type`、`provider`、`reward_type` など）。値を増やす場合は追加マイグレーションで `MODIFY COLUMN` する
+- `protocol_params`、`treasury_snapshot`、`ncl_active`、`fiat_rate`、`mempool_state`、`constitution_cache` は **id=1 固定の単一行** で運用する（`INSERT ... ON DUPLICATE KEY UPDATE` で上書き）
 - 投票理由 (`proposal_votes.rationale_ja`) は OpenAI 翻訳で埋める想定。バッチは `notify_worker.py --event vote_rationale_sync`
+- `last_event_slot`（governance_actions / proposal_votes / dreps / pools / stake_addresses）は Ogmios listener が rollback 時に `DELETE WHERE last_event_slot > <rollback_slot>` で巻き戻すために使う。NULL は「listener 経由で書かれていない（Koios sync 由来）」を意味し rollback 対象外。
+
+## このファイルの更新方針
+
+新しいテーブル / カラムを追加するときは:
+
+1. **新規テーブル**: 連番で新ファイルを追加（`015_*.sql` など）
+2. **既存テーブルへのカラム追加**: 該当 base ファイルの `CREATE TABLE` 本体に追記。本番 DB に対しては別途 `ALTER TABLE` を流すこと（このディレクトリには ALTER 系ファイルを残さない方針）
+
+「最終形」を保ち続けることで、新規 VPS デプロイ時に番号順に流せば常に最新スキーマが構築される状態を維持する。

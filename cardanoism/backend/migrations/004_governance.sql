@@ -1,16 +1,20 @@
 -- ============================================================
 -- 004_governance.sql
 -- ガバナンス関連キャッシュ:
---   governance_actions         GA 本体（メタデータ含む）
---   proposal_votes             GA への投票（DRep / SPO / CC）
+--   governance_actions         GA 本体 (CIP-100/108 メタデータ含む)
+--   proposal_votes             GA への投票 (DRep / SPO / CC)
 --   proposal_voting_summary    GA ごとの集計
---   protocol_params            投票閾値・デポジット等（id=1 の単一行）
+--   protocol_params            投票閾値・デポジット等 (id=1 の単一行)
 --   cc_members                 憲法委員会メンバー
 --
--- 同期は notify_worker.py の各 sync イベント（vote_sync / params_sync / summary_sync 等）
+-- 同期は notify_worker.py の各 sync イベント (vote_sync / params_sync / summary_sync 等)
+-- + Ogmios listener が新規 GA / 投票を即時 INSERT。last_event_slot は rollback 対応用。
 -- ============================================================
 
--- ガバナンスアクション本体（CIP-100/108 メタデータ含む）
+-- ガバナンスアクション本体 (CIP-100/108 メタデータ含む)
+-- action_anchor_url/hash は NewConstitution の本文 PDF/Markdown 等の参照先。
+-- spo_target は SPO 投票対象判定 (CIP-1694): NULL=未判定 / 0=対象外 / 1=SPO 投票対象。
+-- last_event_slot は Ogmios listener が GA を反映した最終 slot (rollback 対応)。
 CREATE TABLE IF NOT EXISTS governance_actions (
     id                        INT           NOT NULL AUTO_INCREMENT,
     proposal_id               VARCHAR(255)  NOT NULL,
@@ -40,18 +44,25 @@ CREATE TABLE IF NOT EXISTS governance_actions (
     abstract_ja               MEDIUMTEXT    DEFAULT NULL,
     motivation_ja             MEDIUMTEXT    DEFAULT NULL,
     rationale_ja              MEDIUMTEXT    DEFAULT NULL,
+    action_anchor_url         TEXT          DEFAULT NULL,
+    action_anchor_hash        VARCHAR(128)  DEFAULT NULL,
+    spo_target                TINYINT(1)    DEFAULT NULL,
+    last_event_slot           BIGINT        DEFAULT NULL,
     fetched_at                DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at                DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_proposal_id (proposal_id),
-    KEY idx_type       (proposal_type),
-    KEY idx_epoch      (proposed_epoch),
-    KEY idx_block_time (block_time),
-    KEY idx_expiration (expiration)
+    KEY idx_type          (proposal_type),
+    KEY idx_epoch         (proposed_epoch),
+    KEY idx_block_time    (block_time),
+    KEY idx_expiration    (expiration),
+    KEY idx_ga_spo_target (spo_target),
+    KEY idx_ga_event_slot (last_event_slot)
 );
 
--- 投票（DRep / SPO / CC）
+-- 投票 (DRep / SPO / CC)
 -- rationale_ja は OpenAI 翻訳でフェーズ4で埋める
+-- last_event_slot は Ogmios listener が VotingProcedures cert を反映した slot (rollback 対応)
 CREATE TABLE IF NOT EXISTS proposal_votes (
     id              INT          AUTO_INCREMENT PRIMARY KEY,
     proposal_id     VARCHAR(128) NOT NULL,
@@ -66,14 +77,16 @@ CREATE TABLE IF NOT EXISTS proposal_votes (
     rationale       MEDIUMTEXT   DEFAULT NULL,
     rationale_ja    MEDIUMTEXT   DEFAULT NULL,
     meta_fetched_at DATETIME     DEFAULT NULL,
+    last_event_slot BIGINT       DEFAULT NULL,
     fetched_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_vote (proposal_id, voter_role, voter_id),
-    KEY idx_proposal (proposal_id),
-    KEY idx_role     (voter_role)
+    KEY idx_proposal        (proposal_id),
+    KEY idx_role            (voter_role),
+    KEY idx_votes_event_slot(last_event_slot)
 );
 
--- 投票集計（Koios /proposal_voting_summary のキャッシュ）
+-- 投票集計 (Koios /proposal_voting_summary のキャッシュ)
 CREATE TABLE IF NOT EXISTS proposal_voting_summary (
     proposal_id                  VARCHAR(128) PRIMARY KEY,
     proposal_type                VARCHAR(50)   DEFAULT NULL,
@@ -96,7 +109,7 @@ CREATE TABLE IF NOT EXISTS proposal_voting_summary (
     updated_at                   DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
--- プロトコルパラメータ（id=1 固定の単一行）
+-- プロトコルパラメータ (id=1 固定の単一行)
 CREATE TABLE IF NOT EXISTS protocol_params (
     id                          INT            PRIMARY KEY,
     epoch_no                    INT            DEFAULT NULL,
@@ -117,7 +130,7 @@ CREATE TABLE IF NOT EXISTS protocol_params (
     pvt_committee_no_confidence DECIMAL(10,8)  DEFAULT NULL,
     pvt_hard_fork_initiation    DECIMAL(10,8)  DEFAULT NULL,
     pvtpp_security_group        DECIMAL(10,8)  DEFAULT NULL,
-    -- 憲法委員会 quorum（CIP-1694）
+    -- 憲法委員会 quorum (CIP-1694)
     cc_quorum_numerator         INT            DEFAULT NULL,
     cc_quorum_denominator       INT            DEFAULT NULL,
     -- Committee / deposit 関連
@@ -130,7 +143,7 @@ CREATE TABLE IF NOT EXISTS protocol_params (
     updated_at                  DATETIME       DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
--- 憲法委員会メンバー（display_name は運用で手動編集）
+-- 憲法委員会メンバー (display_name は運用で手動編集)
 CREATE TABLE IF NOT EXISTS cc_members (
     cc_cold_id         VARCHAR(128) PRIMARY KEY,
     cc_cold_hex        VARCHAR(128) DEFAULT NULL,
