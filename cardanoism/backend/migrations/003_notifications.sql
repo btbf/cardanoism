@@ -2,13 +2,13 @@
 -- 003_notifications.sql
 -- 通知設定 + バッチ実行ステート
 --
--- ・notification_settings        : ユーザー全体イベント（epoch_start 等）
--- ・stake_notification_settings  : ステークアドレス単位イベント（pool_*, drep_*）
+-- ・notification_settings        : ユーザー全体イベント (epoch_start 等)
+-- ・stake_notification_settings  : ステークアドレス単位イベント (pool_*, drep_*)
 -- ・notification_check_state     : ogmios_listener / notify_worker の前回値
--- ・notification_log             : 送信履歴（dedup_key で重複送信防止）
+-- ・notification_log             : 送信履歴 (dedup_key で重複送信防止)
 --
 -- 既存ユーザー / アドレスへのデフォルトイベント挿入は
--- アプリケーションコード（auth_db.py の _create_user / add_stake_address）が担当する。
+-- アプリケーションコード (auth_db.py の _create_user / add_stake_address) が担当する。
 -- ============================================================
 
 -- ユーザー全体の通知設定
@@ -23,10 +23,12 @@ CREATE TABLE IF NOT EXISTS notification_settings (
 );
 
 -- ステークアドレス単位の通知設定
--- event_type 例: pool_retire, pool_fee_change, pool_saturation, pool_pledge_shortage,
---               pool_reward_received, pool_epoch_performance, pool_delegation_reminder,
---               drep_new_governance_action, drep_vote, drep_status_change,
---               drep_delegation_reminder, drep_unvoted_1week, drep_unvoted_2weeks
+-- event_type 例:
+--   pool_retire / pool_fee_change / pool_saturation / pool_pledge_shortage /
+--   pool_reward_received / pool_epoch_performance / pool_delegation_reminder /
+--   spo_pending_vote /
+--   drep_new_governance_action / drep_vote / drep_status_change /
+--   drep_delegation_reminder / drep_unvoted_ga
 CREATE TABLE IF NOT EXISTS stake_notification_settings (
     id               INT          AUTO_INCREMENT PRIMARY KEY,
     stake_address_id INT          NOT NULL,
@@ -36,10 +38,10 @@ CREATE TABLE IF NOT EXISTS stake_notification_settings (
     UNIQUE KEY uq_stake_event (stake_address_id, event_type)
 );
 
--- バッチ実行ステート（前回値の保持）
+-- バッチ実行ステート (前回値の保持)
 -- scope_type:
---   global         : ユーザー横断（current_epoch, ogmios_last_slot, pool_fee:<pool_id> 等）
---   stake_address  : ステークアドレス単位（scope_id = stake_addresses.id）
+--   global         : ユーザー横断 (current_epoch, ogmios_last_slot, pool_fee:<pool_id> 等)
+--   stake_address  : ステークアドレス単位 (scope_id = stake_addresses.id)
 CREATE TABLE IF NOT EXISTS notification_check_state (
     id         INT          AUTO_INCREMENT PRIMARY KEY,
     scope_type ENUM('global', 'stake_address') NOT NULL DEFAULT 'global',

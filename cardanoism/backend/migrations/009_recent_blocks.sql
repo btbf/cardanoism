@@ -1,9 +1,10 @@
 -- ============================================================
--- 013_recent_blocks.sql
--- リアルタイムブロック履歴（直近100件をローリング保持）
+-- 009_recent_blocks.sql
+-- リアルタイムブロック履歴 (直近 100 件をローリング保持)
 --
 -- - ogmios_listener.py が新ブロック受信時に INSERT
--- - 100件超えたら古いものを TRIM
+-- - 100 件超えたら古いものを TRIM
+-- - block_size は Ogmios の block.size.bytes (mempool 充填率の可視化用)
 -- - ダッシュボードのライブブロック一覧で参照
 -- ============================================================
 
@@ -18,5 +19,5 @@ CREATE TABLE IF NOT EXISTS recent_blocks (
     block_size    INT          NOT NULL DEFAULT 0,
     fetched_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_block_time (block_time),
-    KEY idx_pool_hex (pool_id_hex)
+    KEY idx_pool_hex   (pool_id_hex)
 );

@@ -282,6 +282,9 @@ def detect_stake_role(stake_address: str) -> dict:
     drep_stake = get_stake_address_from_addr(payment_address)
     if drep_stake and drep_stake == stake_address:
         result["role"] = "drep"
+        # 自身が DRep のときは drep_id / drep_name も保持（未投票通知などで自分の voter_id 突合に使う）
+        result["drep_id"] = drep_id
+        result["drep_name"] = drep_name
         return result
 
     # 委任者

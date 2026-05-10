@@ -164,15 +164,19 @@ DB を再リセットする運用が発生したら同じ順序で叩き直す�
 
 ## 6. 定期 polling 設定 (cron)
 
-`notify_worker.py` を cron で定期実行する。テンプレート全体は `docs/koios-polling-backend.md` § 4-1。
+`notify_worker.py` を cron で定期実行する。テンプレートは [`deploy/cron.d-cardanoism-notify`](../deploy/cron.d-cardanoism-notify) 1 ファイルで完結する形式。
+セットアップ手順 (Infisical login / install / 疎通確認) は [`deploy/README.md`](../deploy/README.md) を参照。スケジュール設計の詳細は [`docs/koios-polling-backend.md`](koios-polling-backend.md) § 4。
 
 ```bash
-sudo install -m 0644 cron.d-cardanoism-notify /etc/cron.d/cardanoism-notify
-sudo mkdir -p /var/log/cardanoism
-sudo chown <user>:<user> /var/log/cardanoism
+# 最短手順 (詳細は deploy/README.md):
+sudo -u cardanoism infisical login                            # cron 実行ユーザーで一度だけ
+sudo mkdir -p /var/log/cardanoism && sudo chown cardanoism:cardanoism /var/log/cardanoism
+sudo install -m 0644 -o root -g root \
+    /opt/cardanoism/deploy/cron.d-cardanoism-notify \
+    /etc/cron.d/cardanoism-notify
+sudo $EDITOR /etc/cron.d/cardanoism-notify     # 冒頭の ENV / WORKDIR / PY の 3 行を編集
+sudo systemctl reload cron
 ```
-
-スケジュールの考え方は `docs/koios-polling-backend.md` § 4-2。
 
 ---
 
