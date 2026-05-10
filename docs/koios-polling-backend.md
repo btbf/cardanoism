@@ -119,72 +119,27 @@ done
 
 ⚠️ は通知チャンネルを使う場合のみ必須。最低 1 つは設定。
 
-VPS への CLI / Service Token セットアップは `docs/realtime-notification-backend.md` 5-2 と共通。cron では `infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- python notify_worker.py ...` の形でラップする。
+Infisical 認証は cron 実行ユーザー (`cardanoism`) で `infisical login` を一度実行しておく前提 (`~/.infisical/` に credentials が保存され、以降の `infisical run` がそれを読む)。cron 行に token を渡す必要はない。
 
 ---
 
 ## 4. cron 設定
 
-### 4-1. 推奨スケジュール (Ogmios listener 駆動を前提とした最小構成)
+cron 定義は [`deploy/cron.d-cardanoism-notify`](../deploy/cron.d-cardanoism-notify) 1 ファイルで完結する形式。VPS への install 手順は [`deploy/README.md`](../deploy/README.md) を参照。本セクションは設計意図と運用上の補足のみ。
 
-Ogmios listener が GA / 投票 / DRep cert / Pool cert / 委任 cert の各イベントを即時 DB 反映するため、
-従来の `*_sync` 系 cron は **listener 停止時のフォールバック** として 24 時間に 1 回だけ走らせる構成に変更。
+### 4-1. cron file の構造
+
+ファイル冒頭で 3 つの変数 (`ENV` / `WORKDIR` / `PY`) をデプロイ時に書き換え、各 cron 行は以下の素直な形:
 
 ```cron
-# /etc/cron.d/cardanoism-notify
-SHELL=/bin/bash
-WORKDIR=/opt/cardanoism
-PY=/opt/cardanoism/infisical run --env=preview -- python
-INF=/usr/local/bin/infisical
-TOKEN_FILE=/etc/cardanoism/infisical.token
-# Infisical の env スコープを切り替えるなら ENV=preview に変更
-ENV=mainnet
-RUN="$INF run --env=$ENV --token=$(cat $TOKEN_FILE) --"
-
-# ── 通知 (常時) ───────────────────────────────────────────
-# プール系（saturation / pledge / reward） — エポック計算値なので cron 必須
-*/30 * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event pool         >> /var/log/cardanoism/notify.log 2>&1
-
-# DRep 系（status_change） — drep_activity で active/inactive 判定するので cron
-*/30 * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event drep         >> /var/log/cardanoism/notify.log 2>&1
-
-# 委任リマインダー（pool / drep）
-0    * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event reminder     >> /var/log/cardanoism/notify.log 2>&1
-
-# トレジャリー引き出し提案の enacted 検知
-0    * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event treasury     >> /var/log/cardanoism/notify.log 2>&1
-
-# ── オフチェーン同期 (常時) ──────────────────────────────
-# 法定通貨レート (CoinGecko)
-*/10 * * * *  cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event fiat_sync     >> /var/log/cardanoism/sync.log 2>&1
-
-# プールリレー TCP 疎通確認
-0    */6 * * * cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event relay_check  >> /var/log/cardanoism/sync.log 2>&1
-
-# 投票理由の翻訳 (OpenAI、無料枠の上限注意)
-0    */4 * * * cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event vote_rationale_sync >> /var/log/cardanoism/sync.log 2>&1
-
-# ── フォールバック (listener 停止対策、24 時間に 1 回深夜) ─────
-# 通常は Ogmios listener が epoch_start を検知したタイミングでこれらを発火するが、
-# listener が落ちている間でもデータが完全停止しないように 1 日 1 回バックアップで回す。
-0    3 * * *   cardanoism cd $WORKDIR && $RUN $PY cardanoism/backend/governance.py --no-translate >> /var/log/cardanoism/sync.log 2>&1
-30   3 * * *   cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event params_sync             >> /var/log/cardanoism/sync.log 2>&1
-0    4 * * *   cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event treasury_sync           >> /var/log/cardanoism/sync.log 2>&1
-30   4 * * *   cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event drep_sync               >> /var/log/cardanoism/sync.log 2>&1
-0    5 * * *   cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event pool_sync               >> /var/log/cardanoism/sync.log 2>&1
-30   5 * * *   cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event pool_block_history_sync >> /var/log/cardanoism/sync.log 2>&1
-0    6 * * *   cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event vote_sync               >> /var/log/cardanoism/sync.log 2>&1
-30   6 * * *   cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event summary_sync            >> /var/log/cardanoism/sync.log 2>&1
-0    7 * * *   cardanoism cd $WORKDIR && $RUN $PY notify_worker.py --event constitution_sync      >> /var/log/cardanoism/sync.log 2>&1
+*/30 * * * *  cardanoism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event pool >> $LOG/notify-pool.log 2>&1
 ```
 
-cron は `$()` を直接展開できないため、`$RUN` 変数を組み立てる際に `$(cat ...)` を頭に出している点に注意。動かない場合は `--token-file=$TOKEN_FILE` 指定に切替えるか、wrapper script を用意する。
+- 認証は `cardanoism` user の `~/.infisical/` 経由で自動解決 (cron file には token を含めない)
+- ログはイベント別ファイル `notify-<event>.log` に分離 (logrotate と障害切り分けが楽)
+- ファイル権限は通常の `0644 root:root` でよい (機密情報を含まないため)
 
-```bash
-sudo mkdir -p /var/log/cardanoism
-sudo chown cardanoism:cardanoism /var/log/cardanoism
-sudo install -m 0644 cron.d-cardanoism-notify /etc/cron.d/cardanoism-notify
-```
+> Ogmios listener が GA / 投票 / DRep cert / Pool cert / 委任 cert の各イベントを即時 DB 反映するため、従来の `*_sync` 系 cron は **listener 停止時のフォールバック** として 24 時間に 1 回だけ走らせる構成。
 
 ### 4-2. cron スケジュールの考え方
 
@@ -192,17 +147,22 @@ sudo install -m 0644 cron.d-cardanoism-notify /etc/cron.d/cardanoism-notify
 
 | 種類 | 頻度 | 理由 |
 |------|------|------|
-| 通知（`pool` / `drep`） | 30 分 | エポック計算値や DRep activity 判定が必要なので cron 不可避 |
-| `reminder` | 1 時間 | 日次集計の差分処理。`refresh_stake_delegations` も同タイミング |
-| `treasury` | 1 時間 | enacted 検知。listener も拾えるが軽量な safety net |
-| `fiat_sync` | 10 分 | UI で常時表示されるため短め (オフチェーン CoinGecko) |
+| `drep` | 5 分 | drep_unvoted_ga (DB only) を高頻度で。drep_status_change の `/drep_info` も bulk 1 回で軽量 |
+| `fiat_sync` | 5 分 | UI で常時表示されるため短め (CoinGecko 無料枠 30 req/min 内) |
+| `pool` | 10 分 | saturation / pledge / reward 検知。エポック計算値なので cron 不可避 |
+| `summary_sync` | **15 分** | **Active GA 限定**で投票集計を最新化。`pre_ratify` トリガー (drep_yes_pct ≥ 批准値 -10pt) のリアルタイム判定の前提 |
+| `reminder` | 15 分 | 委任長期リマインダー + `refresh_stake_delegations` |
+| `treasury` | 15 分 | enacted 検知。listener も拾えるが軽量な safety net |
 | `relay_check` | 6 時間 | TCP 疎通テスト (オフチェーン) |
 | `vote_rationale_sync` | 4 時間 | OpenAI 翻訳。コスト抑制のため低頻度 |
+
+> `summary_sync` は元々全 GA 対象で重かったが、Active GA 限定 (通常 10–30 件) に絞って 15 min cron に格上げした。これにより `pre_ratify` トリガーが最大でも 15 分遅延に収まる。
 
 #### フォールバック cron (24 時間に 1 回、深夜に集中)
 
 通常は Ogmios listener が epoch_start を検知したときに `*_sync` チェーンを起動する。
 listener が長時間停止していてもデータが完全停止しないよう、**1 日 1 回だけ深夜にバックアップ実行**する。
+`summary_sync` は常時 15 min で回っているためフォールバックには含めない。
 
 | 種類 | 起動時刻 | 通常駆動 |
 |------|---------|---------|
@@ -213,7 +173,6 @@ listener が長時間停止していてもデータが完全停止しないよ�
 | `pool_sync` | 05:00 | listener: epoch_start + Pool cert 検知 |
 | `pool_block_history_sync` | 05:30 | listener: epoch_start |
 | `vote_sync` | 06:00 | listener: 投票即時反映 |
-| `summary_sync` | 06:30 | listener: epoch_start |
 | `constitution_sync` | 07:00 | listener: epoch_start |
 
 > **listener が動いている限り**、これらの cron 実行はほぼ「no-op (= 既に最新)」になる。
