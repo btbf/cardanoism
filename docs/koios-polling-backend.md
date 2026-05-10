@@ -248,23 +248,7 @@ infisical run --env=preview -- python notify_worker.py --event pool_block_histor
 infisical run --env=preview -- python notify_worker.py --event relay_check
 ```
 
-### 5-3. テスト送信
-
-```bash
-# 対象ユーザー一覧
-infisical run --env=preview -- python notify_worker.py --list-users
-
-# ユーザーへ実データでテスト
-infisical run --env=preview -- python notify_worker.py --test 1
-
-# 特定イベントのダミーデータでテスト
-infisical run --env=preview -- python notify_worker.py --test 1 --test-event pool_saturation
-
-# ユーザーが ON にしているイベントだけダミーテスト
-infisical run --env=preview -- python notify_worker.py --test 1 --test-enabled
-```
-
-### 5-4. 初回投入 / DB リセット時の同期手順
+### 5-3. 初回投入 / DB リセット時の同期手順
 
 新規環境にデプロイした直後、またはネットワーク切替（mainnet ↔ preview）でガバナンス系・SPO 系のキャッシュテーブルを TRUNCATE した直後に **1 回だけ** 実行する。順序が重要（GA 本体が無いと AI 分析の enqueue 対象が無いため）。
 
@@ -315,7 +299,7 @@ $INF python ga_ai_worker.py
 
 DB リセット後の Ogmios listener は `--from-tip` 必須（`docs/realtime-notification-backend.md` 5-3）。
 
-### 5-5. エポック切替時刻の確認
+### 5-4. エポック切替時刻の確認
 
 ```bash
 infisical run --env=preview -- python notify_worker.py --epoch-schedule
@@ -325,7 +309,7 @@ infisical run --env=preview -- python notify_worker.py --epoch-schedule
 
 > リアルタイムバックエンドが稼働している場合、`epoch_start` 通知は Ogmios 側が担当するため、ここで提示された cron 行は **登録不要**。
 
-### 5-6. 投票理由翻訳の制限
+### 5-5. 投票理由翻訳の制限
 
 ```bash
 # メタデータ取得は最大 100 件、OpenAI 翻訳は最大 30 件で実行（コスト抑制）
@@ -391,7 +375,7 @@ ORDER BY checked_at DESC LIMIT 50;
 | 同じ通知が繰り返される | `notification_log` に該当 dedup_key の行があるか確認、`notification_check_state` の前回値を確認 |
 | `vote_rationale_sync` が遅い／高額 | `--fetch-limit` / `--translate-limit` で制限。OpenAI コスト次第で間引く |
 | `treasury_sync` で残高が更新されない | Koios 側の同期遅延。1〜2エポック分は遅延するのが正常 |
-| ログが急増 | `--list-users` でユーザー数を確認、`MAX_WORKERS = 10`（並列 Koios コール数）を絞ると軽減 |
+| ログが急増 | DB 上で `SELECT COUNT(*) FROM notification_channels WHERE channel_type='line'` を確認、`MAX_WORKERS = 10`（並列 Koios コール数）を絞ると軽減 |
 | エポック開始通知が重複 | リアルタイムバックエンドが担当しているため、`notify_worker.py --event epoch_start` は cron に登録しない |
 
 ---
