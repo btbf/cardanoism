@@ -45,8 +45,7 @@ DELEGATOR_NOTIFICATION_EVENT_TYPES = [
 # DRep本人のみ
 DREP_ONLY_NOTIFICATION_EVENT_TYPES = [
     "drep_new_governance_action",
-    "drep_unvoted_1week",
-    "drep_unvoted_2weeks",
+    "drep_unvoted_ga",
 ]
 
 # ステークアドレス単位の全イベント（stake_notification_settingsに保存）

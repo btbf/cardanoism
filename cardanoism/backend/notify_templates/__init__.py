@@ -35,5 +35,6 @@ from cardanoism.backend.notify_templates import drep_status_change           # n
 from cardanoism.backend.notify_templates import drep_delegation_reminder     # noqa: F401
 from cardanoism.backend.notify_templates import treasury_withdrawal_enacted  # noqa: F401
 from cardanoism.backend.notify_templates import spo_pending_vote             # noqa: F401
+from cardanoism.backend.notify_templates import drep_unvoted_ga              # noqa: F401
 
 __all__ = ["deliver", "register", "merge_user_channels", "EVENT_TEMPLATES"]

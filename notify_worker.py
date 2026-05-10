@@ -838,6 +838,7 @@ def _check_drep_delegation_reminder():
 def check_drep_events():
     logger.info("DRepイベント チェック開始")
     _check_drep_status_change()
+    _check_drep_unvoted_ga()
 
 
 def _check_drep_status_change():
@@ -895,6 +896,201 @@ def _check_drep_status_change():
             nickname=addr["nickname"], base_url=CARDANOISM_URL,
         )
         deliver(addr, "drep_status_change", ctx, dedup_base=dedup_key)
+
+
+# ============================================================
+# DRep 未投票 GA リマインダー（本人向け）
+# ============================================================
+
+# DRep 未投票 GA リマインダーの定数
+DREP_UNVOTED_PRE_RATIFY_GAP_PT = 10.0   # 批准閾値の何 pt 手前で発火するか
+DREP_UNVOTED_NEAR_EXPIRE_EPOCHS = 2     # expiration までこの epoch 以下で発火
+
+
+def _check_drep_unvoted_ga():
+    """DRep 本人 (stake_addresses.role='drep') が未投票の Active な GA を検知し、
+    以下のいずれかが先に成立した時点で「1 GA につき 1 通」だけ通知する:
+
+      - "7d"          : block_time から 7 日経過
+      - "14d"         : block_time から 14 日経過
+      - "pre_ratify"  : drep_yes_pct が批准閾値の 10pt 手前 (例: 67% → 57%) に到達
+      - "near_expire" : expiration まで残り 2 epoch 以下
+
+    dedup_key は GA 単位 (`drep_unvoted_{stake_id}_{proposal_id}`) で固定し、
+    どのトリガーで発火したかを ctx.trigger に詰めて配信する。
+    複数該当時は切迫度の高い順に pre_ratify > near_expire > 14d > 7d を採用。
+    """
+    addrs = _merge_stake_channels(
+        get_stake_addrs_with_event("drep_unvoted_ga"),
+        get_stake_addrs_with_email_event("drep_unvoted_ga"),
+        get_stake_addrs_with_telegram_event("drep_unvoted_ga"),
+    )
+    # role='drep' かつ自身の drep_id が判明しているアドレスのみ対象
+    drep_addrs = [a for a in addrs if a.get("role") == "drep" and a.get("delegated_drep_id")]
+    if not drep_addrs:
+        return
+
+    # Active な GA を一括取得（block_time / proposal_type / title / expiration 含む）
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT proposal_id, proposal_type, block_time, expiration, title, title_ja
+            FROM governance_actions
+            WHERE proposal_id IS NOT NULL AND proposal_id <> ''
+              AND block_time IS NOT NULL
+              AND ratified_epoch IS NULL
+              AND enacted_epoch  IS NULL
+              AND dropped_epoch  IS NULL
+              AND expired_epoch  IS NULL
+            """
+        )
+        active_gas = [dict(r) for r in cursor.fetchall()]
+
+    if not active_gas:
+        return
+
+    # プロトコルパラメータと voting summary を 1 回ずつ読み込む
+    from cardanoism.backend.params_db import get_protocol_params, thresholds_for_type
+    params = get_protocol_params()
+
+    # 現在エポック: params に epoch_no があればそれを使い、なければ Koios で取得
+    current_epoch: int | None = None
+    if params and params.get("epoch_no") is not None:
+        try:
+            current_epoch = int(params["epoch_no"])
+        except (TypeError, ValueError):
+            current_epoch = None
+    if current_epoch is None:
+        try:
+            from cardanoism.backend.koios import get_current_epoch
+            current_epoch = get_current_epoch()
+        except Exception:
+            current_epoch = None
+
+    proposal_ids = [g["proposal_id"] for g in active_gas]
+    summary_map: dict[str, float] = {}  # proposal_id → drep_yes_pct (0-100)
+    if proposal_ids:
+        placeholders = ",".join(["?"] * len(proposal_ids))
+        with get_db() as (cursor, _):
+            cursor.execute(
+                f"SELECT proposal_id, drep_yes_pct FROM proposal_voting_summary "
+                f"WHERE proposal_id IN ({placeholders})",
+                proposal_ids,
+            )
+            for r in cursor.fetchall():
+                row = dict(r)
+                try:
+                    summary_map[row["proposal_id"]] = float(row.get("drep_yes_pct") or 0.0)
+                except (TypeError, ValueError):
+                    summary_map[row["proposal_id"]] = 0.0
+
+    # 各 DRep が既に投票済みの proposal_id 集合を 1 回の問い合わせで取得
+    unique_drep_ids = list({a["delegated_drep_id"] for a in drep_addrs})
+    voted_pairs: set[tuple[str, str]] = set()  # (drep_id, proposal_id)
+    if unique_drep_ids and proposal_ids:
+        d_placeholders = ",".join(["?"] * len(unique_drep_ids))
+        p_placeholders = ",".join(["?"] * len(proposal_ids))
+        with get_db() as (cursor, _):
+            cursor.execute(
+                f"""
+                SELECT DISTINCT voter_id, proposal_id
+                FROM proposal_votes
+                WHERE voter_role = 'DRep'
+                  AND voter_id IN ({d_placeholders})
+                  AND proposal_id IN ({p_placeholders})
+                """,
+                [*unique_drep_ids, *proposal_ids],
+            )
+            for r in cursor.fetchall():
+                row = dict(r)
+                voted_pairs.add((row["voter_id"], row["proposal_id"]))
+
+    now = datetime.now(timezone.utc)
+
+    for ga in active_gas:
+        pid = ga["proposal_id"]
+        ptype = ga.get("proposal_type") or ""
+        block_time = ga.get("block_time")
+        if not block_time:
+            continue
+        # block_time は DATETIME (UTC として扱う)
+        if isinstance(block_time, str):
+            try:
+                block_dt = datetime.fromisoformat(block_time)
+            except ValueError:
+                continue
+        else:
+            block_dt = block_time
+        if block_dt.tzinfo is None:
+            block_dt = block_dt.replace(tzinfo=timezone.utc)
+
+        days_elapsed = (now - block_dt).total_seconds() / 86400.0
+
+        # 提案タイプに応じて DRep が voter として有効でないなら通知しない
+        from cardanoism.backend.params_db import voters_for_type
+        if not voters_for_type(ptype).get("drep"):
+            continue
+
+        # 批准閾値 (DRep)。閾値が None / 0 のタイプ (NoConfidence で SPO のみ等) は pre_ratify トリガーなし
+        thresholds = thresholds_for_type(ptype, params)
+        drep_th = thresholds.get("drep") if thresholds else None
+        # "10pt 手前" = (批准閾値 % - 10pt). drep_th=0.67 なら 57.0
+        pre_ratify_pct: float | None = None
+        if drep_th and drep_th > 0:
+            cutoff = drep_th * 100.0 - DREP_UNVOTED_PRE_RATIFY_GAP_PT
+            if cutoff > 0:
+                pre_ratify_pct = cutoff
+        drep_yes_pct = summary_map.get(pid, 0.0)
+
+        # 残エポック数 (expiration が記録されているとき)
+        expiration_epoch = ga.get("expiration")
+        epochs_left: int | None = None
+        if expiration_epoch is not None and current_epoch is not None:
+            try:
+                epochs_left = int(expiration_epoch) - current_epoch
+            except (TypeError, ValueError):
+                epochs_left = None
+
+        # トリガー判定: 切迫度の高い順に最初にヒットしたものを採用
+        trigger: str | None = None
+        if pre_ratify_pct is not None and drep_yes_pct >= pre_ratify_pct:
+            trigger = "pre_ratify"
+        elif epochs_left is not None and epochs_left <= DREP_UNVOTED_NEAR_EXPIRE_EPOCHS:
+            trigger = "near_expire"
+        elif days_elapsed >= 14:
+            trigger = "14d"
+        elif days_elapsed >= 7:
+            trigger = "7d"
+        else:
+            continue
+
+        title = ga.get("title_ja") or ga.get("title") or pid
+
+        for addr in drep_addrs:
+            drep_id = addr["delegated_drep_id"]
+            if (drep_id, pid) in voted_pairs:
+                continue
+
+            stake_id = addr["stake_id"]
+            user_id = addr["user_id"]
+            lang = addr.get("language", "ja")
+            dedup_key = f"drep_unvoted_{stake_id}_{pid}"
+            if already_sent(user_id, "drep_unvoted_ga", dedup_key):
+                continue
+
+            from cardanoism.backend.notify_templates import deliver
+            from cardanoism.backend.notify_templates.drep_unvoted_ga import (
+                context as ctx_unvoted,
+            )
+            ctx = ctx_unvoted(
+                title=title,
+                proposal_type_label=ptype or "-",
+                trigger=trigger,
+                nickname=addr["nickname"],
+                proposal_id=pid,
+                base_url=CARDANOISM_URL,
+            )
+            deliver(addr, "drep_unvoted_ga", ctx, dedup_base=dedup_key)
 
 
 # ============================================================
@@ -1124,11 +1320,16 @@ def check_summary_sync(max_workers: int = 6):
     """
     /proposal_voting_summary は Koios 側で計算コストが高く 1 件数十秒かかる場合がある。
     ThreadPoolExecutor で並列化（既存のレートリミッタが自動的に 80req/10s で絞る）。
+
+    対象は **Active な GA のみ** (ratified / enacted / dropped / expired を除く)。
+    pre_ratify トリガー (drep_yes_pct ≥ 批准値 -10pt) のリアルタイム判定に
+    必要な集計値をこの sync で常時最新化する。15 min cron で回す前提。
+    過去 GA は ratified 後に集計値が変動しないため定期再取得しない。
     """
     from cardanoism.backend.koios import get_proposal_voting_summary
     from cardanoism.backend.voting_summary_db import upsert_voting_summary
 
-    logger.info("投票集計同期 開始 (workers=%d)", max_workers)
+    logger.info("投票集計同期 開始 (workers=%d, active GA のみ)", max_workers)
 
     with get_db() as (cursor, _):
         cursor.execute(
@@ -1136,11 +1337,15 @@ def check_summary_sync(max_workers: int = 6):
             SELECT proposal_id, proposal_type
             FROM governance_actions
             WHERE proposal_id IS NOT NULL AND proposal_id <> ''
+              AND ratified_epoch IS NULL
+              AND enacted_epoch  IS NULL
+              AND dropped_epoch  IS NULL
+              AND expired_epoch  IS NULL
             ORDER BY block_time DESC
             """
         )
         proposals = [dict(r) for r in cursor.fetchall() if r.get("proposal_id")]
-    logger.info("集計対象: %d 件", len(proposals))
+    logger.info("集計対象: %d 件 (Active)", len(proposals))
 
     def _one(p: dict) -> int:
         pid = p["proposal_id"]
@@ -2509,7 +2714,7 @@ def main():
     parser.add_argument(
         "--event",
         default="all",
-        choices=["all", "pool", "drep", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync", "spo_role_initial_sync"],
+        choices=["all", "pool", "drep", "drep_unvoted", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync", "spo_role_initial_sync"],
         help="実行するイベントグループ",
     )
     parser.add_argument(
@@ -2589,6 +2794,9 @@ def main():
         check_pool_events()
     if args.event in ("all", "drep"):
         check_drep_events()
+    elif args.event == "drep_unvoted":
+        # drep_unvoted 単独実行: status_change はスキップして未投票通知のみ走らせる
+        _check_drep_unvoted_ga()
     if args.event in ("all", "reminder"):
         check_delegation_reminders()
     if args.event in ("all", "treasury"):

@@ -760,3 +760,56 @@ def spo_pending_vote(
         url,
         t["footer_governance"],
     )
+
+
+# ============================================================
+# drep_unvoted_ga
+# ============================================================
+
+def drep_unvoted_ga(
+    title: str,
+    proposal_type_label: str,
+    trigger_label: str,
+    nickname: str,
+    url: str,
+    lang: str = "ja",
+) -> dict:
+    """DRep 本人向けの未投票 GA リマインダー。
+    7日経過 / 14日経過 / DRep yes pct が批准閾値の 50% 到達のいずれか先勝ちで発火。
+    """
+    t = get_flex(lang)
+    return _bubble(
+        _header(t["drep_unvoted_title"], t["drep_unvoted_subtitle"]),
+        [
+            {
+                "type": "text",
+                "text": title or "-",
+                "weight": "bold",
+                "size": "md",
+                "wrap": True,
+                "color": TEXT_PRIMARY,
+            },
+            {"type": "separator", "margin": "md"},
+            {
+                "type": "box",
+                "layout": "vertical",
+                "margin": "md",
+                "spacing": "sm",
+                "contents": [
+                    _row(t["drep_unvoted_type_label"], proposal_type_label, TEXT_PRIMARY),
+                    _row(t["drep_unvoted_trigger_label"], trigger_label, TEXT_WARN),
+                ],
+            },
+            {
+                "type": "text",
+                "text": t["drep_unvoted_hint"],
+                "size": "xs",
+                "color": TEXT_SECONDARY,
+                "wrap": True,
+                "margin": "md",
+            },
+            _wallet_row(nickname, lang),
+        ],
+        url,
+        t["footer_governance"],
+    )

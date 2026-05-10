@@ -23,8 +23,7 @@ NOTIFICATION_LABELS_JA: dict[str, str] = {
     "drep_status_change": "委任先DRepのステータス変化",
     "drep_delegation_reminder": "長期委任リマインダー（90/120/365日）",
     "drep_new_governance_action": "新しいガバナンスアクション",
-    "drep_unvoted_1week": "未投票リマインダー（1週間経過）",
-    "drep_unvoted_2weeks": "未投票リマインダー（2週間経過）",
+    "drep_unvoted_ga": "DRep 未投票 GA リマインダー（7日 / 14日 / 批准 -10pt / 残 2 エポック）",
     "epoch_start": "エポックスタート",
     "treasury_withdrawal_enacted": "トレジャリー引き出し実行",
 }
@@ -42,8 +41,7 @@ NOTIFICATION_LABELS_EN: dict[str, str] = {
     "drep_status_change": "Delegated DRep Status Change",
     "drep_delegation_reminder": "Delegation Reminder (90/120/365 days)",
     "drep_new_governance_action": "New Governance Action",
-    "drep_unvoted_1week": "Unvoted Reminder (1 week)",
-    "drep_unvoted_2weeks": "Unvoted Reminder (2 weeks)",
+    "drep_unvoted_ga": "DRep Unvoted GA Reminder (7d / 14d / 10pt-to-ratify / 2 epochs left)",
     "epoch_start": "Epoch Start",
     "treasury_withdrawal_enacted": "Treasury Withdrawal Enacted",
 }
@@ -2043,6 +2041,18 @@ FLEX_JA: dict[str, str] = {
     "spo_pending_vote_title":    "👑 SPO 投票対象 GA",
     "spo_pending_vote_subtitle": "あなたのプールが投票可能な提案です",
     "spo_pending_vote_hint":     "プールに代わって投票することを検討してください",
+
+    # drep_unvoted_ga（DRep 本人向けの未投票リマインダー）
+    "drep_unvoted_title":              "🗳️ DRep 未投票リマインダー",
+    "drep_unvoted_subtitle":           "あなたが未投票の提案があります",
+    "drep_unvoted_proposal_label":     "提案タイトル",
+    "drep_unvoted_type_label":         "提案タイプ",
+    "drep_unvoted_trigger_label":      "状況",
+    "drep_unvoted_trigger_7d":         "提案から 7 日経過",
+    "drep_unvoted_trigger_14d":        "提案から 14 日経過",
+    "drep_unvoted_trigger_pre_ratify": "DRep 賛成率が批准閾値の 10pt 手前に到達",
+    "drep_unvoted_trigger_near_expire": "提案期限まで残り 2 エポック以下",
+    "drep_unvoted_hint":               "DRep として投票判断を表明しましょう",
 }
 
 FLEX_EN: dict[str, str] = {
@@ -2144,6 +2154,18 @@ FLEX_EN: dict[str, str] = {
     "spo_pending_vote_title":    "👑 SPO-eligible GA",
     "spo_pending_vote_subtitle": "Your pool can vote on this proposal",
     "spo_pending_vote_hint":     "Consider casting a vote on behalf of your pool",
+
+    # drep_unvoted_ga
+    "drep_unvoted_title":              "🗳️ DRep Unvoted Reminder",
+    "drep_unvoted_subtitle":           "You have an unvoted governance action",
+    "drep_unvoted_proposal_label":     "Proposal Title",
+    "drep_unvoted_type_label":         "Action Type",
+    "drep_unvoted_trigger_label":      "Status",
+    "drep_unvoted_trigger_7d":         "7 days since submission",
+    "drep_unvoted_trigger_14d":        "14 days since submission",
+    "drep_unvoted_trigger_pre_ratify": "DRep yes pct reached within 10pt of ratification",
+    "drep_unvoted_trigger_near_expire": "2 or fewer epochs left until expiration",
+    "drep_unvoted_hint":               "As a DRep, please cast your vote.",
 }
 
 
