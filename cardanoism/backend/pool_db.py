@@ -209,9 +209,15 @@ def get_pools(
         # registered と retiring (これから退役) は表示する。retired は除外。
         where.append("(pool_status IS NULL OR pool_status <> 'retired')")
     if search:
-        where.append("(ticker LIKE ? OR pool_name LIKE ? OR pool_id_bech32 LIKE ?)")
-        sv = f"%{search}%"
-        params.extend([sv, sv, sv])
+        # 入力値が pool1 で始まるときだけ pool_id_bech32 を検索対象にする。
+        # それ以外は ticker / pool_name のみ (Pool ID 文字列のノイズマッチを避ける)。
+        if search.lower().startswith("pool1"):
+            where.append("pool_id_bech32 LIKE ?")
+            params.append(f"%{search}%")
+        else:
+            where.append("(ticker LIKE ? OR pool_name LIKE ?)")
+            sv = f"%{search}%"
+            params.extend([sv, sv])
 
     if sort == "random":
         # int キャストで SQL インジェクションを防ぐ（識別子位置のため ? バインドが効かない）
@@ -246,9 +252,14 @@ def count_pools(search: str = "", only_active: bool = True) -> int:
     if only_active:
         where.append("(pool_status IS NULL OR pool_status <> 'retired')")
     if search:
-        where.append("(ticker LIKE ? OR pool_name LIKE ? OR pool_id_bech32 LIKE ?)")
-        sv = f"%{search}%"
-        params.extend([sv, sv, sv])
+        # pools_list と同じ条件分岐 (pool1 始まりのみ pool_id_bech32 を対象に)
+        if search.lower().startswith("pool1"):
+            where.append("pool_id_bech32 LIKE ?")
+            params.append(f"%{search}%")
+        else:
+            where.append("(ticker LIKE ? OR pool_name LIKE ?)")
+            sv = f"%{search}%"
+            params.extend([sv, sv])
     sql = f"SELECT COUNT(*) AS cnt FROM pools WHERE {' AND '.join(where)}"
     with get_db() as (cursor, _):
         cursor.execute(sql, params)
