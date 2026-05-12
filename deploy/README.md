@@ -1,13 +1,13 @@
 # deploy/ — VPS 用デプロイ資材
 
-新規 VPS で Cardanoism の **Koios ポーリング系 (notify_worker.py)** を cron で定期実行するためのテンプレート。
-`cron.d-cardanoism-notify` を編集して `/etc/cron.d/` に置けば動く形。
+新規 VPS で Cardanoism のバックエンドを動かすための **cron + systemd** テンプレート。
+`notify_worker.py` (cron)、`ogmios_listener.py` (systemd 常駐)、`ga_ai_worker.py` (systemd 常駐) の 3 系統をすべてカバーする。
 
 | ファイル | 配置先 |
 |---------|-------|
 | `cron.d-cardanoism-notify` | `/etc/cron.d/cardanoism-notify` (権限 `0644 root:root`) |
 
-> Ogmios listener (リアルタイム通知) と GA AI worker (常駐) は **systemd 管理**。それぞれ [`docs/realtime-notification-backend.md`](../docs/realtime-notification-backend.md) と [`docs/ga-ai-analysis-backend.md`](../docs/ga-ai-analysis-backend.md) を参照。
+> 詳細仕様は [`docs/realtime-notification-backend.md`](../docs/realtime-notification-backend.md) (Ogmios listener) と [`docs/ga-ai-analysis-backend.md`](../docs/ga-ai-analysis-backend.md) (GA AI worker) を参照。
 
 ---
 
@@ -73,7 +73,7 @@
     ```bash
     # 1 イベントだけ手動で叩く (cron を待たない)
     sudo -u cardanoism bash -c 'cd /opt/cardanoism && \
-        infisical run --env=mainnet -- \
+        infisical run --env=ainnet -- \
         /opt/cardanoism/.venv/bin/python notify_worker.py --event fiat_sync'
     ```
 
@@ -86,7 +86,7 @@
     set -euo pipefail
     cd /opt/cardanoism
     INF="infisical run --env=mainnet --"
-    PY=/opt/cardanoism/.venv/bin/python
+    PY=/home/btism/cardanoism_tmp/.venv/bin/python
 
     # (1) プロトコルパラメータ + CC メンバー (他の sync の前提)
     $INF $PY notify_worker.py --event params_sync
@@ -141,6 +141,84 @@
 
     > 並列実行は **しない**。Koios の rate limit に引っかかりやすく、また (1) → (2) のように依存もあるため。
 
+9. **systemd 常駐ワーカー起動** (Ogmios listener + GA AI worker)
+
+    cron だけでは不十分。**Ogmios listener** がリアルタイム通知を、**GA AI worker** が `ga_ai_initial_sync` で enqueue した GA を順次処理する。両方とも systemd で常駐させる。
+
+    `/etc/cardanoism/infisical.token` に Machine Identity Service Token を配置済みである前提（詳細は `docs/realtime-notification-backend.md § 5-2`）。
+
+    **Ogmios listener** `/etc/systemd/system/ogmios-listener.service`:
+
+    ```ini
+    [Unit]
+    Description=Cardanoism Ogmios Chain Listener
+    After=network.target ogmios.service
+    Requires=ogmios.service
+
+    [Service]
+    Type=simple
+    User=cardanoism
+    WorkingDirectory=/opt/cardanoism
+    ExecStart=/usr/bin/bash -c '/usr/local/bin/infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- /opt/cardanoism/.venv/bin/python ogmios_listener.py'
+    Restart=always
+    RestartSec=10
+    StandardOutput=journal
+    StandardError=journal
+
+    [Install]
+    WantedBy=multi-user.target
+    ```
+
+    **GA AI worker** `/etc/systemd/system/ga-ai-worker.service`:
+
+    ```ini
+    [Unit]
+    Description=Cardanoism GA AI Worker
+    After=network.target mysql.service
+
+    [Service]
+    Type=simple
+    User=cardanoism
+    WorkingDirectory=/opt/cardanoism
+    ExecStart=/usr/bin/bash -c '/usr/local/bin/infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- /opt/cardanoism/.venv/bin/python ga_ai_worker.py'
+    Restart=always
+    RestartSec=10
+    StandardOutput=journal
+    StandardError=journal
+
+    [Install]
+    WantedBy=multi-user.target
+    ```
+
+    **起動と疎通確認**:
+
+    ```bash
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now ogmios-listener ga-ai-worker
+
+    # 状態確認
+    sudo systemctl status ogmios-listener ga-ai-worker
+
+    # リアルタイムログ
+    sudo journalctl -u ga-ai-worker -f
+    sudo journalctl -u ogmios-listener -f
+    ```
+
+    > preview ネットワーク用に別途立てる場合は `--env=preview` に書き換え、別 unit (`ogmios-listener-preview.service` / `ga-ai-worker-preview.service`) として登録する。
+
+10. **動作確認 — AI 分析キューが流れているか**
+
+    `ga_ai_initial_sync` で enqueue した GA が `analyzed` 状態に進んでいるか確認：
+
+    ```bash
+    mysql -u $DB_USER -p$DB_PASS $DB_NAME -e "
+    SELECT status, COUNT(*) cnt
+    FROM governance_ai_analysis
+    GROUP BY status"
+    ```
+
+    `pending` がじわじわ減って `analyzed` が増えれば worker が動いている。`pending` だけ大量に残ってたら worker が落ちているか、未起動。
+
 ---
 
 ## cron スケジュール一覧
@@ -173,6 +251,8 @@
 
 ### ログを見る
 
+cron 系（ファイル出力）:
+
 ```bash
 sudo tail -F /var/log/cardanoism/notify-pool.log
 sudo tail -F /var/log/cardanoism/notify-drep.log
@@ -181,13 +261,38 @@ sudo tail -F /var/log/cardanoism/notify-drep.log
 sudo grep -RHn -i 'error\|exception\|traceback' /var/log/cardanoism/
 ```
 
+systemd 系（journal）:
+
+```bash
+sudo journalctl -u ga-ai-worker -f       # GA AI worker
+sudo journalctl -u ogmios-listener -f    # Ogmios listener
+
+# 過去 24h でエラーだけ
+sudo journalctl -u ga-ai-worker --since "24 hours ago" -p err
+```
+
 ### 一時停止 / 再開
+
+cron:
 
 ```bash
 sudo mv /etc/cron.d/cardanoism-notify /etc/cron.d/cardanoism-notify.disabled
 # 再開:
 sudo mv /etc/cron.d/cardanoism-notify.disabled /etc/cron.d/cardanoism-notify
 sudo systemctl reload cron
+```
+
+systemd 常駐ワーカー:
+
+```bash
+# 停止
+sudo systemctl stop ga-ai-worker ogmios-listener
+
+# 再開
+sudo systemctl start ga-ai-worker ogmios-listener
+
+# コード更新後の再起動
+sudo systemctl restart ga-ai-worker ogmios-listener
 ```
 
 ### Infisical 再認証
