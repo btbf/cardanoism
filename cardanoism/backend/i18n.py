@@ -77,6 +77,20 @@ UI_JA: dict[str, str] = {
     "nav_terms": "利用規約",
     "nav_contact": "お問い合わせ",
     "nav_cookie_settings": "Cookie 設定",
+    "nav_feedback": "ベータ版フィードバック",
+
+    # /feedback ページ
+    "feedback_kicker":           "BETA FEEDBACK",
+    "feedback_title":            "ベータ版へのフィードバックをお寄せください",
+    "feedback_subtitle":         "Cardanoism はベータ期間中、全機能を無料で開放しています。皆さまの声をもとに改善を進めるため、忌憚のないご意見をお聞かせください。",
+    "feedback_benefit_title":    "ベータ協力特典",
+    "feedback_benefit_body":     "ベータ期間中にフィードバックをお送りいただいた方には、有料化後に Standard プラン（¥880 / 月相当）を 3 ヶ月間無料でご提供します。質の高いフィードバックを 1 件以上ご投稿された方が対象です。",
+    "feedback_cta_lead":         "下のボタンから Google フォームを開きます。ログイン中のユーザー ID が自動入力されますので、そのまま送信してください。",
+    "feedback_open_form":        "フィードバックフォームを開く",
+    "feedback_form_note":        "送信内容はサービス改善のみに利用します。連絡先メールは任意ですが、特典付与時のご案内に使用させていただきます。",
+    "feedback_login_required":   "フィードバック投稿にはログインが必要です。ベータ協力特典の対象を判定するため、ユーザー ID で集計します。",
+    "feedback_login_button":     "ログインしてフィードバックする",
+    "feedback_not_configured":   "フィードバックフォームは現在準備中です。しばらく経ってから再度お試しください。",
 
     # Cookie 同意バナー / 設定モーダル
     "cookie_banner_title":         "Cookie の利用について",
@@ -433,6 +447,7 @@ UI_JA: dict[str, str] = {
     "pricing_kicker":               "PLANS",
     "pricing_title":                "あなたに合ったプランを",
     "pricing_subtitle":             "Cardanoism は無料から始められます。本格活用したい方には便利な機能を上位プランで提供。",
+    "pricing_adjustment_note":      "プラン構成と料金は現在調整中です。本リリースまでに予告なく変更される場合があります。",
     "pricing_billing_monthly":      "月額",
     "pricing_billing_yearly":       "年額 (17% off)",
     "pricing_per_month":            "/月",
@@ -443,9 +458,10 @@ UI_JA: dict[str, str] = {
     "pricing_current_badge":        "現在のプラン",
     "pricing_select":               "選択",
     "pricing_signup":               "無料で始める",
-    "pricing_beta_banner_title":    "🎉 ベータ期間中：Standard 機能を全員無料解放中",
-    "pricing_beta_banner_desc":     "ベータが終わるまで、ご登録いただいたすべての機能を Standard プラン相当でご利用いただけます。",
-    "pricing_beta_special_offer":   "ベータユーザー特典：本リリース後も一定期間 Standard 機能をご利用可能です。",
+    "pricing_coming_soon":          "準備中",
+    "pricing_beta_banner_title":    "🎉 ベータ期間中：ログインで全機能（Pro 相当）を無料開放中",
+    "pricing_beta_banner_desc":     "ベータが終わるまで、ログインいただいた方は全プランの機能を Pro プラン相当でご利用いただけます。",
+    "pricing_beta_special_offer":   "ベータ協力特典：期間中にフィードバックをお寄せいただいた方には、有料化後 Standard プランを 3 ヶ月間無料でご提供します。",
 
     # プラン名 + キャッチ
     "plan_free_name":               "Free",
@@ -473,7 +489,7 @@ UI_JA: dict[str, str] = {
 
     # カテゴリ見出し
     "plan_cat_basic":                   "基本機能",
-    "plan_cat_ai_summary":              "AI 要約",
+    "plan_cat_ai_summary":              "AI 機能",
     "plan_cat_addresses":               "アドレス・お気に入り",
     "plan_cat_notify_events":           "通知イベント",
     "plan_cat_reports":                 "レポート",
@@ -485,6 +501,7 @@ UI_JA: dict[str, str] = {
     "plan_feat_view_catalyst":          "カタリスト提案閲覧",
     "plan_feat_delegate_pool":          "ステーキング委任",
     "plan_feat_delegate_drep":          "DRep 委任",
+    "plan_feat_drep_rationale_view":    "DRep 投票理由閲覧",
 
     # アドレス・お気に入り
     "plan_feat_stake_address_count":    "ステークアドレス上限",
@@ -508,9 +525,10 @@ UI_JA: dict[str, str] = {
     "plan_feat_notify_spo_pending":     "SPO 投票対象 GA",
     "plan_feat_notify_unvoted":         "未投票 GA リマインダー (近日)",
     "plan_feat_ga_ai_summary":          "AI 要約",
-    "plan_feat_ai_summary_governance":  "ガバナンス提案",
-    "plan_feat_ai_summary_catalyst":    "カタリスト提案",
-    "plan_feat_sjg_pro_membership":     "SJG Pro 会員資格",
+    "plan_feat_ai_summary_governance":  "ガバナンス提案要約",
+    "plan_feat_ai_summary_catalyst":    "カタリスト提案要約",
+    "plan_feat_drep_rationale_translate": "DRep 投票理由 日本語翻訳",
+    "plan_feat_sjg_pro_membership":     "SPO JAPAN GUILD 有料会員特典付与（調整中）",
 
     # ── /mypage サブスク管理タブ ──
     "tab_subscription":             "サブスクリプション",
@@ -728,6 +746,8 @@ UI_JA: dict[str, str] = {
     "dashboard_favorites_title":          "お気に入り",
     "dashboard_favorites_catalyst":       "カタリスト提案",
     "dashboard_favorites_governance":     "ガバナンス提案",
+    "dashboard_favorites_drep":           "DRep",
+    "dashboard_favorites_pool":           "ステークプール",
     "dashboard_favorites_empty":          "未登録",
     "dashboard_view_all":                 "すべて見る",
     "dashboard_notifications_title":      "通知チャンネル",
@@ -748,10 +768,11 @@ UI_JA: dict[str, str] = {
     "dashboard_rewards_missing_note":     "報酬通知 OFF のため履歴がキャッシュされていません",
     "dashboard_rewards_enable_notify":    "通知を ON にする",
     "dashboard_rewards_fetching":         "報酬データを取得中...",
-    "dashboard_unvoted_title":            "未投票のガバナンス提案",
+    "dashboard_unvoted_title":            "あなたの未投票ガバナンス提案",
     "dashboard_unvoted_self_label":       "あなた (DRep) が未投票",
     "dashboard_unvoted_delegated_label":  "委任先 DRep が未投票",
     "dashboard_unvoted_spo_label":        "あなたのプール (SPO) が未投票",
+    "dashboard_drep_votes_total":         "件数",
     "dashboard_unvoted_empty":            "現在未投票のアクティブ提案はありません",
     "dashboard_ga_deadline_label":        "期限:",
     "dashboard_login_required":           "ダッシュボードを表示するにはログインが必要です",
@@ -797,8 +818,10 @@ UI_JA: dict[str, str] = {
     "home_badge_reward": "報酬を受け取る",
     "home_badge_drep": "DRep投票を追う",
     "hero_heading": "カルダノをもっと身近に！",
-    "hero_subtitle": "ステーキング報酬、委任先DRepの投票、プールやガバナンスの重要な動きをLINE・Telegram・Emailで受け取れます。毎日ウォレットや投票履歴を見に行かなくても、必要な変化をCardanoismが届けます。",
-    "hero_cta_primary": "通知を設定する",
+    "hero_subtitle": "ステーキング・ガバナンス・Catalyst を 1 つのダッシュボードで一元管理。ステーキング報酬、委任先DRepの投票、プールやガバナンスの重要な動きをLINE・Telegram・Emailで受け取れます。毎日ウォレットや投票履歴を見に行かなくても、必要な変化をCardanoismが届けます。",
+    "hero_beta_badge_label": "BETA",
+    "hero_beta_badge_text":  "現在ベータ版として全機能を無料公開中。フィードバックはこちら",
+    "hero_cta_primary": "無料で始める",
     "hero_cta_secondary": "ステークプールをチェック",
     "home_preview_label": "通知センター",
     "home_preview_badge": "即時通知",
@@ -904,6 +927,8 @@ UI_JA: dict[str, str] = {
     "sort_amount_desc": "要求金額（高い順）",
     "sort_amount_asc": "要求金額（低い順）",
     "favorites_empty": "お気に入りはありません",
+    "favorites_drep_empty": "DRep のお気に入りはまだありません",
+    "favorites_pool_empty": "ステークプールのお気に入りはまだありません",
 
     # プロフィールタブ
     "display_name": "表示名",
@@ -1021,6 +1046,20 @@ UI_EN: dict[str, str] = {
     "nav_terms": "Terms of Service",
     "nav_contact": "Contact",
     "nav_cookie_settings": "Cookie Settings",
+    "nav_feedback": "Beta feedback",
+
+    # /feedback page
+    "feedback_kicker":           "BETA FEEDBACK",
+    "feedback_title":            "Share your feedback on the beta",
+    "feedback_subtitle":         "Cardanoism is currently in beta with all features unlocked for free. Help us shape the product by sharing your honest thoughts.",
+    "feedback_benefit_title":    "Beta tester perk",
+    "feedback_benefit_body":     "Submit at least one substantive feedback during the beta and receive 3 months of the Standard plan (worth ¥880 / month) for free once paid plans launch.",
+    "feedback_cta_lead":         "Open the Google Form below. Your user ID is pre-filled — just complete and submit.",
+    "feedback_open_form":        "Open feedback form",
+    "feedback_form_note":        "Submissions are used solely for product improvement. Email is optional and only used to deliver the beta tester perk.",
+    "feedback_login_required":   "Sign in is required to submit feedback. We track eligibility for the beta perk via your user ID.",
+    "feedback_login_button":     "Sign in to submit feedback",
+    "feedback_not_configured":   "The feedback form is currently being set up. Please check back soon.",
 
     # Cookie consent banner / settings modal
     "cookie_banner_title":         "We Use Cookies",
@@ -1369,6 +1408,7 @@ UI_EN: dict[str, str] = {
     "pricing_kicker":               "PLANS",
     "pricing_title":                "Find your plan",
     "pricing_subtitle":             "Cardanoism is free to start. Upgrade for premium features when you want more.",
+    "pricing_adjustment_note":      "Plan structure and pricing are still being finalized and may change without notice before the official launch.",
     "pricing_billing_monthly":      "Monthly",
     "pricing_billing_yearly":       "Yearly (17% off)",
     "pricing_per_month":            "/mo",
@@ -1379,9 +1419,10 @@ UI_EN: dict[str, str] = {
     "pricing_current_badge":        "Current plan",
     "pricing_select":               "Select",
     "pricing_signup":               "Get started free",
-    "pricing_beta_banner_title":    "🎉 Beta period: Standard features unlocked for everyone",
-    "pricing_beta_banner_desc":     "While we're in beta, every feature available in the Standard plan is free for all users.",
-    "pricing_beta_special_offer":   "Beta perk: Standard features stay free for a period after public launch.",
+    "pricing_coming_soon":          "Coming soon",
+    "pricing_beta_banner_title":    "🎉 Beta period: all features (Pro-tier) unlocked when you sign in",
+    "pricing_beta_banner_desc":     "While we're in beta, signed-in users get every feature at Pro-plan level for free.",
+    "pricing_beta_special_offer":   "Beta perk: submit feedback during the beta to receive 3 months of the Standard plan for free after launch.",
 
     "plan_free_name":               "Free",
     "plan_free_tagline":            "The casual starter plan",
@@ -1407,7 +1448,7 @@ UI_EN: dict[str, str] = {
 
     # Categories
     "plan_cat_basic":                   "Core features",
-    "plan_cat_ai_summary":              "AI summary",
+    "plan_cat_ai_summary":              "AI features",
     "plan_cat_addresses":               "Addresses & favorites",
     "plan_cat_notify_events":           "Notification events",
     "plan_cat_reports":                 "Reports",
@@ -1419,6 +1460,7 @@ UI_EN: dict[str, str] = {
     "plan_feat_view_catalyst":          "View Catalyst proposals",
     "plan_feat_delegate_pool":          "Stake delegation",
     "plan_feat_delegate_drep":          "DRep delegation",
+    "plan_feat_drep_rationale_view":    "View DRep vote rationale",
 
     # Addresses / favorites
     "plan_feat_stake_address_count":    "Stake address limit",
@@ -1442,9 +1484,10 @@ UI_EN: dict[str, str] = {
     "plan_feat_notify_spo_pending":     "SPO-eligible GA",
     "plan_feat_notify_unvoted":         "Unvoted GA reminder (soon)",
     "plan_feat_ga_ai_summary":          "GA AI summary",
-    "plan_feat_ai_summary_governance":  "Governance proposals",
-    "plan_feat_ai_summary_catalyst":    "Catalyst proposals",
-    "plan_feat_sjg_pro_membership":     "SJG Pro membership",
+    "plan_feat_ai_summary_governance":  "Governance proposal summary",
+    "plan_feat_ai_summary_catalyst":    "Catalyst proposal summary",
+    "plan_feat_drep_rationale_translate": "DRep rationale translation",
+    "plan_feat_sjg_pro_membership":     "SPO JAPAN GUILD paid membership perks (in coordination)",
 
     # ── /mypage subscription tab ──
     "tab_subscription":             "Subscription",
@@ -1661,6 +1704,8 @@ UI_EN: dict[str, str] = {
     "dashboard_favorites_title":          "Favorites",
     "dashboard_favorites_catalyst":       "Catalyst proposals",
     "dashboard_favorites_governance":     "Governance proposals",
+    "dashboard_favorites_drep":           "DReps",
+    "dashboard_favorites_pool":           "Stake pools",
     "dashboard_favorites_empty":          "None yet",
     "dashboard_view_all":                 "View all",
     "dashboard_notifications_title":      "Notification channels",
@@ -1681,10 +1726,11 @@ UI_EN: dict[str, str] = {
     "dashboard_rewards_missing_note":     "Reward notifications are OFF — history is not cached",
     "dashboard_rewards_enable_notify":    "Enable notifications",
     "dashboard_rewards_fetching":         "Fetching reward data...",
-    "dashboard_unvoted_title":            "Pending governance actions",
+    "dashboard_unvoted_title":            "Your pending governance actions",
     "dashboard_unvoted_self_label":       "You (DRep) haven't voted",
     "dashboard_unvoted_delegated_label":  "Your delegated DRep hasn't voted",
     "dashboard_unvoted_spo_label":        "Your pool (SPO) hasn't voted",
+    "dashboard_drep_votes_total":         "Total",
     "dashboard_unvoted_empty":            "No pending active proposals",
     "dashboard_ga_deadline_label":        "Deadline:",
     "dashboard_login_required":           "Log in to view your dashboard",
@@ -1730,8 +1776,10 @@ UI_EN: dict[str, str] = {
     "home_badge_reward": "Staking rewards",
     "home_badge_drep": "DRep votes",
     "hero_heading": "Bring Cardano closer.",
-    "hero_subtitle": "Receive staking rewards, your delegated DRep's votes, pool updates, and important governance events through LINE, Telegram, or Email. Cardanoism delivers the changes that matter without making you check wallets and vote history every day.",
-    "hero_cta_primary": "Set up notifications",
+    "hero_subtitle": "Manage staking, governance, and Catalyst from a single dashboard. Receive staking rewards, your delegated DRep's votes, pool updates, and important governance events through LINE, Telegram, or Email. Cardanoism delivers the changes that matter without making you check wallets and vote history every day.",
+    "hero_beta_badge_label": "BETA",
+    "hero_beta_badge_text":  "All features unlocked during beta — share your feedback",
+    "hero_cta_primary": "Start for free",
     "hero_cta_secondary": "Check stake pools",
     "home_preview_label": "Notification center",
     "home_preview_badge": "Instant",
@@ -1838,6 +1886,8 @@ UI_EN: dict[str, str] = {
     "sort_amount_desc": "Amount (High to Low)",
     "sort_amount_asc": "Amount (Low to High)",
     "favorites_empty": "No favorites yet",
+    "favorites_drep_empty": "No favorite DReps yet",
+    "favorites_pool_empty": "No favorite stake pools yet",
 
     # Profile tab
     "display_name": "Display Name",

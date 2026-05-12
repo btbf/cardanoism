@@ -81,6 +81,26 @@ def _hero() -> rx.Component:
     )
 
 
+def _adjustment_note() -> rx.Component:
+    """プラン・料金が確定前である旨の注意書き。比較表の直前に表示。"""
+    return _shell(
+        rx.hstack(
+            rx.icon(tag="info", size=18, color="var(--amber-11)"),
+            rx.text(
+                AuthState.t["pricing_adjustment_note"],
+                size={"base": "2", "md": "3"},
+                color="var(--amber-11)",
+                line_height="1.6",
+                style={"fontStyle": "italic"},
+            ),
+            spacing="2",
+            align="center",
+            width="100%",
+        ),
+        padding_y=["24px", "32px", "40px"],
+    )
+
+
 def _beta_banner() -> rx.Component:
     if not BETA_MODE:
         return rx.fragment()
@@ -241,34 +261,48 @@ def _comparison_table() -> rx.Component:
             spacing="0", align="center",
         )
 
-        # CTA: 未ログインで Free だけ「無料で始める」、他は「選択」
+        # CTA: ベータ期間中は全プランの申込導線を「準備中」表示にする。
+        # ベータ終了 (BETA_MODE=False) で従来の選択ボタンへ戻る。
         logged_in_href = "/mypage" if is_free else "/mypage?tab=subscription"
         not_logged_in_label_key = "pricing_signup" if is_free else "pricing_select"
-        cta = rx.cond(
-            AuthState.is_logged_in,
-            rx.link(
-                rx.button(
-                    AuthState.t["pricing_select"],
-                    rx.icon("arrow-right", size=12),
-                    size="2", cursor="pointer",
-                    background=color, color="white",
-                    _hover={"opacity": "0.92"},
-                    style={"boxShadow": f"0 6px 18px -10px {color}"},
+        if BETA_MODE:
+            cta = rx.button(
+                AuthState.t["pricing_coming_soon"],
+                size="2",
+                disabled=True,
+                style={
+                    "background": "var(--gray-4)",
+                    "color":      "var(--gray-10)",
+                    "cursor":     "not-allowed",
+                    "border":     "1px solid var(--gray-6)",
+                },
+            )
+        else:
+            cta = rx.cond(
+                AuthState.is_logged_in,
+                rx.link(
+                    rx.button(
+                        AuthState.t["pricing_select"],
+                        rx.icon("arrow-right", size=12),
+                        size="2", cursor="pointer",
+                        background=color, color="white",
+                        _hover={"opacity": "0.92"},
+                        style={"boxShadow": f"0 6px 18px -10px {color}"},
+                    ),
+                    href=logged_in_href, underline="none",
                 ),
-                href=logged_in_href, underline="none",
-            ),
-            rx.link(
-                rx.button(
-                    AuthState.t[not_logged_in_label_key],
-                    rx.icon("arrow-right", size=12),
-                    size="2", cursor="pointer",
-                    background=color, color="white",
-                    _hover={"opacity": "0.92"},
-                    style={"boxShadow": f"0 6px 18px -10px {color}"},
+                rx.link(
+                    rx.button(
+                        AuthState.t[not_logged_in_label_key],
+                        rx.icon("arrow-right", size=12),
+                        size="2", cursor="pointer",
+                        background=color, color="white",
+                        _hover={"opacity": "0.92"},
+                        style={"boxShadow": f"0 6px 18px -10px {color}"},
+                    ),
+                    href="/login", underline="none",
                 ),
-                href="/login", underline="none",
-            ),
-        )
+            )
 
         header_cells.append(
             rx.el.th(
@@ -468,6 +502,7 @@ def pricing_page() -> rx.Component:
         ),
         _hero(),
         _beta_banner(),
+        _adjustment_note(),
         _comparison_table(),
         rx.box(height="40px"),  # bottom padding
         width="100%",

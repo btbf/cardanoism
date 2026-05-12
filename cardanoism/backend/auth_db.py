@@ -585,6 +585,73 @@ def get_ga_favorites(user_id: int) -> list:
         return [dict(row) for row in cursor.fetchall()]
 
 
+def get_drep_favorites(user_id: int) -> list:
+    """DRep お気に入り一覧 (dreps JOIN)。favorites.proposal_uuid には drep_id を保存。
+    UI 側で `!= ""` 等で分岐するため、NULL は空文字に正規化して返す。
+    """
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT f.id, f.proposal_uuid AS drep_id, f.created_at,
+                   d.given_name, d.image_url, d.active, d.drep_status,
+                   d.amount
+            FROM favorites f
+            LEFT JOIN dreps d ON f.proposal_uuid = d.drep_id
+            WHERE f.user_id = ? AND f.type = 'drep'
+            ORDER BY f.created_at DESC
+            """,
+            (user_id,),
+        )
+        return [
+            {
+                "id":          int(r.get("id") or 0),
+                "drep_id":     str(r.get("drep_id") or ""),
+                "given_name":  str(r.get("given_name") or ""),
+                "image_url":   str(r.get("image_url") or ""),
+                "active":      "1" if r.get("active") else "",
+                "drep_status": str(r.get("drep_status") or ""),
+                "amount":      "" if r.get("amount") is None else str(r.get("amount")),
+            }
+            for r in cursor.fetchall()
+        ]
+
+
+def get_pool_favorites(user_id: int) -> list:
+    """ステークプールお気に入り一覧 (pools JOIN)。favorites.proposal_uuid には pool_id_bech32 を保存。
+    UI 側で `!= ""` 等で分岐するため、NULL は空文字に正規化して返す。
+    """
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT f.id, f.proposal_uuid AS pool_id, f.created_at,
+                   p.ticker, p.pool_name, p.pool_icon_url, p.pool_logo_url,
+                   p.live_stake, p.live_saturation, p.live_delegators,
+                   p.pool_status, p.retiring_epoch
+            FROM favorites f
+            LEFT JOIN pools p ON f.proposal_uuid = p.pool_id_bech32
+            WHERE f.user_id = ? AND f.type = 'pool'
+            ORDER BY f.created_at DESC
+            """,
+            (user_id,),
+        )
+        return [
+            {
+                "id":              int(r.get("id") or 0),
+                "pool_id":         str(r.get("pool_id") or ""),
+                "ticker":          str(r.get("ticker") or ""),
+                "pool_name":       str(r.get("pool_name") or ""),
+                "pool_icon_url":   str(r.get("pool_icon_url") or ""),
+                "pool_logo_url":   str(r.get("pool_logo_url") or ""),
+                "live_stake":      "" if r.get("live_stake") is None else str(r.get("live_stake")),
+                "live_saturation": "" if r.get("live_saturation") is None else str(r.get("live_saturation")),
+                "live_delegators": "" if r.get("live_delegators") is None else str(r.get("live_delegators")),
+                "pool_status":     str(r.get("pool_status") or ""),
+                "retiring_epoch":  "" if r.get("retiring_epoch") is None else str(r.get("retiring_epoch")),
+            }
+            for r in cursor.fetchall()
+        ]
+
+
 # ============================================================
 # 通知設定（イベントON/OFF）
 # ============================================================

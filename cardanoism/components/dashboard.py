@@ -193,7 +193,7 @@ def _delegation_row(d: rx.Var) -> rx.Component:
     drep_label = rx.cond(
         d["drep_id"] == "always_abstain",
         rx.hstack(
-            rx.icon("vote", size=13, color="var(--gray-10)"),
+            rx.icon("user", size=13, color="var(--gray-10)"),
             rx.text("DRep:", size="1", color="var(--gray-10)"),
             rx.text(
                 AuthState.t["drep_special_always_abstain"],
@@ -204,7 +204,7 @@ def _delegation_row(d: rx.Var) -> rx.Component:
         rx.cond(
             d["drep_id"] != "",
             rx.hstack(
-                rx.icon("vote", size=13, color="var(--gray-10)"),
+                rx.icon("user", size=13, color="var(--gray-10)"),
                 rx.text("DRep:", size="1", color="var(--gray-10)"),
                 rx.text(
                     rx.cond(
@@ -217,7 +217,7 @@ def _delegation_row(d: rx.Var) -> rx.Component:
                 spacing="1", align="center",
             ),
             rx.hstack(
-                rx.icon("vote", size=13, color="var(--gray-9)"),
+                rx.icon("user", size=13, color="var(--gray-9)"),
                 rx.text("DRep:", size="1", color="var(--gray-10)"),
                 rx.text(AuthState.t["dashboard_unset"], size="2", color="var(--gray-9)", style={"fontStyle": "italic"}),
                 spacing="1", align="center",
@@ -433,24 +433,67 @@ def _drep_votes_section() -> rx.Component:
 
 
 def _drep_votes_for_delegation(d: rx.Var) -> rx.Component:
-    """この stake_address の DRep の直近投票を表示する。"""
-    votes = DashboardState.drep_recent_votes[d["drep_id"]]
+    """この stake_address の DRep の全 GA 投票状況を表示する (5 件/ページのページネーション付き)。"""
+    drep_id = d["drep_id"]
+    votes_page = DashboardState.drep_votes_paged[drep_id]
+    page_info = DashboardState.drep_votes_page_info[drep_id]
+
+    header = rx.hstack(
+        rx.icon("wallet", size=13, color="var(--amber-11)", flex_shrink="0"),
+        rx.text(d["nickname"], size="1", color="var(--gray-10)", weight="medium"),
+        rx.text("→", size="1", color="var(--gray-9)"),
+        rx.icon("user", size=13, color="var(--gray-10)", flex_shrink="0"),
+        rx.text(
+            rx.cond(d["drep_name"] != "", d["drep_name"], d["drep_id"][:14] + "…"),
+            size="2", weight="medium", color="var(--gray-12)",
+        ),
+        spacing="1", align="center", wrap="wrap",
+    )
+
+    all_votes = DashboardState.drep_recent_votes[drep_id]
+    pagination = rx.cond(
+        all_votes.length() > 0,
+        rx.hstack(
+            rx.button(
+                rx.icon("chevron-left", size=14),
+                size="1",
+                variant="soft",
+                color_scheme="gray",
+                disabled=page_info["has_prev"] == "",
+                on_click=DashboardState.drep_votes_prev_page(drep_id),
+                cursor="pointer",
+            ),
+            rx.text(
+                page_info["page"] + " / " + page_info["total_pages"],
+                size="1", color="var(--gray-10)",
+            ),
+            rx.button(
+                rx.icon("chevron-right", size=14),
+                size="1",
+                variant="soft",
+                color_scheme="gray",
+                disabled=page_info["has_next"] == "",
+                on_click=DashboardState.drep_votes_next_page(drep_id),
+                cursor="pointer",
+            ),
+            rx.spacer(),
+            rx.text(
+                AuthState.t["dashboard_drep_votes_total"] + ": " + page_info["total"],
+                size="1", color="var(--gray-9)",
+            ),
+            spacing="2", align="center", width="100%",
+        ),
+        rx.fragment(),
+    )
+
     return rx.cond(
         (d["drep_id"] != "") & (d["drep_id"] != "always_abstain"),
         rx.vstack(
-            rx.hstack(
-                rx.text(d["nickname"], size="1", color="var(--gray-10)", weight="medium"),
-                rx.text("→", size="1", color="var(--gray-9)"),
-                rx.text(
-                    rx.cond(d["drep_name"] != "", d["drep_name"], d["drep_id"][:14] + "…"),
-                    size="2", weight="medium", color="var(--gray-12)",
-                ),
-                spacing="1", align="center", wrap="wrap",
-            ),
+            header,
             rx.cond(
-                votes.length() > 0,
+                votes_page.length() > 0,
                 rx.vstack(
-                    rx.foreach(votes.to(list[dict[str, str]]), _drep_vote_row),
+                    rx.foreach(votes_page.to(list[dict[str, str]]), _drep_vote_row),
                     spacing="1", align="stretch", width="100%",
                 ),
                 rx.text(
@@ -458,6 +501,7 @@ def _drep_votes_for_delegation(d: rx.Var) -> rx.Component:
                     size="1", color="var(--gray-9)", style={"fontStyle": "italic"},
                 ),
             ),
+            pagination,
             spacing="2", align="stretch", width="100%",
         ),
         rx.fragment(),
@@ -501,6 +545,26 @@ def _governance_fav_row(f: rx.Var) -> rx.Component:
         f["title"],
     )
     return _favorite_link(title, "/governance/" + f["proposal_uuid"])
+
+
+def _drep_fav_row(f: rx.Var) -> rx.Component:
+    label = rx.cond(
+        f["given_name"] != "",
+        f["given_name"],
+        f["drep_id"][:14] + "…",
+    )
+    return _favorite_link(label, "/drep/" + f["drep_id"])
+
+
+def _pool_fav_row(f: rx.Var) -> rx.Component:
+    # ticker → pool_name → 短縮 ID の順でフォールバック表示
+    label = rx.cond(
+        f["ticker"] != "",
+        f["ticker"],
+        rx.cond(f["pool_name"] != "", f["pool_name"], f["pool_id"][:14] + "…"),
+    )
+    # Pool 詳細ページが無いので /mypage?tab=favorites で個別カードを表示する
+    return _favorite_link(label, "/mypage?tab=favorites")
 
 
 def _favorites_section() -> rx.Component:
@@ -552,9 +616,59 @@ def _favorites_section() -> rx.Component:
         spacing="2", align="stretch", width="100%",
     )
 
+    drep_block = rx.vstack(
+        rx.hstack(
+            rx.icon("user", size=14, color="var(--gray-10)"),
+            rx.text(AuthState.t["dashboard_favorites_drep"], size="2", weight="medium", color="var(--gray-12)"),
+            rx.badge(DashboardState.drep_fav_count, color_scheme="amber", variant="soft", size="1"),
+            spacing="2", align="center",
+        ),
+        rx.cond(
+            DashboardState.drep_favorites.length() > 0,
+            rx.vstack(
+                rx.foreach(
+                    DashboardState.drep_favorites.to(list[dict[str, str]]),
+                    _drep_fav_row,
+                ),
+                spacing="1", align="stretch", width="100%",
+            ),
+            rx.text(
+                AuthState.t["dashboard_favorites_empty"],
+                size="1", color="var(--gray-9)", style={"fontStyle": "italic"},
+            ),
+        ),
+        spacing="2", align="stretch", width="100%",
+    )
+
+    pool_block = rx.vstack(
+        rx.hstack(
+            rx.icon("server", size=14, color="var(--gray-10)"),
+            rx.text(AuthState.t["dashboard_favorites_pool"], size="2", weight="medium", color="var(--gray-12)"),
+            rx.badge(DashboardState.pool_fav_count, color_scheme="amber", variant="soft", size="1"),
+            spacing="2", align="center",
+        ),
+        rx.cond(
+            DashboardState.pool_favorites.length() > 0,
+            rx.vstack(
+                rx.foreach(
+                    DashboardState.pool_favorites.to(list[dict[str, str]]),
+                    _pool_fav_row,
+                ),
+                spacing="1", align="stretch", width="100%",
+            ),
+            rx.text(
+                AuthState.t["dashboard_favorites_empty"],
+                size="1", color="var(--gray-9)", style={"fontStyle": "italic"},
+            ),
+        ),
+        spacing="2", align="stretch", width="100%",
+    )
+
     inner = rx.grid(
-        catalyst_block,
+        pool_block,
+        drep_block,
         governance_block,
+        catalyst_block,
         columns={"base": "1", "md": "2"},
         spacing="4",
         width="100%",
@@ -710,8 +824,9 @@ def _pool_metric(label, value, unit: str = "", emphasis: bool = False) -> rx.Com
 def _pool_perf_row(p: rx.Var) -> rx.Component:
     """委任先プール 1 件の実績カード (ヘッダ + メトリクスグリッド)。"""
     # ヘッダ: nickname → ticker → pool_name (1 行)
+    # ウォレット名 (nickname) は財布アイコンで統一 (人アイコンの DRep と区別)
     header = rx.hstack(
-        rx.icon("server", size=16, color="var(--amber-11)", flex_shrink="0"),
+        rx.icon("wallet", size=16, color="var(--amber-11)", flex_shrink="0"),
         rx.text(
             p["nickname"],
             size="2", weight="medium", color="var(--gray-11)",
@@ -1095,6 +1210,7 @@ def _ga_link_row_spo(g: rx.Var) -> rx.Component:
 
 
 def _unvoted_gas_section() -> rx.Component:
+    """「あなたの未投票 GA」セクション。DRep または SPO のときだけ表示する。"""
     self_block = rx.cond(
         DashboardState.unvoted_gas_self.length() > 0,
         rx.vstack(
@@ -1104,21 +1220,6 @@ def _unvoted_gas_section() -> rx.Component:
             ),
             rx.foreach(
                 DashboardState.unvoted_gas_self.to(list[dict[str, str]]),
-                _ga_link_row,
-            ),
-            spacing="2", align="stretch", width="100%",
-        ),
-        rx.fragment(),
-    )
-    delegated_block = rx.cond(
-        DashboardState.unvoted_gas_delegated.length() > 0,
-        rx.vstack(
-            rx.text(
-                AuthState.t["dashboard_unvoted_delegated_label"],
-                size="1", color="var(--gray-10)", weight="medium",
-            ),
-            rx.foreach(
-                DashboardState.unvoted_gas_delegated.to(list[dict[str, str]]),
                 _ga_link_row,
             ),
             spacing="2", align="stretch", width="100%",
@@ -1146,7 +1247,6 @@ def _unvoted_gas_section() -> rx.Component:
     )
     inner = rx.cond(
         (DashboardState.unvoted_gas_self.length() == 0)
-        & (DashboardState.unvoted_gas_delegated.length() == 0)
         & (DashboardState.unvoted_gas_spo.length() == 0),
         rx.text(
             AuthState.t["dashboard_unvoted_empty"],
@@ -1154,16 +1254,20 @@ def _unvoted_gas_section() -> rx.Component:
         ),
         rx.vstack(
             self_block,
-            delegated_block,
             spo_block,
             spacing="3", align="stretch", width="100%",
         ),
     )
     body = rx.cond(DashboardState.unvoted_gas_loading, _section_spinner(), inner)
-    return _section_card(
-        AuthState.t["dashboard_unvoted_title"],
-        "circle-alert",
-        body,
+    # DRep でも SPO でもないユーザーにはセクション自体を表示しない
+    return rx.cond(
+        DashboardState.is_drep_or_spo,
+        _section_card(
+            AuthState.t["dashboard_unvoted_title"],
+            "circle-alert",
+            body,
+        ),
+        rx.fragment(),
     )
 
 

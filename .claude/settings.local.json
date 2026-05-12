@@ -38,7 +38,9 @@
       "Bash(curl -s \"https://api.koios.rest/api/v1/proposal_list?proposal_type=eq.InfoAction&limit=100\")",
       "Bash(curl -s \"https://api.koios.rest/api/v1/proposal_list?proposal_type=eq.InfoAction&limit=500\")",
       "Bash(curl -s -X POST \"https://api.koios.rest/api/v1/proposal_list\" -H \"Content-Type: application/json\")",
-      "Bash(.venv/Scripts/python *)"
+      "Bash(.venv/Scripts/python *)",
+      "Bash(grep -nA 50 \"def _sync_dreps\\\\|def sync_dreps\\\\|drep_sync\" cardanoism/backend/notify_worker.py)",
+      "WebFetch(domain:reflex.dev)"
     ]
   }
 }

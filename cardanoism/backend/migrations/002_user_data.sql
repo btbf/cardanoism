@@ -36,13 +36,17 @@ CREATE TABLE IF NOT EXISTS stake_addresses (
 );
 
 -- お気に入り
--- proposal_uuid: catalyst は CIDP の UUID、governance は GA の proposal_id
+-- proposal_uuid:
+--   - catalyst   : CIDP の UUID
+--   - governance : GA の proposal_id
+--   - drep       : DRep の drep_id (bech32 / cip-129)
+--   - pool       : Pool の pool_id_bech32
 -- (1 Tx に複数 GA を含められる仕様のため tx_hash ではなく proposal_id をキーに使う)
 CREATE TABLE IF NOT EXISTS favorites (
     id            INT          AUTO_INCREMENT PRIMARY KEY,
     user_id       INT          NOT NULL,
     proposal_uuid VARCHAR(255) NOT NULL DEFAULT '',
-    type          ENUM('catalyst', 'governance') NOT NULL DEFAULT 'catalyst',
+    type          ENUM('catalyst', 'governance', 'drep', 'pool') NOT NULL DEFAULT 'catalyst',
     created_at    DATETIME     DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE KEY uq_user_proposal_type (user_id, proposal_uuid, type)

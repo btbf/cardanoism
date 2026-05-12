@@ -139,16 +139,18 @@ COMPARISON_SECTIONS: list[tuple[str, list[tuple[str, list[str]]]]] = [
         ("plan_feat_view_catalyst",         ["check", "check", "check", "check", "check"]),
         ("plan_feat_delegate_pool",         ["check", "check", "check", "check", "check"]),
         ("plan_feat_delegate_drep",         ["check", "check", "check", "check", "check"]),
+        ("plan_feat_drep_rationale_view",   ["check", "check", "check", "check", "check"]),
     ]),
     # 2. アドレス・お気に入り (数値で差別化)
     ("plan_cat_addresses", [
         ("plan_feat_stake_address_count",   ["1",     "3",     "5",     "10",    "∞"]),
         ("plan_feat_favorite_count",        ["5",     "∞",     "∞",     "∞",     "∞"]),
     ]),
-    # 3. AI 要約 (Standard 以上)
+    # 3. AI 機能 (Standard 以上)
     ("plan_cat_ai_summary", [
-        ("plan_feat_ai_summary_governance", ["—",     "—",     "check", "check", "check"]),
-        ("plan_feat_ai_summary_catalyst",   ["—",     "—",     "check", "check", "check"]),
+        ("plan_feat_ai_summary_governance",   ["—",     "—",     "check", "check", "check"]),
+        ("plan_feat_ai_summary_catalyst",     ["—",     "—",     "check", "check", "check"]),
+        ("plan_feat_drep_rationale_translate",["—",     "—",     "check", "check", "check"]),
     ]),
     # 3. 通知イベント (tier 別解放、実装済み 14 種)
     ("plan_cat_notify_events", [
@@ -158,20 +160,20 @@ COMPARISON_SECTIONS: list[tuple[str, list[tuple[str, list[str]]]]] = [
         ("plan_feat_notify_pool_fee",       ["—",     "check", "check", "check", "check"]),
         ("plan_feat_notify_pool_perf",      ["—",     "check", "check", "check", "check"]),
         ("plan_feat_notify_pool_remind",    ["—",     "check", "check", "check", "check"]),
-        ("plan_feat_notify_pool_saturation", ["—",    "—",     "check", "check", "check"]),
-        ("plan_feat_notify_pool_pledge",    ["—",     "—",     "check", "check", "check"]),
+        ("plan_feat_notify_pool_saturation", ["—",    "check", "check", "check", "check"]),
+        ("plan_feat_notify_pool_pledge",    ["—",     "check", "check", "check", "check"]),
         ("plan_feat_notify_new_ga",         ["—",     "—",     "check", "check", "check"]),
         ("plan_feat_notify_drep_vote",      ["—",     "—",     "check", "check", "check"]),
         ("plan_feat_notify_drep_status",    ["—",     "—",     "check", "check", "check"]),
         ("plan_feat_notify_drep_remind",    ["—",     "—",     "check", "check", "check"]),
         ("plan_feat_notify_treasury",       ["—",     "—",     "check", "check", "check"]),
+        ("plan_feat_notify_unvoted",        ["—",     "—",     "—",     "check", "check"]),
         ("plan_feat_notify_reward_leader",  ["—",     "—",     "—",     "—",     "check"]),
         ("plan_feat_notify_spo_pending",    ["—",     "—",     "—",     "—",     "check"]),
-        ("plan_feat_notify_unvoted",        ["—",     "—",     "—",     "check", "check"]),
     ]),
     # 4. レポート
     ("plan_cat_reports", [
-        ("plan_feat_csv_export",            ["—",     "—",     "—",     "check", "check"]),
+        ("plan_feat_csv_export",            ["—",     "—",     "check", "check", "check"]),
     ]),
     # 5. DRep ツール
     ("plan_cat_drep_tools", [

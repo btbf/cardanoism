@@ -662,6 +662,19 @@ def _pool_card(p) -> rx.Component:
         rx.fragment(),
     )
 
+    # お気に入りトグル (heart アイコン、DRep / catalyst / GA と同パターン)
+    fav_button = rx.box(
+        rx.cond(
+            AuthState.pool_favorite_ids.contains(p["pool_id"]),
+            rx.icon("heart", size=22, color="var(--red-9)", style={"fill": "var(--red-9)"}),
+            rx.icon("heart", size=22, color="var(--gray-8)"),
+        ),
+        on_click=AuthState.toggle_pool_favorite(p["pool_id"]),
+        cursor="pointer",
+        padding="6px",
+        flex_shrink="0",
+    )
+
     # ── ヘッダー: プール名 / ID / 概要 (明るい白ベース) ─────
     header_section = rx.box(
         rx.vstack(
@@ -672,6 +685,7 @@ def _pool_card(p) -> rx.Component:
                     pool_id_inline,
                     spacing="1", align_items="start", flex="1", min_width="0",
                 ),
+                fav_button,
                 spacing="3", align="center", width="100%",
             ),
             about_row,

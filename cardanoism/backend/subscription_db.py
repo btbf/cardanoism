@@ -5,9 +5,10 @@
 tier ↔ 機能のマッピングは feature_gates.py で別管理する。
 
 ベータ期間中の運用想定:
-  - 新規ユーザー登録時に tier="standard" のサブスク行を auto-create
-  - Stripe 連携前なので status は "active" 固定
-  - tier を変更するときはこのモジュールの upsert / set_tier を使う
+  - plan_config.BETA_MODE=True の間は、ログイン済みユーザーは subscriptions 行
+    の有無に関係なく BETA_AUTO_TIER を返す（実質的に全員 Pro 体験）
+  - ベータ終了 (BETA_MODE=False) と同時に DB の実 tier に切り替わる
+  - フィードバック特典としての Standard 3 ヶ月は別途 set_tier() で付与する
 """
 from __future__ import annotations
 
@@ -16,12 +17,18 @@ from datetime import datetime
 from typing import Any
 
 from cardanoism.backend.db_connect import get_db
+from cardanoism.backend.plan_config import BETA_MODE
 
 logger = logging.getLogger(__name__)
 
 
-# ベータ期間中、新規ユーザーに自動付与する tier。本番開始時に "free" に変える。
-DEFAULT_TIER_FOR_NEW_USER = "standard"
+# ベータ期間中、ログイン済みユーザー全員に与える tier。
+# BETA_MODE が True の間は get_user_tier がこの値を返す（DB は触らない）。
+BETA_AUTO_TIER = "pro"
+
+# 新規ユーザー登録時に subscriptions 行を作る場合のデフォルト tier。
+# 現状 ensure_subscription は呼ばれていないが、将来 Stripe 連携時のフォールバック。
+DEFAULT_TIER_FOR_NEW_USER = "free"
 DEFAULT_TIER_NOTE = "beta_grandfather"
 
 
@@ -43,8 +50,11 @@ def get_user_subscription(user_id: int) -> dict[str, Any] | None:
 def get_user_tier(user_id: int) -> str:
     """ユーザーの現在の tier を返す。サブスク行が無ければ "free"。
 
+    BETA_MODE が True の間は、ログイン済み (user_id > 0) なら BETA_AUTO_TIER を返す。
     feature_gates.can_use() の前段で必ず通るパスなので軽量に保つ。
     """
+    if BETA_MODE and user_id and int(user_id) > 0:
+        return BETA_AUTO_TIER
     sub = get_user_subscription(user_id)
     if not sub:
         return "free"

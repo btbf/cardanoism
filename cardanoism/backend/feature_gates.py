@@ -75,10 +75,10 @@ FEATURE_TIERS: dict[str, str] = {
     "notify_pool_fee_change":         "light",  # pool_fee_change
     "notify_pool_epoch_performance":  "light",  # pool_epoch_performance
     "notify_pool_delegation_reminder": "light", # pool_delegation_reminder
+    "notify_pool_saturation":         "light",  # pool_saturation
+    "notify_pool_pledge_shortage":    "light",  # pool_pledge_shortage
 
     # ── 通知イベント: Standard ──
-    "notify_pool_saturation":         "standard",  # pool_saturation
-    "notify_pool_pledge_shortage":    "standard",  # pool_pledge_shortage
     "notify_drep_new_governance_action": "standard",  # drep_new_governance_action
     "notify_drep_vote":               "standard",  # drep_vote
     "notify_drep_status_change":      "standard",  # drep_status_change
@@ -102,7 +102,7 @@ FEATURE_TIERS: dict[str, str] = {
     "favorites_unlimited":       "light",
 
     # ── 報酬 / レポート ──
-    "csv_export_rewards":        "plus",
+    "csv_export_rewards":        "standard",
 
     # ── ガバナンス AI ──
     "ga_ai_summary":             "standard",   # GA AI まとめ
