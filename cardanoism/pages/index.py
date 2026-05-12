@@ -10,6 +10,7 @@ from cardanoism.templates import template
 from cardanoism import styles
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.backend.home_state import HomeState
+from cardanoism.backend.plan_config import BETA_MODE
 
 
 # ─── ブランドカラー ──────────────────────────────────────────────────────────
@@ -325,6 +326,41 @@ def _line_phone_mock() -> rx.Component:
 
 # ─── Hero ────────────────────────────────────────────────────────────────────
 
+def _beta_badge() -> rx.Component:
+    """TOP ページ用のベータ告知バッジ。/feedback への導線も兼ねる。"""
+    if not BETA_MODE:
+        return rx.fragment()
+    return rx.link(
+        rx.hstack(
+            rx.box(
+                rx.text(
+                    AuthState.t["hero_beta_badge_label"],
+                    size="1",
+                    weight="bold",
+                    style={"letterSpacing": "0.12em", "color": "#1a1a1a"},
+                ),
+                padding="3px 10px",
+                border_radius="999px",
+                background="linear-gradient(135deg, #ffcf00, #ff9500)",
+                style={"boxShadow": "0 6px 18px -6px rgba(255,154,0,0.55)"},
+            ),
+            rx.text(
+                AuthState.t["hero_beta_badge_text"],
+                size="2",
+                weight="medium",
+                color=rx.color_mode_cond("rgba(20,20,20,0.78)", "rgba(245,245,245,0.82)"),
+            ),
+            rx.icon("arrow-right", size=14, color="var(--amber-11)"),
+            spacing="2",
+            align="center",
+            wrap="wrap",
+        ),
+        href="/feedback",
+        underline="none",
+        style={"_hover": {"opacity": "0.85"}},
+    )
+
+
 def hero_section() -> rx.Component:
     headline = rx.heading(
         rx.text(AuthState.t["hero_heading"], class_name="cdn-gradient-text"),
@@ -387,6 +423,7 @@ def hero_section() -> rx.Component:
         _shell(
             rx.flex(
                 rx.vstack(
+                    _beta_badge(),
                     headline,
                     subtitle,
                     cta,

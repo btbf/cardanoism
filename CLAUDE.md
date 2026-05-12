@@ -248,6 +248,9 @@ VPS では Machine Identity (Service Token) で非対話認証する。詳細は
 | `GPT_API_KEY` | OpenAI API キー（GA AI 分析・投票理由翻訳） | - |
 | `OPENAI_MODEL` | OpenAI モデル名 | `gpt-4o-mini` |
 | `EPOCH_CHECK_WINDOW_MIN` | エポック切り替わりウィンドウ（分）。0=常に実行 | `0` |
+| `FEEDBACK_FORM_URL` | ベータ版フィードバック用 Google Form の viewform URL | - |
+| `FEEDBACK_FORM_USER_ID_ENTRY` | Google Form の user_id 短答フィールドの entry ID（例: `entry.123456`） | - |
+| `FEEDBACK_FORM_USERNAME_ENTRY` | Google Form の username 短答フィールドの entry ID（任意） | - |
 
 ---
 

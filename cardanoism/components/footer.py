@@ -114,6 +114,8 @@ def _legal_links() -> rx.Component:
         cookie_settings_link("nav_cookie_settings"),
         _sep(),
         rx.link(rx.text(AuthState.t["nav_contact"], style=item_style), href="/contact"),
+        _sep(),
+        rx.link(rx.text(AuthState.t["nav_feedback"], style=item_style), href="/feedback"),
         spacing="2",
         align="center",
         justify_content=["center", "center", "start"],
