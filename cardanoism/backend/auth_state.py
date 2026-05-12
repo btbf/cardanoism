@@ -219,7 +219,7 @@ class AuthState(rx.State):
     favorites_status_filter: str = "all"
     favorites_sort: str = "amount_desc"
     favorites_page: int = 1
-    favorites_category: str = "catalyst"  # "catalyst" | "governance"
+    favorites_category: str = "governance"  # "catalyst" | "governance"
 
     # お気に入り（governance）
     ga_favorites: list[dict] = []

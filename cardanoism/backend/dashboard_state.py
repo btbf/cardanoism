@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 # 各セクションでの最大表示件数
 FAVORITES_PREVIEW_LIMIT = 5
-DREP_VOTES_PREVIEW_LIMIT = 5
+DREP_VOTES_PAGE_SIZE = 5         # 「委任先 DRep の投票状況」セクションのページ当たり件数
 UNVOTED_GA_LIMIT = 5
 RECENT_REWARDS_EPOCHS = 5
 
@@ -81,6 +81,13 @@ class DashboardState(rx.State):
     # 委任先 DRep ごとの直近投票 (drep_id → [vote, ...])
     # vote: { proposal_id, proposal_title, vote, block_time }
     drep_recent_votes: dict[str, list[dict[str, str]]] = {}
+
+    # 委任先 DRep の投票状況セクションのページ位置 (drep_id → 0-indexed page)
+    drep_votes_pages: dict[str, int] = {}
+
+    # 「あなたの未投票 GA」セクションの表示条件 (DRep または SPO のときだけ表示)
+    is_drep: bool = False
+    is_spo: bool = False
 
     # 通知 channel サマリー: {channel_type: enabled_bool_str}
     notification_channels: dict[str, str] = {}
@@ -164,6 +171,56 @@ class DashboardState(rx.State):
     @rx.event
     def set_filter_address(self, value: str):
         self.filter_address = value or ""
+
+    # ── DRep 投票状況セクションのページネーション ────────────────────
+
+    @rx.var
+    def is_drep_or_spo(self) -> bool:
+        """ユーザーが DRep または SPO である場合 True。"""
+        return self.is_drep or self.is_spo
+
+    @rx.var
+    def drep_votes_paged(self) -> dict[str, list[dict[str, str]]]:
+        """各 DRep の投票リストを現在ページ分にスライスして返す。"""
+        result: dict[str, list[dict[str, str]]] = {}
+        for drep_id, votes in self.drep_recent_votes.items():
+            page = int(self.drep_votes_pages.get(drep_id, 0) or 0)
+            start = page * DREP_VOTES_PAGE_SIZE
+            result[drep_id] = votes[start:start + DREP_VOTES_PAGE_SIZE]
+        return result
+
+    @rx.var
+    def drep_votes_page_info(self) -> dict[str, dict[str, str]]:
+        """各 DRep のページネーション情報。
+        entry: { page (1-based 表示用), total_pages, has_prev, has_next, total }
+        """
+        result: dict[str, dict[str, str]] = {}
+        for drep_id, votes in self.drep_recent_votes.items():
+            page = int(self.drep_votes_pages.get(drep_id, 0) or 0)
+            n = len(votes)
+            total_pages = max(1, (n + DREP_VOTES_PAGE_SIZE - 1) // DREP_VOTES_PAGE_SIZE)
+            result[drep_id] = {
+                "page":        str(page + 1),
+                "total_pages": str(total_pages),
+                "has_prev":    "1" if page > 0 else "",
+                "has_next":    "1" if (page + 1) < total_pages else "",
+                "total":       str(n),
+            }
+        return result
+
+    @rx.event
+    def drep_votes_next_page(self, drep_id: str):
+        cur = int(self.drep_votes_pages.get(drep_id, 0) or 0)
+        votes = self.drep_recent_votes.get(drep_id) or []
+        total_pages = max(1, (len(votes) + DREP_VOTES_PAGE_SIZE - 1) // DREP_VOTES_PAGE_SIZE)
+        if cur + 1 < total_pages:
+            self.drep_votes_pages[drep_id] = cur + 1
+
+    @rx.event
+    def drep_votes_prev_page(self, drep_id: str):
+        cur = int(self.drep_votes_pages.get(drep_id, 0) or 0)
+        if cur > 0:
+            self.drep_votes_pages[drep_id] = cur - 1
 
     @rx.event
     async def on_load(self):
@@ -256,6 +313,9 @@ class DashboardState(rx.State):
         self.governance_fav_count = 0
         self.delegations = []
         self.drep_recent_votes = {}
+        self.drep_votes_pages = {}
+        self.is_drep = False
+        self.is_spo = False
         self.notification_channels = {}
         self.notification_events = {}
         self.relay_warnings_count = 0
@@ -407,6 +467,8 @@ class DashboardState(rx.State):
 
         self.delegations = out
         self.drep_recent_votes = votes_map
+        # 各 drep_id のページ位置を 0 に初期化 (UI 側で `[drep_id]` アクセスする前提)
+        self.drep_votes_pages = {drep_id: 0 for drep_id in votes_map}
         self.relay_warnings_count = relay_warning_cnt
 
     # ── Phase B ローダ ─────────────────────────────
@@ -611,14 +673,19 @@ class DashboardState(rx.State):
             logger.warning("unvoted_gas_spo failed: %s", e)
             self.unvoted_gas_spo = []
 
+        # 「あなたの未投票 GA」セクションの表示可否を確定
+        self.is_drep = bool(own_drep_ids)
+        self.is_spo = bool(spo_pool_ids)
+
     # ── 内部 SQL ───────────────────────────────────
 
     @staticmethod
     def _select_active_gas_with_drep_vote(drep_id: str) -> list[dict[str, str]]:
-        """active GA に対して指定 DRep の投票状況を LEFT JOIN で取得する。
+        """指定 DRep のすべての GA への投票状況を LEFT JOIN で取得する。
 
+        全 GA (active / ratified / enacted / dropped / expired) を新しい順に返す。
+        UI 側でページネーション (DREP_VOTES_PAGE_SIZE 件/ページ) する前提。
         戻り値の vote が空文字なら「未投票」、Yes/No/Abstain なら投票済み。
-        rationale_ja / rationale が含まれていれば UI で「理由ボタン」を出せる。
         """
         if not drep_id:
             return []
@@ -629,12 +696,7 @@ class DashboardState(rx.State):
             "LEFT JOIN proposal_votes v ON g.proposal_id = v.proposal_id "
             "                          AND v.voter_role = 'DRep' "
             "                          AND v.voter_id = ? "
-            "WHERE g.ratified_epoch IS NULL "
-            "  AND g.dropped_epoch IS NULL "
-            "  AND g.expired_epoch IS NULL "
-            "  AND g.enacted_epoch IS NULL "
-            "ORDER BY g.expiration ASC "
-            f"LIMIT {DREP_VOTES_PREVIEW_LIMIT}"
+            "ORDER BY g.block_time DESC, g.proposal_id"
         )
         with get_db() as (cursor, _):
             cursor.execute(sql, (drep_id,))

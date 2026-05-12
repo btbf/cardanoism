@@ -274,8 +274,8 @@ def favorites_tab() -> rx.Component:
 
     return rx.vstack(
         rx.hstack(
-            _cat_btn("Catalyst", "catalyst", "flask-conical"),
             _cat_btn("ガバナンス", "governance", "landmark"),
+            _cat_btn("Catalyst", "catalyst", "flask-conical"),
             spacing="2",
         ),
         rx.cond(
