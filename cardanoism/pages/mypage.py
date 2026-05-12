@@ -259,6 +259,179 @@ def _governance_list() -> rx.Component:
     )
 
 
+def drep_favorite_card(fav: rx.Var[dict]) -> rx.Component:
+    """DRep お気に入りカード。"""
+    drep_id = fav["drep_id"].to(str)
+    avatar = rx.cond(
+        fav["image_url"] != "",
+        rx.image(
+            src=fav["image_url"],
+            width="40px", height="40px", border_radius="50%",
+            style={"objectFit": "cover"},
+            flex_shrink="0",
+        ),
+        rx.center(
+            rx.icon("user-round", size=20, color="var(--gray-9)"),
+            width="40px", height="40px",
+            border_radius="50%",
+            background="var(--gray-4)",
+            flex_shrink="0",
+        ),
+    )
+    status = rx.cond(
+        fav["active"] != "",
+        rx.badge(AuthState.t["drep_status_active"], color_scheme="green", variant="soft", size="1"),
+        rx.badge(AuthState.t["drep_status_inactive"], color_scheme="gray", variant="soft", size="1"),
+    )
+    name = rx.cond(
+        fav["given_name"] != "",
+        rx.text(fav["given_name"], size="4", weight="medium"),
+        rx.text(AuthState.t["drep_no_name"], size="4", weight="medium", color="var(--gray-10)"),
+    )
+    return rx.box(
+        rx.hstack(
+            avatar,
+            rx.vstack(
+                rx.link(name, href="/drep/" + drep_id, underline="hover", color="inherit"),
+                rx.hstack(status, spacing="2"),
+                spacing="1", align_items="start", flex="1", min_width="0",
+            ),
+            rx.icon_button(
+                rx.icon("trash-2", size=14),
+                variant="ghost",
+                color_scheme="red",
+                size="1",
+                cursor="pointer",
+                on_click=AuthState.remove_drep_favorite_handler(drep_id),
+            ),
+            align="center", width="100%",
+        ),
+        padding="14px 16px",
+        border_radius="10px",
+        border=f"1px solid {rx.color('gray', 4)}",
+        background=rx.color_mode_cond("white", "rgba(15,15,25,0.85)"),
+        width="100%",
+    )
+
+
+def pool_favorite_card(fav: rx.Var[dict]) -> rx.Component:
+    """ステークプールお気に入りカード。"""
+    pool_id = fav["pool_id"].to(str)
+    icon_src = rx.cond(fav["pool_icon_url"] != "", fav["pool_icon_url"], fav["pool_logo_url"])
+    icon = rx.cond(
+        icon_src != "",
+        rx.image(
+            src=icon_src,
+            width="40px", height="40px", border_radius="8px",
+            style={"objectFit": "cover"},
+            flex_shrink="0",
+            custom_attrs={"referrerpolicy": "no-referrer", "loading": "lazy"},
+        ),
+        rx.center(
+            rx.icon("server", size=20, color="var(--gray-9)"),
+            width="40px", height="40px",
+            border_radius="8px",
+            background="var(--gray-4)",
+            flex_shrink="0",
+        ),
+    )
+    title = rx.hstack(
+        rx.cond(
+            fav["ticker"] != "",
+            rx.badge(fav["ticker"], variant="solid", color_scheme="amber", radius="full", size="1"),
+            rx.fragment(),
+        ),
+        rx.cond(
+            fav["pool_name"] != "",
+            rx.text(fav["pool_name"], size="4", weight="medium"),
+            rx.text(AuthState.t["staking_no_name"], size="4", weight="medium", color="var(--gray-10)"),
+        ),
+        rx.cond(
+            fav["retiring_epoch"] != "",
+            rx.badge(AuthState.t["staking_badge_retiring"], color_scheme="red", variant="soft", size="1"),
+            rx.fragment(),
+        ),
+        spacing="2", align="center", wrap="wrap",
+    )
+    return rx.box(
+        rx.hstack(
+            icon,
+            rx.vstack(
+                title,
+                rx.text(pool_id, size="1", color="var(--gray-9)",
+                        style={"fontFamily": "ui-monospace, monospace", "wordBreak": "break-all"}),
+                spacing="1", align_items="start", flex="1", min_width="0",
+            ),
+            rx.icon_button(
+                rx.icon("trash-2", size=14),
+                variant="ghost",
+                color_scheme="red",
+                size="1",
+                cursor="pointer",
+                on_click=AuthState.remove_pool_favorite_handler(pool_id),
+            ),
+            align="center", width="100%",
+        ),
+        padding="14px 16px",
+        border_radius="10px",
+        border=f"1px solid {rx.color('gray', 4)}",
+        background=rx.color_mode_cond("white", "rgba(15,15,25,0.85)"),
+        width="100%",
+    )
+
+
+def _drep_list() -> rx.Component:
+    return rx.cond(
+        AuthState.is_drep_favorites_empty,
+        rx.center(
+            rx.vstack(
+                rx.icon("bookmark", size=36, color="var(--gray-6)"),
+                rx.text(AuthState.t["favorites_drep_empty"], size="4", color="var(--gray-8)"),
+                spacing="3",
+                align="center",
+            ),
+            padding_y="40px",
+        ),
+        rx.vstack(
+            rx.foreach(AuthState.filtered_drep_favorites, drep_favorite_card),
+            _fav_pagination(
+                AuthState.drep_favorites_page,
+                AuthState.drep_favorites_total_pages,
+                AuthState.drep_favorites_prev_page,
+                AuthState.drep_favorites_next_page,
+            ),
+            spacing="2",
+            width="100%",
+        ),
+    )
+
+
+def _pool_list() -> rx.Component:
+    return rx.cond(
+        AuthState.is_pool_favorites_empty,
+        rx.center(
+            rx.vstack(
+                rx.icon("bookmark", size=36, color="var(--gray-6)"),
+                rx.text(AuthState.t["favorites_pool_empty"], size="4", color="var(--gray-8)"),
+                spacing="3",
+                align="center",
+            ),
+            padding_y="40px",
+        ),
+        rx.vstack(
+            rx.foreach(AuthState.filtered_pool_favorites, pool_favorite_card),
+            _fav_pagination(
+                AuthState.pool_favorites_page,
+                AuthState.pool_favorites_total_pages,
+                AuthState.pool_favorites_prev_page,
+                AuthState.pool_favorites_next_page,
+            ),
+            spacing="2",
+            width="100%",
+        ),
+    )
+
+
 def favorites_tab() -> rx.Component:
     # カテゴリ切り替えボタン
     def _cat_btn(label: str, value: str, icon_name: str) -> rx.Component:
@@ -275,12 +448,17 @@ def favorites_tab() -> rx.Component:
     return rx.vstack(
         rx.hstack(
             _cat_btn("ガバナンス", "governance", "landmark"),
+            _cat_btn("DRep", "drep", "user-round"),
+            _cat_btn("ステークプール", "pool", "server"),
             _cat_btn("Catalyst", "catalyst", "flask-conical"),
             spacing="2",
+            wrap="wrap",
         ),
-        rx.cond(
-            AuthState.favorites_category == "catalyst",
-            _catalyst_list(),
+        rx.match(
+            AuthState.favorites_category,
+            ("catalyst",   _catalyst_list()),
+            ("drep",       _drep_list()),
+            ("pool",       _pool_list()),
             _governance_list(),
         ),
         spacing="4",

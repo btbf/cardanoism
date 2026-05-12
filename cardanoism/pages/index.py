@@ -384,38 +384,21 @@ def hero_section() -> rx.Component:
         line_height="1.75",
         max_width="600px",
     )
-    cta = rx.hstack(
-        rx.link(
-            rx.button(
-                rx.icon("rocket", size=16),
-                AuthState.t["hero_cta_primary"],
-                size="3",
-                background="linear-gradient(135deg, #ffcf00, #ff9500)",
-                color="#111",
-                border="1px solid rgba(199,163,0,0.5)",
-                cursor="pointer",
-                padding="0 22px",
-                _hover={"background": "linear-gradient(135deg, #ff9500, #ffcf00)"},
-                style={"boxShadow": "0 10px 30px -8px rgba(255,154,0,0.55)"},
-            ),
-            href="/login",
-            underline="none",
+    cta = rx.link(
+        rx.button(
+            rx.icon("rocket", size=16),
+            AuthState.t["hero_cta_primary"],
+            size="3",
+            background="linear-gradient(135deg, #ffcf00, #ff9500)",
+            color="#111",
+            border="1px solid rgba(199,163,0,0.5)",
+            cursor="pointer",
+            padding="0 22px",
+            _hover={"background": "linear-gradient(135deg, #ff9500, #ffcf00)"},
+            style={"boxShadow": "0 10px 30px -8px rgba(255,154,0,0.55)"},
         ),
-        rx.link(
-            rx.button(
-                AuthState.t["hero_cta_secondary"],
-                rx.icon("arrow-right", size=16),
-                size="3",
-                variant="ghost",
-                color="var(--gray-12)",
-                cursor="pointer",
-            ),
-            href="/staking",
-            underline="none",
-        ),
-        spacing="3",
-        wrap="wrap",
-        align="center",
+        href="/login",
+        underline="none",
     )
 
     return rx.box(

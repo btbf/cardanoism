@@ -420,6 +420,19 @@ def _drep_card(d) -> rx.Component:
         flex_shrink="0",
     )
 
+    # お気に入りトグル (heart アイコン、catalyst / GA と同パターン)
+    fav_button = rx.box(
+        rx.cond(
+            AuthState.drep_favorite_ids.contains(d["drep_id"]),
+            rx.icon("heart", size=22, color="var(--red-9)", style={"fill": "var(--red-9)"}),
+            rx.icon("heart", size=22, color="var(--gray-8)"),
+        ),
+        on_click=AuthState.toggle_drep_favorite(d["drep_id"]),
+        cursor="pointer",
+        padding="6px",
+        flex_shrink="0",
+    )
+
     return rx.box(
         rx.hstack(
             rank_badge,
@@ -428,6 +441,7 @@ def _drep_card(d) -> rx.Component:
             delegation_col,
             percentage_col,
             delegate_button,
+            fav_button,
             align="center",
             spacing="3",
             wrap="wrap",

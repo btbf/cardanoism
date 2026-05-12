@@ -68,6 +68,10 @@ class DashboardState(rx.State):
     catalyst_fav_count: int = 0
     governance_favorites: list[dict[str, str]] = []
     governance_fav_count: int = 0
+    drep_favorites: list[dict[str, str]] = []
+    drep_fav_count: int = 0
+    pool_favorites: list[dict[str, str]] = []
+    pool_fav_count: int = 0
 
     # アドレスフィルタ ("" = 全アドレス表示 / それ以外は該当 address のみ表示)
     # 4 アドレス以上登録時の認知負荷軽減用 (チップで切替)。
@@ -311,6 +315,10 @@ class DashboardState(rx.State):
         self.catalyst_fav_count = 0
         self.governance_favorites = []
         self.governance_fav_count = 0
+        self.drep_favorites = []
+        self.drep_fav_count = 0
+        self.pool_favorites = []
+        self.pool_fav_count = 0
         self.delegations = []
         self.drep_recent_votes = {}
         self.drep_votes_pages = {}
@@ -344,8 +352,21 @@ class DashboardState(rx.State):
             logger.warning("get_ga_favorites failed: %s", e)
             gov = []
 
+        try:
+            drep = auth_db.get_drep_favorites(user_id) or []
+        except Exception as e:  # noqa: BLE001
+            logger.warning("get_drep_favorites failed: %s", e)
+            drep = []
+        try:
+            pool = auth_db.get_pool_favorites(user_id) or []
+        except Exception as e:  # noqa: BLE001
+            logger.warning("get_pool_favorites failed: %s", e)
+            pool = []
+
         self.catalyst_fav_count = len(cat)
         self.governance_fav_count = len(gov)
+        self.drep_fav_count = len(drep)
+        self.pool_fav_count = len(pool)
 
         self.catalyst_favorites = [
             {
@@ -368,6 +389,23 @@ class DashboardState(rx.State):
                 "enacted_epoch":  "" if r.get("enacted_epoch")  is None else str(r.get("enacted_epoch")),
             }
             for r in gov[:FAVORITES_PREVIEW_LIMIT]
+        ]
+
+        self.drep_favorites = [
+            {
+                "drep_id":    str(r.get("drep_id") or ""),
+                "given_name": str(r.get("given_name") or ""),
+            }
+            for r in drep[:FAVORITES_PREVIEW_LIMIT]
+        ]
+
+        self.pool_favorites = [
+            {
+                "pool_id":   str(r.get("pool_id") or ""),
+                "ticker":    str(r.get("ticker") or ""),
+                "pool_name": str(r.get("pool_name") or ""),
+            }
+            for r in pool[:FAVORITES_PREVIEW_LIMIT]
         ]
 
     def _load_notifications(self, user_id: int) -> None:

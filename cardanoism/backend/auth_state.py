@@ -34,6 +34,8 @@ from cardanoism.backend.auth_db import (
     add_favorite,
     remove_favorite,
     get_ga_favorites,
+    get_drep_favorites,
+    get_pool_favorites,
     get_notification_settings,
     update_notification_setting,
     update_notification_frequency,
@@ -219,12 +221,22 @@ class AuthState(rx.State):
     favorites_status_filter: str = "all"
     favorites_sort: str = "amount_desc"
     favorites_page: int = 1
-    favorites_category: str = "governance"  # "catalyst" | "governance"
+    favorites_category: str = "governance"  # "catalyst" | "governance" | "drep" | "pool"
 
     # お気に入り（governance）
     ga_favorites: list[dict] = []
     ga_favorite_ids: list[str] = []
     ga_favorites_page: int = 1
+
+    # お気に入り（drep）
+    drep_favorites: list[dict] = []
+    drep_favorite_ids: list[str] = []
+    drep_favorites_page: int = 1
+
+    # お気に入り（pool）
+    pool_favorites: list[dict] = []
+    pool_favorite_ids: list[str] = []
+    pool_favorites_page: int = 1
 
     # 通知設定（イベントON/OFF）
     notification_settings: dict[str, bool] = {}
@@ -371,6 +383,8 @@ class AuthState(rx.State):
             self.is_logged_in = True
             self.favorite_ids = [s for s in get_favorite_ids(self.user_id) if isinstance(s, str) and s]
             self.ga_favorite_ids = [s for s in get_favorite_ids(self.user_id, "governance") if isinstance(s, str) and s]
+            self.drep_favorite_ids = [s for s in get_favorite_ids(self.user_id, "drep") if isinstance(s, str) and s]
+            self.pool_favorite_ids = [s for s in get_favorite_ids(self.user_id, "pool") if isinstance(s, str) and s]
             self._load_providers_and_channels()
         else:
             self.session_token = ""
@@ -416,6 +430,10 @@ class AuthState(rx.State):
         self.language = user.get("language") or "ja"
         self.is_logged_in = True
         self.oauth_state = ""
+        self.favorite_ids = [s for s in get_favorite_ids(self.user_id) if isinstance(s, str) and s]
+        self.ga_favorite_ids = [s for s in get_favorite_ids(self.user_id, "governance") if isinstance(s, str) and s]
+        self.drep_favorite_ids = [s for s in get_favorite_ids(self.user_id, "drep") if isinstance(s, str) and s]
+        self.pool_favorite_ids = [s for s in get_favorite_ids(self.user_id, "pool") if isinstance(s, str) and s]
         self._load_providers_and_channels()
 
     def open_login_modal(self):
@@ -855,6 +873,10 @@ class AuthState(rx.State):
         self.favorites = []
         self.ga_favorite_ids = []
         self.ga_favorites = []
+        self.drep_favorite_ids = []
+        self.drep_favorites = []
+        self.pool_favorite_ids = []
+        self.pool_favorites = []
 
         # 2) DB 削除はバックグラウンド (ネットワーク往復で UI を待たせない)
         events: list = []
@@ -1250,6 +1272,116 @@ class AuthState(rx.State):
         self.favorites_category = category
         if category == "governance" and not self.ga_favorites:
             self.load_ga_favorites()
+        elif category == "drep" and not self.drep_favorites:
+            self.load_drep_favorites()
+        elif category == "pool" and not self.pool_favorites:
+            self.load_pool_favorites()
+
+    # ============================================================
+    # DRep お気に入り
+    # ============================================================
+
+    def toggle_drep_favorite(self, drep_id: str):
+        if not self.is_logged_in:
+            self.show_login_modal = True
+            return
+        if not drep_id:
+            return
+        if drep_id in self.drep_favorite_ids:
+            self.drep_favorite_ids = [x for x in self.drep_favorite_ids if x != drep_id]
+            yield
+            remove_favorite(self.user_id, drep_id, "drep")
+        else:
+            self.drep_favorite_ids = self.drep_favorite_ids + [drep_id]
+            yield
+            add_favorite(self.user_id, drep_id, "drep")
+        if self.drep_favorites:
+            self.drep_favorites = get_drep_favorites(self.user_id)
+
+    def load_drep_favorites(self):
+        if self.is_logged_in:
+            self.drep_favorites = get_drep_favorites(self.user_id)
+
+    def remove_drep_favorite_handler(self, drep_id: str):
+        if not self.is_logged_in:
+            return
+        remove_favorite(self.user_id, drep_id, "drep")
+        self.drep_favorite_ids = [x for x in self.drep_favorite_ids if x != drep_id]
+        self.load_drep_favorites()
+
+    def drep_favorites_prev_page(self):
+        if self.drep_favorites_page > 1:
+            self.drep_favorites_page -= 1
+
+    def drep_favorites_next_page(self):
+        if self.drep_favorites_page < self.drep_favorites_total_pages:
+            self.drep_favorites_page += 1
+
+    @rx.var
+    def filtered_drep_favorites(self) -> list[dict]:
+        start = (self.drep_favorites_page - 1) * 10
+        return self.drep_favorites[start:start + 10]
+
+    @rx.var
+    def drep_favorites_total_pages(self) -> int:
+        return max(1, (len(self.drep_favorites) + 9) // 10)
+
+    @rx.var
+    def is_drep_favorites_empty(self) -> bool:
+        return len(self.drep_favorites) == 0
+
+    # ============================================================
+    # Pool お気に入り
+    # ============================================================
+
+    def toggle_pool_favorite(self, pool_id: str):
+        if not self.is_logged_in:
+            self.show_login_modal = True
+            return
+        if not pool_id:
+            return
+        if pool_id in self.pool_favorite_ids:
+            self.pool_favorite_ids = [x for x in self.pool_favorite_ids if x != pool_id]
+            yield
+            remove_favorite(self.user_id, pool_id, "pool")
+        else:
+            self.pool_favorite_ids = self.pool_favorite_ids + [pool_id]
+            yield
+            add_favorite(self.user_id, pool_id, "pool")
+        if self.pool_favorites:
+            self.pool_favorites = get_pool_favorites(self.user_id)
+
+    def load_pool_favorites(self):
+        if self.is_logged_in:
+            self.pool_favorites = get_pool_favorites(self.user_id)
+
+    def remove_pool_favorite_handler(self, pool_id: str):
+        if not self.is_logged_in:
+            return
+        remove_favorite(self.user_id, pool_id, "pool")
+        self.pool_favorite_ids = [x for x in self.pool_favorite_ids if x != pool_id]
+        self.load_pool_favorites()
+
+    def pool_favorites_prev_page(self):
+        if self.pool_favorites_page > 1:
+            self.pool_favorites_page -= 1
+
+    def pool_favorites_next_page(self):
+        if self.pool_favorites_page < self.pool_favorites_total_pages:
+            self.pool_favorites_page += 1
+
+    @rx.var
+    def filtered_pool_favorites(self) -> list[dict]:
+        start = (self.pool_favorites_page - 1) * 10
+        return self.pool_favorites[start:start + 10]
+
+    @rx.var
+    def pool_favorites_total_pages(self) -> int:
+        return max(1, (len(self.pool_favorites) + 9) // 10)
+
+    @rx.var
+    def is_pool_favorites_empty(self) -> bool:
+        return len(self.pool_favorites) == 0
 
     @rx.var
     def filtered_ga_favorites(self) -> list[dict]:

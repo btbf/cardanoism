@@ -547,6 +547,26 @@ def _governance_fav_row(f: rx.Var) -> rx.Component:
     return _favorite_link(title, "/governance/" + f["proposal_uuid"])
 
 
+def _drep_fav_row(f: rx.Var) -> rx.Component:
+    label = rx.cond(
+        f["given_name"] != "",
+        f["given_name"],
+        f["drep_id"][:14] + "…",
+    )
+    return _favorite_link(label, "/drep/" + f["drep_id"])
+
+
+def _pool_fav_row(f: rx.Var) -> rx.Component:
+    # ticker → pool_name → 短縮 ID の順でフォールバック表示
+    label = rx.cond(
+        f["ticker"] != "",
+        f["ticker"],
+        rx.cond(f["pool_name"] != "", f["pool_name"], f["pool_id"][:14] + "…"),
+    )
+    # Pool 詳細ページが無いので /mypage?tab=favorites で個別カードを表示する
+    return _favorite_link(label, "/mypage?tab=favorites")
+
+
 def _favorites_section() -> rx.Component:
     catalyst_block = rx.vstack(
         rx.hstack(
@@ -596,9 +616,59 @@ def _favorites_section() -> rx.Component:
         spacing="2", align="stretch", width="100%",
     )
 
+    drep_block = rx.vstack(
+        rx.hstack(
+            rx.icon("user", size=14, color="var(--gray-10)"),
+            rx.text(AuthState.t["dashboard_favorites_drep"], size="2", weight="medium", color="var(--gray-12)"),
+            rx.badge(DashboardState.drep_fav_count, color_scheme="amber", variant="soft", size="1"),
+            spacing="2", align="center",
+        ),
+        rx.cond(
+            DashboardState.drep_favorites.length() > 0,
+            rx.vstack(
+                rx.foreach(
+                    DashboardState.drep_favorites.to(list[dict[str, str]]),
+                    _drep_fav_row,
+                ),
+                spacing="1", align="stretch", width="100%",
+            ),
+            rx.text(
+                AuthState.t["dashboard_favorites_empty"],
+                size="1", color="var(--gray-9)", style={"fontStyle": "italic"},
+            ),
+        ),
+        spacing="2", align="stretch", width="100%",
+    )
+
+    pool_block = rx.vstack(
+        rx.hstack(
+            rx.icon("server", size=14, color="var(--gray-10)"),
+            rx.text(AuthState.t["dashboard_favorites_pool"], size="2", weight="medium", color="var(--gray-12)"),
+            rx.badge(DashboardState.pool_fav_count, color_scheme="amber", variant="soft", size="1"),
+            spacing="2", align="center",
+        ),
+        rx.cond(
+            DashboardState.pool_favorites.length() > 0,
+            rx.vstack(
+                rx.foreach(
+                    DashboardState.pool_favorites.to(list[dict[str, str]]),
+                    _pool_fav_row,
+                ),
+                spacing="1", align="stretch", width="100%",
+            ),
+            rx.text(
+                AuthState.t["dashboard_favorites_empty"],
+                size="1", color="var(--gray-9)", style={"fontStyle": "italic"},
+            ),
+        ),
+        spacing="2", align="stretch", width="100%",
+    )
+
     inner = rx.grid(
-        catalyst_block,
+        pool_block,
+        drep_block,
         governance_block,
+        catalyst_block,
         columns={"base": "1", "md": "2"},
         spacing="4",
         width="100%",
