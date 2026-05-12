@@ -507,11 +507,13 @@ def _drep_name_cell(row) -> rx.Component:
 
 
 def _vote_cell(c) -> rx.Component:
-    tip = rx.cond(
+    rationale_text = rx.cond(
         AuthState.language == "ja",
         rx.cond(c["rationale_ja"] != "", c["rationale_ja"], c["rationale"]),
         c["rationale"],
     )
+    has_rationale = (c["rationale_ja"] != "") | (c["rationale"] != "")
+
     badge = rx.match(
         c["vote"],
         ("yes",     rx.badge("Yes", color_scheme="green", variant="solid", size="1", radius="small")),
@@ -523,9 +525,70 @@ def _vote_cell(c) -> rx.Component:
             "fontWeight": "600",
         }),
     )
+
+    # 投票理由がある場合のみクリップアイコンを出す。クリックでダイアログを開く。
+    clip = rx.cond(
+        has_rationale,
+        rx.dialog.root(
+            rx.dialog.trigger(
+                rx.el.button(
+                    rx.icon("paperclip", size=12, color="var(--gray-10)"),
+                    rx.text(
+                        AuthState.t["dashboard_vote_rationale"],
+                        size="1",
+                        color="var(--gray-11)",
+                    ),
+                    style={
+                        "display":        "inline-flex",
+                        "alignItems":     "center",
+                        "gap":            "3px",
+                        "padding":        "2px 6px",
+                        "background":     "transparent",
+                        "border":         "1px solid var(--gray-5)",
+                        "borderRadius":   "999px",
+                        "cursor":         "pointer",
+                    },
+                    _hover={
+                        "background": "var(--gray-3)",
+                        "color":      "var(--gray-12)",
+                    },
+                ),
+            ),
+            rx.dialog.content(
+                rx.dialog.title(AuthState.t["dashboard_vote_rationale_title"], size="4"),
+                rx.scroll_area(
+                    rx.text(
+                        rationale_text,
+                        size="2", color="var(--gray-12)",
+                        style={"whiteSpace": "pre-wrap", "lineHeight": "1.6"},
+                    ),
+                    type="auto", scrollbars="vertical",
+                    style={"maxHeight": "60vh"},
+                ),
+                rx.flex(
+                    rx.dialog.close(
+                        rx.button(
+                            AuthState.t["dashboard_vote_rationale_close"],
+                            size="2", variant="soft", color_scheme="gray", cursor="pointer",
+                        ),
+                    ),
+                    justify="end", margin_top="16px",
+                ),
+                max_width="640px",
+            ),
+        ),
+        rx.fragment(),
+    )
+
     return rx.el.td(
-        badge,
-        title=tip,
+        rx.flex(
+            badge,
+            clip,
+            direction="row",
+            align="center",
+            justify="center",
+            gap="4px",
+        ),
         style={
             "padding":       "8px",
             "textAlign":     "center",
