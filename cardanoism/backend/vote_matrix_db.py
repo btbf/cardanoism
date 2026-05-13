@@ -54,10 +54,10 @@ def get_gas_for_matrix(
       - "expired":  expired_epoch  が NOT NULL
 
     order:
-      - "asc"  (デフォルト): 左 → 右 = 古い → 新しい (時系列順)
-      - "desc":              左 → 右 = 新しい → 古い (新着順)
-
-    同一 Tx (= 同 block_time) 内は proposal_index ASC で並べる。
+      - "asc"  (デフォルト): 左 → 右 = 古い → 新しい (時系列順)。
+                            同一 Tx 内は proposal_index ASC (小 → 大)
+      - "desc":              左 → 右 = 新しい → 古い (新着順)。
+                            同一 Tx 内は proposal_index DESC (大 → 小)
 
     戻り値要素: {proposal_id, title, title_ja, proposal_type, expiration, proposed_epoch}
     """
@@ -72,7 +72,7 @@ def get_gas_for_matrix(
                proposed_epoch
           FROM governance_actions
           {where}
-         ORDER BY block_time {direction}, proposed_epoch {direction}, proposal_index ASC
+         ORDER BY block_time {direction}, proposed_epoch {direction}, proposal_index {direction}
          LIMIT ? OFFSET ?
     """
     with get_db() as (cursor, _):
