@@ -1555,8 +1555,8 @@ class GovernanceState(rx.State):
             " LEFT JOIN proposal_voting_summary vs ON ga.proposal_id = vs.proposal_id"
             f" WHERE {where_sql}"
             # 提出順 (新しい順)。同一 Tx 内 (= 同じ proposal_tx_hash) は
-            # proposal_index ASC で並べる (1 Tx に複数 GA が含まれるケース対応)。
-            " ORDER BY ga.block_time DESC, ga.proposed_epoch DESC, ga.proposal_index ASC"
+            # proposal_index DESC (時間方向と同じ) で並べる。
+            " ORDER BY ga.block_time DESC, ga.proposed_epoch DESC, ga.proposal_index DESC"
             f" LIMIT {self.items_per_page} OFFSET {offset}"
         )
         count_sql = f"SELECT COUNT(*) AS cnt FROM governance_actions ga WHERE {where_sql}"

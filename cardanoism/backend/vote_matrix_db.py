@@ -55,17 +55,14 @@ def get_gas_for_matrix(
 
     order:
       - "asc"  (デフォルト): 左 → 右 = 古い → 新しい (時系列順)。
-                            同一 Tx 内は proposal_index DESC (大 → 小、後に処理された
-                            提案ほど「新しい」扱い → 右側に配置)
-      - "desc":              左 → 右 = 新しい → 古い (新着順)。
                             同一 Tx 内は proposal_index ASC (小 → 大)
+      - "desc":              左 → 右 = 新しい → 古い (新着順)。
+                            同一 Tx 内は proposal_index DESC (大 → 小)
 
     戻り値要素: {proposal_id, title, title_ja, proposal_type, expiration, proposed_epoch}
     """
     where = _ga_status_where(status)
     direction = "DESC" if (order or "").lower() == "desc" else "ASC"
-    # proposal_index は時間方向と反対 (asc 時に大 → 小、desc 時に小 → 大)
-    index_direction = "ASC" if direction == "DESC" else "DESC"
     sql = f"""
         SELECT proposal_id,
                title,
@@ -75,7 +72,7 @@ def get_gas_for_matrix(
                proposed_epoch
           FROM governance_actions
           {where}
-         ORDER BY block_time {direction}, proposed_epoch {direction}, proposal_index {index_direction}
+         ORDER BY block_time {direction}, proposed_epoch {direction}, proposal_index {direction}
          LIMIT ? OFFSET ?
     """
     with get_db() as (cursor, _):

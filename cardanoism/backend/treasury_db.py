@@ -419,9 +419,7 @@ def get_treasury_proposals_in_epoch_range(start_epoch: int, end_epoch: int) -> l
     のいずれかを含む（＝ステータスを問わず期間内に登場した提案）。
 
     並び順は新着順 (block_time DESC)。同一 Tx 内 (= 同 block_time) は
-    proposal_index ASC で並べる (時間 DESC とは反対方向: 後で処理された
-    proposal_index ほど「新しい」扱いになるが、リストでは新着順なので
-    Tx 内では最初の proposal を上に出す)。
+    proposal_index DESC で並べる (時間 DESC と同じ方向)。
     """
     from cardanoism.backend.db_connect import _GA_STATUS_SQL  # 循環 import 回避のため関数内
     with get_db() as (cursor, _):
@@ -438,7 +436,7 @@ def get_treasury_proposals_in_epoch_range(start_epoch: int, end_epoch: int) -> l
                     (proposed_epoch BETWEEN ? AND ?)
                  OR (enacted_epoch  BETWEEN ? AND ?)
               )
-            ORDER BY block_time DESC, proposed_epoch DESC, proposal_index ASC
+            ORDER BY block_time DESC, proposed_epoch DESC, proposal_index DESC
             """,
             (int(start_epoch), int(end_epoch), int(start_epoch), int(end_epoch)),
         )
