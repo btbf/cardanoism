@@ -582,6 +582,8 @@ def _vote_cell(c) -> rx.Component:
     )
 
     # 投票理由がある場合のみクリップアイコンを出す。クリックでダイアログを開く。
+    # ダイアログは GA 詳細ページの投票一覧と同じフォーマット (投票結果バッジ +
+    # 日本語訳ラベル + 原文ラベル) で表示する。
     clip = rx.cond(
         has_rationale,
         rx.dialog.root(
@@ -610,26 +612,55 @@ def _vote_cell(c) -> rx.Component:
                 ),
             ),
             rx.dialog.content(
-                rx.dialog.title(AuthState.t["dashboard_vote_rationale_title"], size="4"),
-                rx.scroll_area(
-                    rx.text(
-                        rationale_text,
-                        size="2", color="var(--gray-12)",
-                        style={"whiteSpace": "pre-wrap", "lineHeight": "1.6"},
+                rx.dialog.title(AuthState.t["gov_vote_rationale_title"]),
+                rx.vstack(
+                    # 投票結果バッジ (matrix の vote 値 = "yes"/"no"/"abstain")
+                    rx.match(
+                        c["vote"],
+                        ("yes",     rx.badge(AuthState.t["vote_label_yes"],     color_scheme="green", variant="solid", size="2", radius="full")),
+                        ("no",      rx.badge(AuthState.t["vote_label_no"],      color_scheme="red",   variant="solid", size="2", radius="full")),
+                        ("abstain", rx.badge(AuthState.t["vote_label_abstain"], color_scheme="gray",  variant="solid", size="2", radius="full")),
+                        rx.fragment(),
                     ),
-                    type="auto", scrollbars="vertical",
-                    style={"maxHeight": "60vh"},
-                ),
-                rx.flex(
+                    rx.divider(),
+                    # 日本語訳 (あれば)
+                    rx.cond(
+                        c["rationale_ja"] != "",
+                        rx.vstack(
+                            rx.text(AuthState.t["gov_vote_rationale_ja_label"], size="2", weight="bold", color="var(--gray-12)"),
+                            rx.text(
+                                c["rationale_ja"],
+                                size="2", color="var(--gray-12)",
+                                style={"whiteSpace": "pre-wrap", "lineHeight": "1.6"},
+                            ),
+                            spacing="1", align="start", width="100%",
+                        ),
+                        rx.fragment(),
+                    ),
+                    # 原文 (あれば)
+                    rx.cond(
+                        c["rationale"] != "",
+                        rx.vstack(
+                            rx.text(AuthState.t["gov_vote_rationale_en_label"], size="2", weight="bold", color="var(--gray-12)"),
+                            rx.text(
+                                c["rationale"],
+                                size="2", color="var(--gray-11)",
+                                style={"whiteSpace": "pre-wrap", "lineHeight": "1.6"},
+                            ),
+                            spacing="1", align="start", width="100%",
+                        ),
+                        rx.fragment(),
+                    ),
                     rx.dialog.close(
                         rx.button(
-                            AuthState.t["dashboard_vote_rationale_close"],
-                            size="2", variant="soft", color_scheme="gray", cursor="pointer",
+                            AuthState.t["gov_vote_rationale_close"],
+                            variant="soft", size="2", cursor="pointer",
                         ),
                     ),
-                    justify="end", margin_top="16px",
+                    spacing="3", align="start", width="100%",
                 ),
-                max_width="640px",
+                max_width=["95vw", "95vw", "680px"],
+                style={"boxSizing": "border-box"},
             ),
         ),
         rx.fragment(),
