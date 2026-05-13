@@ -661,6 +661,7 @@ def _ncl_card() -> rx.Component:
     )
 
     progress_bar = rx.box(
+        # ── 色塗りセグメント ──
         rx.hstack(
             # 引き出し確定
             rx.box(
@@ -678,30 +679,12 @@ def _ncl_card() -> rx.Component:
                 transition="width 0.5s ease",
                 flex_shrink="0",
             ),
-            # 残り（テキスト入りセグメント）
-            rx.center(
-                rx.hstack(
-                    rx.text(
-                        AuthState.t["ncl_remaining_label"],
-                        size="1", color="var(--gray-11)", weight="medium",
-                    ),
-                    rx.text(
-                        TreasuryState.ncl_remaining_ada_display,
-                        size="2", weight="bold", color="var(--gray-12)",
-                    ),
-                    rx.text("ADA", size="1", color="var(--gray-11)"),
-                    rx.text(
-                        "(" + TreasuryState.ncl_remaining_pct_display + "%)",
-                        size="1", color="var(--gray-10)",
-                    ),
-                    spacing="1", align="baseline",
-                    white_space="nowrap",
-                ),
+            # 残り (背景のみ)
+            rx.box(
                 width=TreasuryState.ncl_remaining_pct.to_string() + "%",
                 height="100%",
-                background="var(--gray-3)",
+                background="var(--gray-4)",
                 transition="width 0.5s ease",
-                overflow="hidden",
                 flex_shrink="0",
             ),
             spacing="0",
@@ -709,6 +692,41 @@ def _ncl_card() -> rx.Component:
             height="100%",
             align="stretch",
         ),
+        # ── 残額ラベルを絶対配置でバーの最前面に重ねる ──
+        # バーの右端から内側に寄せて表示。常に同じ位置に出るので、
+        # シミュレーション増減で残り領域が細くなっても隠れない。
+        rx.box(
+            rx.hstack(
+                rx.text(
+                    AuthState.t["ncl_remaining_label"],
+                    size="1", weight="medium",
+                    color="var(--gray-12)",
+                ),
+                rx.text(
+                    TreasuryState.ncl_remaining_ada_display,
+                    size="2", weight="bold", color="var(--gray-12)",
+                ),
+                rx.text("ADA", size="1", color="var(--gray-11)"),
+                rx.text(
+                    "(" + TreasuryState.ncl_remaining_pct_display + "%)",
+                    size="1", color="var(--gray-11)",
+                ),
+                spacing="1", align="baseline", white_space="nowrap",
+            ),
+            style={
+                "position":    "absolute",
+                "top":         "50%",
+                "right":       "12px",
+                "transform":   "translateY(-50%)",
+                "zIndex":      2,
+                # 読みやすさのために半透明背景を敷く (どのセグメントの上に乗っても可視性を確保)
+                "padding":     "0 8px",
+                "background":  "rgba(255,255,255,0.85)",
+                "borderRadius": "9999px",
+                "pointerEvents": "none",
+            },
+        ),
+        position="relative",  # 上記 absolute の基準
         width="100%",
         height="30px",
         background="var(--gray-3)",

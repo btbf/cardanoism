@@ -1722,6 +1722,12 @@ def ga_list_card(action: Dict[str, Any]) -> rx.Component:
             line_height="1.2",
             color="var(--gray-12)",
             class_name="ga-title proposal-title",
+            # 長文や URL-like 文字列が枠からはみ出ないように
+            style={
+                "wordBreak":    "break-word",
+                "overflowWrap": "anywhere",
+                "width":        "100%",
+            },
         ),
         _withdrawal_inline(action),
         rx.cond(
@@ -1734,6 +1740,11 @@ def ga_list_card(action: Dict[str, Any]) -> rx.Component:
                 class_name="mt-2 line-clamp-3",
                 min_height="3.6em",
                 color="var(--gray-12)",
+                style={
+                    "wordBreak":    "break-word",
+                    "overflowWrap": "anywhere",
+                    "width":        "100%",
+                },
             ),
             rx.fragment(),
         ),
@@ -1746,19 +1757,33 @@ def ga_list_card(action: Dict[str, Any]) -> rx.Component:
         href="/governance/" + action["proposal_id"].to(str),
         underline="none",
         color="inherit",
-        style={"display": "block", "flex": "1", "minWidth": "0"},
+        style={
+            "display":     "block",
+            "width":       "100%",
+            # iOS / Android のタップ時の黄色いハイライトを消す
+            "WebkitTapHighlightColor": "transparent",
+            "outline":     "none",
+        },
     )
     desktop_clickable = rx.vstack(
         *inner_children,
         spacing="3",
-        flex="1",
+        width="100%",
         min_width="0",
         on_click=GovernanceState.open_modal(action),
         cursor="pointer",
     )
+    # mobile_only / tablet_and_desktop の wrapper div に flex を効かせるため、
+    # rx.box で囲んで flex/min-width を持たせる。
     content = rx.hstack(
-        rx.mobile_only(mobile_clickable),
-        rx.tablet_and_desktop(desktop_clickable),
+        rx.box(
+            rx.mobile_only(mobile_clickable),
+            rx.tablet_and_desktop(desktop_clickable),
+            flex="1",
+            min_width="0",
+            width="100%",
+            style={"overflow": "hidden"},
+        ),
         rx.box(
             _ga_fav_btn_list(action),
             flex_shrink="0",
@@ -1767,6 +1792,7 @@ def ga_list_card(action: Dict[str, Any]) -> rx.Component:
         align="start",
         spacing="2",
         width="100%",
+        style={"minWidth": "0"},
     )
 
     return rx.card(
@@ -1837,7 +1863,14 @@ def ga_grid_card(action: Dict[str, Any]) -> rx.Component:
         href="/governance/" + action["proposal_id"].to(str),
         underline="none",
         color="inherit",
-        style={"display": "block", "width": "100%", "height": "100%"},
+        style={
+            "display": "block",
+            "width":   "100%",
+            "height":  "100%",
+            # iOS / Android のタップ時の黄色いハイライトを消す
+            "WebkitTapHighlightColor": "transparent",
+            "outline": "none",
+        },
     )
     desktop_clickable = rx.vstack(
         *grid_inner,
