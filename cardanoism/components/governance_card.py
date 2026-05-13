@@ -1026,42 +1026,185 @@ def _vote_row(v) -> rx.Component:
     )
 
 
+def _vote_card_mobile(v) -> rx.Component:
+    """スマホ版: 1 投票を 2-3 段のカードとして表示 (横スクロール回避)。"""
+    rationale_text = rx.cond(
+        v["rationale_ja"] != "",
+        v["rationale_ja"],
+        v["rationale"],
+    )
+    has_rationale = rx.cond(
+        v["rationale_ja"] != "",
+        True,
+        v["rationale"] != "",
+    )
+    rationale_btn = rx.cond(
+        has_rationale,
+        rx.dialog.root(
+            rx.dialog.trigger(
+                rx.button(
+                    rx.icon("paperclip", size=12),
+                    rx.text(AuthState.t["gov_vote_rationale_view"], size="1"),
+                    variant="soft",
+                    color_scheme="blue",
+                    size="1",
+                    cursor="pointer",
+                ),
+            ),
+            rx.dialog.content(
+                rx.dialog.title(AuthState.t["gov_vote_rationale_title"]),
+                rx.vstack(
+                    rx.hstack(
+                        _role_badge(v["voter_role"]),
+                        rx.cond(
+                            v["voter_name"] != "",
+                            rx.text(v["voter_name"], size="2", weight="medium"),
+                            rx.fragment(),
+                        ),
+                        _vote_badge(v["vote"]),
+                        spacing="2", align="center", wrap="wrap",
+                    ),
+                    rx.text(
+                        v["voter_id_short"],
+                        size="1", color="var(--gray-10)",
+                        style={"fontFamily": "var(--code-font-family, ui-monospace, monospace)"},
+                    ),
+                    rx.divider(),
+                    rx.cond(
+                        v["rationale_ja"] != "",
+                        rx.vstack(
+                            rx.text(AuthState.t["gov_vote_rationale_ja_label"], size="2", weight="bold", color="var(--gray-12)"),
+                            rx.text(
+                                v["rationale_ja"],
+                                size="2", color="var(--gray-12)",
+                                style={"whiteSpace": "pre-wrap", "lineHeight": "1.6"},
+                            ),
+                            spacing="1", align="start", width="100%",
+                        ),
+                        rx.fragment(),
+                    ),
+                    rx.cond(
+                        v["rationale"] != "",
+                        rx.vstack(
+                            rx.text(AuthState.t["gov_vote_rationale_en_label"], size="2", weight="bold", color="var(--gray-12)"),
+                            rx.text(
+                                v["rationale"],
+                                size="2", color="var(--gray-11)",
+                                style={"whiteSpace": "pre-wrap", "lineHeight": "1.6"},
+                            ),
+                            spacing="1", align="start", width="100%",
+                        ),
+                        rx.fragment(),
+                    ),
+                    rx.dialog.close(
+                        rx.button(
+                            AuthState.t["gov_vote_rationale_close"],
+                            variant="soft", size="2", cursor="pointer",
+                        ),
+                    ),
+                    spacing="3", align="start", width="100%",
+                ),
+                max_width=["calc(100vw - 16px)", "calc(100vw - 16px)", "680px"],
+                style={"boxSizing": "border-box"},
+            ),
+        ),
+        rx.fragment(),
+    )
+    voter_name_block = rx.cond(
+        v["voter_name"] != "",
+        rx.text(
+            v["voter_name"],
+            size="2", weight="medium", color="var(--gray-12)",
+            style={"wordBreak": "break-word"},
+        ),
+        rx.fragment(),
+    )
+    return rx.box(
+        rx.vstack(
+            # 段 1: ロール + 投票者名 + 投票結果
+            rx.hstack(
+                _role_badge(v["voter_role"]),
+                voter_name_block,
+                rx.spacer(),
+                _vote_badge(v["vote"]),
+                spacing="2", align="center", width="100%", wrap="wrap",
+            ),
+            # 段 2: 短縮 ID
+            rx.text(
+                v["voter_id_short"],
+                size="1", color="var(--gray-9)",
+                style={
+                    "fontFamily": "var(--code-font-family, ui-monospace, monospace)",
+                    "wordBreak": "break-all",
+                },
+            ),
+            # 段 3: 投票日時 + 理由ボタン
+            rx.hstack(
+                rx.text(v["block_time"], size="1", color="var(--gray-10)"),
+                rx.spacer(),
+                rationale_btn,
+                spacing="2", align="center", width="100%",
+            ),
+            spacing="2", align="stretch", width="100%",
+        ),
+        padding="10px 12px",
+        border_radius="8px",
+        border=f"1px solid {rx.color('gray', 4)}",
+        background="var(--gray-1)",
+        width="100%",
+    )
+
+
 def _vote_section(action: Dict[str, Any]) -> rx.Component:
-    """投票一覧セクション。1 テーブルにロール混在で表示。
+    """投票一覧セクション。スマホはカード縦並び、PC はテーブル。
     id='votes' をアンカー対象にして、上部のボタンからジャンプできるようにする。
-    テーブルは max-height でスクロール可能。
     """
+    desktop_table = rx.box(
+        rx.table.root(
+            rx.table.header(
+                rx.table.row(
+                    rx.table.column_header_cell(AuthState.t["gov_vote_col_role"]),
+                    rx.table.column_header_cell(AuthState.t["gov_vote_col_voter"]),
+                    rx.table.column_header_cell(AuthState.t["gov_vote_col_vote"]),
+                    rx.table.column_header_cell(AuthState.t["gov_vote_col_time"]),
+                    rx.table.column_header_cell(AuthState.t["gov_vote_col_rationale"]),
+                )
+            ),
+            rx.table.body(
+                rx.foreach(
+                    GovernanceState.modal_votes.to(list[dict[str, str]]),
+                    _vote_row,
+                ),
+            ),
+            variant="surface",
+            size="1",
+        ),
+        width="100%",
+        max_height="820px",
+        overflow_y="auto",
+        overflow_x="auto",
+        border=f"1px solid {rx.color('gray', 5)}",
+        border_radius="8px",
+    )
+    mobile_cards = rx.vstack(
+        rx.foreach(
+            GovernanceState.modal_votes.to(list[dict[str, str]]),
+            _vote_card_mobile,
+        ),
+        spacing="2",
+        align="stretch",
+        width="100%",
+        style={"maxHeight": "820px", "overflowY": "auto"},
+    )
     return rx.cond(
         GovernanceState.modal_votes,
         rx.vstack(
             _section_heading(AuthState.t["gov_section_votes"]),
             rx.box(
-                rx.table.root(
-                    rx.table.header(
-                        rx.table.row(
-                            rx.table.column_header_cell(AuthState.t["gov_vote_col_role"]),
-                            rx.table.column_header_cell(AuthState.t["gov_vote_col_voter"]),
-                            rx.table.column_header_cell(AuthState.t["gov_vote_col_vote"]),
-                            rx.table.column_header_cell(AuthState.t["gov_vote_col_time"]),
-                            rx.table.column_header_cell(AuthState.t["gov_vote_col_rationale"]),
-                        )
-                    ),
-                    rx.table.body(
-                        rx.foreach(
-                            GovernanceState.modal_votes.to(list[dict[str, str]]),
-                            _vote_row,
-                        ),
-                    ),
-                    variant="surface",
-                    size="1",
-                ),
+                rx.mobile_only(mobile_cards),
+                rx.tablet_and_desktop(desktop_table),
                 id="votes",
                 width="100%",
-                max_height="820px",
-                overflow_y="auto",
-                overflow_x="auto",
-                border=f"1px solid {rx.color('gray', 5)}",
-                border_radius="8px",
             ),
             spacing="2", align="start", width="100%",
         ),
@@ -1462,14 +1605,20 @@ def governance_modal() -> rx.Component:
                 height="100%",
                 min_height="0",
             ),
-            max_width=["100vw", "100vw", "900px"],
-            width=["100vw", "100vw", "95vw"],
-            max_height=["100vh", "100vh", "95vh"],
-            height=["100vh", "100vh", "auto"],
-            padding="24px",
+            # 100vw だと scrollbar 幅で枠外に出るため calc(100vw - 16px) で安全マージン。
+            # padding もスマホでは 16px に抑えて、内部要素のはみ出しを防ぐ。
+            max_width=["calc(100vw - 16px)", "calc(100vw - 16px)", "900px"],
+            width=["calc(100vw - 16px)", "calc(100vw - 16px)", "95vw"],
+            max_height=["calc(100vh - 16px)", "calc(100vh - 16px)", "95vh"],
+            height=["calc(100vh - 16px)", "calc(100vh - 16px)", "auto"],
+            padding=["16px", "16px", "24px"],
             class_name="governance-modal",
             background_color="var(--gray-3)",
-            style={"display": "flex", "flexDirection": "column"},
+            style={
+                "display": "flex",
+                "flexDirection": "column",
+                "boxSizing": "border-box",  # padding を width 内に収める
+            },
         ),
         open=GovernanceState.modal_open,
         on_open_change=GovernanceState.handle_modal_change,
@@ -1551,51 +1700,65 @@ def _ga_fav_btn_list(action: Dict[str, Any]) -> rx.Component:
 
 
 def ga_list_card(action: Dict[str, Any]) -> rx.Component:
-    content = rx.hstack(
-        rx.vstack(
-            # ── 上部: ステータス / タイプ バッジ + 日付チップ ──
-            rx.hstack(
-                ga_status_badge(action),
-                ga_type_badge(action),
-                _date_chips(action),
-                spacing="2",
-                wrap="wrap",
-                align="center",
-            ),
-            rx.text(
-                rx.cond(
-                    AuthState.language == "en",
-                    rx.cond(action["title"], action["title"], action["title_ja"]),
-                    rx.cond(action["title_ja"], action["title_ja"], action["title"]),
-                ),
-                size="4",
-                weight="bold",
-                line_height="1.2",
-                color="var(--gray-12)",
-                class_name="ga-title proposal-title",
-            ),
-            _withdrawal_inline(action),
-            rx.cond(
-                _has_any_text("abstract_ja_card", "abstract_card", action),
-                rx.text(
-                    _localized_text("abstract_ja_card", "abstract_card", action),
-                    size="3",
-                    line_height="1.6",
-                    text_wrap="wrap",
-                    class_name="mt-2 line-clamp-3",
-                    min_height="3.6em",
-                    color="var(--gray-12)",
-                ),
-                rx.fragment(),
-            ),
-            # ── 一番下: 投票状況（DRep/CC/SPO ミニドーナツ） ──
-            _vote_summary_inline(action),
-            spacing="3",
-            flex="1",
-            min_width="0",
-            on_click=GovernanceState.open_modal(action),
-            cursor="pointer",
+    # クリック対象の中身 (再利用)
+    inner_children = [
+        # ── 上部: ステータス / タイプ バッジ + 日付チップ ──
+        rx.hstack(
+            ga_status_badge(action),
+            ga_type_badge(action),
+            _date_chips(action),
+            spacing="2",
+            wrap="wrap",
+            align="center",
         ),
+        rx.text(
+            rx.cond(
+                AuthState.language == "en",
+                rx.cond(action["title"], action["title"], action["title_ja"]),
+                rx.cond(action["title_ja"], action["title_ja"], action["title"]),
+            ),
+            size="4",
+            weight="bold",
+            line_height="1.2",
+            color="var(--gray-12)",
+            class_name="ga-title proposal-title",
+        ),
+        _withdrawal_inline(action),
+        rx.cond(
+            _has_any_text("abstract_ja_card", "abstract_card", action),
+            rx.text(
+                _localized_text("abstract_ja_card", "abstract_card", action),
+                size="3",
+                line_height="1.6",
+                text_wrap="wrap",
+                class_name="mt-2 line-clamp-3",
+                min_height="3.6em",
+                color="var(--gray-12)",
+            ),
+            rx.fragment(),
+        ),
+        # ── 一番下: 投票状況（DRep/CC/SPO ミニドーナツ） ──
+        _vote_summary_inline(action),
+    ]
+    # スマホは詳細ページに遷移、PC は従来通りモーダル
+    mobile_clickable = rx.link(
+        rx.vstack(*inner_children, spacing="3", width="100%", align_items="start"),
+        href="/governance/" + action["proposal_id"].to(str),
+        underline="none",
+        color="inherit",
+        style={"display": "block", "flex": "1", "minWidth": "0"},
+    )
+    desktop_clickable = rx.vstack(
+        *inner_children,
+        spacing="3",
+        flex="1",
+        min_width="0",
+        on_click=GovernanceState.open_modal(action),
+        cursor="pointer",
+    )
+    content = rx.hstack(
+        rx.mobile_only(mobile_clickable),
+        rx.tablet_and_desktop(desktop_clickable),
         rx.box(
             _ga_fav_btn_list(action),
             flex_shrink="0",
@@ -1664,18 +1827,30 @@ def ga_grid_card(action: Dict[str, Any]) -> rx.Component:
         width="100%",
     )
 
-    return rx.card(
+    # スマホは詳細ページに遷移、PC はモーダルを開く
+    grid_inner = [content_block, _vote_summary_inline(action)]
+    mobile_clickable = rx.link(
         rx.vstack(
-            content_block,
-            # ── 一番下: 投票状況 ──
-            _vote_summary_inline(action),
-            spacing="3",
-            width="100%",
-            height="100%",
-            justify="between",
-            on_click=GovernanceState.open_modal(action),
-            cursor="pointer",
+            *grid_inner,
+            spacing="3", width="100%", height="100%", justify="between",
         ),
+        href="/governance/" + action["proposal_id"].to(str),
+        underline="none",
+        color="inherit",
+        style={"display": "block", "width": "100%", "height": "100%"},
+    )
+    desktop_clickable = rx.vstack(
+        *grid_inner,
+        spacing="3",
+        width="100%",
+        height="100%",
+        justify="between",
+        on_click=GovernanceState.open_modal(action),
+        cursor="pointer",
+    )
+    return rx.card(
+        rx.mobile_only(mobile_clickable),
+        rx.tablet_and_desktop(desktop_clickable),
         width="100%",
         padding="18px",
         background_color="var(--gray-3)",

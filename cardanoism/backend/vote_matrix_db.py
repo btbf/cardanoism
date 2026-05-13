@@ -52,7 +52,8 @@ def get_gas_for_matrix(
       - "dropped":  dropped_epoch  が NOT NULL
       - "expired":  expired_epoch  が NOT NULL
 
-    proposed_epoch DESC で並べる（直近提出順）。limit/offset でページング。
+    提出時刻 (block_time) の新しい順で並べる。同時刻 (NULL 含む) のときは
+    proposed_epoch DESC → proposal_id をフォールバックに使って安定順序にする。
 
     戻り値要素: {proposal_id, title, title_ja, proposal_type, expiration, proposed_epoch}
     """
@@ -66,7 +67,7 @@ def get_gas_for_matrix(
                proposed_epoch
           FROM governance_actions
           {where}
-         ORDER BY proposed_epoch DESC, id DESC
+         ORDER BY block_time DESC, proposed_epoch DESC, proposal_id
          LIMIT ? OFFSET ?
     """
     with get_db() as (cursor, _):
