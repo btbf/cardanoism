@@ -41,7 +41,8 @@ def count_gas_for_matrix(*, status: str = "active") -> int:
 
 
 def get_gas_for_matrix(
-    *, status: str = "active", limit: int = 30, offset: int = 0
+    *, status: str = "active", limit: int = 30, offset: int = 0,
+    order: str = "asc",
 ) -> list[dict[str, Any]]:
     """指定ステータスの GA 一覧を返す。
 
@@ -52,12 +53,16 @@ def get_gas_for_matrix(
       - "dropped":  dropped_epoch  が NOT NULL
       - "expired":  expired_epoch  が NOT NULL
 
-    提出時刻 (block_time) の新しい順で並べる。同時刻 (NULL 含む) のときは
-    proposed_epoch DESC → proposal_id をフォールバックに使って安定順序にする。
+    order:
+      - "asc"  (デフォルト): 左 → 右 = 古い → 新しい (時系列順)
+      - "desc":              左 → 右 = 新しい → 古い (新着順)
+
+    同一 Tx (= 同 block_time) 内は proposal_index ASC で並べる。
 
     戻り値要素: {proposal_id, title, title_ja, proposal_type, expiration, proposed_epoch}
     """
     where = _ga_status_where(status)
+    direction = "DESC" if (order or "").lower() == "desc" else "ASC"
     sql = f"""
         SELECT proposal_id,
                title,
@@ -67,7 +72,7 @@ def get_gas_for_matrix(
                proposed_epoch
           FROM governance_actions
           {where}
-         ORDER BY block_time DESC, proposed_epoch DESC, proposal_index ASC
+         ORDER BY block_time {direction}, proposed_epoch {direction}, proposal_index ASC
          LIMIT ? OFFSET ?
     """
     with get_db() as (cursor, _):

@@ -860,13 +860,15 @@ def _voting_summary_section(action: Dict[str, Any]) -> rx.Component:
 
 
 def _vote_badge(vote_var) -> rx.Component:
-    """Yes / No / Abstain のバッジ（アイコン + ソリッドカラーで強調）。"""
+    """Yes / No / Abstain のバッジ（アイコン + ソリッドカラーで強調）。
+    ラベルは AuthState.t で JA/EN 切替 ("賛成"/"反対"/"棄権" or "Yes"/"No"/"Abstain")。
+    """
     return rx.match(
         vote_var,
         ("Yes", rx.badge(
             rx.hstack(
                 rx.icon("check", size=14, stroke_width=3),
-                rx.text("Yes", weight="bold"),
+                rx.text(AuthState.t["vote_label_yes"], weight="bold"),
                 spacing="1", align="center",
             ),
             color_scheme="green", variant="solid", size="2", radius="full",
@@ -874,7 +876,7 @@ def _vote_badge(vote_var) -> rx.Component:
         ("No", rx.badge(
             rx.hstack(
                 rx.icon("x", size=14, stroke_width=3),
-                rx.text("No", weight="bold"),
+                rx.text(AuthState.t["vote_label_no"], weight="bold"),
                 spacing="1", align="center",
             ),
             color_scheme="red", variant="solid", size="2", radius="full",
@@ -882,7 +884,7 @@ def _vote_badge(vote_var) -> rx.Component:
         ("Abstain", rx.badge(
             rx.hstack(
                 rx.icon("minus", size=14, stroke_width=3),
-                rx.text("Abstain", weight="bold"),
+                rx.text(AuthState.t["vote_label_abstain"], weight="bold"),
                 spacing="1", align="center",
             ),
             color_scheme="gray", variant="soft", size="2", radius="full",

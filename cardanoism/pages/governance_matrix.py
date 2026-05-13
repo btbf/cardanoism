@@ -83,6 +83,8 @@ class VoteMatrixState(rx.State):
 
     # GA 列のステータスフィルタ ("active" / "ratified" / "enacted" / "dropped" / "expired")
     ga_status: str = "active"
+    # GA 並び順: "asc" = 左→右 = 古い→新しい (デフォルト)、"desc" = 左→右 = 新しい→古い
+    ga_order: str = "asc"
 
     # DRep 行のページネーション
     items_per_page: int = DEFAULT_PER_PAGE
@@ -128,6 +130,7 @@ class VoteMatrixState(rx.State):
                 status=self.ga_status,
                 limit=self.gas_per_page,
                 offset=gas_offset,
+                order=self.ga_order,
             )
             self.gas = [
                 {
@@ -179,9 +182,9 @@ class VoteMatrixState(rx.State):
                         elif v == "no":
                             icon, color = "N", "var(--red-10)"
                         elif v == "abstain":
-                            icon, color = "×", "var(--gray-10)"
+                            icon, color = "−", "var(--gray-10)"
                         else:
-                            icon, color = "?", "var(--gray-9)"
+                            icon, color = "·", "var(--gray-7)"
                         cells.append({
                             "vote":         v,
                             "icon":         icon,
@@ -225,6 +228,14 @@ class VoteMatrixState(rx.State):
             return
         self.ga_status = status
         self.current_page = 1
+        self.gas_current_page = 1
+        self._fetch()
+
+    def toggle_ga_order(self):
+        """GA 並び順を asc / desc でトグルする。
+        asc: 左 → 右 = 古い → 新しい (時系列順) / desc: 新しい → 古い (新着順)。
+        """
+        self.ga_order = "desc" if self.ga_order == "asc" else "asc"
         self.gas_current_page = 1
         self._fetch()
 
@@ -327,6 +338,49 @@ def _filter_bar() -> rx.Component:
             align="center",
         ),
         rx.spacer(),
+        # GA 並び順トグル: 左 → 右 = 古い → 新しい (asc) / 新しい → 古い (desc)
+        rx.hstack(
+            rx.text(AuthState.t["matrix_order_label"], size="2", color="var(--gray-11)"),
+            rx.el.button(
+                rx.icon(
+                    rx.cond(
+                        VoteMatrixState.ga_order == "asc",
+                        "arrow-right",
+                        "arrow-left",
+                    ),
+                    size=14,
+                ),
+                rx.text(
+                    rx.cond(
+                        VoteMatrixState.ga_order == "asc",
+                        AuthState.t["matrix_order_asc"],
+                        AuthState.t["matrix_order_desc"],
+                    ),
+                    size="2",
+                    weight="medium",
+                ),
+                on_click=VoteMatrixState.toggle_ga_order,
+                style={
+                    "display":      "inline-flex",
+                    "alignItems":   "center",
+                    "gap":          "6px",
+                    "padding":      "5px 12px",
+                    "border":       "1px solid var(--gray-6)",
+                    "borderRadius": "9999px",
+                    "background":   "transparent",
+                    "cursor":       "pointer",
+                    "color":        "var(--gray-11)",
+                    "whiteSpace":   "nowrap",
+                    "transition":   "background 0.15s, border-color 0.15s",
+                },
+                _hover={
+                    "background":  "var(--gray-3)",
+                    "borderColor": "var(--gray-8)",
+                },
+            ),
+            spacing="2",
+            align="center",
+        ),
         rx.hstack(
             rx.text(AuthState.t["matrix_gas_per_page"], size="2", color="var(--gray-11)"),
             rx.select(
@@ -516,10 +570,11 @@ def _vote_cell(c) -> rx.Component:
 
     badge = rx.match(
         c["vote"],
-        ("yes",     rx.badge("Yes", color_scheme="green", variant="solid", size="1", radius="small")),
-        ("no",      rx.badge("No",  color_scheme="red",   variant="solid", size="1", radius="small")),
-        ("abstain", rx.badge("×",   color_scheme="gray",  variant="solid", size="1", radius="small")),
-        rx.text("—", style={
+        ("yes",     rx.badge(AuthState.t["vote_label_yes"],     color_scheme="green", variant="solid", size="1", radius="small")),
+        ("no",      rx.badge(AuthState.t["vote_label_no"],      color_scheme="red",   variant="solid", size="1", radius="small")),
+        ("abstain", rx.badge(AuthState.t["vote_label_abstain"], color_scheme="gray",  variant="solid", size="1", radius="small")),
+        # 未投票: 「ー」をシンプルに表示
+        rx.text(AuthState.t["vote_label_none"], style={
             "color":      "var(--gray-9)",
             "fontSize":   "14px",
             "fontWeight": "600",
@@ -693,13 +748,17 @@ def _legend() -> rx.Component:
         )
 
     return rx.flex(
-        _item(rx.badge("Yes", color_scheme="green", variant="solid", size="1", radius="small"),
+        _item(rx.badge(AuthState.t["vote_label_yes"],     color_scheme="green", variant="solid", size="1", radius="small"),
               "matrix_legend_yes"),
-        _item(rx.badge("No",  color_scheme="red",   variant="solid", size="1", radius="small"),
+        _item(rx.badge(AuthState.t["vote_label_no"],      color_scheme="red",   variant="solid", size="1", radius="small"),
               "matrix_legend_no"),
-        _item(rx.badge("×",   color_scheme="gray",  variant="solid", size="1", radius="small"),
+        _item(rx.badge(AuthState.t["vote_label_abstain"], color_scheme="gray",  variant="solid", size="1", radius="small"),
               "matrix_legend_abstain"),
-        _item(rx.text("—", style={"color": "var(--gray-9)", "fontWeight": "600"}),
+        _item(rx.text(AuthState.t["vote_label_none"], style={
+                  "color": "var(--gray-9)",
+                  "fontSize": "14px",
+                  "fontWeight": "600",
+              }),
               "matrix_legend_no_vote"),
         spacing="4",
         wrap="wrap",
@@ -823,7 +882,6 @@ def governance_matrix_page() -> rx.Component:
                     color="var(--gray-10)",
                 ),
                 _filter_bar(),
-                _legend(),
                 rx.cond(
                     VoteMatrixState.error != "",
                     rx.callout(
