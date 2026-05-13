@@ -258,7 +258,7 @@ UI_JA: dict[str, str] = {
 
     # 投票マトリクスページ
     "matrix_title":              "DRep × ガバナンス提案 投票マトリクス",
-    "matrix_desc":               "登録 DRep が現在進行中のガバナンス提案にどう投票したか早見表で確認できます。セルにマウスを乗せると投票理由が表示されます。",
+    "matrix_desc":               "登録 DRep が現在進行中のガバナンス提案にどう投票したか早見表で確認できます。",
     "matrix_search_placeholder": "DRep 名で検索",
     "matrix_status_label":       "ステータス",
     "matrix_gas_per_page":       "GA 最大表示数",
@@ -1236,7 +1236,7 @@ UI_EN: dict[str, str] = {
 
     # Vote matrix page
     "matrix_title":              "DRep × Governance Action Vote Matrix",
-    "matrix_desc":               "Quick-reference matrix of how registered DReps voted on currently active governance actions. Hover a cell to see the vote rationale.",
+    "matrix_desc":               "Quick-reference matrix of how registered DReps voted on currently active governance actions.",
     "matrix_search_placeholder": "Search DRep name",
     "matrix_status_label":       "Status",
     "matrix_gas_per_page":       "Max GAs shown",
