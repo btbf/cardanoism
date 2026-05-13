@@ -125,11 +125,14 @@ h1, h2, h3, h4, h5, h6 {{ font-family: {styles.font_family}; }}
 
 
 def _shell(*children, **kw) -> rx.Component:
+    # TOP の各セクションは width:100vw で背景を全幅に伸ばすため、template の
+    # 1em パディングが効かない。スマホは _shell 側で 16px (template と同等) を
+    # 持たせて、他ページと左右余白を揃える。
     base = dict(
         max_width="1180px",
         width="100%",
         margin_x="auto",
-        padding_x=["20px", "28px", "40px"],
+        padding_x=["16px", "28px", "40px"],
     )
     base.update(kw)
     return rx.box(*children, **base)
@@ -327,11 +330,16 @@ def _line_phone_mock() -> rx.Component:
 # ─── Hero ────────────────────────────────────────────────────────────────────
 
 def _beta_badge() -> rx.Component:
-    """TOP ページ用のベータ告知バッジ。/feedback への導線も兼ねる。"""
+    """非推奨: 旧 hero 内バッジ。ヘッダー直下の _beta_announcement() に移管済み。"""
+    return rx.fragment()
+
+
+def _beta_announcement() -> rx.Component:
+    """ヘッダー直下のベータ告知行。画面全幅で枠なし。/feedback への導線。"""
     if not BETA_MODE:
         return rx.fragment()
     return rx.link(
-        rx.hstack(
+        rx.flex(
             rx.box(
                 rx.text(
                     AuthState.t["hero_beta_badge_label"],
@@ -342,22 +350,63 @@ def _beta_badge() -> rx.Component:
                 padding="3px 10px",
                 border_radius="999px",
                 background="linear-gradient(135deg, #ffcf00, #ff9500)",
-                style={"boxShadow": "0 6px 18px -6px rgba(255,154,0,0.55)"},
+                style={"flexShrink": "0"},
             ),
             rx.text(
                 AuthState.t["hero_beta_badge_text"],
                 size="2",
                 weight="medium",
-                color=rx.color_mode_cond("rgba(20,20,20,0.78)", "rgba(245,245,245,0.82)"),
+                color=rx.color_mode_cond("var(--amber-12)", "var(--amber-11)"),
             ),
-            rx.icon("arrow-right", size=14, color="var(--amber-11)"),
+            rx.hstack(
+                rx.text(
+                    AuthState.t["hero_beta_badge_cta"],
+                    size="2",
+                    weight="bold",
+                    color="var(--amber-11)",
+                ),
+                rx.icon("arrow-right", size=14, color="var(--amber-11)"),
+                spacing="1",
+                align="center",
+                style={"flexShrink": "0"},
+            ),
             spacing="2",
             align="center",
+            justify="center",
             wrap="wrap",
+            width="100%",
+            max_width="1180px",
+            margin_x="auto",
+            padding_x=["16px", "28px", "40px"],
+            padding_y="10px",
         ),
         href="/feedback",
         underline="none",
-        style={"_hover": {"opacity": "0.85"}},
+        # ヘッダーとの間に少しだけ呼吸を残しつつ、画面全幅で配置。
+        # 親 box の padding-top (2em) を半分だけ打ち消して 1em の隙間を残す。
+        style={
+            "display":     "block",
+            "width":       "100vw",
+            "marginLeft":  "calc(-50vw + 50%)",
+            "marginRight": "calc(-50vw + 50%)",
+            "marginTop":   "-1em",
+            "textAlign":   "center",
+            "background":  rx.color_mode_cond(
+                "rgba(255,243,199,0.55)",
+                "rgba(120,80,0,0.16)",
+            ),
+            "borderBottom": rx.color_mode_cond(
+                "1px solid rgba(0,0,0,0.05)",
+                "1px solid rgba(255,255,255,0.06)",
+            ),
+            "transition":   "background 0.15s",
+            "_hover": {
+                "background": rx.color_mode_cond(
+                    "rgba(255,237,170,0.75)",
+                    "rgba(140,95,5,0.22)",
+                ),
+            },
+        },
     )
 
 
@@ -369,36 +418,51 @@ def hero_section() -> rx.Component:
         weight="bold",
         line_height="1.05",
         letter_spacing="-0.02em",
-        # モバイルだけ size 9 (60px) と size 8 (48px) の中間ぐらいに
+        # i18n の \n を意図的に改行として描画するため white-space: pre-line。
+        # 上下余白を加えてヘッドラインに呼吸を与える。
+        margin_y=["16px", "20px", "24px"],
         style={
+            "whiteSpace": "pre-line",
             "@media (max-width: 640px)": {
-                "fontSize": "54px",
-                "lineHeight": "1.05",
+                "fontSize":   "36px",
+                "lineHeight": "1.25",
+                "wordBreak":  "keep-all",
+                "lineBreak":  "strict",
+                "overflowWrap": "break-word",
             },
         },
     )
     subtitle = rx.text(
         AuthState.t["hero_subtitle"],
-        size="4",
+        size={"base": "3", "md": "4"},
         color=rx.color_mode_cond("rgba(20,20,20,0.74)", "rgba(245,245,245,0.78)"),
         line_height="1.75",
         max_width="600px",
     )
+    # CTA はスマホで full-width にして親指タップしやすく。
     cta = rx.link(
         rx.button(
-            rx.icon("rocket", size=16),
-            AuthState.t["hero_cta_primary"],
-            size="3",
+            rx.icon("rocket", size=18),
+            rx.text(AuthState.t["hero_cta_primary"], weight="bold"),
+            size="4",
             background="linear-gradient(135deg, #ffcf00, #ff9500)",
             color="#111",
             border="1px solid rgba(199,163,0,0.5)",
             cursor="pointer",
-            padding="0 22px",
+            padding="0 28px",
             _hover={"background": "linear-gradient(135deg, #ff9500, #ffcf00)"},
-            style={"boxShadow": "0 10px 30px -8px rgba(255,154,0,0.55)"},
+            style={
+                "boxShadow": "0 10px 30px -8px rgba(255,154,0,0.55)",
+                "width": "100%",
+            },
         ),
         href="/login",
         underline="none",
+        width=["100%", "100%", "auto"],
+        # PC は max 360px くらいで詰めて中央寄せ感を出す
+        max_width=["100%", "100%", "360px"],
+        # サブタイトルとの間に呼吸を入れる
+        margin_top=["16px", "20px", "24px"],
     )
 
     return rx.box(
@@ -410,16 +474,18 @@ def hero_section() -> rx.Component:
                     headline,
                     subtitle,
                     cta,
-                    spacing="6",
+                    # スマホは余白控えめ、デスクトップは広めに
+                    spacing={"base": "4", "md": "6"},
                     align_items="start",
                     flex="1 1 auto",
                     min_width="0",
                     max_width="820px",
+                    width="100%",
                 ),
                 rx.box(
                     _line_phone_mock(),
                     flex="0 0 auto",
-                    display=["none", "none", "flex"],
+                    display=["none", "none", "flex"],  # スマホでは非表示
                     align_items="center",
                     justify_content="center",
                 ),
@@ -429,7 +495,7 @@ def hero_section() -> rx.Component:
                 spacing="6",
                 width="100%",
             ),
-            padding_y=["56px", "72px", "88px"],
+            padding_y=["20px", "60px", "80px"],
             position="relative",
             z_index="1",
         ),
@@ -1018,6 +1084,7 @@ def final_cta_section() -> rx.Component:
 def index() -> rx.Component:
     return rx.box(
         rx.html(HOME_CSS),
+        _beta_announcement(),
         hero_section(),
         features_section(),
         constitution_highlight_section(),

@@ -34,7 +34,8 @@ def _tab(icon: str, label, href: str, active: bool) -> rx.Component:
 
 
 def catalyst_tabs(active: str) -> rx.Component:
-    """Segmented toggle between proposals list and funds list.
+    """Segmented toggle between proposals list and funds list. デスクトップ専用。
+    スマホでは `mobile_page_subnav` が代替表示するので display:none。
 
     active: "proposals" or "funds"
     """
@@ -53,4 +54,7 @@ def catalyst_tabs(active: str) -> rx.Component:
         display="flex",
         justify_content=["center", "center", "flex-start"],
         padding_y="8px",
+        style={
+            "@media (max-width: 767px)": {"display": "none"},
+        },
     )

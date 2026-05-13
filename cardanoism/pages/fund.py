@@ -500,7 +500,7 @@ def fund() -> rx.Component:
         ),
         spacing="6",
         width="100%",
-        padding_x=["12px", "16px"],
+        padding_x=["0px", "16px"],
         align_items="stretch",
     )
     return rx.box(

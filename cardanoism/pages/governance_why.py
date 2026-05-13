@@ -921,21 +921,23 @@ def _drep_section() -> rx.Component:
         )
 
     options = rx.grid(
+        # opt1: DRep に委任する (信頼できる人に投票権を預ける)
         option_card(
-            "🗳️", "amber",
+            "🤝", "blue",
             AuthState.t["gov_why_s5_opt1_title"],
             AuthState.t["gov_why_s5_opt1_subtitle"],
             AuthState.t["gov_why_s5_opt1_desc"],
             AuthState.t["gov_why_s5_opt1_cta"],
-            "https://gov.tools/", True,
+            "/governance/drep", False,
         ),
+        # opt2: DRep になる (自分自身が DRep として登録)
         option_card(
-            "🤝", "blue",
+            "🗳️", "amber",
             AuthState.t["gov_why_s5_opt2_title"],
             AuthState.t["gov_why_s5_opt2_subtitle"],
             AuthState.t["gov_why_s5_opt2_desc"],
             AuthState.t["gov_why_s5_opt2_cta"],
-            "/governance/drep", False,
+            "https://gov.tools/", True,
         ),
         columns={"base": "1", "md": "2"},
         spacing="4", width="100%",
@@ -1138,7 +1140,6 @@ def governance_why_page() -> rx.Component:
             _cta_section(),          # S6: 次のアクション
             spacing="6",
             width="100%",
-            padding_y="20px",
         ),
         width="100%",
         max_width="1130px",

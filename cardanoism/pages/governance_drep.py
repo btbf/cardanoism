@@ -433,19 +433,89 @@ def _drep_card(d) -> rx.Component:
         flex_shrink="0",
     )
 
-    return rx.box(
+    # ── スマホ専用レイアウト ───────────────────────────────────────────
+    # 上から: 番号+アイコン(小) / 名前+ステータス / ID / 委任量 / 影響力+委任+♥
+    mobile_rank = rx.center(
+        rx.text(
+            "#", d["rank"],
+            size="2", weight="bold", color="var(--gray-11)",
+            style={"letterSpacing": "-0.02em"},
+        ),
+        min_width="40px",
+        padding_x="6px",
+        height="40px",
+        border_radius="8px",
+        background="var(--gray-4)",
+        flex_shrink="0",
+    )
+    mobile_avatar = rx.cond(
+        d["image_url"] != "",
+        rx.image(
+            src=d["image_url"],
+            width="40px",
+            height="40px",
+            border_radius="50%",
+            style={"objectFit": "cover"},
+            flex_shrink="0",
+        ),
+        rx.center(
+            rx.icon("user-round", size=20, color="var(--gray-9)"),
+            width="40px",
+            height="40px",
+            border_radius="50%",
+            background="var(--gray-4)",
+            flex_shrink="0",
+        ),
+    )
+    mobile_amount_row = rx.hstack(
+        rx.text(AuthState.t["drep_delegated_label"], size="1", color="var(--gray-10)"),
+        rx.text(d["amount_ada"], size="3", weight="bold", color="var(--amber-11)"),
+        rx.text("ADA", size="1", color="var(--gray-11)"),
+        fiat,
+        spacing="2", align="baseline", wrap="wrap",
+    )
+    mobile_layout = rx.vstack(
+        rx.hstack(mobile_rank, mobile_avatar, spacing="2", align="center"),
+        rx.hstack(name_text, status_badge, spacing="2", align="center", wrap="wrap"),
+        drep_id_block,
+        mobile_amount_row,
         rx.hstack(
-            rank_badge,
-            avatar,
-            profile_col,
-            delegation_col,
-            percentage_col,
+            rx.hstack(
+                rx.text(AuthState.t["drep_influence_label"], size="1", color="var(--gray-10)"),
+                rx.text(
+                    d["share_pct"],
+                    size="5", weight="bold", color="var(--blue-11)",
+                    style={"letterSpacing": "-0.02em"},
+                ),
+                rx.text("%", size="2", color="var(--blue-10)"),
+                spacing="1", align="baseline",
+            ),
+            rx.spacer(),
             delegate_button,
             fav_button,
-            align="center",
-            spacing="3",
-            wrap="wrap",
-            width="100%",
+            spacing="2", align="center", width="100%",
+        ),
+        spacing="3",
+        align_items="stretch",
+        width="100%",
+    )
+
+    return rx.box(
+        rx.mobile_only(mobile_layout),
+        rx.tablet_and_desktop(
+            rx.hstack(
+                rank_badge,
+                avatar,
+                profile_col,
+                delegation_col,
+                percentage_col,
+                delegate_button,
+                fav_button,
+                align="center",
+                spacing="3",
+                wrap="wrap",
+                width="100%",
+            ),
         ),
         padding="14px 16px",
         border=f"1px solid {rx.color('gray', 4)}",

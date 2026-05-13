@@ -433,9 +433,11 @@ def _drep_votes_section() -> rx.Component:
 
 
 def _drep_votes_for_delegation(d: rx.Var) -> rx.Component:
-    """この stake_address の DRep の全 GA 投票状況を表示する (5 件/ページのページネーション付き)。"""
+    """この stake_address の DRep の全 GA 投票状況を表示する (5 件/ページのページネーション付き)。
+    drep_recent_votes[drep_id] には現在ページ分しか入っていない (サーバー側ページネーション)。
+    """
     drep_id = d["drep_id"]
-    votes_page = DashboardState.drep_votes_paged[drep_id]
+    votes_page = DashboardState.drep_recent_votes[drep_id]
     page_info = DashboardState.drep_votes_page_info[drep_id]
 
     header = rx.hstack(
@@ -450,9 +452,10 @@ def _drep_votes_for_delegation(d: rx.Var) -> rx.Component:
         spacing="1", align="center", wrap="wrap",
     )
 
-    all_votes = DashboardState.drep_recent_votes[drep_id]
+    # 総件数は page_info に入っているのでそれで条件分岐 (現在ページに 0 件
+    # でも、別ページに件数があれば pagination を出す)
     pagination = rx.cond(
-        all_votes.length() > 0,
+        page_info["total"] != "0",
         rx.hstack(
             rx.button(
                 rx.icon("chevron-left", size=14),

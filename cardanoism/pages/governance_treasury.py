@@ -622,141 +622,160 @@ def _ncl_card() -> rx.Component:
         "repeating-linear-gradient(45deg, var(--green-9), var(--green-9) 3px, var(--green-10) 3px, var(--green-10) 6px)"
     )
 
+    # ── ヘッダー部品 (タイトル / 採用提案 / 期間) — モバイル・デスクトップ共通で再利用 ──
+    title_chip = rx.hstack(
+        rx.icon("gauge", size=16, color="var(--blue-11)"),
+        rx.text(AuthState.t["ncl_title"], size="2", weight="bold"),
+        rx.tooltip(
+            rx.icon("info", size=14, color="var(--gray-9)", style={"cursor": "help"}),
+            content=AuthState.t["ncl_description"],
+        ),
+        spacing="2", align="center", flex_shrink="0",
+    )
+    proposal_chip = rx.cond(
+        TreasuryState.ncl_proposal_id != "",
+        rx.hstack(
+            rx.icon("file-check-2", size=12, color="var(--green-10)"),
+            rx.link(
+                TreasuryState.ncl_title,
+                href="/governance/" + TreasuryState.ncl_proposal_id,
+                size="1",
+                color_scheme="amber",
+            ),
+            rx.badge(
+                "DRep " + TreasuryState.ncl_drep_yes_pct_display + "%",
+                color_scheme="green",
+                variant="soft",
+                size="1",
+            ),
+            spacing="1", align="center",
+        ),
+        rx.fragment(),
+    )
+    period_chip = rx.hstack(
+        rx.text(AuthState.t["ncl_period_label"], size="1", color="var(--gray-10)"),
+        rx.text(TreasuryState.ncl_period_start_display, size="1", color="var(--gray-12)"),
+        rx.text("〜", size="1", color="var(--gray-10)"),
+        rx.text(TreasuryState.ncl_period_end_display, size="1", color="var(--gray-12)"),
+        spacing="1", align="center", flex_shrink="0",
+    )
+
+    progress_bar = rx.box(
+        rx.hstack(
+            # 引き出し確定
+            rx.box(
+                width=TreasuryState.ncl_pending_pct.to_string() + "%",
+                height="100%",
+                background="linear-gradient(90deg, var(--violet-9), var(--purple-10))",
+                transition="width 0.5s ease",
+                flex_shrink="0",
+            ),
+            # シミュレーション
+            rx.box(
+                width=TreasuryState.simulation_pct.to_string() + "%",
+                height="100%",
+                background="repeating-linear-gradient(45deg, var(--green-9), var(--green-9) 6px, var(--green-10) 6px, var(--green-10) 12px)",
+                transition="width 0.5s ease",
+                flex_shrink="0",
+            ),
+            # 残り（テキスト入りセグメント）
+            rx.center(
+                rx.hstack(
+                    rx.text(
+                        AuthState.t["ncl_remaining_label"],
+                        size="1", color="var(--gray-11)", weight="medium",
+                    ),
+                    rx.text(
+                        TreasuryState.ncl_remaining_ada_display,
+                        size="2", weight="bold", color="var(--gray-12)",
+                    ),
+                    rx.text("ADA", size="1", color="var(--gray-11)"),
+                    rx.text(
+                        "(" + TreasuryState.ncl_remaining_pct_display + "%)",
+                        size="1", color="var(--gray-10)",
+                    ),
+                    spacing="1", align="baseline",
+                    white_space="nowrap",
+                ),
+                width=TreasuryState.ncl_remaining_pct.to_string() + "%",
+                height="100%",
+                background="var(--gray-3)",
+                transition="width 0.5s ease",
+                overflow="hidden",
+                flex_shrink="0",
+            ),
+            spacing="0",
+            width="100%",
+            height="100%",
+            align="stretch",
+        ),
+        width="100%",
+        height="30px",
+        background="var(--gray-3)",
+        border_radius="9999px",
+        overflow="hidden",
+        border=f"1px solid {rx.color('gray', 5)}",
+        min_width="0",
+    )
+
+    limit_chip = rx.vstack(
+        rx.hstack(
+            rx.text(
+                AuthState.t["ncl_limit_label"],
+                size="1", color="var(--gray-11)", weight="medium",
+            ),
+            rx.text(
+                TreasuryState.ncl_limit_ada_display,
+                size="3", weight="bold", color="var(--amber-11)",
+            ),
+            rx.text("ADA", size="1", color="var(--amber-11)"),
+            spacing="1", align="baseline",
+        ),
+        _fiat_inline(
+            TreasuryState.ncl_limit_jpy_display,
+            TreasuryState.ncl_limit_usd_display,
+            size="1",
+        ),
+        spacing="0", align="start",
+    )
+
+    # ── モバイルレイアウト: すべて縦並び ──
+    mobile_layout = rx.vstack(
+        title_chip,
+        proposal_chip,
+        period_chip,
+        progress_bar,
+        limit_chip,
+        spacing="3",
+        align_items="start",
+        width="100%",
+    )
+
+    # ── デスクトップレイアウト: 元の横並び構成 ──
+    desktop_layout = rx.vstack(
+        rx.hstack(
+            title_chip,
+            proposal_chip,
+            rx.spacer(),
+            period_chip,
+            spacing="3", align="center", width="100%", wrap="wrap",
+        ),
+        rx.hstack(
+            rx.box(progress_bar, flex="1", min_width="0"),
+            rx.hstack(
+                rx.text("/", size="4", color="var(--gray-9)"),
+                limit_chip,
+                spacing="2", align="center", flex_shrink="0",
+            ),
+            spacing="2", align="center", width="100%",
+        ),
+        spacing="2", align="start", width="100%",
+    )
+
     return rx.box(
         rx.vstack(
-            # ── ヘッダー：タイトル + 採用提案 + 期間 + 説明ツールチップ ──
-            rx.flex(
-                rx.hstack(
-                    rx.icon("gauge", size=16, color="var(--blue-11)"),
-                    rx.text(AuthState.t["ncl_title"], size="2", weight="bold"),
-                    rx.tooltip(
-                        rx.icon("info", size=14, color="var(--gray-9)", style={"cursor": "help"}),
-                        content=AuthState.t["ncl_description"],
-                    ),
-                    spacing="2", align="center", flex_shrink="0",
-                ),
-                rx.cond(
-                    TreasuryState.ncl_proposal_id != "",
-                    rx.hstack(
-                        rx.icon("file-check-2", size=12, color="var(--green-10)"),
-                        rx.link(
-                            TreasuryState.ncl_title,
-                            href="/governance/" + TreasuryState.ncl_proposal_id,
-                            size="1",
-                            color_scheme="amber",
-                        ),
-                        rx.badge(
-                            "DRep " + TreasuryState.ncl_drep_yes_pct_display + "%",
-                            color_scheme="green",
-                            variant="soft",
-                            size="1",
-                        ),
-                        spacing="1", align="center",
-                    ),
-                    rx.fragment(),
-                ),
-                rx.spacer(),
-                rx.hstack(
-                    rx.text(AuthState.t["ncl_period_label"], size="1", color="var(--gray-10)"),
-                    rx.text(TreasuryState.ncl_period_start_display, size="1", color="var(--gray-12)"),
-                    rx.text("〜", size="1", color="var(--gray-10)"),
-                    rx.text(TreasuryState.ncl_period_end_display, size="1", color="var(--gray-12)"),
-                    spacing="1", align="center", flex_shrink="0",
-                ),
-                wrap="wrap",
-                align="center",
-                spacing="3",
-                width="100%",
-            ),
-            # ── プログレスバー（残りをバー中央に / 上限をバー右端外に表示） ──
-            rx.hstack(
-                rx.box(
-                    rx.hstack(
-                        # 引き出し確定
-                        rx.box(
-                            width=TreasuryState.ncl_pending_pct.to_string() + "%",
-                            height="100%",
-                            background="linear-gradient(90deg, var(--violet-9), var(--purple-10))",
-                            transition="width 0.5s ease",
-                            flex_shrink="0",
-                        ),
-                        # シミュレーション
-                        rx.box(
-                            width=TreasuryState.simulation_pct.to_string() + "%",
-                            height="100%",
-                            background="repeating-linear-gradient(45deg, var(--green-9), var(--green-9) 6px, var(--green-10) 6px, var(--green-10) 12px)",
-                            transition="width 0.5s ease",
-                            flex_shrink="0",
-                        ),
-                        # 残り（テキスト入りセグメント）
-                        rx.center(
-                            rx.hstack(
-                                rx.text(
-                                    AuthState.t["ncl_remaining_label"],
-                                    size="1", color="var(--gray-11)", weight="medium",
-                                ),
-                                rx.text(
-                                    TreasuryState.ncl_remaining_ada_display,
-                                    size="2", weight="bold", color="var(--gray-12)",
-                                ),
-                                rx.text("ADA", size="1", color="var(--gray-11)"),
-                                rx.text(
-                                    "(" + TreasuryState.ncl_remaining_pct_display + "%)",
-                                    size="1", color="var(--gray-10)",
-                                ),
-                                spacing="1", align="baseline",
-                                white_space="nowrap",
-                            ),
-                            width=TreasuryState.ncl_remaining_pct.to_string() + "%",
-                            height="100%",
-                            background="var(--gray-3)",
-                            transition="width 0.5s ease",
-                            overflow="hidden",
-                            flex_shrink="0",
-                        ),
-                        spacing="0",
-                        width="100%",
-                        height="100%",
-                        align="stretch",
-                    ),
-                    width="100%",
-                    height="30px",
-                    background="var(--gray-3)",
-                    border_radius="9999px",
-                    overflow="hidden",
-                    border=f"1px solid {rx.color('gray', 5)}",
-                    flex="1",
-                    min_width="0",
-                ),
-                # 上限（バー右端の外側に配置）
-                rx.hstack(
-                    rx.text("/", size="4", color="var(--gray-9)"),
-                    rx.vstack(
-                        rx.hstack(
-                            rx.text(
-                                AuthState.t["ncl_limit_label"],
-                                size="1", color="var(--gray-11)", weight="medium",
-                            ),
-                            rx.text(
-                                TreasuryState.ncl_limit_ada_display,
-                                size="3", weight="bold", color="var(--amber-11)",
-                            ),
-                            rx.text("ADA", size="1", color="var(--amber-11)"),
-                            spacing="1", align="baseline",
-                        ),
-                        _fiat_inline(
-                            TreasuryState.ncl_limit_jpy_display,
-                            TreasuryState.ncl_limit_usd_display,
-                            size="1",
-                        ),
-                        spacing="0", align="start",
-                    ),
-                    spacing="2", align="center", flex_shrink="0",
-                ),
-                spacing="2",
-                align="center",
-                width="100%",
-            ),
+            rx.mobile_only(mobile_layout),
+            rx.tablet_and_desktop(desktop_layout),
             # ── 内訳（縦リスト：確定 / シミュレーション） ──
             rx.vstack(
                 _ncl_breakdown_row(

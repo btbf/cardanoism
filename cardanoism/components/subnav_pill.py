@@ -53,7 +53,9 @@ def _pill(label, href: str, icon_name: str, active: bool) -> rx.Component:
 
 
 def pill_subnav(active: str, items: Iterable[tuple]) -> rx.Component:
-    """ピル型サブナビを描画する。
+    """ピル型サブナビを描画する。デスクトップ専用。
+    スマホではフッター直上の `mobile_page_subnav` が代替表示するので、
+    ここで `display:none` にする。
 
     Args:
         active: アクティブな key (各 item の最初の要素と一致するもの)
@@ -65,4 +67,8 @@ def pill_subnav(active: str, items: Iterable[tuple]) -> rx.Component:
         wrap="wrap",
         width="100%",
         padding_y="8px",
+        style={
+            # スマホ (< 768px) では非表示。代わりにフッター上の mobile_page_subnav を出す。
+            "@media (max-width: 767px)": {"display": "none"},
+        },
     )
