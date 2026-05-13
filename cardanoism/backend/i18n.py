@@ -262,7 +262,7 @@ UI_JA: dict[str, str] = {
     "matrix_search_placeholder": "DRep 名で検索",
     "matrix_status_label":       "ステータス",
     "matrix_gas_per_page":       "GA 最大表示数",
-    "matrix_order_label":        "並び順",
+    "matrix_order_label":        "提案並び替え",
     "matrix_order_asc":          "古い→新しい",
     "matrix_order_desc":         "新しい→古い",
     # 投票ラベル (matrix セル + GA 詳細バッジ共通)
@@ -1240,7 +1240,7 @@ UI_EN: dict[str, str] = {
     "matrix_search_placeholder": "Search DRep name",
     "matrix_status_label":       "Status",
     "matrix_gas_per_page":       "Max GAs shown",
-    "matrix_order_label":        "Order",
+    "matrix_order_label":        "Sort proposals",
     "matrix_order_asc":          "Old → New",
     "matrix_order_desc":         "New → Old",
     # Vote labels (matrix cell + GA detail badges)
