@@ -21,6 +21,9 @@ _PILL = {
     "color": "var(--gray-11)",
     "transition": "background 0.15s, color 0.15s",
     "cursor": "pointer",
+    # JA モードで「ステーキング」「ガバナンス」等が縦に折り返さないように
+    "whiteSpace": "nowrap",
+    "flexShrink": 0,
 }
 _PILL_HOVER = {
     "backgroundColor": "var(--gray-a3)",
@@ -78,6 +81,7 @@ def lang_toggle() -> rx.Component:
             size="2",
             weight="medium",
             color="var(--gray-11)",
+            style={"whiteSpace": "nowrap"},
         ),
         on_click=AuthState.set_language(next_lang),
         style={
@@ -90,6 +94,8 @@ def lang_toggle() -> rx.Component:
             "borderRadius": "9999px",
             "cursor":       "pointer",
             "transition":   "background 0.15s, color 0.15s, border-color 0.15s",
+            "whiteSpace":   "nowrap",
+            "flexShrink":   0,
         },
         _hover={
             "background":   rx.color("gray", 3),
@@ -255,8 +261,8 @@ def auth_section() -> rx.Component:
                     cursor="pointer",
                     padding="0",
                     border_radius="full",
-                    style={"outline": "2px solid transparent", "transition": "outline-color 0.15s"},
-                    _hover={"outline": f"2px solid {ACCENT}"},
+                    style={"outline": "none", "background": "transparent"},
+                    _hover={"background": "transparent", "outline": "none"},
                 ),
             ),
             rx.menu.content(
@@ -299,17 +305,27 @@ def auth_section() -> rx.Component:
 
 
 def navbar_icons() -> rx.Component:
+    # ロゴ: 画像要素の min-width が intrinsic サイズに固定されると、JA モードで
+    # ナビ項目が長いときに縮められず横にあふれる。max-width + 100% で柔軟に
+    # 縮むようにし、ナビ項目側にも flex-shrink を許容する。
     logo = rx.link(
         rx.image(
             src=rx.color_mode_cond(
                 light="/cardanoism-new-logo-light.png",
                 dark="/cardanoism-new-logo-dark.png",
             ),
-            width="13em",
+            width="100%",
+            max_width="13em",
             height="auto",
             alt="カルダノイズム",
+            style={"minWidth": "0"},
         ),
         href="/",
+        style={
+            "flex":     "0 1 13em",  # 基本 13em、足りなければ縮む
+            "minWidth": "0",
+            "display":  "block",
+        },
     )
 
     divider = rx.box(
@@ -364,8 +380,6 @@ def navbar_icons() -> rx.Component:
             rx.box(flex="1"),
             rx.hstack(
                 fiat_rates_pill(),
-                divider,
-                lang_toggle(),
                 divider,
                 rx.cond(
                     WalletState.connected,
@@ -468,7 +482,6 @@ def navbar_icons() -> rx.Component:
     )
 
     drawer_footer = rx.vstack(
-        lang_toggle(),
         rx.cond(
             AuthState.is_logged_in,
             rx.drawer.close(

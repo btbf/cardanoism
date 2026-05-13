@@ -67,7 +67,7 @@ def get_gas_for_matrix(
                proposed_epoch
           FROM governance_actions
           {where}
-         ORDER BY block_time DESC, proposed_epoch DESC, proposal_id
+         ORDER BY block_time DESC, proposed_epoch DESC, proposal_index ASC
          LIMIT ? OFFSET ?
     """
     with get_db() as (cursor, _):
