@@ -3,6 +3,7 @@ from reflex.style import set_color_mode, color_mode
 
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.components.cookie_banner import cookie_settings_link
+from cardanoism.components.navbar import lang_toggle
 
 
 
@@ -84,7 +85,9 @@ def dark_mode_toggle() -> rx.Component:
 def socials() -> rx.Component:
     return rx.flex(
         dark_mode_toggle(),
+        lang_toggle(),
         spacing="3",
+        align="center",
         justify_content=["center", "center", "end"],
         width="100%",
     )
