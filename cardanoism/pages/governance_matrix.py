@@ -570,15 +570,14 @@ def _vote_cell(c) -> rx.Component:
 
     badge = rx.match(
         c["vote"],
-        ("yes",     rx.badge("Yes", color_scheme="green", variant="solid", size="1", radius="small")),
-        ("no",      rx.badge("No",  color_scheme="red",   variant="solid", size="1", radius="small")),
-        ("abstain", rx.badge("−",   color_scheme="gray",  variant="solid", size="1", radius="small")),
-        # 未投票: 薄グレーの中点 (バッジ無しで「何もない」感を出す)
-        rx.text("·", style={
-            "color":      "var(--gray-7)",
-            "fontSize":   "18px",
-            "fontWeight": "700",
-            "lineHeight": "1",
+        ("yes",     rx.badge(AuthState.t["vote_label_yes"],     color_scheme="green", variant="solid", size="1", radius="small")),
+        ("no",      rx.badge(AuthState.t["vote_label_no"],      color_scheme="red",   variant="solid", size="1", radius="small")),
+        ("abstain", rx.badge(AuthState.t["vote_label_abstain"], color_scheme="gray",  variant="solid", size="1", radius="small")),
+        # 未投票: 「ー」をシンプルに表示
+        rx.text(AuthState.t["vote_label_none"], style={
+            "color":      "var(--gray-9)",
+            "fontSize":   "14px",
+            "fontWeight": "600",
         }),
     )
 
@@ -749,17 +748,16 @@ def _legend() -> rx.Component:
         )
 
     return rx.flex(
-        _item(rx.badge("Yes", color_scheme="green", variant="solid", size="1", radius="small"),
+        _item(rx.badge(AuthState.t["vote_label_yes"],     color_scheme="green", variant="solid", size="1", radius="small"),
               "matrix_legend_yes"),
-        _item(rx.badge("No",  color_scheme="red",   variant="solid", size="1", radius="small"),
+        _item(rx.badge(AuthState.t["vote_label_no"],      color_scheme="red",   variant="solid", size="1", radius="small"),
               "matrix_legend_no"),
-        _item(rx.badge("−",   color_scheme="gray",  variant="solid", size="1", radius="small"),
+        _item(rx.badge(AuthState.t["vote_label_abstain"], color_scheme="gray",  variant="solid", size="1", radius="small"),
               "matrix_legend_abstain"),
-        _item(rx.text("·", style={
-                  "color": "var(--gray-7)",
-                  "fontSize": "18px",
-                  "fontWeight": "700",
-                  "lineHeight": "1",
+        _item(rx.text(AuthState.t["vote_label_none"], style={
+                  "color": "var(--gray-9)",
+                  "fontSize": "14px",
+                  "fontWeight": "600",
               }),
               "matrix_legend_no_vote"),
         spacing="4",
@@ -884,7 +882,6 @@ def governance_matrix_page() -> rx.Component:
                     color="var(--gray-10)",
                 ),
                 _filter_bar(),
-                _legend(),
                 rx.cond(
                     VoteMatrixState.error != "",
                     rx.callout(
