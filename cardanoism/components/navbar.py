@@ -65,42 +65,36 @@ def fiat_rates_pill() -> rx.Component:
 
 
 def lang_toggle() -> rx.Component:
-    btn_base = {
-        "borderRadius": "9999px",
-        "fontSize": "13px",
-        "fontWeight": "700",
-        "cursor": "pointer",
-        "padding": "3px 9px",
-        "border": "none",
-        "transition": "background 0.15s, color 0.15s",
-        "lineHeight": "1.5",
-    }
-    active = {
-        **btn_base,
-        "background": ACCENT,
-        "color": "#111",
-    }
-    inactive = {
-        **btn_base,
-        "background": "transparent",
-        "color": "var(--gray-10)",
-    }
-    return rx.hstack(
-        rx.el.button(
-            "JA",
-            on_click=AuthState.set_language("ja"),
-            style=rx.cond(AuthState.language == "ja", active, inactive),
+    """言語切替: globe アイコン + 現在言語のチップ。
+    クリックで JA ⇄ EN をトグル。シンプルでモダンな見た目に。
+    """
+    is_ja = AuthState.language == "ja"
+    current_label = rx.cond(is_ja, "日本語", "English")
+    next_lang = rx.cond(is_ja, "en", "ja")
+    return rx.el.button(
+        rx.icon("globe", size=14, color="var(--gray-11)"),
+        rx.text(
+            current_label,
+            size="2",
+            weight="medium",
+            color="var(--gray-11)",
         ),
-        rx.el.button(
-            "EN",
-            on_click=AuthState.set_language("en"),
-            style=rx.cond(AuthState.language == "en", active, inactive),
-        ),
-        spacing="0",
-        padding="3px",
-        background=rx.color_mode_cond("var(--gray-4)", "var(--gray-5)"),
-        border_radius="9999px",
-        align="center",
+        on_click=AuthState.set_language(next_lang),
+        style={
+            "display":      "inline-flex",
+            "alignItems":   "center",
+            "gap":          "6px",
+            "padding":      "5px 12px",
+            "background":   "transparent",
+            "border":       "1px solid var(--gray-6)",
+            "borderRadius": "9999px",
+            "cursor":       "pointer",
+            "transition":   "background 0.15s, color 0.15s, border-color 0.15s",
+        },
+        _hover={
+            "background":   rx.color("gray", 3),
+            "borderColor":  rx.color("gray", 8),
+        },
     )
 
 
@@ -135,6 +129,79 @@ def _submenu_link(icon_name: str, label, href: str) -> rx.Component:
             "background": rx.color("gray", 3),
             "textDecoration": "none",
         },
+    )
+
+
+def _mobile_drawer_link(label, href: str, *, bold: bool = False) -> rx.Component:
+    """ドロワー内のシンプルなリンク行 (セクション見出しなど用)。
+    rx.drawer.close で wrap して、リンククリック時にドロワーを自動で閉じる。
+    """
+    return rx.drawer.close(
+        rx.link(
+            rx.text(
+                label,
+                size="3",
+                weight="bold" if bold else "medium",
+                color="var(--gray-12)",
+            ),
+            href=href,
+            underline="none",
+            style={
+                "display":      "flex",
+                "alignItems":   "center",
+                "padding":      "12px 8px",
+                "borderRadius": "8px",
+                "width":        "100%",
+            },
+            _hover={"background": rx.color("gray", 3)},
+        ),
+    )
+
+
+def _mobile_drawer_subitem(icon_name: str, label, href: str) -> rx.Component:
+    """ドロワー内のサブメニュー項目 (インデント + アイコン)。リンククリックでドロワーを閉じる。"""
+    return rx.drawer.close(
+        rx.link(
+            rx.icon(icon_name, size=14, color="var(--gray-10)", flex_shrink="0"),
+            rx.text(label, size="2", color="var(--gray-11)"),
+            href=href,
+            underline="none",
+            style={
+                "display":      "flex",
+                "alignItems":   "center",
+                "gap":          "10px",
+                "padding":      "10px 12px 10px 24px",
+                "borderRadius": "8px",
+                "width":        "100%",
+            },
+            _hover={"background": rx.color("gray", 3)},
+        ),
+    )
+
+
+def _mobile_drawer_section(
+    label,
+    value: str,
+    sub_items: list[tuple[str, str, str]],
+) -> rx.Component:
+    """ドロワー 1 セクションをアコーディオン項目として返す。
+    親 rx.accordion.root の子として配置する想定。
+    sub_items: [(icon_name, label, href), ...]
+    """
+    return rx.accordion.item(
+        value=value,
+        header=rx.text(
+            label,
+            size="3",
+            weight="bold",
+            color="var(--gray-12)",
+        ),
+        content=rx.vstack(
+            *[_mobile_drawer_subitem(icon, lab, h) for icon, lab, h in sub_items],
+            spacing="0",
+            align_items="stretch",
+            width="100%",
+        ),
     )
 
 
@@ -322,79 +389,187 @@ def navbar_icons() -> rx.Component:
         ),
     )
 
+    # スマホ用ドロワー: 右からスライドイン。各メインセクションのサブメニューも展開する。
+    drawer_trigger = rx.drawer.trigger(
+        rx.box(
+            rx.icon("menu", size=20, color="var(--gray-11)"),
+            padding="6px 8px",
+            border_radius="8px",
+            cursor="pointer",
+            background=rx.color_mode_cond("var(--gray-3)", "var(--gray-4)"),
+            _hover={"background": rx.color_mode_cond("var(--gray-4)", "var(--gray-5)")},
+            style={"transition": "background 0.15s", "display": "inline-flex", "alignItems": "center"},
+        ),
+    )
+
+    # × ボタンは右上に絶対配置してメニュー行と被せる (専用行を作らない)
+    drawer_close_btn = rx.drawer.close(
+        rx.box(
+            rx.icon("x", size=20, color="var(--gray-11)"),
+            padding="6px 8px",
+            border_radius="8px",
+            cursor="pointer",
+            _hover={"background": rx.color("gray", 3)},
+            style={
+                "position":    "absolute",
+                "top":         "12px",
+                "right":       "12px",
+                "zIndex":      1,
+            },
+        ),
+    )
+
+    drawer_body = rx.vstack(
+        _mobile_drawer_link(AuthState.t["nav_home"], "/", bold=True),
+        # ステーキング / ガバナンス / Catalyst はアコーディオン化。
+        # type="single" / collapsible=True で 1 つだけ開ける、全閉じ可。
+        rx.accordion.root(
+            _mobile_drawer_section(
+                AuthState.t["nav_staking"], "staking",
+                [
+                    ("lightbulb",        AuthState.t["staking_subnav_why"],       "/staking/why"),
+                    ("layout-dashboard", AuthState.t["staking_subnav_dashboard"], "/staking"),
+                    ("server",           AuthState.t["staking_subnav_spo"],       "/staking/spo"),
+                ],
+            ),
+            _mobile_drawer_section(
+                AuthState.t["nav_governance"], "governance",
+                [
+                    ("lightbulb",    AuthState.t["gov_subnav_why"],          "/governance/why"),
+                    ("gavel",        AuthState.t["gov_subnav_actions"],      "/governance"),
+                    ("table-2",      AuthState.t["gov_subnav_matrix"],       "/governance/matrix"),
+                    ("landmark",     AuthState.t["gov_subnav_treasury"],     "/governance/treasury"),
+                    ("users",        AuthState.t["gov_subnav_drep"],         "/governance/drep"),
+                    ("scroll-text",  AuthState.t["gov_subnav_constitution"], "/governance/constitution"),
+                ],
+            ),
+            _mobile_drawer_section(
+                AuthState.t["nav_catalyst"], "catalyst",
+                [
+                    ("file-text", AuthState.t["nav_proposals_list"], "/catalyst"),
+                    ("layers",    AuthState.t["nav_funds_list"],     "/catalyst/funds"),
+                ],
+            ),
+            type="single",
+            collapsible=True,
+            variant="ghost",  # 余計な背景を抑えて drawer に馴染ませる
+            width="100%",
+        ),
+        _mobile_drawer_link(AuthState.t["nav_pricing"], "/pricing", bold=True),
+        rx.cond(
+            AuthState.is_logged_in,
+            _mobile_drawer_link(AuthState.t["nav_mypage"], "/mypage", bold=True),
+            rx.fragment(),
+        ),
+        spacing="1",
+        align_items="stretch",
+        width="100%",
+        style={"flex": "1", "overflowY": "auto", "paddingTop": "12px"},
+    )
+
+    drawer_footer = rx.vstack(
+        lang_toggle(),
+        rx.cond(
+            AuthState.is_logged_in,
+            rx.drawer.close(
+                rx.box(
+                    rx.text(
+                        AuthState.t["nav_logout"],
+                        size="3",
+                        weight="medium",
+                        color="var(--red-10)",
+                        on_click=AuthState.logout,
+                        cursor="pointer",
+                        style={
+                            "padding": "10px 12px",
+                            "borderRadius": "8px",
+                            "width": "100%",
+                            "textAlign": "center",
+                        },
+                        _hover={"background": rx.color("red", 3)},
+                    ),
+                    width="100%",
+                ),
+            ),
+            rx.drawer.close(
+                rx.link(
+                    rx.box(
+                        rx.text(
+                            AuthState.t["nav_login"],
+                            size="3",
+                            weight="bold",
+                            style={"color": "#111"},
+                        ),
+                        padding="10px 16px",
+                        border_radius="9999px",
+                        style={
+                            "background": f"linear-gradient(135deg, {ACCENT}, {ACCENT_DARK})",
+                            "display":    "flex",
+                            "alignItems": "center",
+                            "justifyContent": "center",
+                            "boxShadow":  "0 2px 8px rgba(255,207,0,0.35)",
+                            "width":      "100%",
+                        },
+                    ),
+                    href="/login",
+                    underline="none",
+                    width="100%",
+                ),
+            ),
+        ),
+        spacing="3",
+        align_items="stretch",
+        width="100%",
+        padding_top="12px",
+        style={"borderTop": f"1px solid var(--gray-5)"},
+    )
+
+    drawer = rx.drawer.root(
+        drawer_trigger,
+        rx.drawer.overlay(z_index="600"),
+        rx.drawer.portal(
+            rx.drawer.content(
+                drawer_close_btn,
+                rx.vstack(
+                    drawer_body,
+                    drawer_footer,
+                    spacing="0",
+                    height="100%",
+                    width="100%",
+                ),
+                # Vaul (Radix drawer) は direction="right" の時、配置を自動制御する。
+                # top / left / right は "auto" を渡して Vaul に任せ、サイズと装飾のみ指定する。
+                top="auto",
+                left="auto",
+                right="0",
+                height="100%",
+                width="min(86vw, 340px)",
+                padding="20px",
+                background_color=rx.color("gray", 1),
+                style={
+                    "borderLeft":    "1px solid var(--gray-5)",
+                    "boxShadow":     "-8px 0 24px rgba(0,0,0,0.18)",
+                    "display":       "flex",
+                    "flexDirection": "column",
+                    "zIndex":        700,
+                },
+            ),
+        ),
+        direction="right",
+    )
+
     mobile_nav = rx.mobile_and_tablet(
         rx.hstack(
             logo,
             rx.hstack(
                 # ログイン済みのみアバターを表示。未ログインのログインボタンは
-                # 三本線メニュー内 (バッジ) に集約してトップバーをスッキリさせる。
+                # ドロワーフッターに集約してトップバーをスッキリさせる。
                 rx.cond(
                     AuthState.is_logged_in,
                     auth_section(),
                     rx.fragment(),
                 ),
-                rx.menu.root(
-                    rx.menu.trigger(
-                        rx.box(
-                            rx.icon("menu", size=20, color="var(--gray-11)"),
-                            padding="6px 8px",
-                            border_radius="8px",
-                            cursor="pointer",
-                            background=rx.color_mode_cond("var(--gray-3)", "var(--gray-4)"),
-                            _hover={"background": rx.color_mode_cond("var(--gray-4)", "var(--gray-5)")},
-                            style={"transition": "background 0.15s", "display": "inline-flex", "alignItems": "center"},
-                        ),
-                    ),
-                    rx.menu.content(
-                        rx.menu.item(
-                            rx.link(AuthState.t["nav_home"], href="/", width="100%", underline="none", color="var(--gray-12)"),
-                        ),
-                        rx.menu.item(
-                            rx.link(AuthState.t["nav_staking"], href="/staking", width="100%", underline="none", color="var(--gray-12)"),
-                        ),
-                        rx.menu.item(
-                            rx.link(AuthState.t["nav_governance"], href="/governance", width="100%", underline="none", color="var(--gray-12)"),
-                        ),
-                        rx.menu.item(
-                            rx.link(AuthState.t["nav_catalyst"], href="/catalyst", width="100%", underline="none", color="var(--gray-12)"),
-                        ),
-                        rx.menu.item(
-                            rx.link(AuthState.t["nav_pricing"], href="/pricing", width="100%", underline="none", color="var(--gray-12)"),
-                        ),
-                        rx.menu.separator(),
-                        rx.menu.item(lang_toggle()),
-                        rx.cond(
-                            AuthState.is_logged_in,
-                            rx.fragment(
-                                rx.menu.separator(),
-                                rx.menu.item(rx.link(AuthState.t["nav_mypage"], href="/mypage", width="100%", underline="none", color="var(--gray-12)")),
-                                rx.menu.item(rx.text(AuthState.t["nav_logout"], size="3", color="var(--red-9)", on_click=AuthState.logout, cursor="pointer", width="100%")),
-                            ),
-                            rx.menu.item(
-                                rx.link(
-                                    rx.box(
-                                        rx.text(
-                                            AuthState.t["nav_login"],
-                                            size="2",
-                                            weight="bold",
-                                            style={"color": "#111"},
-                                        ),
-                                        padding="6px 16px",
-                                        border_radius="9999px",
-                                        style={
-                                            "background": f"linear-gradient(135deg, {ACCENT}, {ACCENT_DARK})",
-                                            "display": "inline-flex",
-                                            "alignItems": "center",
-                                            "boxShadow": "0 2px 8px rgba(255,207,0,0.35)",
-                                        },
-                                    ),
-                                    href="/login",
-                                    underline="none",
-                                ),
-                            ),
-                        ),
-                    ),
-                ),
+                drawer,
                 spacing="2",
                 align="center",
             ),

@@ -7,6 +7,7 @@ from cardanoism import styles
 from cardanoism.components.navbar import navbar_icons
 from cardanoism.components.footer import footer_three_columns
 from cardanoism.components.cookie_banner import cookie_banner
+from cardanoism.components.mobile_page_subnav import mobile_page_subnav
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.backend.fiat_state import FiatRateState
 from cardanoism.backend.cookie_consent_state import CookieConsentState
@@ -99,6 +100,8 @@ def template(
                     ),
                     **styles.template_page_style,
                 ),
+                # スマホ専用: 各セクションのサブナビを全幅リンクで表示 (デスクトップは非表示)
+                mobile_page_subnav(),
                 footer_three_columns(),
                 cookie_banner(),
                 align="start",

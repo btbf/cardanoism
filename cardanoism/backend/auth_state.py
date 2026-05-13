@@ -345,6 +345,25 @@ class AuthState(rx.State):
         if self.is_logged_in:
             update_language(self.user_id, lang)
 
+    @rx.var
+    def mobile_subnav_section(self) -> str:
+        """スマホ用フッター上サブナビ表示判定。現在パスからセクション名を返す。
+        該当無しなら空文字を返してコンポーネントを描画しない。
+        """
+        path = self.router.url.path or ""
+        if path.startswith("/staking"):
+            return "staking"
+        if path.startswith("/governance"):
+            return "governance"
+        if path.startswith("/catalyst"):
+            return "catalyst"
+        return ""
+
+    @rx.var
+    def current_path(self) -> str:
+        """現在 URL パス (mobile subnav の active 判定等で使用)。"""
+        return self.router.url.path or ""
+
     def on_browser_language_detected(self, browser_lang: str):
         if self._lang_manually_set or self.is_logged_in:
             return

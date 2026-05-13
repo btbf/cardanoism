@@ -852,7 +852,7 @@ def governance_matrix_page() -> rx.Component:
                 max_width="1480px",
                 margin_x="auto",
                 width="100%",
-                padding_x="20px",
+                padding_x=["0px", "20px", "20px"],
                 padding_bottom="40px",
             ),
         ),

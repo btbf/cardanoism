@@ -197,7 +197,7 @@ def feedback_page() -> rx.Component:
             align_items="start",
             max_width="720px",
             margin_x="auto",
-            padding_x=["20px", "28px", "40px"],
+            padding_x=["0px", "28px", "40px"],
             padding_y=["32px", "44px", "56px"],
             width="100%",
         ),

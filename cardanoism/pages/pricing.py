@@ -41,11 +41,13 @@ class PricingState(rx.State):
 
 
 def _shell(*children, **kw) -> rx.Component:
+    # 他のページ (staking_spo / governance 等) と幅を統一する。
+    # template_page_style.max-width=1130px と一致させ、左右パディングは
+    # テンプレート側に任せて _shell では追加しない (二重パディングを避ける)。
     base = dict(
-        max_width="1180px",
+        max_width="1130px",
         width="100%",
         margin_x="auto",
-        padding_x=["20px", "28px", "40px"],
     )
     base.update(kw)
     return rx.box(*children, **base)
@@ -171,19 +173,243 @@ def _format_price(jpy: int, usd: float) -> tuple[str, str]:
 
 
 
-# ─── 機能比較表 ───────────────────────────────────────────────────────────────
+# ─── スマホ向け プラン別カード ─────────────────────────────────────────────────
+
+
+def _mobile_feature_row(label_key: str, cell_value: str) -> rx.Component:
+    """スマホカード 1 機能行。
+    cell_value:
+      - "check" → ✓ アイコン + 機能名
+      - "—"     → 表示しない (None を返す)
+      - その他   → 機能名: 値 (例「ステークアドレス上限: 3」)
+    """
+    if cell_value == "—":
+        return rx.fragment()
+    if cell_value == "check":
+        return rx.hstack(
+            rx.icon("check", size=16, color="var(--green-10)", flex_shrink="0"),
+            rx.text(AuthState.t[label_key], size="2", color="var(--gray-12)"),
+            spacing="2", align="center", width="100%",
+        )
+    # 数値・記号系 (5 / 10 / ∞ 等)
+    return rx.hstack(
+        rx.text(AuthState.t[label_key], size="2", color="var(--gray-11)"),
+        rx.spacer(),
+        rx.text(cell_value, size="2", weight="bold", color="var(--gray-12)"),
+        spacing="2", align="center", width="100%",
+    )
+
+
+_TIER_NAME_JA = {
+    "free":     "フリー",
+    "light":    "ライト",
+    "standard": "スタンダード",
+    "plus":     "プラス",
+    "pro":      "プロ",
+}
+
+
+def _mobile_plan_card(plan: PlanDetails, plan_idx: int) -> rx.Component:
+    """スマホ向け 1 プランカード。比較表の対象プラン列を縦に展開。"""
+    color = plan["color"]
+    is_popular = plan["popular"]
+    is_free = (plan["tier"] == "free")
+    jpy_m = plan["price_jpy_monthly"]
+    usd_m = plan["price_usd_monthly"]
+    jpy_y = plan["price_jpy_yearly"]
+    usd_y = plan["price_usd_yearly"]
+    monthly_jpy = "¥0" if jpy_m == 0 else f"¥{jpy_m:,}"
+    monthly_usd = "$0" if usd_m == 0 else f"${usd_m:.2f}"
+    yearly_jpy = "¥0" if jpy_y == 0 else f"¥{jpy_y:,}"
+    yearly_usd = "$0" if usd_y == 0 else f"${usd_y:.2f}"
+    monthly_display = rx.cond(AuthState.language == "en", monthly_usd, monthly_jpy)
+    yearly_display  = rx.cond(AuthState.language == "en", yearly_usd,  yearly_jpy)
+
+    # 価格 + 期間ラベル
+    price_block = rx.cond(
+        PricingState.billing == "monthly",
+        rx.hstack(
+            rx.text(monthly_display, size="7", weight="bold", color="var(--gray-12)",
+                    style={"letterSpacing": "-0.02em"}),
+            rx.text(AuthState.t["pricing_per_month"], size="2", color=TEXT_MUTED),
+            spacing="1", align="baseline",
+        ),
+        rx.hstack(
+            rx.text(yearly_display, size="7", weight="bold", color="var(--gray-12)",
+                    style={"letterSpacing": "-0.02em"}),
+            rx.text(AuthState.t["pricing_per_year"], size="2", color=TEXT_MUTED),
+            spacing="1", align="baseline",
+        ),
+    )
+
+    # CTA: ベータ中は「準備中」disabled。それ以外は選択 / 無料で始める
+    not_logged_in_label_key = "pricing_signup" if is_free else "pricing_select"
+    if BETA_MODE:
+        cta_btn = rx.button(
+            AuthState.t["pricing_coming_soon"],
+            size="3", disabled=True,
+            style={
+                "background": "var(--gray-4)",
+                "color":      "var(--gray-10)",
+                "cursor":     "not-allowed",
+                "border":     "1px solid var(--gray-6)",
+                "width":      "100%",
+            },
+        )
+    else:
+        logged_in_href = "/mypage" if is_free else "/mypage?tab=subscription"
+        cta_btn = rx.cond(
+            AuthState.is_logged_in,
+            rx.link(
+                rx.button(
+                    AuthState.t["pricing_select"],
+                    rx.icon("arrow-right", size=14),
+                    size="3", cursor="pointer",
+                    background=color, color="white",
+                    style={"width": "100%"},
+                ),
+                href=logged_in_href, underline="none", width="100%",
+            ),
+            rx.link(
+                rx.button(
+                    AuthState.t[not_logged_in_label_key],
+                    rx.icon("arrow-right", size=14),
+                    size="3", cursor="pointer",
+                    background=color, color="white",
+                    style={"width": "100%"},
+                ),
+                href="/login", underline="none", width="100%",
+            ),
+        )
+
+    # 機能リスト: COMPARISON_SECTIONS を回し、対象プラン列の値で表示分岐
+    feature_sections: list[rx.Component] = []
+    for cat_key, rows in COMPARISON_SECTIONS:
+        section_rows: list[rx.Component] = []
+        for label_key, cells in rows:
+            cell = cells[plan_idx] if plan_idx < len(cells) else "—"
+            if cell == "—":
+                continue
+            section_rows.append(_mobile_feature_row(label_key, cell))
+        if not section_rows:
+            continue
+        feature_sections.append(
+            rx.vstack(
+                rx.text(
+                    AuthState.t[cat_key],
+                    size="1", weight="bold",
+                    color="var(--gray-10)",
+                    style={"letterSpacing": "0.08em", "textTransform": "uppercase"},
+                ),
+                rx.vstack(*section_rows, spacing="2", align_items="stretch", width="100%"),
+                spacing="2", align_items="stretch", width="100%",
+            )
+        )
+
+    # プラン名はスマホでは日本語 (フリー / ライト / スタンダード / プラス / プロ) を優先表示。
+    # EN モード時は i18n の英語名にフォールバック。
+    name_ja = _TIER_NAME_JA.get(plan["tier"], plan["tier"])
+    name_display = rx.cond(
+        AuthState.language == "ja",
+        rx.Var.create(name_ja),
+        AuthState.t[plan["name_key"]],
+    )
+
+    # ヘッダー部 (おすすめバッジ + プラン名 + サブ)
+    header = rx.vstack(
+        rx.cond(
+            rx.Var.create(is_popular),
+            rx.badge(
+                AuthState.t["pricing_popular_badge"],
+                color_scheme="amber",
+                variant="solid", size="2", radius="full",
+            ),
+            rx.fragment(),
+        ),
+        rx.text(name_display,
+                size="6", weight="bold", color="var(--gray-12)"),
+        rx.text(AuthState.t[plan["tagline_key"]],
+                size="2", color=TEXT_MUTED, line_height="1.6"),
+        rx.box(height="4px", width="48px",
+               border_radius="999px", background=color, margin_top="4px"),
+        spacing="2", align_items="start", width="100%",
+    )
+
+    return rx.box(
+        rx.vstack(
+            header,
+            price_block,
+            cta_btn,
+            rx.divider(margin_y="4px"),
+            rx.vstack(*feature_sections, spacing="5", align_items="stretch", width="100%"),
+            spacing="4", align_items="stretch", width="100%",
+        ),
+        padding="22px 20px",
+        border_radius="14px",
+        border=rx.cond(
+            rx.Var.create(is_popular),
+            "2px solid var(--amber-8)",
+            f"1px solid var(--gray-5)",
+        ),
+        background="var(--gray-1)",
+        width="100%",
+        style={
+            "boxShadow": rx.cond(
+                rx.Var.create(is_popular),
+                "0 10px 30px -12px rgba(245,158,11,0.35)",
+                "0 1px 3px rgba(15,23,42,0.05)",
+            ),
+        },
+    )
+
+
+def _mobile_plan_cards() -> rx.Component:
+    """スマホ用: プラン別カードを縦に並べる。
+    並び順は PLANS の定義順 (フリー → ライト → スタンダード → プラス → プロ)。
+    """
+    cards = [
+        _mobile_plan_card(plan, idx) for idx, plan in enumerate(PLANS)
+    ]
+    return rx.vstack(
+        rx.flex(
+            rx.vstack(
+                rx.heading(
+                    AuthState.t["plan_compare_title"],
+                    as_="h2",
+                    size="5",
+                    weight="bold",
+                    color="var(--gray-12)",
+                ),
+                rx.text(
+                    AuthState.t["plan_compare_subtitle"],
+                    size="2", color=TEXT_MUTED, line_height="1.7",
+                ),
+                spacing="2", align_items="start",
+                style={"flex": "1 1 auto", "minWidth": "0"},
+            ),
+            spacing="3",
+            wrap="wrap",
+            width="100%",
+        ),
+        # 月額/年額トグルを単独行で
+        rx.box(_billing_toggle_pills()),
+        *cards,
+        spacing="5", align_items="stretch", width="100%",
+    )
+
+
+# ─── 機能比較表 (デスクトップ用) ──────────────────────────────────────────────
 
 
 def _comparison_table() -> rx.Component:
     """プラン別機能比較表。横軸 = プラン、縦軸 = 機能。
     左 1 列を sticky にして、横スクロール時も機能名が見えるようにする。
     ヘッダーに価格 + CTA を組み込んで、別途プライシングカード行を不要に。
-    """
-    # 列幅: 機能名 20% + プラン × len(PLANS) で残り 80% を均等割り
-    label_width_pct = 20
-    plan_width_pct = (100 - label_width_pct) // len(PLANS)  # 5 プランなら 16%
 
+    スマホでは横スクロール前提で、各セルの min-width で読みやすさを確保する。
+    """
     # ヘッダー行: 機能 | Free | Light | Standard | Plus | Pro
+    # 左 1 列 (機能名) は sticky で横スクロール時も見えるようにする。
     header_cells = [
         rx.el.th(
             rx.text("", size="2"),
@@ -196,8 +422,7 @@ def _comparison_table() -> rx.Component:
                 "left":        0,
                 "top":         0,
                 "zIndex":      3,
-                "width":       f"{label_width_pct}%",
-                "minWidth":    "160px",
+                "minWidth":    "180px",
                 "textAlign":   "left",
             },
         ),
@@ -304,9 +529,22 @@ def _comparison_table() -> rx.Component:
                 ),
             )
 
+        # 横スクロール時に各カラム内で要素が一緒に動くよう、おすすめバッジは
+        # ヘッダーセル内部の先頭に配置する (以前は外側 flex で浮かせていた)。
+        popular_badge = rx.cond(
+            rx.Var.create(is_popular),
+            rx.badge(
+                AuthState.t["pricing_popular_badge"],
+                color_scheme="amber",
+                variant="solid", size="2", radius="full",
+            ),
+            rx.box(style={"minHeight": "24px"}),  # バッジ無しでも高さ揃え
+        )
+
         header_cells.append(
             rx.el.th(
                 rx.vstack(
+                    popular_badge,
                     rx.text(AuthState.t[plan["name_key"]],
                             size="4", weight="bold", color="var(--gray-12)"),
                     rx.text(AuthState.t[plan["tagline_key"]],
@@ -335,8 +573,7 @@ def _comparison_table() -> rx.Component:
                     "position":     "sticky",
                     "top":          0,
                     "zIndex":       2,
-                    "width":        f"{plan_width_pct}%",
-                    "minWidth":     "120px",
+                    "minWidth":     "150px",
                 },
             )
         )
@@ -377,7 +614,7 @@ def _comparison_table() -> rx.Component:
                         "position":     "sticky",
                         "left":         0,
                         "zIndex":       1,
-                        "minWidth":     "160px",
+                        "minWidth":     "180px",
                     },
                 ),
             ]
@@ -402,81 +639,68 @@ def _comparison_table() -> rx.Component:
                 )
             body_rows.append(rx.el.tr(*row_cells))
 
+    desktop_table = rx.vstack(
+        # 見出し + サブタイトル を左、月額/年額トグルを右に配置
+        rx.flex(
+            rx.vstack(
+                rx.heading(
+                    AuthState.t["plan_compare_title"],
+                    as_="h2",
+                    size="6",
+                    weight="bold",
+                    color="var(--gray-12)",
+                ),
+                rx.text(
+                    AuthState.t["plan_compare_subtitle"],
+                    size="2", color=TEXT_MUTED, line_height="1.7",
+                ),
+                spacing="2", align_items="start",
+                style={"flex": "1 1 auto", "minWidth": "0"},
+            ),
+            _billing_toggle_pills(),
+            spacing="4",
+            align="center",
+            wrap="wrap",
+            width="100%",
+        ),
+        rx.box(
+            rx.el.table(
+                rx.el.thead(rx.el.tr(*header_cells)),
+                rx.el.tbody(*body_rows),
+                style={
+                    "borderCollapse": "separate",
+                    "borderSpacing":  0,
+                    "width":          "100%",
+                    "tableLayout":    "fixed",
+                },
+            ),
+            style={
+                "width":        "100%",
+                "border":       "1px solid var(--gray-6)",
+                "borderRadius": "12px",
+                "background":   "var(--gray-1)",
+            },
+        ),
+        spacing="3", align_items="start", width="100%",
+    )
+
     return _shell(
-        rx.vstack(
-            # 見出し + サブタイトル を左、月額/年額トグルを右に配置
-            rx.flex(
-                rx.vstack(
-                    rx.heading(
-                        AuthState.t["plan_compare_title"],
-                        as_="h2",
-                        size={"base": "5", "md": "6"},
-                        weight="bold",
-                        color="var(--gray-12)",
-                    ),
-                    rx.text(
-                        AuthState.t["plan_compare_subtitle"],
-                        size="2", color=TEXT_MUTED, line_height="1.7",
-                    ),
-                    spacing="2", align_items="start",
-                    style={"flex": "1 1 auto", "minWidth": "0"},
-                ),
-                _billing_toggle_pills(),
-                spacing="4",
-                align={"base": "start", "md": "center"},
-                wrap="wrap",
-                width="100%",
-            ),
-            # おすすめバッジ行 (テーブル外、列幅と揃えて浮かせる)
-            rx.flex(
-                rx.box(
-                    width=f"{label_width_pct}%",
-                    style={"flexShrink": "0"},
-                ),
-                *[
-                    rx.box(
-                        rx.center(
-                            rx.badge(
-                                AuthState.t["pricing_popular_badge"],
-                                color_scheme="amber",
-                                variant="solid", size="2", radius="full",
-                            ),
-                            width="100%",
-                        ) if plan["popular"] else rx.fragment(),
-                        width=f"{plan_width_pct}%",
-                        style={"flexShrink": "0"},
-                    )
-                    for plan in PLANS
-                ],
-                width="100%",
-                style={
-                    "position":      "relative",
-                    "marginBottom":  "-14px",  # テーブル上端に被せる
-                    "zIndex":        2,
-                    "pointerEvents": "none",
-                },
-            ),
-            rx.box(
-                rx.el.table(
-                    rx.el.thead(rx.el.tr(*header_cells)),
-                    rx.el.tbody(*body_rows),
-                    style={
-                        "borderCollapse": "separate",
-                        "borderSpacing":  0,
-                        "width":          "100%",
-                        "tableLayout":    "fixed",
-                    },
-                ),
-                style={
-                    "overflowX":    "auto",  # 幅が足りない時だけ横スクロール
-                    "width":        "100%",
-                    "border":       "1px solid var(--gray-6)",
-                    "borderRadius": "12px",
-                    "background":   "var(--gray-1)",
-                    "minWidth":     "0",
-                },
-            ),
-            spacing="3", align_items="start", width="100%",
+        # スマホ (< 768px): カードレイアウト / それ以上: テーブル
+        rx.box(
+            _mobile_plan_cards(),
+            style={
+                "display": "block",
+                "@media (min-width: 768px)": {"display": "none"},
+            },
+            width="100%",
+        ),
+        rx.box(
+            desktop_table,
+            style={
+                "display": "none",
+                "@media (min-width: 768px)": {"display": "block"},
+            },
+            width="100%",
         ),
         padding_y=["28px", "36px", "48px"],
         max_width="100%",  # 比較表セクションは全幅伸縮
@@ -496,9 +720,8 @@ def pricing_page() -> rx.Component:
             _breadcrumb(),
             spacing="3",
             width="100%",
-            max_width="1180px",
+            max_width="1130px",
             margin_x="auto",
-            padding_x=["20px", "28px", "40px"],
         ),
         _hero(),
         _beta_banner(),

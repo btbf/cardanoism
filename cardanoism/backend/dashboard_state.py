@@ -82,12 +82,19 @@ class DashboardState(rx.State):
     #          relay_alive / drep_id / drep_name / drep_role
     delegations: list[dict[str, str]] = []
 
-    # 委任先 DRep ごとの直近投票 (drep_id → [vote, ...])
-    # vote: { proposal_id, proposal_title, vote, block_time }
+    # 委任先 DRep ごとの「現在ページ分」のみの投票履歴 (drep_id → [vote, ...])
+    # 全件 (数百件) を State に持つとブラウザがハングするので、ページごとに
+    # DB から取得する (OFFSET/LIMIT)。
+    # vote: { proposal_id, title, title_ja, proposal_type, expiration, vote, rationale, ... }
     drep_recent_votes: dict[str, list[dict[str, str]]] = {}
 
     # 委任先 DRep の投票状況セクションのページ位置 (drep_id → 0-indexed page)
     drep_votes_pages: dict[str, int] = {}
+
+    # ガバナンスアクション総件数 (ページネーション用、全 DRep 共通)。
+    # _select_drep_votes_page の LEFT JOIN はどの DRep でも同じ件数を返すため
+    # 1 度取れば共有できる。
+    governance_actions_total: int = 0
 
     # 「あなたの未投票 GA」セクションの表示条件 (DRep または SPO のときだけ表示)
     is_drep: bool = False
@@ -184,47 +191,51 @@ class DashboardState(rx.State):
         return self.is_drep or self.is_spo
 
     @rx.var
-    def drep_votes_paged(self) -> dict[str, list[dict[str, str]]]:
-        """各 DRep の投票リストを現在ページ分にスライスして返す。"""
-        result: dict[str, list[dict[str, str]]] = {}
-        for drep_id, votes in self.drep_recent_votes.items():
-            page = int(self.drep_votes_pages.get(drep_id, 0) or 0)
-            start = page * DREP_VOTES_PAGE_SIZE
-            result[drep_id] = votes[start:start + DREP_VOTES_PAGE_SIZE]
-        return result
-
-    @rx.var
     def drep_votes_page_info(self) -> dict[str, dict[str, str]]:
-        """各 DRep のページネーション情報。
+        """各 DRep のページネーション情報。総件数は全 DRep 共通 (governance_actions_total)。
         entry: { page (1-based 表示用), total_pages, has_prev, has_next, total }
         """
         result: dict[str, dict[str, str]] = {}
-        for drep_id, votes in self.drep_recent_votes.items():
+        total = int(self.governance_actions_total or 0)
+        total_pages = max(1, (total + DREP_VOTES_PAGE_SIZE - 1) // DREP_VOTES_PAGE_SIZE)
+        # drep_recent_votes に登録されている drep_id 全てに同じ pagination 情報を付与
+        for drep_id in self.drep_recent_votes.keys():
             page = int(self.drep_votes_pages.get(drep_id, 0) or 0)
-            n = len(votes)
-            total_pages = max(1, (n + DREP_VOTES_PAGE_SIZE - 1) // DREP_VOTES_PAGE_SIZE)
             result[drep_id] = {
                 "page":        str(page + 1),
                 "total_pages": str(total_pages),
                 "has_prev":    "1" if page > 0 else "",
                 "has_next":    "1" if (page + 1) < total_pages else "",
-                "total":       str(n),
+                "total":       str(total),
             }
         return result
 
     @rx.event
     def drep_votes_next_page(self, drep_id: str):
         cur = int(self.drep_votes_pages.get(drep_id, 0) or 0)
-        votes = self.drep_recent_votes.get(drep_id) or []
-        total_pages = max(1, (len(votes) + DREP_VOTES_PAGE_SIZE - 1) // DREP_VOTES_PAGE_SIZE)
+        total = int(self.governance_actions_total or 0)
+        total_pages = max(1, (total + DREP_VOTES_PAGE_SIZE - 1) // DREP_VOTES_PAGE_SIZE)
         if cur + 1 < total_pages:
             self.drep_votes_pages[drep_id] = cur + 1
+            self._fetch_drep_votes_page(drep_id, cur + 1)
 
     @rx.event
     def drep_votes_prev_page(self, drep_id: str):
         cur = int(self.drep_votes_pages.get(drep_id, 0) or 0)
         if cur > 0:
             self.drep_votes_pages[drep_id] = cur - 1
+            self._fetch_drep_votes_page(drep_id, cur - 1)
+
+    def _fetch_drep_votes_page(self, drep_id: str, page: int) -> None:
+        """指定 DRep の指定ページ分を DB から取り直して State に反映する。"""
+        try:
+            rows = self._select_drep_votes_page(
+                drep_id, DREP_VOTES_PAGE_SIZE, page * DREP_VOTES_PAGE_SIZE,
+            )
+            self.drep_recent_votes[drep_id] = rows
+        except Exception as e:  # noqa: BLE001
+            logger.warning("drep votes page fetch failed (drep=%s page=%d): %s",
+                           drep_id, page, e)
 
     @rx.event
     async def on_load(self):
@@ -322,6 +333,7 @@ class DashboardState(rx.State):
         self.delegations = []
         self.drep_recent_votes = {}
         self.drep_votes_pages = {}
+        self.governance_actions_total = 0
         self.is_drep = False
         self.is_spo = False
         self.notification_channels = {}
@@ -479,14 +491,16 @@ class DashboardState(rx.State):
                     d = None
                 if d:
                     entry["drep_name"] = str(d.get("given_name") or "")
-                # アクティブ GA × この DRep の投票状況を 1 SQL で取得 (LEFT JOIN)。
-                # 「投票していれば Yes/No/Abstain + rationale、未投票なら vote が空」になる。
+                # この DRep の GA 投票履歴の「先頭ページ分」のみ DB から取得。
+                # 残りはページ遷移時に _fetch_drep_votes_page() で都度取り直す。
                 if drep_id not in votes_map:
                     try:
-                        votes_map[drep_id] = self._select_active_gas_with_drep_vote(drep_id)
+                        votes_map[drep_id] = self._select_drep_votes_page(
+                            drep_id, DREP_VOTES_PAGE_SIZE, 0,
+                        )
                     except Exception as e:  # noqa: BLE001
                         logger.warning(
-                            "active GA + drep vote query failed (drep=%s): %s", drep_id, e,
+                            "drep votes page-0 query failed (drep=%s): %s", drep_id, e,
                         )
                         votes_map[drep_id] = []
             elif str(addr.get("role") or "") == "abstain":
@@ -507,6 +521,15 @@ class DashboardState(rx.State):
         self.drep_recent_votes = votes_map
         # 各 drep_id のページ位置を 0 に初期化 (UI 側で `[drep_id]` アクセスする前提)
         self.drep_votes_pages = {drep_id: 0 for drep_id in votes_map}
+        # ページネーション用の総件数を 1 回だけ取得 (全 DRep 共通)
+        if votes_map:
+            try:
+                self.governance_actions_total = self._count_governance_actions()
+            except Exception as e:  # noqa: BLE001
+                logger.warning("count governance_actions failed: %s", e)
+                self.governance_actions_total = 0
+        else:
+            self.governance_actions_total = 0
         self.relay_warnings_count = relay_warning_cnt
 
     # ── Phase B ローダ ─────────────────────────────
@@ -718,12 +741,12 @@ class DashboardState(rx.State):
     # ── 内部 SQL ───────────────────────────────────
 
     @staticmethod
-    def _select_active_gas_with_drep_vote(drep_id: str) -> list[dict[str, str]]:
-        """指定 DRep のすべての GA への投票状況を LEFT JOIN で取得する。
+    def _select_drep_votes_page(drep_id: str, limit: int, offset: int) -> list[dict[str, str]]:
+        """指定 DRep の GA 投票履歴を 1 ページ分だけ DB から取得する。
 
-        全 GA (active / ratified / enacted / dropped / expired) を新しい順に返す。
-        UI 側でページネーション (DREP_VOTES_PAGE_SIZE 件/ページ) する前提。
-        戻り値の vote が空文字なら「未投票」、Yes/No/Abstain なら投票済み。
+        全 GA (active / ratified / enacted / dropped / expired) を block_time DESC で
+        並べ、OFFSET/LIMIT で 1 ページ (= DREP_VOTES_PAGE_SIZE 件) ずつ取り出す。
+        LEFT JOIN により未投票 GA も含めて返る (vote が空 = 未投票)。
         """
         if not drep_id:
             return []
@@ -734,7 +757,8 @@ class DashboardState(rx.State):
             "LEFT JOIN proposal_votes v ON g.proposal_id = v.proposal_id "
             "                          AND v.voter_role = 'DRep' "
             "                          AND v.voter_id = ? "
-            "ORDER BY g.block_time DESC, g.proposal_id"
+            "ORDER BY g.block_time DESC, g.proposal_id "
+            f"LIMIT {int(limit)} OFFSET {int(offset)}"
         )
         with get_db() as (cursor, _):
             cursor.execute(sql, (drep_id,))
@@ -753,6 +777,14 @@ class DashboardState(rx.State):
             }
             for r in rows
         ]
+
+    @staticmethod
+    def _count_governance_actions() -> int:
+        """governance_actions 総件数。LEFT JOIN 上の総ページ数算出に使用 (全 DRep 共通)。"""
+        with get_db() as (cursor, _):
+            cursor.execute("SELECT COUNT(*) AS cnt FROM governance_actions")
+            row = cursor.fetchone()
+        return int(row.get("cnt") or 0) if row else 0
 
     @staticmethod
     def _select_unvoted_gas_for_dreps(

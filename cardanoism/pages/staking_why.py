@@ -46,12 +46,14 @@ C_PERF   = "#10b981"   # エメラルド: 実績
 
 
 def _shell(*children, **kw) -> rx.Component:
-    """セクションコンテンツを 1130px max で中央寄せ。"""
+    """セクションコンテンツを 1130px max で中央寄せ。
+    スマホは template 側の 16px パディングだけにして他ページと揃える。
+    """
     base = dict(
         max_width="1130px",
         width="100%",
         margin_x="auto",
-        padding_x=["20px", "28px", "40px"],
+        padding_x=["0px", "28px", "40px"],
     )
     base.update(kw)
     return rx.box(*children, **base)
@@ -505,7 +507,7 @@ def staking_why_page() -> rx.Component:
             width="100%",
             max_width="1130px",
             margin_x="auto",
-            padding_x=["20px", "28px", "40px"],
+            padding_x=["0px", "28px", "40px"],
         ),
         _hero(),
         _why_section(),
