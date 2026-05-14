@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS governance_actions (
     motivation                MEDIUMTEXT    DEFAULT NULL,
     rationale                 MEDIUMTEXT    DEFAULT NULL,
     references_json           LONGTEXT      DEFAULT NULL,
+    authors_json              TEXT          DEFAULT NULL,             -- CIP-100/108 authors の name 配列 (JSON)
     title_ja                  TEXT          DEFAULT NULL,
     abstract_ja               MEDIUMTEXT    DEFAULT NULL,
     motivation_ja             MEDIUMTEXT    DEFAULT NULL,
