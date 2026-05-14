@@ -1239,52 +1239,106 @@ def _ga_link_row_spo(g: rx.Var) -> rx.Component:
     )
 
 
-def _unvoted_gas_section() -> rx.Component:
-    """「あなたの未投票 GA」セクション。DRep または SPO のときだけ表示する。"""
-    self_block = rx.cond(
-        DashboardState.unvoted_gas_self.length() > 0,
-        rx.vstack(
-            rx.text(
-                AuthState.t["dashboard_unvoted_self_label"],
-                size="1", color="var(--gray-10)", weight="medium",
-            ),
-            rx.foreach(
-                DashboardState.unvoted_gas_self.to(list[dict[str, str]]),
-                _ga_link_row,
-            ),
-            spacing="2", align="stretch", width="100%",
-        ),
-        rx.fragment(),
-    )
-    spo_block = rx.cond(
-        DashboardState.unvoted_gas_spo.length() > 0,
-        rx.vstack(
+def _unvoted_section_card(section: rx.Var) -> rx.Component:
+    """ステークアドレス 1 件分の未投票 GA セクション。
+    ヘッダ（ニックネーム + DRep/SPO バッジ + 並び替えボタン）+ GA 行 5 件 + ページネーション。
+    """
+    key = section["key"]
+    gas = DashboardState.unvoted_ga_page_gas[key]
+    role_badge = rx.cond(
+        section["role"] == "drep",
+        rx.badge("DRep", color_scheme="violet", variant="soft", size="1"),
+        rx.badge(
             rx.hstack(
-                rx.icon("crown", size=12, color="var(--amber-11)"),
-                rx.text(
-                    AuthState.t["dashboard_unvoted_spo_label"],
-                    size="1", color="var(--amber-11)", weight="medium",
-                ),
+                rx.icon("crown", size=11),
+                rx.text("SPO"),
                 spacing="1", align="center",
             ),
-            rx.foreach(
-                DashboardState.unvoted_gas_spo.to(list[dict[str, str]]),
-                _ga_link_row_spo,
-            ),
+            color_scheme="amber", variant="soft", size="1",
+        ),
+    )
+    sort_label = rx.cond(
+        section["sort"] == "oldest",
+        AuthState.t["dashboard_unvoted_sort_oldest"],
+        AuthState.t["dashboard_unvoted_sort_newest"],
+    )
+    header = rx.hstack(
+        rx.icon("wallet", size=13, color="var(--amber-11)", flex_shrink="0"),
+        rx.text(section["nickname"], size="2", weight="medium", color="var(--gray-12)"),
+        role_badge,
+        rx.spacer(),
+        rx.button(
+            rx.icon("arrow-up-down", size=12),
+            sort_label,
+            size="1", variant="soft", color_scheme="gray", cursor="pointer",
+            on_click=DashboardState.unvoted_ga_toggle_sort(key),
+        ),
+        spacing="2", align="center", width="100%", wrap="wrap",
+    )
+    rows = rx.cond(
+        section["role"] == "drep",
+        rx.vstack(
+            rx.foreach(gas, _ga_link_row),
             spacing="2", align="stretch", width="100%",
         ),
-        rx.fragment(),
+        rx.vstack(
+            rx.foreach(gas, _ga_link_row_spo),
+            spacing="2", align="stretch", width="100%",
+        ),
     )
+    pagination = rx.hstack(
+        rx.button(
+            rx.icon("chevron-left", size=14),
+            size="1", variant="soft", color_scheme="gray",
+            disabled=section["has_prev"] == "",
+            on_click=DashboardState.unvoted_ga_set_page(key, -1),
+            cursor="pointer",
+        ),
+        rx.text(
+            section["page"] + " / " + section["total_pages"],
+            size="1", color="var(--gray-10)",
+        ),
+        rx.button(
+            rx.icon("chevron-right", size=14),
+            size="1", variant="soft", color_scheme="gray",
+            disabled=section["has_next"] == "",
+            on_click=DashboardState.unvoted_ga_set_page(key, 1),
+            cursor="pointer",
+        ),
+        rx.spacer(),
+        rx.text(
+            AuthState.t["dashboard_drep_votes_total"] + ": " + section["total"],
+            size="1", color="var(--gray-9)",
+        ),
+        spacing="2", align="center", width="100%",
+    )
+    return rx.box(
+        rx.vstack(
+            header,
+            rows,
+            pagination,
+            spacing="2", align="stretch", width="100%",
+        ),
+        padding="12px",
+        border_radius="10px",
+        background="var(--gray-1)",
+        border=f"1px solid {rx.color('gray', 4)}",
+        width="100%",
+    )
+
+
+def _unvoted_gas_section() -> rx.Component:
+    """「あなたの未投票 GA」セクション。DRep または SPO のときだけ表示する。
+    ステークアドレスごとにセクションカードを並べる。
+    """
     inner = rx.cond(
-        (DashboardState.unvoted_gas_self.length() == 0)
-        & (DashboardState.unvoted_gas_spo.length() == 0),
+        DashboardState.unvoted_ga_sections.length() == 0,
         rx.text(
             AuthState.t["dashboard_unvoted_empty"],
             size="2", color="var(--gray-10)",
         ),
         rx.vstack(
-            self_block,
-            spo_block,
+            rx.foreach(DashboardState.unvoted_ga_sections, _unvoted_section_card),
             spacing="3", align="stretch", width="100%",
         ),
     )

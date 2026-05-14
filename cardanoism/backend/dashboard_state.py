@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 # 各セクションでの最大表示件数
 FAVORITES_PREVIEW_LIMIT = 5
 DREP_VOTES_PAGE_SIZE = 5         # 「委任先 DRep の投票状況」セクションのページ当たり件数
-UNVOTED_GA_LIMIT = 5
+UNVOTED_GA_PAGE_SIZE = 5         # 「あなたの未投票 GA」セクションのページ当たり件数
 RECENT_REWARDS_EPOCHS = 5
 
 # Cardano mainnet エポック長 (= 5 days)
@@ -126,12 +126,16 @@ class DashboardState(rx.State):
     # 通知 OFF などで報酬キャッシュが無い stake_address
     rewards_missing_addresses: list[str] = []
 
-    # 未投票 GA: 本人 DRep が未投票な active GA
-    # entry: { proposal_id, title, title_ja, proposal_type, expiration, drep_id, drep_name }
-    unvoted_gas_self: list[dict[str, str]] = []
-    # 未投票 GA (SPO): 自分のプール (spo_pool_id) が未投票な SPO 対象 active GA
-    # entry: { proposal_id, title, title_ja, proposal_type, expiration, pool_id }
-    unvoted_gas_spo: list[dict[str, str]] = []
+    # 未投票 GA (本人 DRep / SPO): ステークアドレスごとにセクション化する。
+    # _unvoted_raw は backend-only。block_time ASC, proposal_index ASC で固定保持し、
+    # ソート方向は computed var 側で reverse する。
+    _unvoted_raw: dict[str, list[dict[str, str]]] = {}
+    # 各セクションのメタ情報（表示順を保持）。entry: { key, nickname, role }
+    unvoted_ga_sections_meta: list[dict[str, str]] = []
+    # セクションごとのページ位置 (key → 0-indexed page)
+    unvoted_ga_pages: dict[str, int] = {}
+    # セクションごとのソート方向 (key → "oldest" | "newest")
+    unvoted_ga_sorts: dict[str, str] = {}
     # 委任先 DRep が未投票な active GA
     unvoted_gas_delegated: list[dict[str, str]] = []
 
@@ -236,6 +240,69 @@ class DashboardState(rx.State):
         except Exception as e:  # noqa: BLE001
             logger.warning("drep votes page fetch failed (drep=%s page=%d): %s",
                            drep_id, page, e)
+
+    # ── 未投票 GA セクションのページネーション / ソート ────────────────
+
+    @rx.var
+    def unvoted_ga_sections(self) -> list[dict[str, str]]:
+        """表示用セクションのメタ + ページ情報（str のみ）。
+
+        GA 本体は unvoted_ga_page_gas で key 引きする（型を str に揃えるため分離）。
+        entry: { key, nickname, role, total, page, total_pages, has_prev, has_next, sort }
+        """
+        out: list[dict[str, str]] = []
+        for m in self.unvoted_ga_sections_meta:
+            key = m["key"]
+            raw = self._unvoted_raw.get(key, [])
+            page = int(self.unvoted_ga_pages.get(key, 0) or 0)
+            total = len(raw)
+            total_pages = max(1, (total + UNVOTED_GA_PAGE_SIZE - 1) // UNVOTED_GA_PAGE_SIZE)
+            out.append({
+                "key":         key,
+                "nickname":    m["nickname"],
+                "role":        m["role"],
+                "total":       str(total),
+                "page":        str(page + 1),
+                "total_pages": str(total_pages),
+                "has_prev":    "1" if page > 0 else "",
+                "has_next":    "1" if (page + 1) < total_pages else "",
+                "sort":        self.unvoted_ga_sorts.get(key, "oldest"),
+            })
+        return out
+
+    @rx.var
+    def unvoted_ga_page_gas(self) -> dict[str, list[dict[str, str]]]:
+        """各セクションの「現在ページ分」の GA リスト (key → [GA, ...])。
+
+        _unvoted_raw は block_time 昇順固定。sort="newest" のときは reverse する。
+        """
+        out: dict[str, list[dict[str, str]]] = {}
+        for m in self.unvoted_ga_sections_meta:
+            key = m["key"]
+            raw = self._unvoted_raw.get(key, [])
+            sort = self.unvoted_ga_sorts.get(key, "oldest")
+            gas = raw if sort == "oldest" else list(reversed(raw))
+            page = int(self.unvoted_ga_pages.get(key, 0) or 0)
+            start = page * UNVOTED_GA_PAGE_SIZE
+            out[key] = gas[start:start + UNVOTED_GA_PAGE_SIZE]
+        return out
+
+    @rx.event
+    def unvoted_ga_set_page(self, key: str, delta: int):
+        """指定セクションのページを delta(+1/-1) ぶん移動する。"""
+        cur = int(self.unvoted_ga_pages.get(key, 0) or 0)
+        raw = self._unvoted_raw.get(key, [])
+        total_pages = max(1, (len(raw) + UNVOTED_GA_PAGE_SIZE - 1) // UNVOTED_GA_PAGE_SIZE)
+        new = cur + delta
+        if 0 <= new < total_pages:
+            self.unvoted_ga_pages[key] = new
+
+    @rx.event
+    def unvoted_ga_toggle_sort(self, key: str):
+        """指定セクションのソート方向（古い順 ⇄ 新しい順）を切り替え、ページを先頭に戻す。"""
+        cur = self.unvoted_ga_sorts.get(key, "oldest")
+        self.unvoted_ga_sorts[key] = "newest" if cur == "oldest" else "oldest"
+        self.unvoted_ga_pages[key] = 0
 
     @rx.event
     async def on_load(self):
@@ -343,9 +410,11 @@ class DashboardState(rx.State):
         self.rewards_by_address = {}
         self.total_rewards_by_address = {}
         self.rewards_missing_addresses = []
-        self.unvoted_gas_self = []
+        self._unvoted_raw = {}
+        self.unvoted_ga_sections_meta = []
+        self.unvoted_ga_pages = {}
+        self.unvoted_ga_sorts = {}
         self.unvoted_gas_delegated = []
-        self.unvoted_gas_spo = []
         self.current_epoch_str = ""
         self.next_epoch_in_seconds = 0
         self.next_epoch_in_label = ""
@@ -620,7 +689,9 @@ class DashboardState(rx.State):
         for sa in addrs:
             epoch_map = by_addr_by_epoch.get(sa, {})
             items: list[dict[str, str]] = []
-            for ep in sorted(epoch_map.keys(), reverse=True):
+            # get_recent_rewards の LIMIT は行数ベースで余分に取れることがあるため、
+            # ここで各アドレスの直近 RECENT_REWARDS_EPOCHS エポックに明示的に絞る。
+            for ep in sorted(epoch_map.keys(), reverse=True)[:RECENT_REWARDS_EPOCHS]:
                 v = epoch_map[ep]
                 total_lov = v["member"] + v["leader"] + v["other"]
                 items.append({
@@ -685,28 +756,58 @@ class DashboardState(rx.State):
                 pass
 
     def _load_governance_actions(self, stake_addresses: list[dict]) -> None:
-        """未投票 GA (本人 / 委任先) と締切が近い GA を取得する。"""
+        """未投票 GA (本人 DRep / SPO はステークアドレスごと、委任先 DRep はまとめて) を取得する。"""
         # 現在エポックは _load_epoch_and_treasury で設定済みのものを利用
         try:
             cur_epoch = int(self.current_epoch_str) if self.current_epoch_str else 0
         except (TypeError, ValueError):
             cur_epoch = 0
 
-        # 自分が DRep として登録された stake_address (role="drep")
-        own_drep_ids = [
-            str(a.get("delegated_drep_id") or "")
-            for a in stake_addresses
-            if str(a.get("role") or "") == "drep" and a.get("delegated_drep_id")
-        ]
-        # 重複除去
-        own_drep_ids = list(dict.fromkeys(own_drep_ids))
-        try:
-            self.unvoted_gas_self = self._select_unvoted_gas_for_dreps(own_drep_ids, cur_epoch)
-        except Exception as e:  # noqa: BLE001
-            logger.warning("unvoted_gas_self failed: %s", e)
-            self.unvoted_gas_self = []
+        # ── 本人 DRep / SPO: ステークアドレスごとにセクション化 ──
+        raw: dict[str, list[dict[str, str]]] = {}
+        meta: list[dict[str, str]] = []
+        has_drep = False
+        has_spo = False
+        for a in stake_addresses:
+            addr = str(a.get("address") or "")
+            if not addr:
+                continue
+            nickname = str(a.get("nickname") or "") or (addr[:12] + "…")
+            # DRep 本人 (role="drep")
+            if str(a.get("role") or "") == "drep" and a.get("delegated_drep_id"):
+                has_drep = True
+                drep_id = str(a["delegated_drep_id"])
+                try:
+                    gas = self._select_unvoted_gas_for_dreps([drep_id], cur_epoch)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("unvoted_gas drep failed (addr=%s): %s", addr, e)
+                    gas = []
+                if gas:
+                    key = "drep:" + addr
+                    raw[key] = gas
+                    meta.append({"key": key, "nickname": nickname, "role": "drep"})
+            # SPO 本人 (spo_pool_id が登録されている)
+            if a.get("spo_pool_id"):
+                has_spo = True
+                pool_id = str(a["spo_pool_id"])
+                try:
+                    gas = self._select_unvoted_gas_for_spos([pool_id], cur_epoch)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("unvoted_gas spo failed (addr=%s): %s", addr, e)
+                    gas = []
+                if gas:
+                    key = "spo:" + addr
+                    raw[key] = gas
+                    meta.append({"key": key, "nickname": nickname, "role": "spo"})
+        self._unvoted_raw = raw
+        self.unvoted_ga_sections_meta = meta
+        self.unvoted_ga_pages = {m["key"]: 0 for m in meta}
+        self.unvoted_ga_sorts = {m["key"]: "oldest" for m in meta}
+        # 「あなたの未投票 GA」セクションの表示可否を確定 (GA の有無ではなくロールの有無)
+        self.is_drep = has_drep
+        self.is_spo = has_spo
 
-        # 委任先 DRep (role != "drep" の通常委任者の delegated_drep_id)
+        # ── 委任先 DRep (role != "drep" の通常委任者): 従来どおりまとめて取得 ──
         delegated_drep_ids = [
             str(a.get("delegated_drep_id") or "")
             for a in stake_addresses
@@ -721,22 +822,6 @@ class DashboardState(rx.State):
         except Exception as e:  # noqa: BLE001
             logger.warning("unvoted_gas_delegated failed: %s", e)
             self.unvoted_gas_delegated = []
-
-        # SPO 未投票 GA: spo_pool_id が登録されている stake_address のプールが未投票
-        spo_pool_ids = list({
-            str(a.get("spo_pool_id"))
-            for a in stake_addresses
-            if a.get("spo_pool_id")
-        })
-        try:
-            self.unvoted_gas_spo = self._select_unvoted_gas_for_spos(spo_pool_ids, cur_epoch)
-        except Exception as e:  # noqa: BLE001
-            logger.warning("unvoted_gas_spo failed: %s", e)
-            self.unvoted_gas_spo = []
-
-        # 「あなたの未投票 GA」セクションの表示可否を確定
-        self.is_drep = bool(own_drep_ids)
-        self.is_spo = bool(spo_pool_ids)
 
     # ── 内部 SQL ───────────────────────────────────
 
@@ -814,15 +899,15 @@ class DashboardState(rx.State):
             params.append(current_epoch)
         sql = (
             "SELECT g.proposal_id, g.title, g.title_ja, g.proposal_type, g.expiration, "
-            "g.block_time, g.proposed_epoch, "
+            "g.block_time, g.proposed_epoch, g.proposal_index, "
             "s.drep_yes_pct, s.drep_no_pct, "
             "s.pool_yes_pct, s.pool_no_pct, "
             "s.committee_yes_pct, s.committee_no_pct "
             "FROM governance_actions g "
             "LEFT JOIN proposal_voting_summary s ON g.proposal_id = s.proposal_id "
             f"WHERE {' AND '.join(where)} "
-            "ORDER BY g.expiration ASC "
-            f"LIMIT {UNVOTED_GA_LIMIT}"
+            # 提出が古いものを先頭に。同一 Tx 内は proposal_index 昇順。
+            "ORDER BY g.block_time ASC, g.proposal_index ASC"
         )
         with get_db() as (cursor, _):
             cursor.execute(sql, params)
@@ -882,15 +967,15 @@ class DashboardState(rx.State):
             params.append(current_epoch)
         sql = (
             "SELECT g.proposal_id, g.title, g.title_ja, g.proposal_type, "
-            "g.expiration, g.block_time, g.proposed_epoch, "
+            "g.expiration, g.block_time, g.proposed_epoch, g.proposal_index, "
             "s.pool_yes_pct, s.pool_no_pct, "
             "s.drep_yes_pct, s.drep_no_pct, "
             "s.committee_yes_pct, s.committee_no_pct "
             "FROM governance_actions g "
             "LEFT JOIN proposal_voting_summary s ON g.proposal_id = s.proposal_id "
             f"WHERE {' AND '.join(where)} "
-            "ORDER BY g.expiration ASC "
-            f"LIMIT {UNVOTED_GA_LIMIT}"
+            # 提出が古いものを先頭に。同一 Tx 内は proposal_index 昇順。
+            "ORDER BY g.block_time ASC, g.proposal_index ASC"
         )
         with get_db() as (cursor, _):
             cursor.execute(sql, params)
