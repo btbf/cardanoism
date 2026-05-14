@@ -313,6 +313,21 @@ def _breadcrumb() -> rx.Component:
 def _filter_bar() -> rx.Component:
     return rx.flex(
         rx.input(
+            rx.cond(
+                VoteMatrixState.inputed_value != "",
+                rx.input.slot(
+                    rx.icon(
+                        "x",
+                        size=16,
+                        cursor="pointer",
+                        on_click=VoteMatrixState.set_search(""),
+                        style={"_hover": {"color": "var(--gray-12)"}},
+                    ),
+                    side="right",
+                    color="var(--gray-9)",
+                ),
+                rx.fragment(),
+            ),
             placeholder=AuthState.t["matrix_search_placeholder"],
             value=VoteMatrixState.inputed_value,
             on_change=VoteMatrixState.set_search.debounce(300),
@@ -342,14 +357,6 @@ def _filter_bar() -> rx.Component:
         rx.hstack(
             rx.text(AuthState.t["matrix_order_label"], size="2", color="var(--gray-11)"),
             rx.el.button(
-                rx.icon(
-                    rx.cond(
-                        VoteMatrixState.ga_order == "asc",
-                        "arrow-right",
-                        "arrow-left",
-                    ),
-                    size=14,
-                ),
                 rx.text(
                     rx.cond(
                         VoteMatrixState.ga_order == "asc",
@@ -363,7 +370,6 @@ def _filter_bar() -> rx.Component:
                 style={
                     "display":      "inline-flex",
                     "alignItems":   "center",
-                    "gap":          "6px",
                     "padding":      "5px 12px",
                     "border":       "1px solid var(--gray-6)",
                     "borderRadius": "9999px",

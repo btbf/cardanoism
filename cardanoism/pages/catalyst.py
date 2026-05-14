@@ -142,6 +142,21 @@ def catalyst() -> rx.Component:
         rx.html(FILTER_THEME_CSS),
         rx.box(
             rx.input(
+                rx.cond(
+                    AppState.search_query != "",
+                    rx.input.slot(
+                        rx.icon(
+                            "x",
+                            size=16,
+                            cursor="pointer",
+                            on_click=AppState.set_inputed_value(""),
+                            style={"_hover": {"color": "var(--gray-12)"}},
+                        ),
+                        side="right",
+                        color="var(--gray-9)",
+                    ),
+                    rx.fragment(),
+                ),
                 placeholder=AuthState.t["catalyst_search_placeholder"],
                 size="3",
                 max_length=100,

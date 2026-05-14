@@ -116,21 +116,49 @@ def _ref_item(ref: Dict[str, Any]) -> rx.Component:
 
 # ─── 詳細コンテンツ（モーダル・個別ページ共通） ──────────────────────────────
 
-_GOVTOOL_BTN_STYLE = {
-    "display": "inline-flex",
-    "align_items": "center",
-    "gap": "4px",
-    "padding": "4px 10px",
-    "border_radius": "6px",
-    "font_size": "13px",
-    "font_weight": "500",
-    "cursor": "pointer",
-    "border": "1px solid var(--gray-5)",
-    "background": "var(--gray-2)",
-    "color": "var(--gray-11)",
-    "text_decoration": "none",
-    "_hover": {"background": "var(--gray-4)"},
-}
+def _gov_id_row(action: Dict[str, Any]) -> rx.Component:
+    """proposal_id (gov_id) の表示 + コピーボタン。カード・モーダル・詳細ページ共通。
+    カードでは親要素に on_click / link があるため、コピー操作が
+    カード遷移・モーダル展開に伝播しないよう stop_propagation + prevent_default を付ける。
+    """
+    proposal_id = action["proposal_id"].to(str)
+    return rx.hstack(
+        rx.text(
+            proposal_id,
+            size="1",
+            color="var(--gray-10)",
+            style={
+                "fontFamily": "var(--code-font-family, ui-monospace, monospace)",
+                "overflow": "hidden",
+                "textOverflow": "ellipsis",
+                "whiteSpace": "nowrap",
+                "maxWidth": "260px",
+            },
+        ),
+        rx.icon(
+            "copy",
+            size=13,
+            color="var(--gray-9)",
+            cursor="pointer",
+            flex_shrink="0",
+            on_click=[
+                rx.set_clipboard(proposal_id).stop_propagation.prevent_default,
+                rx.toast(
+                    AuthState.t["gov_id_copied"],
+                    position="top-center",
+                    style={
+                        "background-color": "var(--indigo-11)",
+                        "color": "white",
+                        "border-radius": "0.5rem",
+                    },
+                ).stop_propagation.prevent_default,
+            ],
+            style={"_hover": {"color": "var(--gray-12)"}},
+        ),
+        spacing="1",
+        align="center",
+        style={"minWidth": "0"},
+    )
 
 
 def governance_detail_header(action: Dict[str, Any], close_btn=None) -> rx.Component:
@@ -257,23 +285,6 @@ def governance_detail_header(action: Dict[str, Any], close_btn=None) -> rx.Compo
         align="center",
     )
 
-    links_row = rx.cond(
-        action["govtool_url"],
-        rx.link(
-            rx.hstack(
-                rx.text("Gov Tool", size="1"),
-                rx.icon("external-link", size=12),
-                spacing="1",
-                align="center",
-            ),
-            href=action["govtool_url"],
-            is_external=True,
-            underline="none",
-            style=_GOVTOOL_BTN_STYLE,
-        ),
-        rx.fragment(),
-    )
-
     title_row = (
         rx.hstack(
             title_block,
@@ -288,16 +299,9 @@ def governance_detail_header(action: Dict[str, Any], close_btn=None) -> rx.Compo
 
     return rx.vstack(
         title_row,
-        rx.hstack(
-            badge_row,
-            links_row,
-            justify="between",
-            align="center",
-            width="100%",
-            wrap="wrap",
-            spacing="2",
-        ),
+        badge_row,
         epoch_row,
+        rx.hstack(_gov_id_row(action), width="100%", wrap="wrap"),
         rx.divider(),
         spacing="3",
         width="100%",
@@ -1731,6 +1735,7 @@ def ga_list_card(action: Dict[str, Any]) -> rx.Component:
                 "width":        "100%",
             },
         ),
+        _gov_id_row(action),
         _withdrawal_inline(action),
         rx.cond(
             _has_any_text("abstract_ja_card", "abstract_card", action),
@@ -1838,6 +1843,7 @@ def ga_grid_card(action: Dict[str, Any]) -> rx.Component:
             color="var(--gray-12)",
             class_name="ga-title proposal-title",
         ),
+        _gov_id_row(action),
         _withdrawal_inline(action),
         rx.cond(
             _has_any_text("abstract_ja_card", "abstract_card", action),

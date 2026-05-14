@@ -212,27 +212,28 @@ python3 -m venv .venv
 | `TELEGRAM_BOT_TOKEN` | ⚠️ | Telegram 通知を使う場合 |
 | `KOIOS_API_KEY` | 任意 | Koios の認証キー（DRep 投票時のタイトル補完・プール実績取得に使用） |
 
-VPS 側で Infisical CLI をインストールし、Machine Identity (Service Token) を発行して非対話認証する:
+VPS 側で Infisical CLI をインストールし、実行ユーザーで対話 login して認証する:
 
 ```bash
 # CLI インストール
 curl -1sLf https://artifacts-cli.infisical.com/setup.deb.sh | sudo -E bash
 sudo apt install -y infisical
 
-# Service Token を保存 (Infisical Web UI → Project → Access Control → Machine Identities で発行)
-sudo install -m 0600 /dev/stdin /etc/cardanoism/infisical.token <<< "<TOKEN>"
-sudo chown cardanoism:cardanoism /etc/cardanoism/infisical.token
+# 実行ユーザーで一度だけ対話 login (credentials は ~/.infisical/ に保存される)
+sudo -u cardanoism infisical login
 ```
+
+> credentials が期限切れになった場合は同じコマンドで再認証する。
 
 ### 5-3. 起動方法
 
 ```bash
 cd /opt/cardanoism
-infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- \
+infisical run --env=mainnet -- \
     .venv/bin/python ogmios_listener.py
 
 # 初回起動時のみ tip から再開
-infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- \
+infisical run --env=mainnet -- \
     .venv/bin/python ogmios_listener.py --from-tip
 ```
 
@@ -252,8 +253,8 @@ Requires=ogmios.service
 Type=simple
 User=cardanoism
 WorkingDirectory=/opt/cardanoism
-# Infisical Service Token をファイル経由で読み込む (Token 自体は環境変数として漏らさない)
-ExecStart=/usr/bin/bash -c '/usr/local/bin/infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- /opt/cardanoism/.venv/bin/python ogmios_listener.py'
+# 実行ユーザー (cardanoism) の ~/.infisical/ にある対話 login の credentials を使う
+ExecStart=/usr/local/bin/infisical run --env=mainnet -- /opt/cardanoism/.venv/bin/python ogmios_listener.py
 Restart=always
 RestartSec=10
 StandardOutput=journal

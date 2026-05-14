@@ -34,7 +34,9 @@ from cardanoism.backend.price import (
     format_usd_short,
 )
 from cardanoism.components.breadcrumb import breadcrumb
+from cardanoism.components.governance_card import ga_status_badge
 from cardanoism.components.governance_nav import governance_subnav
+from cardanoism.components.proposal_card import STATUS_DOT_STYLE
 from cardanoism.components.login_modal import login_modal
 
 logger = logging.getLogger(__name__)
@@ -362,7 +364,7 @@ class TreasuryState(rx.State):
                         "enacted_epoch_display": str(int(enacted)) if enacted is not None else "",
                         "is_enacted": "1" if enacted is not None else "",
                         "is_active": "1" if status_str == "active" else "",
-                        "status": status_str,
+                        "ga_status": status_str,
                         "amount_lovelace": str(w_lovelace),
                         "amount_ada": format_ada(w_lovelace, integer=True) if w_lovelace else "-",
                         "amount_jpy": jpy_d,
@@ -864,15 +866,6 @@ _STATUS_COLORS = {
 
 def _proposal_row(p) -> rx.Component:
     """1件の TreasuryWithdrawals 提案カード。active 提案にはシミュレーション用チェックボックス付き。"""
-    status_badge = rx.match(
-        p["status"],
-        ("active",   rx.badge(AuthState.t["gov_status_active"],   color_scheme="green",  variant="soft")),
-        ("ratified", rx.badge(AuthState.t["gov_status_ratified"], color_scheme="blue",   variant="soft")),
-        ("enacted",  rx.badge(AuthState.t["gov_status_enacted"],  color_scheme="violet", variant="soft")),
-        ("dropped",  rx.badge(AuthState.t["gov_status_dropped"],  color_scheme="gray",   variant="soft")),
-        ("expired",  rx.badge(AuthState.t["gov_status_expired"],  color_scheme="gray",   variant="soft")),
-        rx.badge(p["status"], variant="soft"),
-    )
     title_display = rx.cond(
         AuthState.language == "en",
         rx.cond(p["title_en"] != "", p["title_en"], p["title_ja"]),
@@ -882,7 +875,7 @@ def _proposal_row(p) -> rx.Component:
     body = rx.link(
         rx.vstack(
             rx.hstack(
-                status_badge,
+                ga_status_badge(p),
                 rx.text(
                     AuthState.t["ncl_proposal_proposed_label"] + " " + p["proposed_epoch_display"],
                     size="1", color="var(--gray-10)",
@@ -1054,6 +1047,7 @@ def governance_treasury_page() -> rx.Component:
     return rx.cond(
         TreasuryState.load,
         rx.box(
+            STATUS_DOT_STYLE,
             login_modal(),
             rx.vstack(
                 _breadcrumb(),

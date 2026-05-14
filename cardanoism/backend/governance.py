@@ -183,6 +183,18 @@ def _extract_fields(item: dict) -> dict:
     body = meta.get("body") or {}
     refs = body.get("references") or []
 
+    # CIP-100/108: authors は meta_json 直下。1 GA に複数いることがあるので name を配列で持つ。
+    authors = meta.get("authors")
+    author_names = None
+    if isinstance(authors, list):
+        names = [
+            str(a.get("name")).strip()
+            for a in authors
+            if isinstance(a, dict) and a.get("name")
+        ]
+        if names:
+            author_names = json.dumps(names, ensure_ascii=False)
+
     deposit = item.get("deposit")
     meta_is_valid = item.get("meta_is_valid")
     action_anchor_url, action_anchor_hash = _extract_action_anchor(item, body)
@@ -229,6 +241,7 @@ def _extract_fields(item: dict) -> dict:
         "motivation":       body.get("motivation") or None,
         "rationale":        body.get("rationale") or None,
         "references_json":  json.dumps(refs, ensure_ascii=False) if refs else None,
+        "authors_json":     author_names,
         "action_anchor_url":  action_anchor_url,
         "action_anchor_hash": action_anchor_hash,
         "spo_target":         spo_target,
@@ -264,6 +277,7 @@ def upsert_proposal(fields: dict) -> bool:
                 dropped_epoch, expired_epoch, expiration,
                 block_time, meta_url, meta_hash, meta_is_valid,
                 title, `abstract`, motivation, rationale, references_json,
+                authors_json,
                 action_anchor_url, action_anchor_hash,
                 last_event_slot,
                 spo_target
@@ -274,18 +288,20 @@ def upsert_proposal(fields: dict) -> bool:
                 ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
+                ?,
                 ?, ?,
                 ?,
                 ?
             )
             ON DUPLICATE KEY UPDATE
-                -- ステータスエポック + 引き出し情報 + action anchor を更新
+                -- ステータスエポック + 引き出し情報 + authors + action anchor を更新
                 ratified_epoch            = VALUES(ratified_epoch),
                 enacted_epoch             = VALUES(enacted_epoch),
                 dropped_epoch             = VALUES(dropped_epoch),
                 expired_epoch             = VALUES(expired_epoch),
                 withdrawal_total_lovelace = VALUES(withdrawal_total_lovelace),
                 withdrawal_json           = VALUES(withdrawal_json),
+                authors_json              = VALUES(authors_json),
                 action_anchor_url         = VALUES(action_anchor_url),
                 action_anchor_hash        = VALUES(action_anchor_hash),
                 -- last_event_slot は listener が書いた値を保持 (Koios 由来 NULL で上書きしない)
@@ -305,6 +321,7 @@ def upsert_proposal(fields: dict) -> bool:
                 fields["meta_is_valid"],
                 fields["title"],           fields["abstract"],
                 fields["motivation"],      fields["rationale"],        fields["references_json"],
+                fields.get("authors_json"),
                 fields.get("action_anchor_url"), fields.get("action_anchor_hash"),
                 fields.get("last_event_slot"),
                 fields.get("spo_target"),

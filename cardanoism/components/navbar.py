@@ -325,6 +325,9 @@ def navbar_icons() -> rx.Component:
             "flex":     "0 1 13em",  # 基本 13em、足りなければ縮む
             "minWidth": "0",
             "display":  "block",
+            # スマホでタップ時の黄色いハイライトを抑止
+            "WebkitTapHighlightColor": "transparent",
+            "outline":  "none",
         },
     )
 

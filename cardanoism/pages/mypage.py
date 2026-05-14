@@ -1763,26 +1763,32 @@ def mypage() -> rx.Component:
                         rx.tabs.trigger(
                             rx.hstack(rx.icon("layout-dashboard", size=14), rx.text(AuthState.t["tab_dashboard"]), spacing="1"),
                             value="dashboard",
+                            cursor="pointer",
                         ),
                         rx.tabs.trigger(
                             rx.hstack(rx.icon("bookmark", size=14), rx.text(AuthState.t["tab_favorites"]), spacing="1"),
                             value="favorites",
+                            cursor="pointer",
                         ),
                         rx.tabs.trigger(
                             rx.hstack(rx.icon("user", size=14), rx.text(AuthState.t["tab_profile"]), spacing="1"),
                             value="profile",
+                            cursor="pointer",
                         ),
                         rx.tabs.trigger(
                             rx.hstack(rx.icon("wallet", size=14), rx.text(AuthState.t["tab_stake"]), spacing="1"),
                             value="stake",
+                            cursor="pointer",
                         ),
                         rx.tabs.trigger(
                             rx.hstack(rx.icon("bell", size=14), rx.text(AuthState.t["tab_notification"]), spacing="1"),
                             value="notification",
+                            cursor="pointer",
                         ),
                         rx.tabs.trigger(
                             rx.hstack(rx.icon("crown", size=14), rx.text(AuthState.t["tab_subscription"]), spacing="1"),
                             value="subscription",
+                            cursor="pointer",
                         ),
                         wrap="wrap",
                     ),

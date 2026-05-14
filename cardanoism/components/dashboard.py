@@ -328,19 +328,17 @@ def _drep_vote_badge(vote_var: rx.Var) -> rx.Component:
 
 
 def _drep_vote_rationale_dialog(v: rx.Var) -> rx.Component:
-    """投票理由ダイアログ。rationale が空なら trigger 自体表示しない。"""
+    """投票理由ダイアログ。GA 詳細ページの投票理由ダイアログと同じフォーマット
+    (投票結果バッジ + divider + 日本語訳ラベル + 原文ラベル) で表示する。
+    rationale が空なら trigger 自体表示しない。
+    """
     has_rationale = (v["rationale_ja"] != "") | (v["rationale"] != "")
-    rationale_text = rx.cond(
-        AuthState.language == "ja",
-        rx.cond(v["rationale_ja"] != "", v["rationale_ja"], v["rationale"]),
-        v["rationale"],
-    )
     return rx.cond(
         has_rationale,
         rx.dialog.root(
             rx.dialog.trigger(
                 rx.el.button(
-                    rx.icon("message-square", size=11, color="var(--gray-10)"),
+                    rx.icon("paperclip", size=11, color="var(--gray-10)"),
                     rx.text(AuthState.t["dashboard_vote_rationale"], size="1", color="var(--gray-11)"),
                     style={
                         "display": "inline-flex",
@@ -356,26 +354,55 @@ def _drep_vote_rationale_dialog(v: rx.Var) -> rx.Component:
                 ),
             ),
             rx.dialog.content(
-                rx.dialog.title(AuthState.t["dashboard_vote_rationale_title"], size="4"),
-                rx.scroll_area(
-                    rx.text(
-                        rationale_text,
-                        size="2", color="var(--gray-12)",
-                        style={"whiteSpace": "pre-wrap", "lineHeight": "1.6"},
+                rx.dialog.title(AuthState.t["gov_vote_rationale_title"]),
+                rx.vstack(
+                    # 投票結果バッジ (v["vote"] は "yes"/"no"/"abstain")
+                    rx.match(
+                        v["vote"],
+                        ("yes",     rx.badge(AuthState.t["vote_label_yes"],     color_scheme="green", variant="solid", size="2", radius="full")),
+                        ("no",      rx.badge(AuthState.t["vote_label_no"],      color_scheme="red",   variant="solid", size="2", radius="full")),
+                        ("abstain", rx.badge(AuthState.t["vote_label_abstain"], color_scheme="gray",  variant="solid", size="2", radius="full")),
+                        rx.fragment(),
                     ),
-                    type="auto", scrollbars="vertical",
-                    style={"maxHeight": "60vh"},
-                ),
-                rx.flex(
+                    rx.divider(),
+                    # 日本語訳 (あれば)
+                    rx.cond(
+                        v["rationale_ja"] != "",
+                        rx.vstack(
+                            rx.text(AuthState.t["gov_vote_rationale_ja_label"], size="2", weight="bold", color="var(--gray-12)"),
+                            rx.text(
+                                v["rationale_ja"],
+                                size="2", color="var(--gray-12)",
+                                style={"whiteSpace": "pre-wrap", "lineHeight": "1.6"},
+                            ),
+                            spacing="1", align="start", width="100%",
+                        ),
+                        rx.fragment(),
+                    ),
+                    # 原文 (あれば)
+                    rx.cond(
+                        v["rationale"] != "",
+                        rx.vstack(
+                            rx.text(AuthState.t["gov_vote_rationale_en_label"], size="2", weight="bold", color="var(--gray-12)"),
+                            rx.text(
+                                v["rationale"],
+                                size="2", color="var(--gray-11)",
+                                style={"whiteSpace": "pre-wrap", "lineHeight": "1.6"},
+                            ),
+                            spacing="1", align="start", width="100%",
+                        ),
+                        rx.fragment(),
+                    ),
                     rx.dialog.close(
                         rx.button(
-                            AuthState.t["dashboard_vote_rationale_close"],
-                            size="2", variant="soft", color_scheme="gray", cursor="pointer",
+                            AuthState.t["gov_vote_rationale_close"],
+                            variant="soft", size="2", cursor="pointer",
                         ),
                     ),
-                    justify="end", margin_top="16px",
+                    spacing="3", align="start", width="100%",
                 ),
-                max_width="640px",
+                max_width=["calc(100vw - 16px)", "calc(100vw - 16px)", "680px"],
+                style={"boxSizing": "border-box"},
             ),
         ),
         rx.fragment(),
