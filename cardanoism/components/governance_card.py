@@ -552,6 +552,19 @@ def _withdrawal_inline(action: Dict[str, Any]) -> rx.Component:
                 action["withdrawal_total_usd_display"].to(str),
                 size="1",
             ),
+            # enacted かつ全受取先 paid のとき、金額の右隣に出金済みバッジ
+            rx.cond(
+                action["withdrawal_paid"].to(str) != "",
+                rx.badge(
+                    rx.hstack(
+                        rx.icon("circle-check", size=12),
+                        rx.text(AuthState.t["gov_withdrawal_paid"]),
+                        spacing="1", align="center",
+                    ),
+                    color_scheme="green", variant="soft", radius="full", size="1",
+                ),
+                rx.fragment(),
+            ),
             spacing="2", align="center", wrap="wrap",
         ),
         rx.fragment(),
@@ -577,10 +590,25 @@ def _withdrawal_section(action: Dict[str, Any]) -> rx.Component:
                         ),
                         spacing="2", align="baseline", wrap="wrap",
                     ),
-                    # 単一受取先は内訳行が出ないので合計額エリアに出金状況を表示
+                    # 単一受取先は内訳行が出ないので合計額エリアに出金状況 + 引き出し先を表示
                     rx.cond(
                         action["withdrawal_single_paid"] != "",
-                        _paid_badge(action["withdrawal_single_paid_epoch"]),
+                        rx.vstack(
+                            _paid_badge(action["withdrawal_single_paid_epoch"]),
+                            rx.hstack(
+                                rx.code(action["withdrawal_single_stake_short"], size="1"),
+                                rx.text("→", size="2", color="var(--gray-8)"),
+                                rx.text(action["withdrawal_single_amount_ada"], size="2", weight="medium"),
+                                rx.text("ADA", size="1", color="var(--gray-10)"),
+                                _fiat_inline(
+                                    action["withdrawal_single_amount_jpy"],
+                                    action["withdrawal_single_amount_usd"],
+                                    size="1",
+                                ),
+                                spacing="2", align="center", wrap="wrap",
+                            ),
+                            spacing="1", align="start", width="100%",
+                        ),
                         rx.fragment(),
                     ),
                     rx.cond(

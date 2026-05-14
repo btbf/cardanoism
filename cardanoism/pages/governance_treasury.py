@@ -115,6 +115,8 @@ class TreasuryState(rx.State):
     # 直近 N エポックのトレジャリー残高折れ線グラフ SVG
     treasury_chart_svg: str = ""
     treasury_chart_epoch_count: int = 0
+    # エポックごとの前エポック比 増減表（新しいエポックが先頭）
+    treasury_delta_rows: List[Dict[str, str]] = []
 
     # NCL 期間内の TreasuryWithdrawals 提案
     proposals: List[Dict[str, Any]] = []
@@ -438,11 +440,35 @@ class TreasuryState(rx.State):
         if not history or len(history) < 2:
             self.treasury_chart_svg = ""
             self.treasury_chart_epoch_count = 0
+            self.treasury_delta_rows = []
             return
 
         history = sorted(history, key=lambda r: int(r["epoch_no"]))
         self.treasury_chart_svg = build_treasury_chart_svg(history)
         self.treasury_chart_epoch_count = len(history)
+
+        # 前エポック比の増減表（新しいエポックが先頭）
+        delta_rows: list[dict] = []
+        for i in range(1, len(history)):
+            prev_bal = int(history[i - 1].get("treasury") or 0)
+            curr_bal = int(history[i].get("treasury") or 0)
+            delta = curr_bal - prev_bal
+            pct = (delta / prev_bal * 100.0) if prev_bal > 0 else 0.0
+            if delta > 0:
+                sign, delta_str, pct_str = "up", "+" + format_ada(delta, integer=True), f"+{pct:.2f}"
+            elif delta < 0:
+                sign, delta_str, pct_str = "down", format_ada(delta, integer=True), f"{pct:.2f}"
+            else:
+                sign, delta_str, pct_str = "flat", format_ada(0, integer=True), "0.00"
+            delta_rows.append({
+                "epoch": str(history[i]["epoch_no"]),
+                "balance_ada": format_ada(curr_bal, integer=True),
+                "delta_ada": delta_str,
+                "delta_pct": pct_str,
+                "delta_sign": sign,
+            })
+        delta_rows.reverse()  # 新しいエポックが先頭
+        self.treasury_delta_rows = delta_rows
 
     def set_active_tab(self, tab: str):
         self.active_tab = tab
@@ -503,6 +529,70 @@ def _breadcrumb() -> rx.Component:
 
 # ─── トレジャリー残高 折れ線グラフ ─────────────────────────────────────────────
 
+def _delta_row(row) -> rx.Component:
+    """増減表の1行。増減と増減率は符号に応じて色分け（増=緑 / 減=赤）。"""
+    color = rx.match(
+        row["delta_sign"],
+        ("up", "var(--grass-11)"),
+        ("down", "var(--red-11)"),
+        "var(--gray-10)",
+    )
+    return rx.table.row(
+        rx.table.cell(rx.text(row["epoch"], size="1")),
+        rx.table.cell(
+            rx.hstack(
+                rx.text(row["balance_ada"], size="1", weight="medium"),
+                rx.text("ADA", size="1", color="var(--gray-9)"),
+                spacing="1", align="baseline",
+            ),
+        ),
+        rx.table.cell(
+            rx.hstack(
+                rx.text(row["delta_ada"], size="1", weight="medium", color=color),
+                rx.text("ADA", size="1", color="var(--gray-9)"),
+                spacing="1", align="baseline",
+            ),
+        ),
+        rx.table.cell(rx.text(row["delta_pct"] + "%", size="1", color=color)),
+    )
+
+
+def _delta_table() -> rx.Component:
+    """エポックごとの前エポック比 増減表（グラフと同じ範囲・新しいエポックが上）。"""
+    return rx.cond(
+        TreasuryState.treasury_delta_rows,
+        rx.vstack(
+            rx.text(
+                AuthState.t["treasury_delta_title"],
+                size="2", weight="bold", color="var(--gray-12)",
+            ),
+            rx.box(
+                rx.table.root(
+                    rx.table.header(
+                        rx.table.row(
+                            rx.table.column_header_cell(AuthState.t["treasury_delta_col_epoch"]),
+                            rx.table.column_header_cell(AuthState.t["treasury_delta_col_balance"]),
+                            rx.table.column_header_cell(AuthState.t["treasury_delta_col_delta"]),
+                            rx.table.column_header_cell(AuthState.t["treasury_delta_col_pct"]),
+                        )
+                    ),
+                    rx.table.body(
+                        rx.foreach(TreasuryState.treasury_delta_rows, _delta_row),
+                    ),
+                    variant="surface",
+                    size="1",
+                ),
+                width="100%",
+                overflow_x="auto",
+                max_height="360px",
+                overflow_y="auto",
+            ),
+            spacing="2", width="100%", align="stretch",
+        ),
+        rx.fragment(),
+    )
+
+
 def _flow_card() -> rx.Component:
     """直近 N エポックのトレジャリー残高を折れ線グラフで表示する。"""
     head = rx.hstack(
@@ -532,6 +622,7 @@ def _flow_card() -> rx.Component:
                     width="100%",
                     overflow_x="auto",
                 ),
+                _delta_table(),
                 spacing="3",
                 width="100%",
                 align="stretch",
