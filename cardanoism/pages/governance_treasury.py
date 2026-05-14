@@ -454,16 +454,35 @@ class TreasuryState(rx.State):
             curr_bal = int(history[i].get("treasury") or 0)
             delta = curr_bal - prev_bal
             pct = (delta / prev_bal * 100.0) if prev_bal > 0 else 0.0
+            balance_jpy, balance_usd = _fiat_pair(
+                curr_bal / 1_000_000, self.fiat_ada_jpy, self.fiat_ada_usd
+            )
+            delta_jpy, delta_usd = _fiat_pair(
+                delta / 1_000_000, self.fiat_ada_jpy, self.fiat_ada_usd
+            )
             if delta > 0:
-                sign, delta_str, pct_str = "up", "+" + format_ada(delta, integer=True), f"+{pct:.2f}"
+                sign = "up"
+                delta_str = "+" + format_ada(delta, integer=True)
+                pct_str = f"+{pct:.2f}"
+                # 増のとき法定通貨にも + を付ける（format_jpy/usd_short は - のみ付与）
+                delta_jpy = ("+" + delta_jpy) if delta_jpy else ""
+                delta_usd = ("+" + delta_usd) if delta_usd else ""
             elif delta < 0:
-                sign, delta_str, pct_str = "down", format_ada(delta, integer=True), f"{pct:.2f}"
+                sign = "down"
+                delta_str = format_ada(delta, integer=True)
+                pct_str = f"{pct:.2f}"
             else:
-                sign, delta_str, pct_str = "flat", format_ada(0, integer=True), "0.00"
+                sign = "flat"
+                delta_str = format_ada(0, integer=True)
+                pct_str = "0.00"
             delta_rows.append({
                 "epoch": str(history[i]["epoch_no"]),
                 "balance_ada": format_ada(curr_bal, integer=True),
+                "balance_jpy": balance_jpy,
+                "balance_usd": balance_usd,
                 "delta_ada": delta_str,
+                "delta_jpy": delta_jpy,
+                "delta_usd": delta_usd,
                 "delta_pct": pct_str,
                 "delta_sign": sign,
             })
@@ -543,14 +562,16 @@ def _delta_row(row) -> rx.Component:
             rx.hstack(
                 rx.text(row["balance_ada"], size="1", weight="medium"),
                 rx.text("ADA", size="1", color="var(--gray-9)"),
-                spacing="1", align="baseline",
+                _fiat_inline(row["balance_jpy"], row["balance_usd"], size="1"),
+                spacing="1", align="baseline", wrap="wrap",
             ),
         ),
         rx.table.cell(
             rx.hstack(
                 rx.text(row["delta_ada"], size="1", weight="medium", color=color),
                 rx.text("ADA", size="1", color="var(--gray-9)"),
-                spacing="1", align="baseline",
+                _fiat_inline(row["delta_jpy"], row["delta_usd"], color=color, size="1"),
+                spacing="1", align="baseline", wrap="wrap",
             ),
         ),
         rx.table.cell(rx.text(row["delta_pct"] + "%", size="1", color=color)),
@@ -581,6 +602,8 @@ def _delta_table() -> rx.Component:
                     ),
                     variant="surface",
                     size="1",
+                    # スマホで列がつぶれないよう最小幅を確保し、親 box で横スクロールさせる
+                    min_width="460px",
                 ),
                 width="100%",
                 overflow_x="auto",

@@ -1778,6 +1778,8 @@ def ga_list_card(action: Dict[str, Any]) -> rx.Component:
             spacing="2",
             wrap="wrap",
             align="center",
+            # 右上に絶対配置するお気に入りハートと重ならないよう右に余白
+            padding_right="34px",
         ),
         rx.text(
             rx.cond(
@@ -1842,26 +1844,23 @@ def ga_list_card(action: Dict[str, Any]) -> rx.Component:
         on_click=GovernanceState.open_modal(action),
         cursor="pointer",
     )
-    # mobile_only / tablet_and_desktop の wrapper div に flex を効かせるため、
-    # rx.box で囲んで flex/min-width を持たせる。
-    content = rx.hstack(
+    # お気に入りハートは独立カラムにせず、本文の右上に絶対配置で重ねる（最前面・カラム化しない）。
+    content = rx.box(
         rx.box(
             rx.mobile_only(mobile_clickable),
             rx.tablet_and_desktop(desktop_clickable),
-            flex="1",
-            min_width="0",
             width="100%",
             style={"overflow": "hidden"},
         ),
         rx.box(
             _ga_fav_btn_list(action),
-            flex_shrink="0",
-            padding_top="2px",
+            position="absolute",
+            top="0",
+            right="0",
+            z_index="10",
         ),
-        align="start",
-        spacing="2",
+        position="relative",
         width="100%",
-        style={"minWidth": "0"},
     )
 
     return rx.card(
