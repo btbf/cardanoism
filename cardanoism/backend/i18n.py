@@ -787,6 +787,8 @@ UI_JA: dict[str, str] = {
     "dashboard_unvoted_spo_label":        "あなたのプール (SPO) が未投票",
     "dashboard_drep_votes_total":         "件数",
     "dashboard_unvoted_empty":            "現在未投票のアクティブ提案はありません",
+    "dashboard_unvoted_sort_oldest":      "古い順",
+    "dashboard_unvoted_sort_newest":      "新しい順",
     "dashboard_ga_deadline_label":        "期限:",
     "dashboard_login_required":           "ダッシュボードを表示するにはログインが必要です",
 
@@ -1764,6 +1766,8 @@ UI_EN: dict[str, str] = {
     "dashboard_unvoted_spo_label":        "Your pool (SPO) hasn't voted",
     "dashboard_drep_votes_total":         "Total",
     "dashboard_unvoted_empty":            "No pending active proposals",
+    "dashboard_unvoted_sort_oldest":      "Oldest first",
+    "dashboard_unvoted_sort_newest":      "Newest first",
     "dashboard_ga_deadline_label":        "Deadline:",
     "dashboard_login_required":           "Log in to view your dashboard",
 
