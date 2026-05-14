@@ -1422,6 +1422,10 @@ def _format_ga_row(row: Dict[str, Any], fiat_rate: Dict[str, float] | None = Non
     row["abstract_card"]    = _strip_leading_urls(str(row.get("abstract") or ""))
     row["abstract_ja_card"] = _strip_leading_urls(str(row.get("abstract_ja") or ""))
 
+    # 一覧カードの出金ステータス表示用。data_fetch が enacted TreasuryWithdrawals に対し
+    # 全受取先 paid のとき "1" を上書きする。スキーマ一貫性のため全 GA に持たせる。
+    row["withdrawal_paid"] = ""
+
     refs_raw = row.get("references_json")
     if "references_list" not in row:
         if refs_raw and isinstance(refs_raw, str):
@@ -1578,6 +1582,19 @@ class GovernanceState(rx.State):
                     formatted = _format_ga_row(r, fiat_rate)
                     _attach_voting_summary(formatted, protocol_params)
                     out.append(formatted)
+                # enacted な TreasuryWithdrawals の出金状況をマージ（一覧カードの「出金済み」表示用）
+                enacted_tw_ids = [
+                    a["proposal_id"] for a in out
+                    if a.get("proposal_type") == "TreasuryWithdrawals"
+                    and a.get("ga_status") == "enacted"
+                    and a.get("proposal_id")
+                ]
+                if enacted_tw_ids:
+                    from cardanoism.backend.treasury_db import get_fully_paid_proposal_ids
+                    paid_ids = get_fully_paid_proposal_ids(enacted_tw_ids)
+                    for a in out:
+                        if a["proposal_id"] in paid_ids:
+                            a["withdrawal_paid"] = "1"
                 self.actions = out
                 cursor.execute(count_sql, params)
                 self.total_items = int((cursor.fetchone() or {}).get("cnt", 0))
@@ -1616,6 +1633,10 @@ class GovernanceState(rx.State):
                     # 単一受取先は内訳行が出ないので GA レベルにも反映する（合計額エリア表示用）。
                     formatted["withdrawal_single_paid"] = ""
                     formatted["withdrawal_single_paid_epoch"] = ""
+                    formatted["withdrawal_single_stake_short"] = ""
+                    formatted["withdrawal_single_amount_ada"] = ""
+                    formatted["withdrawal_single_amount_jpy"] = ""
+                    formatted["withdrawal_single_amount_usd"] = ""
                     wlist = formatted.get("withdrawal_list")
                     if wlist:
                         from cardanoism.backend.treasury_db import get_payouts_by_proposal
@@ -1637,6 +1658,10 @@ class GovernanceState(rx.State):
                         if len(wlist) == 1:
                             formatted["withdrawal_single_paid"] = wlist[0]["paid"]
                             formatted["withdrawal_single_paid_epoch"] = wlist[0]["paid_epoch_display"]
+                            formatted["withdrawal_single_stake_short"] = wlist[0]["stake_address_short"]
+                            formatted["withdrawal_single_amount_ada"] = wlist[0]["amount_ada_display"]
+                            formatted["withdrawal_single_amount_jpy"] = wlist[0]["amount_jpy_display"]
+                            formatted["withdrawal_single_amount_usd"] = wlist[0]["amount_usd_display"]
 
                     # 投票集計と閾値を共通ヘルパーでマージ
                     summary = get_voting_summary(proposal_id) or {}
