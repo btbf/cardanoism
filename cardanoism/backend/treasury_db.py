@@ -487,3 +487,135 @@ def get_active_ncl() -> dict | None:
         )
         row = cursor.fetchone()
         return dict(row) if row else None
+
+
+# ============================================================
+# ga_withdrawal_payout
+#   TreasuryWithdrawals GA の受取先 (stake_address) ごとの出金状況。
+#   同期は notify_worker.py の treasury_sync に相乗り。
+# ============================================================
+
+def get_ratified_treasury_withdrawal_gas() -> list[dict]:
+    """ratified 済み TreasuryWithdrawals GA の proposal_id と withdrawal_json を返す。
+
+    payout エントリ登録の元データ。enacted まで進んだものも ratified_epoch は
+    残っているので、ratified_epoch IS NOT NULL で全対象を拾える。
+    """
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT proposal_id, withdrawal_json
+            FROM governance_actions
+            WHERE proposal_type = 'TreasuryWithdrawals'
+              AND ratified_epoch IS NOT NULL
+              AND withdrawal_json IS NOT NULL
+            """
+        )
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def upsert_payout_entries(entries: list[dict]) -> int:
+    """ratified 済み TreasuryWithdrawals GA の受取先エントリを INSERT IGNORE で登録。
+
+    entries: [{proposal_id, stake_address, amount_lovelace}, ...]
+    既存エントリ (paid 状態を含む) は uq_payout で保護され上書きされない。
+    戻り値は新規挿入件数。
+    """
+    rows = []
+    for e in entries:
+        try:
+            rows.append((
+                e["proposal_id"],
+                e["stake_address"],
+                int(e["amount_lovelace"]),
+            ))
+        except (KeyError, TypeError, ValueError):
+            continue
+    if not rows:
+        return 0
+    with get_db() as (cursor, conn):
+        cursor.executemany(
+            """
+            INSERT IGNORE INTO ga_withdrawal_payout
+              (proposal_id, stake_address, amount_lovelace)
+            VALUES (?, ?, ?)
+            """,
+            rows,
+        )
+        inserted = cursor.rowcount or 0
+        conn.commit()
+        return inserted
+
+
+def get_unpaid_payout_entries() -> list[dict]:
+    """まだ出金確認できていない (paid=0) エントリを GA の ratified_epoch 付きで返す。"""
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT p.id, p.proposal_id, p.stake_address, p.amount_lovelace,
+                   ga.ratified_epoch
+            FROM ga_withdrawal_payout p
+            JOIN governance_actions ga ON ga.proposal_id = p.proposal_id
+            WHERE p.paid = 0 AND ga.ratified_epoch IS NOT NULL
+            """
+        )
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def mark_payouts_paid(updates: list[dict]) -> int:
+    """照合できたエントリを paid=1 に更新する。
+
+    updates: [{id, paid_epoch}, ...]
+    """
+    rows = []
+    for u in updates:
+        try:
+            rows.append((int(u["paid_epoch"]), int(u["id"])))
+        except (KeyError, TypeError, ValueError):
+            continue
+    if not rows:
+        return 0
+    with get_db() as (cursor, conn):
+        cursor.executemany(
+            "UPDATE ga_withdrawal_payout SET paid = 1, paid_epoch = ? WHERE id = ?",
+            rows,
+        )
+        n = cursor.rowcount or 0
+        conn.commit()
+        return n
+
+
+def get_payouts_by_proposal(proposal_id: str) -> list[dict]:
+    """GA 詳細 / モーダル用: 1 GA の受取先エントリと出金状況。"""
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT stake_address, amount_lovelace, paid, paid_epoch
+            FROM ga_withdrawal_payout
+            WHERE proposal_id = ?
+            """,
+            (proposal_id,),
+        )
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def get_fully_paid_proposal_ids(proposal_ids: list[str]) -> set[str]:
+    """指定 GA のうち、登録済みの全受取先エントリが paid のものの proposal_id 集合。
+
+    トレジャリーページの「引き出し済み」バッジ用。エントリが 1 件も無い GA は含まれない。
+    """
+    if not proposal_ids:
+        return set()
+    placeholders = ", ".join(["?"] * len(proposal_ids))
+    with get_db() as (cursor, _):
+        cursor.execute(
+            f"""
+            SELECT proposal_id
+            FROM ga_withdrawal_payout
+            WHERE proposal_id IN ({placeholders})
+            GROUP BY proposal_id
+            HAVING COUNT(*) > 0 AND SUM(paid = 0) = 0
+            """,
+            list(proposal_ids),
+        )
+        return {r["proposal_id"] for r in cursor.fetchall()}

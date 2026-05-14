@@ -455,6 +455,28 @@ def fetch_reward_history_recent(
     return out
 
 
+def fetch_treasury_rewards_by_epoch(
+    stake_addresses: list[str], epoch: int,
+) -> list[dict]:
+    """指定エポックの type=treasury 報酬行をそのまま返す（1,000件チャンク対応）。
+
+    GA (TreasuryWithdrawals) の出金照合用。戻り値の各行は Koios の生レスポンス
+    形式: {stake_address, earned_epoch, amount, type, spendable_epoch, ...}。
+    type 別に正規化せず treasury 行だけを抜き出す。
+    """
+    if not stake_addresses:
+        return []
+    out: list[dict] = []
+    for chunk in _chunks(stake_addresses, KOIOS_BATCH_SIZE):
+        data = _post("/account_reward_history", {"_stake_addresses": chunk, "_epoch_no": epoch})
+        if not data or not isinstance(data, list):
+            continue
+        for r in data:
+            if r.get("type") == "treasury":
+                out.append(r)
+    return out
+
+
 def aggregate_rewards_by_epoch(
     rows: list[dict],
 ) -> list[tuple[str, int, int, str | None, str]]:

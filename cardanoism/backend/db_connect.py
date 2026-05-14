@@ -1397,9 +1397,13 @@ def _format_ga_row(row: Dict[str, Any], fiat_rate: Dict[str, float] | None = Non
             entry = {
                 "stake_address": addr,
                 "stake_address_short": (addr[:10] + "..." + addr[-6:]) if len(addr) > 20 else addr,
+                "amount_lovelace": str(amount_lovelace),
                 "amount_ada_display": format_ada(amount_lovelace, integer=True),
                 "amount_jpy_display": "",
                 "amount_usd_display": "",
+                # 出金状況。詳細/モーダル表示時に _load_full_action がマージする。
+                "paid": "",
+                "paid_epoch_display": "",
             }
             if fiat_rate:
                 amount_ada = amount_lovelace / 1_000_000
@@ -1607,6 +1611,32 @@ class GovernanceState(rx.State):
                 if row:
                     formatted = _format_ga_row(dict(row), fiat_rate)
                     self.modal_action_refs = formatted.get("references_list", [])
+
+                    # TreasuryWithdrawals の受取先ごとの出金状況をマージ。
+                    # 単一受取先は内訳行が出ないので GA レベルにも反映する（合計額エリア表示用）。
+                    formatted["withdrawal_single_paid"] = ""
+                    formatted["withdrawal_single_paid_epoch"] = ""
+                    wlist = formatted.get("withdrawal_list")
+                    if wlist:
+                        from cardanoism.backend.treasury_db import get_payouts_by_proposal
+                        payout_map: Dict[tuple, Dict[str, Any]] = {}
+                        for p in get_payouts_by_proposal(proposal_id):
+                            try:
+                                payout_map[(p["stake_address"], int(p["amount_lovelace"]))] = p
+                            except (KeyError, TypeError, ValueError):
+                                continue
+                        for entry in wlist:
+                            try:
+                                key = (entry["stake_address"], int(entry["amount_lovelace"]))
+                            except (KeyError, TypeError, ValueError):
+                                continue
+                            p = payout_map.get(key)
+                            if p and p.get("paid"):
+                                entry["paid"] = "1"
+                                entry["paid_epoch_display"] = str(p.get("paid_epoch") or "")
+                        if len(wlist) == 1:
+                            formatted["withdrawal_single_paid"] = wlist[0]["paid"]
+                            formatted["withdrawal_single_paid_epoch"] = wlist[0]["paid_epoch_display"]
 
                     # 投票集計と閾値を共通ヘルパーでマージ
                     summary = get_voting_summary(proposal_id) or {}

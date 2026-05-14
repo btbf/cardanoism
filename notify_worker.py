@@ -2073,7 +2073,91 @@ def check_treasury_sync():
     except Exception as e:
         logger.exception("treasury_history (NCL範囲) 同期失敗: %s", e)
 
+    # 5) TreasuryWithdrawals GA の受取先ごとの出金状況を /account_reward_history で照合
+    try:
+        _sync_ga_withdrawal_payouts()
+    except Exception as e:
+        logger.exception("ga_withdrawal_payout 同期失敗: %s", e)
+
     logger.info("トレジャリー同期 完了")
+
+
+def _sync_ga_withdrawal_payouts():
+    """ratified 済み TreasuryWithdrawals GA の受取先ごとの出金を照合する。
+
+    1. ratified 済み GA の withdrawal_json を受取先単位に展開して
+       ga_withdrawal_payout に登録 (既存エントリの paid 状態は保護)
+    2. 未確認 (paid=0) エントリを GA の ratified_epoch ごとにまとめて
+       /account_reward_history を叩く (paid=1 は再チェックしない = Koios コール最小化)
+    3. type=treasury / earned_epoch=ratified_epoch / amount 一致のエントリを paid=1 に
+    """
+    from cardanoism.backend.koios import fetch_treasury_rewards_by_epoch
+    from cardanoism.backend.treasury_db import (
+        get_ratified_treasury_withdrawal_gas,
+        upsert_payout_entries,
+        get_unpaid_payout_entries,
+        mark_payouts_paid,
+    )
+
+    # (1) ratified GA の withdrawal_json を受取先単位に展開して登録
+    entries = []
+    for ga in get_ratified_treasury_withdrawal_gas():
+        try:
+            items = json.loads(ga["withdrawal_json"]) or []
+        except (TypeError, ValueError):
+            continue
+        for w in items if isinstance(items, list) else []:
+            sa = w.get("stake_address")
+            amt = w.get("amount")
+            if not sa or amt is None:
+                continue
+            try:
+                entries.append({
+                    "proposal_id": ga["proposal_id"],
+                    "stake_address": sa,
+                    "amount_lovelace": int(amt),
+                })
+            except (TypeError, ValueError):
+                continue
+    registered = upsert_payout_entries(entries)
+    logger.info("ga_withdrawal_payout: 新規エントリ %d 件登録", registered)
+
+    # (2) 未確認エントリを ratified_epoch ごとにグルーピング
+    unpaid = get_unpaid_payout_entries()
+    if not unpaid:
+        logger.info("ga_withdrawal_payout: 未確認エントリなし")
+        return
+    by_epoch: dict[int, list[dict]] = {}
+    for e in unpaid:
+        try:
+            ep = int(e["ratified_epoch"])
+        except (TypeError, ValueError):
+            continue
+        by_epoch.setdefault(ep, []).append(e)
+
+    # (3) epoch ごとに /account_reward_history を叩いて照合
+    paid_updates = []
+    for epoch, ents in by_epoch.items():
+        stake_addrs = list({e["stake_address"] for e in ents})
+        rewards = fetch_treasury_rewards_by_epoch(stake_addrs, epoch)
+        # (stake_address, earned_epoch, amount) の集合に正規化して O(1) 照合
+        reward_set = set()
+        for r in rewards:
+            try:
+                reward_set.add((
+                    r.get("stake_address"),
+                    int(r.get("earned_epoch")),
+                    int(r.get("amount") or 0),
+                ))
+            except (TypeError, ValueError):
+                continue
+        for e in ents:
+            key = (e["stake_address"], epoch, int(e["amount_lovelace"]))
+            if key in reward_set:
+                paid_updates.append({"id": e["id"], "paid_epoch": epoch})
+
+    updated = mark_payouts_paid(paid_updates)
+    logger.info("ga_withdrawal_payout: 出金確認 %d 件 (未確認 %d 件中)", updated, len(unpaid))
 
 
 # ============================================================
