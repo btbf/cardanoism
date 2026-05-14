@@ -530,6 +530,21 @@ def _drep_card(d) -> rx.Component:
 def _filter_bar() -> rx.Component:
     return rx.hstack(
         rx.input(
+            rx.cond(
+                DrepState.inputed_value != "",
+                rx.input.slot(
+                    rx.icon(
+                        "x",
+                        size=16,
+                        cursor="pointer",
+                        on_click=DrepState.set_input(""),
+                        style={"_hover": {"color": "var(--gray-12)"}},
+                    ),
+                    side="right",
+                    color="var(--gray-9)",
+                ),
+                rx.fragment(),
+            ),
             placeholder=AuthState.t["drep_search_placeholder"],
             size="3",
             max_length=100,

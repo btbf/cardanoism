@@ -1509,9 +1509,10 @@ class GovernanceState(rx.State):
         if self.inputed_value:
             sv = f"%{self.inputed_value}%"
             conditions.append(
-                "(ga.title LIKE ? OR ga.title_ja LIKE ? OR ga.`abstract` LIKE ? OR ga.abstract_ja LIKE ?)"
+                "(ga.title LIKE ? OR ga.title_ja LIKE ? OR ga.`abstract` LIKE ?"
+                " OR ga.abstract_ja LIKE ? OR ga.proposal_id LIKE ?)"
             )
-            params.extend([sv, sv, sv, sv])
+            params.extend([sv, sv, sv, sv, sv])
         if self.filter_types:
             placeholders = ", ".join(["?"] * len(self.filter_types))
             conditions.append(f"ga.proposal_type IN ({placeholders})")

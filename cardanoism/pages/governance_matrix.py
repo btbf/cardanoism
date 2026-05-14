@@ -313,6 +313,21 @@ def _breadcrumb() -> rx.Component:
 def _filter_bar() -> rx.Component:
     return rx.flex(
         rx.input(
+            rx.cond(
+                VoteMatrixState.inputed_value != "",
+                rx.input.slot(
+                    rx.icon(
+                        "x",
+                        size=16,
+                        cursor="pointer",
+                        on_click=VoteMatrixState.set_search(""),
+                        style={"_hover": {"color": "var(--gray-12)"}},
+                    ),
+                    side="right",
+                    color="var(--gray-9)",
+                ),
+                rx.fragment(),
+            ),
             placeholder=AuthState.t["matrix_search_placeholder"],
             value=VoteMatrixState.inputed_value,
             on_change=VoteMatrixState.set_search.debounce(300),

@@ -168,11 +168,11 @@ UI_JA: dict[str, str] = {
     "gov_type_new_committee": "委員会変更",
     "gov_type_new_constitution": "新憲法",
     "gov_type_no_confidence": "不信任",
-    "gov_status_active": "アクティブ",
-    "gov_status_ratified": "批准済み",
-    "gov_status_enacted": "施行済み",
-    "gov_status_dropped": "廃止",
-    "gov_status_expired": "失効",
+    "gov_status_active": "投票中",
+    "gov_status_ratified": "可決",
+    "gov_status_enacted": "施行",
+    "gov_status_dropped": "否決",
+    "gov_status_expired": "期限切れ",
     "gov_title_none": "（タイトルなし）",
     "gov_proposed_epoch_label": "提案: ",
     "gov_expiration_label": "期限: ",
@@ -246,6 +246,7 @@ UI_JA: dict[str, str] = {
     "gov_vote_rationale_close":    "閉じる",
     "gov_modal_load_error": "詳細を読み込めませんでした",
     "gov_url_copied": "GAリンクをコピーしました",
+    "gov_id_copied": "提案 ID をコピーしました",
     "gov_ref_no_label": "（ラベルなし）",
 
     # ガバナンス サブナビゲーション
@@ -1224,6 +1225,7 @@ UI_EN: dict[str, str] = {
     "gov_vote_rationale_close":    "Close",
     "gov_modal_load_error": "Failed to load details",
     "gov_url_copied": "Link copied",
+    "gov_id_copied": "Proposal ID copied",
     "gov_ref_no_label": "(No label)",
 
     # Governance subnav

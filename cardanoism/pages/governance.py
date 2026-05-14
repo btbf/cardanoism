@@ -214,6 +214,21 @@ def gov_filters() -> rx.Component:
         rx.html(FILTER_CSS),
         rx.box(
             rx.input(
+                rx.cond(
+                    GovernanceState.search_query != "",
+                    rx.input.slot(
+                        rx.icon(
+                            "x",
+                            size=16,
+                            cursor="pointer",
+                            on_click=GovernanceState.set_inputed_value(""),
+                            style={"_hover": {"color": "var(--gray-12)"}},
+                        ),
+                        side="right",
+                        color="var(--gray-9)",
+                    ),
+                    rx.fragment(),
+                ),
                 placeholder=AuthState.t["gov_filter_search_placeholder"],
                 size="3",
                 max_length=100,
