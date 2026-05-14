@@ -338,8 +338,31 @@ def _fiat_inline(jpy_var, usd_var, size: str = "2", color: str = "var(--gray-10)
     return rx.cond(AuthState.language == "en", usd_part, jpy_part)
 
 
+def _paid_badge(paid_epoch_display) -> rx.Component:
+    """出金済みバッジ（受取先エントリ行・単一受取先の合計額エリア共通）。"""
+    return rx.badge(
+        rx.hstack(
+            rx.icon("circle-check", size=12),
+            rx.text(AuthState.t["gov_withdrawal_paid"]),
+            rx.cond(
+                paid_epoch_display != "",
+                rx.text(
+                    "(", AuthState.t["gov_withdrawal_paid_epoch"], " ",
+                    paid_epoch_display, ")",
+                ),
+                rx.fragment(),
+            ),
+            spacing="1", align="center",
+        ),
+        color_scheme="green",
+        variant="soft",
+        size="1",
+        radius="full",
+    )
+
+
 def _withdrawal_entry_row(entry) -> rx.Component:
-    """内訳1行（受取ステークアドレス + 金額 + 法定通貨）。"""
+    """内訳1行（受取ステークアドレス + 金額 + 法定通貨 + 出金状況）。"""
     return rx.hstack(
         rx.code(entry["stake_address_short"], size="1"),
         rx.text("→", size="2", color="var(--gray-8)"),
@@ -349,6 +372,11 @@ def _withdrawal_entry_row(entry) -> rx.Component:
             entry["amount_jpy_display"],
             entry["amount_usd_display"],
             size="1",
+        ),
+        rx.cond(
+            entry["paid"] != "",
+            _paid_badge(entry["paid_epoch_display"]),
+            rx.fragment(),
         ),
         spacing="2", align="center", wrap="wrap",
     )
@@ -548,6 +576,12 @@ def _withdrawal_section(action: Dict[str, Any]) -> rx.Component:
                             size="2",
                         ),
                         spacing="2", align="baseline", wrap="wrap",
+                    ),
+                    # 単一受取先は内訳行が出ないので合計額エリアに出金状況を表示
+                    rx.cond(
+                        action["withdrawal_single_paid"] != "",
+                        _paid_badge(action["withdrawal_single_paid_epoch"]),
+                        rx.fragment(),
                     ),
                     rx.cond(
                         action["withdrawal_list"].to(list).length() > 1,

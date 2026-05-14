@@ -25,6 +25,7 @@ Cardanoism の MariaDB スキーマ定義（最終形）。
 | 012 | `012_constitution_cache.sql` | constitution_cache（憲法本文 + 日本語訳キャッシュ、id=1 固定） |
 | 013 | `013_stake_rewards.sql` | stake_rewards（エポック × reward_type 別の報酬キャッシュ） |
 | 014 | `014_subscriptions.sql` | subscriptions（サブスク基盤）+ ベータ向け既存ユーザー backfill |
+| 015 | `015_ga_withdrawal_payout.sql` | ga_withdrawal_payout（TreasuryWithdrawals GA の受取先ごとの出金状況） |
 
 ## 適用例
 

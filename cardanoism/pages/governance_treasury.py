@@ -26,6 +26,7 @@ from cardanoism.backend.treasury_db import (
     get_treasury_history_in_range,
     build_treasury_chart_svg,
     get_active_ncl,
+    get_fully_paid_proposal_ids,
 )
 from cardanoism.backend.fiat_db import get_fiat_rate
 from cardanoism.backend.price import (
@@ -369,7 +370,15 @@ class TreasuryState(rx.State):
                         "amount_ada": format_ada(w_lovelace, integer=True) if w_lovelace else "-",
                         "amount_jpy": jpy_d,
                         "amount_usd": usd_d,
+                        "withdrawal_paid": "",
                     })
+                # 全受取先が出金済みの GA に「引き出し済み」フラグを立てる
+                paid_ids = get_fully_paid_proposal_ids(
+                    [p["proposal_id"] for p in prop_out if p["proposal_id"]]
+                )
+                for p in prop_out:
+                    if p["proposal_id"] in paid_ids:
+                        p["withdrawal_paid"] = "1"
                 self.proposals = prop_out
                 # アクティブ提案はデフォルトで全てシミュレーション対象にする
                 self.simulation_proposal_ids = [
@@ -876,6 +885,18 @@ def _proposal_row(p) -> rx.Component:
         rx.vstack(
             rx.hstack(
                 ga_status_badge(p),
+                rx.cond(
+                    p["withdrawal_paid"] != "",
+                    rx.badge(
+                        rx.hstack(
+                            rx.icon("circle-check", size=12),
+                            rx.text(AuthState.t["treasury_withdrawal_paid_badge"]),
+                            spacing="1", align="center",
+                        ),
+                        color_scheme="green", variant="soft", radius="full", size="1",
+                    ),
+                    rx.fragment(),
+                ),
                 rx.text(
                     AuthState.t["ncl_proposal_proposed_label"] + " " + p["proposed_epoch_display"],
                     size="1", color="var(--gray-10)",
