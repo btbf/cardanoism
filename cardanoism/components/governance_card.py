@@ -338,6 +338,32 @@ def _fiat_inline(jpy_var, usd_var, size: str = "2", color: str = "var(--gray-10)
     return rx.cond(AuthState.language == "en", usd_part, jpy_part)
 
 
+def _copy_icon(text_var, toast_msg) -> rx.Component:
+    """クリップボードコピー用の小さなアイコンボタン。
+    親に on_click / link がある文脈でも誤発火しないよう stop_propagation + prevent_default を付ける。
+    """
+    return rx.icon(
+        "copy",
+        size=13,
+        color="var(--gray-9)",
+        cursor="pointer",
+        flex_shrink="0",
+        on_click=[
+            rx.set_clipboard(text_var).stop_propagation.prevent_default,
+            rx.toast(
+                toast_msg,
+                position="top-center",
+                style={
+                    "background-color": "var(--indigo-11)",
+                    "color": "white",
+                    "border-radius": "0.5rem",
+                },
+            ).stop_propagation.prevent_default,
+        ],
+        style={"_hover": {"color": "var(--gray-12)"}},
+    )
+
+
 def _paid_badge(paid_epoch_display) -> rx.Component:
     """出金済みバッジ（受取先エントリ行・単一受取先の合計額エリア共通）。"""
     return rx.badge(
@@ -362,10 +388,8 @@ def _paid_badge(paid_epoch_display) -> rx.Component:
 
 
 def _withdrawal_entry_row(entry) -> rx.Component:
-    """内訳1行（受取ステークアドレス + 金額 + 法定通貨 + 出金状況）。"""
+    """内訳1行（金額 + 法定通貨 → 受取ステークアドレス + コピー + 出金状況）。"""
     return rx.hstack(
-        rx.code(entry["stake_address_short"], size="1"),
-        rx.text("→", size="2", color="var(--gray-8)"),
         rx.text(entry["amount_ada_display"], size="2", weight="medium"),
         rx.text("ADA", size="1", color="var(--gray-10)"),
         _fiat_inline(
@@ -373,6 +397,9 @@ def _withdrawal_entry_row(entry) -> rx.Component:
             entry["amount_usd_display"],
             size="1",
         ),
+        rx.text("→", size="2", color="var(--gray-8)"),
+        rx.code(entry["stake_address_short"], size="1"),
+        _copy_icon(entry["stake_address"], AuthState.t["gov_stake_copied"]),
         rx.cond(
             entry["paid"] != "",
             _paid_badge(entry["paid_epoch_display"]),
@@ -596,8 +623,6 @@ def _withdrawal_section(action: Dict[str, Any]) -> rx.Component:
                         rx.vstack(
                             _paid_badge(action["withdrawal_single_paid_epoch"]),
                             rx.hstack(
-                                rx.code(action["withdrawal_single_stake_short"], size="1"),
-                                rx.text("→", size="2", color="var(--gray-8)"),
                                 rx.text(action["withdrawal_single_amount_ada"], size="2", weight="medium"),
                                 rx.text("ADA", size="1", color="var(--gray-10)"),
                                 _fiat_inline(
@@ -605,6 +630,9 @@ def _withdrawal_section(action: Dict[str, Any]) -> rx.Component:
                                     action["withdrawal_single_amount_usd"],
                                     size="1",
                                 ),
+                                rx.text("→", size="2", color="var(--gray-8)"),
+                                rx.code(action["withdrawal_single_stake_short"], size="1"),
+                                _copy_icon(action["withdrawal_single_stake"], AuthState.t["gov_stake_copied"]),
                                 spacing="2", align="center", wrap="wrap",
                             ),
                             spacing="1", align="start", width="100%",

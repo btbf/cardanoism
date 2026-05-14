@@ -250,6 +250,7 @@ UI_JA: dict[str, str] = {
     "gov_modal_load_error": "詳細を読み込めませんでした",
     "gov_url_copied": "GAリンクをコピーしました",
     "gov_id_copied": "提案 ID をコピーしました",
+    "gov_stake_copied": "ステークアドレスをコピーしました",
     "gov_ref_no_label": "（ラベルなし）",
 
     # ガバナンス サブナビゲーション
@@ -1237,6 +1238,7 @@ UI_EN: dict[str, str] = {
     "gov_modal_load_error": "Failed to load details",
     "gov_url_copied": "Link copied",
     "gov_id_copied": "Proposal ID copied",
+    "gov_stake_copied": "Stake address copied",
     "gov_ref_no_label": "(No label)",
 
     # Governance subnav
