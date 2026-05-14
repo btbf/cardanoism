@@ -548,14 +548,20 @@ def upsert_payout_entries(entries: list[dict]) -> int:
 
 
 def get_unpaid_payout_entries() -> list[dict]:
-    """まだ出金確認できていない (paid=0) エントリを GA の ratified_epoch 付きで返す。"""
+    """まだ出金確認できていない (paid=0) エントリを GA の ratified_epoch 付きで返す。
+
+    JOIN の COLLATE は、ga_withdrawal_payout と governance_actions で
+    proposal_id カラムの collation が異なる環境 (既存テーブルと新テーブルで
+    サーバーデフォルト collation が変わっている場合) でも比較できるようにするため。
+    """
     with get_db() as (cursor, _):
         cursor.execute(
             """
             SELECT p.id, p.proposal_id, p.stake_address, p.amount_lovelace,
                    ga.ratified_epoch
             FROM ga_withdrawal_payout p
-            JOIN governance_actions ga ON ga.proposal_id = p.proposal_id
+            JOIN governance_actions ga
+              ON ga.proposal_id = p.proposal_id COLLATE utf8mb4_general_ci
             WHERE p.paid = 0 AND ga.ratified_epoch IS NOT NULL
             """
         )
