@@ -111,7 +111,7 @@ After=mysql.service network.target
 Type=simple
 User=cardanoism
 WorkingDirectory=/path/to/cardanoism
-ExecStart=/usr/bin/bash -c '/usr/local/bin/infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- /path/to/cardanoism/.venv/bin/python /path/to/cardanoism/ga_ai_worker.py'
+ExecStart=/usr/local/bin/infisical run --env=mainnet -- /path/to/cardanoism/.venv/bin/python /path/to/cardanoism/ga_ai_worker.py
 Restart=always
 RestartSec=10
 

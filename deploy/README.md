@@ -145,7 +145,7 @@
 
     cron だけでは不十分。**Ogmios listener** がリアルタイム通知を、**GA AI worker** が `ga_ai_initial_sync` で enqueue した GA を順次処理する。両方とも systemd で常駐させる。
 
-    `/etc/cardanoism/infisical.token` に Machine Identity Service Token を配置済みである前提（詳細は `docs/realtime-notification-backend.md § 5-2`）。
+    手順 3 の `sudo -u cardanoism infisical login` で `~/.infisical/` に credentials を保存済みである前提（詳細は `docs/realtime-notification-backend.md § 5-2`）。
 
     **Ogmios listener** `/etc/systemd/system/ogmios-listener.service`:
 
@@ -159,7 +159,7 @@
     Type=simple
     User=cardanoism
     WorkingDirectory=/opt/cardanoism
-    ExecStart=/usr/bin/bash -c '/usr/local/bin/infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- /opt/cardanoism/.venv/bin/python ogmios_listener.py'
+    ExecStart=/usr/local/bin/infisical run --env=mainnet -- /opt/cardanoism/.venv/bin/python ogmios_listener.py
     Restart=always
     RestartSec=10
     StandardOutput=journal
@@ -180,7 +180,7 @@
     Type=simple
     User=cardanoism
     WorkingDirectory=/opt/cardanoism
-    ExecStart=/usr/bin/bash -c '/usr/local/bin/infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- /opt/cardanoism/.venv/bin/python ga_ai_worker.py'
+    ExecStart=/usr/local/bin/infisical run --env=mainnet -- /opt/cardanoism/.venv/bin/python ga_ai_worker.py
     Restart=always
     RestartSec=10
     StandardOutput=journal

@@ -70,14 +70,16 @@ sudo apt install -y infisical
 infisical --version
 ```
 
-### 3-2. Service Token (非対話認証)
+### 3-2. 認証 (対話 login)
 
-VPS では Machine Identity から発行した Service Token をファイル経由で読み込む。詳細手順は `docs/realtime-notification-backend.md` § 5-2。
+VPS の実行ユーザーで一度だけ対話 login する。credentials は `~/.infisical/` に保存され、以降の `infisical run` で自動参照される。
 
 ```bash
-sudo install -m 0600 /dev/stdin /etc/cardanoism/infisical.token <<< "<TOKEN>"
-sudo chown <user>:<user> /etc/cardanoism/infisical.token
+sudo -u <user> infisical login
+# ブラウザ or デバイス認証フローを完了
 ```
+
+> credentials が期限切れになった場合は同じコマンドで再認証する。
 
 ### 3-3. environment スコープ
 
@@ -90,7 +92,7 @@ sudo chown <user>:<user> /etc/cardanoism/infisical.token
 注入確認:
 
 ```bash
-infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- \
+infisical run --env=mainnet -- \
   bash -c 'echo "DB=$DB_HOST/$DB_NAME, KOIOS=$KOIOS_NETWORK"'
 ```
 
@@ -103,7 +105,7 @@ infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- 
 `cardanoism/backend/migrations/` 配下の SQL を番号順に流す。すべて `CREATE TABLE IF NOT EXISTS` で冪等。
 
 ```bash
-infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- bash -c '
+infisical run --env=mainnet -- bash -c '
 for f in cardanoism/backend/migrations/*.sql; do
   echo "--- applying $f"
   mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$f"
@@ -120,7 +122,7 @@ done
 順序が重要。GA 本体が無いと AI 分析の enqueue 対象が無く、NCL 計算も `protocol_params` が前提。
 
 ```bash
-INF="infisical run --env=mainnet --token=$(cat /etc/cardanoism/infisical.token) --"
+INF="infisical run --env=mainnet --"
 PY="/opt/cardanoism/.venv/bin/python"
 
 # (1) GA 本体を governance_actions に取り込む (新規ぶんは AI 分析キューへ自動 enqueue)
@@ -188,7 +190,7 @@ cardano-node + Ogmios が `syncProgress: 100.00` まで同期完了してから�
 
 ```bash
 # 初回 (フォアグラウンドで動作確認)
-infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- \
+infisical run --env=mainnet -- \
   /opt/cardanoism/.venv/bin/python ogmios_listener.py --from-tip
 ```
 
@@ -206,7 +208,7 @@ journalctl -u ogmios-listener -f
 
 ```bash
 # 初回 (フォアグラウンドで動作確認)
-infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- \
+infisical run --env=mainnet -- \
   /opt/cardanoism/.venv/bin/python ga_ai_worker.py
 ```
 
@@ -223,7 +225,7 @@ journalctl -u ga-ai-worker -f
 開発モード:
 
 ```bash
-infisical run --env=mainnet --token="$(cat /etc/cardanoism/infisical.token)" -- reflex run
+infisical run --env=mainnet -- reflex run
 ```
 
 本番は `reflex export` + nginx + プロセスマネージャ (例: pm2 / systemd) で `.web/_static` を配信。詳細は Reflex 公式参照。
