@@ -1634,6 +1634,7 @@ class GovernanceState(rx.State):
                     formatted["withdrawal_single_paid"] = ""
                     formatted["withdrawal_single_paid_epoch"] = ""
                     formatted["withdrawal_single_stake_short"] = ""
+                    formatted["withdrawal_single_stake"] = ""
                     formatted["withdrawal_single_amount_ada"] = ""
                     formatted["withdrawal_single_amount_jpy"] = ""
                     formatted["withdrawal_single_amount_usd"] = ""
@@ -1659,6 +1660,7 @@ class GovernanceState(rx.State):
                             formatted["withdrawal_single_paid"] = wlist[0]["paid"]
                             formatted["withdrawal_single_paid_epoch"] = wlist[0]["paid_epoch_display"]
                             formatted["withdrawal_single_stake_short"] = wlist[0]["stake_address_short"]
+                            formatted["withdrawal_single_stake"] = wlist[0]["stake_address"]
                             formatted["withdrawal_single_amount_ada"] = wlist[0]["amount_ada_display"]
                             formatted["withdrawal_single_amount_jpy"] = wlist[0]["amount_jpy_display"]
                             formatted["withdrawal_single_amount_usd"] = wlist[0]["amount_usd_display"]
