@@ -88,6 +88,9 @@ def format_pool_card_data(
 
     status = str(r.get("pool_status") or "")
     retiring_epoch = r.get("retiring_epoch")
+    # 次エポックでの手数料変更予告 (listener が cert 検知時に書込む pending_effective_epoch を見る)
+    pending_effective_epoch = r.get("pending_effective_epoch")
+    has_pending_fee_change = pending_effective_epoch is not None
     relay_alive_raw = r.get("relay_alive")
     if relay_alive_raw is None:
         relay_state = "unknown"
@@ -160,6 +163,8 @@ def format_pool_card_data(
         "status":          status,
         "is_retiring":     "1" if status == "retiring" else "",
         "retiring_epoch":  str(retiring_epoch) if retiring_epoch is not None else "",
+        "has_pending_fee_change": "1" if has_pending_fee_change else "",
+        "pending_effective_epoch": str(pending_effective_epoch) if pending_effective_epoch is not None else "",
         "relay_state":     relay_state,
         "history_total":   str(history_total),
         "apy_avg":         apy_str,
@@ -453,6 +458,11 @@ def _pool_card(p) -> rx.Component:
         rx.cond(
             p["is_retiring"] != "",
             rx.badge(AuthState.t["staking_badge_retiring"], color_scheme="red", variant="soft"),
+            rx.fragment(),
+        ),
+        rx.cond(
+            p["has_pending_fee_change"] != "",
+            rx.badge(AuthState.t["staking_badge_pending_fee"], color_scheme="amber", variant="soft"),
             rx.fragment(),
         ),
         spacing="2", align="center", wrap="wrap",

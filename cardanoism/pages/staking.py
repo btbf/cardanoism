@@ -355,6 +355,7 @@ class StakingDashboardState(rx.State):
                         "is_saturated": "",
                         "delegators": "0", "block_count": "0",
                         "status": "", "is_retiring": "", "retiring_epoch": "",
+                        "has_pending_fee_change": "", "pending_effective_epoch": "",
                         "relay_state": "unknown", "history_total": "0",
                     }
             else:

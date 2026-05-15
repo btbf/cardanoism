@@ -11,7 +11,8 @@ def context(*, pool_name: str,
             old_margin_pct: float, new_margin_pct: float,
             old_fixed_ada: float, new_fixed_ada: float,
             old_pledge_ada: float | None, new_pledge_ada: float,
-            apy: float | None, nickname: str, base_url: str) -> dict:
+            apy: float | None, nickname: str, base_url: str,
+            effective_epoch: int | None = None) -> dict:
     return {
         "pool_name":      pool_name,
         "old_margin_pct": float(old_margin_pct),
@@ -23,6 +24,7 @@ def context(*, pool_name: str,
         "apy":            apy,
         "nickname":       nickname,
         "base_url":       base_url,
+        "effective_epoch": int(effective_epoch) if effective_epoch is not None else None,
         "fee_changed":    (old_margin_pct != new_margin_pct) or (old_fixed_ada != new_fixed_ada),
         "pledge_changed": old_pledge_ada != new_pledge_ada,
     }
@@ -42,10 +44,12 @@ def render_flex(ctx: dict, lang: str) -> dict:
         apy=ctx["apy"],
         nickname=ctx["nickname"], url=ctx["base_url"], lang=lang,
         old_pledge_ada=ctx["old_pledge_ada"], new_pledge_ada=ctx["new_pledge_ada"],
+        effective_epoch=ctx.get("effective_epoch"),
     )
 
 
 def render_email(ctx: dict, lang: str) -> tuple[str, list[str], str, str]:
+    ee = ctx.get("effective_epoch")
     if lang == "ja":
         subj = f"委任先プール「{ctx['pool_name']}」の手数料が変更されました"
         lines = [f"ウォレット: {ctx['nickname']}"]
@@ -59,6 +63,9 @@ def render_email(ctx: dict, lang: str) -> tuple[str, list[str], str, str]:
                 lines.append(f"誓約: {ctx['old_pledge_ada']:.0f} ADA → {ctx['new_pledge_ada']:.0f} ADA")
             else:
                 lines.append(f"誓約: {ctx['new_pledge_ada']:.0f} ADA")
+        if ee is not None:
+            lines.append("")
+            lines.append(f"※ 新しいパラメータは次エポック (Epoch {ee}) から反映されます。")
         cta_label = "マイページを開く"
     else:
         subj = f"Pool '{ctx['pool_name']}' fee has changed"
@@ -73,12 +80,16 @@ def render_email(ctx: dict, lang: str) -> tuple[str, list[str], str, str]:
                 lines.append(f"Pledge: {ctx['old_pledge_ada']:.0f} ADA → {ctx['new_pledge_ada']:.0f} ADA")
             else:
                 lines.append(f"Pledge: {ctx['new_pledge_ada']:.0f} ADA")
+        if ee is not None:
+            lines.append("")
+            lines.append(f"Note: new parameters take effect at the next epoch (Epoch {ee}).")
         cta_label = "Open MyPage"
     return subj, lines, ctx["base_url"], cta_label
 
 
 def render_telegram(ctx: dict, lang: str) -> str:
     mypage_url = f"{ctx['base_url']}/mypage?tab=stake"
+    ee = ctx.get("effective_epoch")
     if lang == "ja":
         lines = ["<b>💱 Cardanoism — プール手数料変更通知</b>", "", f"🏊 {ctx['pool_name']}"]
         if ctx["fee_changed"]:
@@ -91,6 +102,8 @@ def render_telegram(ctx: dict, lang: str) -> str:
                 lines.append(f"🔒 誓約: {ctx['old_pledge_ada']:,.0f} ADA → {ctx['new_pledge_ada']:,.0f} ADA")
             else:
                 lines.append(f"🔒 誓約: {ctx['new_pledge_ada']:,.0f} ADA")
+        if ee is not None:
+            lines.append(f"⏭️ 反映エポック: Epoch {ee} (次エポックから)")
         lines += [
             f"💼 {ctx['nickname']}で委任中",
             "",
@@ -108,6 +121,8 @@ def render_telegram(ctx: dict, lang: str) -> str:
                 lines.append(f"🔒 Pledge: {ctx['old_pledge_ada']:,.0f} ADA → {ctx['new_pledge_ada']:,.0f} ADA")
             else:
                 lines.append(f"🔒 Pledge: {ctx['new_pledge_ada']:,.0f} ADA")
+        if ee is not None:
+            lines.append(f"⏭️ Effective: Epoch {ee} (next epoch)")
         lines += [
             f"💼 Delegated from {ctx['nickname']}",
             "",

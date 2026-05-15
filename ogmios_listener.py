@@ -318,6 +318,26 @@ def _notify_pool_retire(pool_id: str, retiring_epoch: int) -> None:
 # pool の registration cert を見た場合でも変更通知を取りこぼさない。
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _read_pool_pending_epoch(pool_id: str) -> int | None:
+    """pools.pending_effective_epoch を返す (cert 反映予定エポック)。"""
+    try:
+        from cardanoism.backend.db_connect import get_db
+        with get_db() as (cursor, _):
+            cursor.execute(
+                "SELECT pending_effective_epoch FROM pools "
+                "WHERE pool_id_bech32 = ? LIMIT 1",
+                (pool_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            v = row["pending_effective_epoch"]
+            return int(v) if v is not None else None
+    except Exception as e:  # noqa: BLE001
+        logger.warning("listener: pending_effective_epoch 読み出し失敗 pool=%s: %s", pool_id, e)
+        return None
+
+
 def _read_pool_prev_fees(pool_id: str) -> tuple[float | None, int | None, int | None]:
     """pools テーブルの現在値 (margin, fixed_cost, pledge) を返す。
     cert 上書き前に呼ぶ前提。行が無い場合は (None, None, None)。
@@ -403,6 +423,10 @@ def _notify_pool_fee_change(
     from cardanoism.backend.notify_templates import deliver
     from cardanoism.backend.notify_templates.pool_fee_change import context as build_ctx, EVENT_TYPE
 
+    # 反映予定エポック (= cert 検知時点の次エポック)。pools.pending_effective_epoch と
+    # 同じ値が入っていることを期待する。
+    effective_epoch = _read_pool_pending_epoch(pool_id)
+
     for addr in addrs:
         pool_name = addr.get("delegated_pool_name") or get_pool_name(pool_id) or pool_id[:12]
         ctx = build_ctx(
@@ -412,6 +436,7 @@ def _notify_pool_fee_change(
             old_pledge_ada=old_pledge_ada, new_pledge_ada=pledge_ada,
             apy=None,
             nickname=addr["nickname"], base_url=CARDANOISM_URL,
+            effective_epoch=effective_epoch,
         )
         deliver(addr, EVENT_TYPE, ctx,
                 dedup_base=f"pool_fee_change_{addr['stake_id']}_{current_val}")
@@ -792,9 +817,9 @@ def _process_cert(cert: dict, slot: int) -> None:
                     pool_id, margin, cost_lovelace, pledge_lovelace)
         # cert で上書きする前に pools の旧値を読み出して通知判定に渡す
         prev_fees = _read_pool_prev_fees(pool_id)
-        # Phase 3: pools テーブルに反映
+        # Phase 3: pools テーブルに反映 (現エポックは pending_effective_epoch 計算に使う)
         try:
-            record_pool_registration(cert, slot)
+            record_pool_registration(cert, slot, current_epoch=_epoch_from_slot(slot))
         except Exception as e:
             logger.exception("listener: pool 登録 DB 書込み失敗: %s", e)
         _notify_pool_fee_change(

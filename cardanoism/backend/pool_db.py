@@ -118,6 +118,25 @@ def upsert_pool(data: dict[str, Any]) -> None:
                 _truncate(data.get("github_handle"), 128),
             ),
         )
+        # pending_* の自動クリア:
+        # Koios が報告した active 値 (pledge / margin / fixed_cost) が pending と
+        # 完全一致したら、その変更は ledger に反映済みと判断して pending_* を NULL に戻す。
+        # 不一致のままなら次回 Koios sync で再評価される。
+        cursor.execute(
+            """
+            UPDATE pools
+               SET pending_pledge          = NULL,
+                   pending_margin          = NULL,
+                   pending_fixed_cost      = NULL,
+                   pending_effective_epoch = NULL
+             WHERE pool_id_bech32 = ?
+               AND pending_effective_epoch IS NOT NULL
+               AND pending_pledge      = pledge
+               AND pending_margin      = margin
+               AND pending_fixed_cost  = fixed_cost
+            """,
+            (data.get("pool_id_bech32"),),
+        )
         conn.commit()
 
 
@@ -231,6 +250,7 @@ def get_pools(
     sql = (
         "SELECT pool_id_bech32, pool_id_hex, pool_status, active_epoch_no, retiring_epoch, "
         "pledge, margin, fixed_cost, "
+        "pending_pledge, pending_margin, pending_fixed_cost, pending_effective_epoch, "
         "active_stake, live_stake, live_pledge, live_delegators, live_saturation, sigma, block_count, "
         "ticker, pool_name, description, homepage, pool_icon_url, pool_logo_url, "
         "extended_about, twitter_handle, telegram_handle, youtube_handle, github_handle, "

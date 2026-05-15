@@ -232,6 +232,7 @@ def pool_fee_change(
     lang: str = "ja",
     old_pledge_ada: float | None = None,
     new_pledge_ada: float | None = None,
+    effective_epoch: int | None = None,
 ) -> dict:
     t = get_flex(lang)
     margin_color = TEXT_UP if new_margin_pct > old_margin_pct else TEXT_DOWN
@@ -251,27 +252,43 @@ def pool_fee_change(
     if apy is not None:
         rows.append(_row(t["apy_label"], f"{apy:.2f}%", TEXT_APY))
 
+    body = [
+        {
+            "type": "text",
+            "text": pool_name,
+            "weight": "bold",
+            "size": "md",
+            "wrap": True,
+            "color": TEXT_PRIMARY,
+        },
+        {"type": "separator", "margin": "md"},
+        {
+            "type": "box",
+            "layout": "vertical",
+            "margin": "md",
+            "spacing": "sm",
+            "contents": rows,
+        },
+    ]
+    if effective_epoch is not None:
+        notice_text = (
+            f"次エポック (Epoch {effective_epoch}) から反映されます"
+            if lang == "ja" else
+            f"Effective at next epoch (Epoch {effective_epoch})"
+        )
+        body.append({
+            "type": "text",
+            "text": notice_text,
+            "size": "xs",
+            "color": TEXT_SECONDARY,
+            "wrap": True,
+            "margin": "md",
+        })
+    body.append(_wallet_row(nickname, lang))
+
     return _bubble(
         _header(t["pool_fee_change_title"], t["pool_fee_change_subtitle"]),
-        [
-            {
-                "type": "text",
-                "text": pool_name,
-                "weight": "bold",
-                "size": "md",
-                "wrap": True,
-                "color": TEXT_PRIMARY,
-            },
-            {"type": "separator", "margin": "md"},
-            {
-                "type": "box",
-                "layout": "vertical",
-                "margin": "md",
-                "spacing": "sm",
-                "contents": rows,
-            },
-            _wallet_row(nickname, lang),
-        ],
+        body,
         url,
         t["footer_open"],
     )

@@ -295,14 +295,24 @@ def remove_notification_channel(user_id: int, channel_type: str) -> None:
 # ============================================================
 
 def get_stake_addresses(user_id: int) -> list:
+    """ユーザーのステークアドレス一覧 + 委任先プールの pending_effective_epoch を取得。
+
+    pending_effective_epoch は listener が PoolRegistration cert を検知して
+    pools.pending_* に書込んだとき NOT NULL になる。マイページ通知設定の委任先
+    プール表示に「次エポックで手数料変更」バッジを出すために JOIN で持ち回る。
+    """
     with get_db() as (cursor, _):
         cursor.execute(
-            "SELECT id, address, wallet_address, nickname, role, "
-            "delegated_drep_id, delegated_drep_name, "
-            "delegated_pool_id, delegated_pool_name, "
-            "spo_pool_id, "
-            "verified, verified_at, created_at "
-            "FROM stake_addresses WHERE user_id = ? ORDER BY created_at ASC",
+            "SELECT sa.id, sa.address, sa.wallet_address, sa.nickname, sa.role, "
+            "sa.delegated_drep_id, sa.delegated_drep_name, "
+            "sa.delegated_pool_id, sa.delegated_pool_name, "
+            "sa.spo_pool_id, "
+            "sa.verified, sa.verified_at, sa.created_at, "
+            "p.pending_effective_epoch AS pool_pending_effective_epoch "
+            "FROM stake_addresses sa "
+            "LEFT JOIN pools p ON p.pool_id_bech32 = sa.delegated_pool_id COLLATE utf8mb4_general_ci "
+            "WHERE sa.user_id = ? "
+            "ORDER BY sa.created_at ASC",
             (user_id,),
         )
         return [dict(row) for row in cursor.fetchall() if row is not None]

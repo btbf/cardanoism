@@ -74,6 +74,8 @@ def _upsert_pool_static(
     pledge: int | None = None,
     margin: float | None = None,
     fixed_cost: int | None = None,
+    pending_effective_epoch: int | None = None,
+    is_new_pool: bool = False,
     meta_url: str | None = None,
     meta_hash: str | None = None,
     retiring_epoch: int | None = None,
@@ -86,19 +88,41 @@ def _upsert_pool_static(
     Koios sync が管理する動的列・メタデータ列は一切触らない。
     指定されなかった引数は None で渡され、ON DUPLICATE KEY UPDATE 側で COALESCE により
     既存値が保持される。
+
+    pledge / margin / fixed_cost の扱い (cert で観測した値):
+      - is_new_pool=True  : 新規プール扱いで active 列を初期化する
+      - is_new_pool=False : active 列には触らず pending_* に書く (次エポック反映予定)。
+                            pending_effective_epoch も必須でセットされる前提。
     """
+    is_new = bool(is_new_pool)
+    # pending_* / active_* に振り分け
+    active_pledge = int(pledge) if (is_new and pledge is not None) else None
+    active_margin = float(margin) if (is_new and margin is not None) else None
+    active_fixed_cost = int(fixed_cost) if (is_new and fixed_cost is not None) else None
+    pending_pledge = int(pledge) if (not is_new and pledge is not None) else None
+    pending_margin = float(margin) if (not is_new and margin is not None) else None
+    pending_fixed_cost = int(fixed_cost) if (not is_new and fixed_cost is not None) else None
+    pending_epoch = (
+        int(pending_effective_epoch)
+        if (not is_new and pending_effective_epoch is not None) else None
+    )
+
     with get_db() as (cursor, conn):
         cursor.execute(
             """
             INSERT INTO pools (
                 pool_id_bech32, vrf_key_hash, reward_addr,
                 pledge, margin, fixed_cost,
+                pending_pledge, pending_margin, pending_fixed_cost,
+                pending_effective_epoch,
                 meta_url, meta_hash,
                 retiring_epoch, pool_status,
                 owners, last_event_slot
             ) VALUES (
                 ?, ?, ?,
                 ?, ?, ?,
+                ?, ?, ?,
+                ?,
                 ?, ?,
                 ?, ?,
                 ?, ?
@@ -109,6 +133,11 @@ def _upsert_pool_static(
                 pledge          = COALESCE(VALUES(pledge),        pledge),
                 margin          = COALESCE(VALUES(margin),        margin),
                 fixed_cost      = COALESCE(VALUES(fixed_cost),    fixed_cost),
+                -- pending_* は値が来たら必ず上書き (NULL を明示的に渡したケースは無い)
+                pending_pledge          = COALESCE(VALUES(pending_pledge),          pending_pledge),
+                pending_margin          = COALESCE(VALUES(pending_margin),          pending_margin),
+                pending_fixed_cost      = COALESCE(VALUES(pending_fixed_cost),      pending_fixed_cost),
+                pending_effective_epoch = COALESCE(VALUES(pending_effective_epoch), pending_effective_epoch),
                 meta_url        = COALESCE(VALUES(meta_url),      meta_url),
                 meta_hash       = COALESCE(VALUES(meta_hash),     meta_hash),
                 retiring_epoch  = COALESCE(VALUES(retiring_epoch), retiring_epoch),
@@ -120,9 +149,13 @@ def _upsert_pool_static(
                 pool_id_bech32,
                 vrf_key_hash,
                 reward_addr,
-                int(pledge) if pledge is not None else None,
-                float(margin) if margin is not None else None,
-                int(fixed_cost) if fixed_cost is not None else None,
+                active_pledge,
+                active_margin,
+                active_fixed_cost,
+                pending_pledge,
+                pending_margin,
+                pending_fixed_cost,
+                pending_epoch,
                 meta_url,
                 meta_hash,
                 int(retiring_epoch) if retiring_epoch is not None else None,
@@ -182,11 +215,17 @@ def _mark_user_addresses_as_spo(stake_address_ids: list[int], pool_id: str) -> N
         conn.commit()
 
 
-def record_pool_registration(cert: dict, slot: int) -> bool:
+def record_pool_registration(cert: dict, slot: int, current_epoch: int | None = None) -> bool:
     """stakePoolRegistration cert を pools に反映する。
 
     新規登録 / 再登録 (手数料・誓約・メタデータ変更) のどちらでもこの cert が来る。
     pool_id が同じならば ON DUPLICATE KEY UPDATE で既存行に上書き。
+
+    pledge / margin / fixed_cost は ledger 上では次エポック境界で反映されるため、
+    既存プールの場合は pending_* に書き出して active 列は触らない。
+    新規プール (pools 行が存在しない) の場合だけ active 列を初期化する。
+    UI は pending_effective_epoch > current_epoch のときに「次エポック反映」バッジ
+    を出す。
 
     副作用: cert に含まれる reward_addr / owners が登録済み stake_addresses に
     該当する場合、spo_pool_id をマークする。
@@ -211,6 +250,27 @@ def record_pool_registration(cert: dict, slot: int) -> bool:
     owners_bech = _convert_owners_to_stake_addresses(owners_hex)
     owners_json = json.dumps(owners_bech, ensure_ascii=False) if owners_bech else None
 
+    # 新規プール判定: pools 行が無い、または active 値 (pledge) が未設定なら新規扱い
+    is_new_pool = True
+    try:
+        with get_db() as (cursor, _):
+            cursor.execute(
+                "SELECT pledge, margin, fixed_cost FROM pools "
+                "WHERE pool_id_bech32 = ? LIMIT 1",
+                (pool_id,),
+            )
+            row = cursor.fetchone()
+            if row and row["pledge"] is not None and row["margin"] is not None:
+                is_new_pool = False
+    except Exception as e:  # noqa: BLE001
+        logger.warning("listener: pools 既存判定失敗 pool=%s: %s", pool_id, e)
+
+    # pending_effective_epoch は次エポック (current_epoch + 1)。既存プールにのみ意味あり。
+    pending_epoch = (
+        int(current_epoch) + 1
+        if (not is_new_pool and current_epoch is not None) else None
+    )
+
     _upsert_pool_static(
         pool_id_bech32=pool_id,
         vrf_key_hash=vrf,
@@ -218,6 +278,8 @@ def record_pool_registration(cert: dict, slot: int) -> bool:
         pledge=pledge,
         margin=margin,
         fixed_cost=fixed_cost,
+        pending_effective_epoch=pending_epoch,
+        is_new_pool=is_new_pool,
         meta_url=meta_url,
         meta_hash=meta_hash,
         pool_status="registered",
@@ -225,10 +287,12 @@ def record_pool_registration(cert: dict, slot: int) -> bool:
         last_event_slot=slot,
     )
     logger.info(
-        "listener: pool 登録 pool=%s pledge=%s cost=%s margin=%.4f owners=%d",
+        "listener: pool %s pool=%s pledge=%s cost=%s margin=%.4f owners=%d pending_epoch=%s",
+        "新規登録" if is_new_pool else "再登録(予告)",
         pool_id, pledge, fixed_cost,
         margin if margin is not None else float("nan"),
         len(owners_bech),
+        pending_epoch,
     )
 
     # 登録済みユーザーの stake_addresses に該当があれば SPO としてマーク

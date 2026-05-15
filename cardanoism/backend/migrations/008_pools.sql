@@ -22,6 +22,12 @@ CREATE TABLE IF NOT EXISTS pools (
     pledge            BIGINT         DEFAULT 0,
     margin            DECIMAL(7,6)   DEFAULT NULL,
     fixed_cost        BIGINT         DEFAULT 0,
+    -- 次エポック反映予定の予告値 (listener が PoolRegistration cert 検知時に書込み)。
+    -- pending_effective_epoch > current_epoch のときに UI バッジを表示し、反映後 NULL クリア。
+    pending_pledge          BIGINT       DEFAULT NULL,
+    pending_margin          DECIMAL(7,6) DEFAULT NULL,
+    pending_fixed_cost      BIGINT       DEFAULT NULL,
+    pending_effective_epoch INT          DEFAULT NULL,
     active_stake      BIGINT         DEFAULT 0,
     live_stake        BIGINT         DEFAULT 0,
     live_pledge       BIGINT         DEFAULT 0,

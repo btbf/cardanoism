@@ -698,6 +698,7 @@ UI_JA: dict[str, str] = {
     "staking_badge_saturated":     "飽和",
     "staking_badge_warning":       "警戒",
     "staking_badge_retiring":      "退役予告",
+    "staking_badge_pending_fee":   "次エポックで手数料変更",
     "staking_badge_alive":         "リレー稼働中",
     "staking_badge_dead":          "リレー応答なし",
 
@@ -1677,6 +1678,7 @@ UI_EN: dict[str, str] = {
     "staking_badge_saturated":     "Saturated",
     "staking_badge_warning":       "Warning",
     "staking_badge_retiring":      "Retiring",
+    "staking_badge_pending_fee":   "Fee change next epoch",
     "staking_badge_alive":         "Relay online",
     "staking_badge_dead":          "Relay offline",
 

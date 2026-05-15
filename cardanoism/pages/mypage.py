@@ -1003,6 +1003,11 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
                     rx.hstack(
                         rx.text(AuthState.t["notification_pool_label"], size="2", color="var(--gray-9)"),
                         rx.badge(addr["delegated_pool_name"], variant="soft", color_scheme="blue", size="1"),
+                        rx.cond(
+                            addr["pool_pending_effective_epoch"],
+                            rx.badge(AuthState.t["staking_badge_pending_fee"], variant="soft", color_scheme="amber", size="1"),
+                            rx.fragment(),
+                        ),
                         spacing="1",
                         align="center",
                     ),
@@ -1011,6 +1016,11 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
                         rx.hstack(
                             rx.text(AuthState.t["notification_pool_label"], size="2", color="var(--gray-9)"),
                             rx.badge(addr["delegated_pool_id"], variant="outline", color_scheme="blue", size="1", font_family="monospace"),
+                            rx.cond(
+                                addr["pool_pending_effective_epoch"],
+                                rx.badge(AuthState.t["staking_badge_pending_fee"], variant="soft", color_scheme="amber", size="1"),
+                                rx.fragment(),
+                            ),
                             spacing="1",
                             align="center",
                         ),
@@ -1050,6 +1060,11 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
                 rx.hstack(
                     rx.text(AuthState.t["notification_pool_label"], size="2", color="var(--gray-9)"),
                     rx.badge(addr["delegated_pool_name"], variant="soft", color_scheme="blue", size="1"),
+                    rx.cond(
+                        addr["pool_pending_effective_epoch"],
+                        rx.badge(AuthState.t["staking_badge_pending_fee"], variant="soft", color_scheme="amber", size="1"),
+                        rx.fragment(),
+                    ),
                     spacing="1",
                     align="center",
                 ),
@@ -1058,6 +1073,11 @@ def stake_notification_section(addr: rx.Var) -> rx.Component:
                     rx.hstack(
                         rx.text(AuthState.t["notification_pool_label"], size="2", color="var(--gray-9)"),
                         rx.badge(addr["delegated_pool_id"], variant="outline", color_scheme="blue", size="1", font_family="monospace"),
+                        rx.cond(
+                            addr["pool_pending_effective_epoch"],
+                            rx.badge(AuthState.t["staking_badge_pending_fee"], variant="soft", color_scheme="amber", size="1"),
+                            rx.fragment(),
+                        ),
                         spacing="1",
                         align="center",
                     ),
