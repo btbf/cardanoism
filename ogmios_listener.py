@@ -49,6 +49,7 @@ from cardanoism.backend.listener_db import rollback_listener_state
 from cardanoism.backend.listener_governance import (
     record_proposal_from_event,
     record_vote_from_event,
+    encode_voter_id,
 )
 from cardanoism.backend.listener_dreps import (
     record_drep_registration,
@@ -598,7 +599,16 @@ def _process_tx(tx: dict, slot: int, current_epoch: int) -> None:
             # 通知発火は従来どおり DRep のみ
             if voter_role != "delegateRepresentative":
                 continue
-            drep_id = voter.get("id", "")
+            # DRep id は Ogmios だと hex で来るが、stake_addresses.delegated_drep_id は
+            # bech32 (drep1...) で記録される。フィルタを通すため bech32 に揃える。
+            drep_hex = voter.get("id", "")
+            has_script = bool(
+                voter.get("isScript")
+                or voter.get("kind") == "scriptHash"
+                or voter.get("type") == "script"
+                or voter.get("from") == "scriptHash"
+            )
+            drep_id = encode_voter_id("DRep", drep_hex, has_script=has_script) or drep_hex
             vote_str = vote.get("vote", "")
             action_id = vote.get("proposal") or vote.get("actionId") or {}
             gov_tx_hash = action_id.get("transaction", {}).get("id", "")
