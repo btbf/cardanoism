@@ -242,7 +242,11 @@ def record_vote_from_event(vote_obj: dict, slot: int) -> bool:
         logger.warning("listener: vote の proposal_id 計算失敗 tx=%s idx=%d", gov_tx, gov_idx)
         return False
 
-    vote_str = (vote_obj.get("vote") or "").lower()
+    # Ogmios は "yes" / "no" / "abstain" (lowercase) で来るが、UI の _vote_badge は
+    # Koios sync 由来の "Yes" / "No" / "Abstain" (capitalized) でマッチングするため統一。
+    _VOTE_NORMALIZE = {"yes": "Yes", "no": "No", "abstain": "Abstain"}
+    raw_vote = (vote_obj.get("vote") or "").lower()
+    vote_str = _VOTE_NORMALIZE.get(raw_vote, raw_vote)
 
     # v6.10+ は "metadata"、旧は "anchor"
     anchor = vote_obj.get("metadata") or vote_obj.get("anchor") or {}
