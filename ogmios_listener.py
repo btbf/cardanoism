@@ -645,8 +645,10 @@ async def _find_intersection(ws, points: list) -> None:
     else:
         tip = resp.get("result", {}).get("tip", {})
         intersection = resp.get("result", {}).get("intersection", {})
-        logger.info("findIntersection 成功: intersection slot=%s, tip slot=%s",
-                    intersection.get("slot", "?"), tip.get("slot", "?"))
+        # intersection / tip は "origin" 文字列の場合があるので dict 限定で slot を取り出す
+        inter_disp = intersection.get("slot", "?") if isinstance(intersection, dict) else str(intersection)
+        tip_disp = tip.get("slot", "?") if isinstance(tip, dict) else str(tip)
+        logger.info("findIntersection 成功: intersection=%s, tip slot=%s", inter_disp, tip_disp)
         if isinstance(tip, dict) and isinstance(intersection, dict):
             tip_slot = tip.get("slot", 0)
             inter_slot = intersection.get("slot", 0)
