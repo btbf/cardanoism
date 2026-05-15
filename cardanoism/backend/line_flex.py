@@ -514,31 +514,43 @@ def drep_vote(
     nickname: str,
     url: str,
     lang: str = "ja",
+    vote_count: int = 1,
 ) -> dict:
     """
     vote: "yes" / "no" / "abstain"（Koios からの raw 値）
     または後方互換のため "賛成" / "反対" / "棄権" も受け付ける。
+
+    vote_count >= 2 のときは Tx 単位の集約表示（「N 件の GA に投票」+ DRep ページリンク）。
     """
     t = get_flex(lang)
 
-    # raw vote key → 言語別ラベルに変換
-    vote_key_map = {
-        "yes": "vote_yes", "no": "vote_no", "abstain": "vote_abstain",
-        # 後方互換（日本語で渡された場合）
-        "賛成": "vote_yes", "反対": "vote_no", "棄権": "vote_abstain",
-    }
-    vote_label = t.get(vote_key_map.get(vote.lower(), ""), vote)
-    vote_colors = {
-        t.get("vote_yes", "賛成"): TEXT_DOWN,
-        t.get("vote_no", "反対"): TEXT_UP,
-        t.get("vote_abstain", "棄権"): TEXT_SECONDARY,
-    }
-    vote_color = vote_colors.get(vote_label, TEXT_PRIMARY)
-
     rows = []
-    if proposal_title:
-        rows.append(_row(t["drep_vote_action_label"], proposal_title, TEXT_PRIMARY))
-    rows.append(_row(t["drep_vote_label"], vote_label, vote_color))
+
+    if int(vote_count) > 1:
+        # 集約モード: 件数だけ表示
+        if lang == "ja":
+            count_text = f"{vote_count} 件のガバナンス提案に投票"
+        else:
+            count_text = f"Voted on {vote_count} governance actions"
+        rows.append(_row(t["drep_vote_action_label"], count_text, TEXT_PRIMARY))
+    else:
+        # 個別モード: タイトル + 投票内容
+        # raw vote key → 言語別ラベルに変換
+        vote_key_map = {
+            "yes": "vote_yes", "no": "vote_no", "abstain": "vote_abstain",
+            # 後方互換（日本語で渡された場合）
+            "賛成": "vote_yes", "反対": "vote_no", "棄権": "vote_abstain",
+        }
+        vote_label = t.get(vote_key_map.get(vote.lower(), ""), vote)
+        vote_colors = {
+            t.get("vote_yes", "賛成"): TEXT_DOWN,
+            t.get("vote_no", "反対"): TEXT_UP,
+            t.get("vote_abstain", "棄権"): TEXT_SECONDARY,
+        }
+        vote_color = vote_colors.get(vote_label, TEXT_PRIMARY)
+        if proposal_title:
+            rows.append(_row(t["drep_vote_action_label"], proposal_title, TEXT_PRIMARY))
+        rows.append(_row(t["drep_vote_label"], vote_label, vote_color))
 
     return _bubble(
         _header(t["drep_vote_title"], t["drep_vote_subtitle"]),

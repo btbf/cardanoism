@@ -404,7 +404,13 @@ def _notify_spo_pending_vote(tx_id: str, proposal_idx: int, action_type_raw: str
 # 通知発火: drep_vote
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _notify_drep_vote(drep_id: str, vote_str: str, gov_tx_hash: str, gov_index: int) -> None:
+def _notify_drep_vote(drep_id: str, votes_list: list[dict], tx_id: str) -> None:
+    """DRep 投票を Tx 単位で集約して通知する。
+
+    votes_list: [{"vote": "Yes", "gov_tx_hash": "...", "gov_index": 0}, ...]
+      - 1 件のみ: 投票タイトル + 投票内容 + GA リンク (個別通知)
+      - 2 件以上: N 件投票 + DRep 個人ページリンク (集約通知)
+    """
     from cardanoism.backend.notify_templates import deliver
     from cardanoism.backend.notify_templates.drep_vote import (
         context as build_ctx, EVENT_TYPE,
@@ -415,23 +421,40 @@ def _notify_drep_vote(drep_id: str, vote_str: str, gov_tx_hash: str, gov_index: 
         get_stake_addrs_with_telegram_event("drep_vote"),
     )
     addrs = [a for a in addrs if a.get("delegated_drep_id") == drep_id]
-    if not addrs:
+    if not addrs or not votes_list:
         return
 
-    info = get_proposal_info(gov_tx_hash, gov_index) if gov_tx_hash else None
-    proposal_title = (info or {}).get("title") or None
-    action_type    = (info or {}).get("proposal_type") or None
-    proposal_id    = (info or {}).get("proposal_id") or None
-
-    for addr in addrs:
-        drep_name = addr.get("delegated_drep_name") or drep_id[:12]
-        ctx = build_ctx(
-            drep_name=drep_name, vote=vote_str, proposal_title=proposal_title,
-            nickname=addr["nickname"], base_url=CARDANOISM_URL,
-            action_type=action_type, proposal_id=proposal_id,
-        )
-        deliver(addr, EVENT_TYPE, ctx,
-                dedup_base=f"drep_vote_{addr['stake_id']}_{gov_tx_hash}_{gov_index}")
+    vote_count = len(votes_list)
+    if vote_count == 1:
+        v = votes_list[0]
+        gov_tx_hash = v["gov_tx_hash"]
+        gov_index = v["gov_index"]
+        info = get_proposal_info(gov_tx_hash, gov_index) if gov_tx_hash else None
+        proposal_title = (info or {}).get("title") or None
+        action_type    = (info or {}).get("proposal_type") or None
+        proposal_id    = (info or {}).get("proposal_id") or None
+        for addr in addrs:
+            drep_name = addr.get("delegated_drep_name") or drep_id[:12]
+            ctx = build_ctx(
+                drep_name=drep_name, vote=v["vote"], proposal_title=proposal_title,
+                nickname=addr["nickname"], base_url=CARDANOISM_URL,
+                action_type=action_type, proposal_id=proposal_id,
+                vote_count=1, drep_id=drep_id,
+            )
+            deliver(addr, EVENT_TYPE, ctx,
+                    dedup_base=f"drep_vote_{addr['stake_id']}_{gov_tx_hash}_{gov_index}")
+    else:
+        # 集約: 1 Tx 内に複数の vote (= 同じ DRep が複数 GA に投票)
+        for addr in addrs:
+            drep_name = addr.get("delegated_drep_name") or drep_id[:12]
+            ctx = build_ctx(
+                drep_name=drep_name, vote="", proposal_title=None,
+                nickname=addr["nickname"], base_url=CARDANOISM_URL,
+                action_type=None, proposal_id=None,
+                vote_count=vote_count, drep_id=drep_id,
+            )
+            deliver(addr, EVENT_TYPE, ctx,
+                    dedup_base=f"drep_vote_batch_{addr['stake_id']}_{tx_id}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -586,6 +609,10 @@ def _process_tx(tx: dict, slot: int, current_epoch: int) -> None:
         except Exception as e:
             logger.exception("proposal 処理エラー tx=%s: %s", tx_id, e)
 
+    # DRep 投票を drep_id 単位に集約して、Tx 終わりに 1 回だけ通知発火する。
+    # (1 Tx で複数 GA に投票するケースを集約通知に切り替えるため)
+    drep_votes_by_id: dict[str, list[dict]] = {}
+    _VOTE_NORMALIZE = {"yes": "Yes", "no": "No", "abstain": "Abstain"}
     for vote in tx.get("votes", []):
         try:
             # Ogmios v6.10+ は "issuer" / "proposal"、旧は "voter" / "actionId"。両対応。
@@ -609,14 +636,26 @@ def _process_tx(tx: dict, slot: int, current_epoch: int) -> None:
                 or voter.get("from") == "scriptHash"
             )
             drep_id = encode_voter_id("DRep", drep_hex, has_script=has_script) or drep_hex
-            vote_str = vote.get("vote", "")
+            raw_vote = (vote.get("vote") or "").lower()
+            vote_str = _VOTE_NORMALIZE.get(raw_vote, raw_vote)
             action_id = vote.get("proposal") or vote.get("actionId") or {}
             gov_tx_hash = action_id.get("transaction", {}).get("id", "")
             gov_index = action_id.get("index", 0)
             logger.info("drep_vote 検知: drep=%s vote=%s gov_tx=%s#%d", drep_id, vote_str, gov_tx_hash, gov_index)
-            _notify_drep_vote(drep_id, vote_str, gov_tx_hash, gov_index)
+            drep_votes_by_id.setdefault(drep_id, []).append({
+                "vote": vote_str,
+                "gov_tx_hash": gov_tx_hash,
+                "gov_index": gov_index,
+            })
         except Exception as e:
             logger.exception("vote 処理エラー tx=%s: %s", tx_id, e)
+
+    # 集約通知発火（drep_id ごとに 1 回。vote_count で個別/集約を出し分ける）
+    for drep_id, votes_list in drep_votes_by_id.items():
+        try:
+            _notify_drep_vote(drep_id, votes_list, tx_id)
+        except Exception as e:
+            logger.exception("drep_vote 通知エラー drep=%s tx=%s: %s", drep_id, tx_id, e)
 
 
 def _process_block(block: dict, prev_epoch: int) -> int:
