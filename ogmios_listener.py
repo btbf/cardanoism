@@ -576,7 +576,8 @@ def _process_tx(tx: dict, slot: int, current_epoch: int) -> None:
 
     for vote in tx.get("votes", []):
         try:
-            voter = vote.get("voter", {})
+            # Ogmios v6.10+ は "issuer" / "proposal"、旧は "voter" / "actionId"。両対応。
+            voter = vote.get("issuer") or vote.get("voter") or {}
             voter_role = voter.get("role")
             # Phase 1: 全 voter role を proposal_votes に書く (DRep / SPO / CC)
             try:
@@ -588,7 +589,7 @@ def _process_tx(tx: dict, slot: int, current_epoch: int) -> None:
                 continue
             drep_id = voter.get("id", "")
             vote_str = vote.get("vote", "")
-            action_id = vote.get("actionId", {})
+            action_id = vote.get("proposal") or vote.get("actionId") or {}
             gov_tx_hash = action_id.get("transaction", {}).get("id", "")
             gov_index = action_id.get("index", 0)
             logger.info("drep_vote 検知: drep=%s vote=%s gov_tx=%s#%d", drep_id, vote_str, gov_tx_hash, gov_index)
