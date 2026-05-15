@@ -182,19 +182,18 @@ OpenAI gpt-5.4-mini で GA の**ファクト整理**をする常駐ワーカー�
 
 セットアップ詳細: [`docs/ga-ai-analysis-backend.md`](docs/ga-ai-analysis-backend.md)
 
-### 3-4. 投票理由ワーカー（`vote_rationale_worker.py`）
+### 3-4. DRep 投票の rationale 取得（listener 内バックグラウンドタスク）
 
-`ogmios_listener.py` が DRep 投票を検知して `proposal_votes` に即時書き込みするが、`rationale` 本文は IPFS fetch + OpenAI 翻訳が必要なので listener では行わない。代わりにこの常駐ワーカーが短間隔（デフォルト 10 秒）で polling して、`rationale IS NULL AND meta_url IS NOT NULL` の行を見つけて埋める。
+`ogmios_listener.py` が DRep 投票を検知したとき、`record_vote_from_event` で `proposal_votes` に即時書き込みする（rationale 空、meta_url 入り）。同じ tx 内で:
 
-**設計方針**: listener は「チェーン検知 + DB 書き込み」に専念し、重い I/O（IPFS / OpenAI）はこのワーカーに切り出す責務分離。
+1. `_process_tx` が drep_id 単位に vote を集約
+2. 各 drep_id について `asyncio.create_task(_process_drep_vote_post(...))` でバックグラウンドタスクを起動
+3. bg タスク内で IPFS fetch + OpenAI 翻訳 → DB UPDATE → `_notify_drep_vote` を順次実行
+4. IPFS / OpenAI が失敗しても通知は必ず発火（UX 優先）
 
-**CLI コマンド**:
-- `python vote_rationale_worker.py` — 常駐起動
-- `python vote_rationale_worker.py --poll-interval 10 --fetch-limit 20 --translate-limit 10` — パラメータ指定
+`_rationale_lock` (asyncio.Lock) で bg タスクを順次実行し、OpenAI のレートバーストを回避する。listener のメインループは asyncio.create_task で即座に次のブロック処理に戻れる。
 
-`notify_worker.py --event vote_rationale_sync` の 4h cron はバックアップとして残す（このワーカーが止まっていても遅延付きで処理される）。
-
-セットアップ詳細: [`docs/realtime-notification-backend.md`](docs/realtime-notification-backend.md) の systemd セクションを参照。
+`notify_worker.py --event vote_rationale_sync` の 4h cron は（listener が落ちていたとき / Koios sync 経由で書かれた古い行向けの）バックアップとして残す。
 
 ### 3-5. 共通実装
 

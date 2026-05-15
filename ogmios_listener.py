@@ -81,6 +81,18 @@ _dbg_tx_keys_logged = 0
 # Ogmios v6 の cert (delegation / DRep registration 等) の構造確認用。
 _DBG_CERT_DUMP = os.getenv("LISTENER_DEBUG_CERT_DUMP", "").strip().lower() in ("1", "true", "yes")
 
+# DRep 投票 → rationale 取得 + 翻訳 を直列化するロック。
+# 並列バースト (OpenAI レート制限ヒット) を避けるため、bg タスクは順次実行する。
+_rationale_lock: asyncio.Lock | None = None
+
+
+def _get_rationale_lock() -> asyncio.Lock:
+    """asyncio.Lock を遅延初期化 (実行中の event loop に紐付ける)。"""
+    global _rationale_lock
+    if _rationale_lock is None:
+        _rationale_lock = asyncio.Lock()
+    return _rationale_lock
+
 _EPOCH_LENGTHS = {
     "mainnet": 432_000,
     "preprod": 432_000,
@@ -457,6 +469,37 @@ def _notify_drep_vote(drep_id: str, votes_list: list[dict], tx_id: str) -> None:
                     dedup_base=f"drep_vote_batch_{addr['stake_id']}_{tx_id}")
 
 
+async def _process_drep_vote_post(drep_id: str, votes_list: list[dict], tx_id: str) -> None:
+    """DRep 投票検知後のバックグラウンド処理。
+
+    1. IPFS から meta_url を辿って投票理由本文を取得
+    2. 英語なら OpenAI で日本語訳して proposal_votes.rationale / rationale_ja を埋める
+    3. 上記が失敗しても必ず _notify_drep_vote は呼ぶ (rationale 抜きでも通知は飛ばす)
+
+    listener のメインループはこのタスクを待たない (asyncio.create_task で発火)。
+    並列バースト (OpenAI レート制限) を避けるため _rationale_lock で順次実行する。
+    """
+    loop = asyncio.get_event_loop()
+    try:
+        async with _get_rationale_lock():
+            # 既存の sync 処理を別スレッドで呼ぶ。fetch_limit を絞って 1 ループあたり軽量に。
+            # 今 listener が書いた vote も block_time DESC で対象に含まれる。
+            from notify_worker import check_vote_rationale_sync
+            await loop.run_in_executor(
+                None,
+                check_vote_rationale_sync,
+                20,   # fetch_limit
+                10,   # translate_limit
+            )
+    except Exception as e:  # noqa: BLE001
+        logger.exception("rationale 取得失敗 (続行): drep=%s tx=%s: %s", drep_id, tx_id, e)
+    # rationale 取得の成否に関わらず通知発火 (UX 優先)
+    try:
+        _notify_drep_vote(drep_id, votes_list, tx_id)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("drep_vote 通知失敗: drep=%s tx=%s: %s", drep_id, tx_id, e)
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # ブロック処理
 # ──────────────────────────────────────────────────────────────────────────────
@@ -651,11 +694,13 @@ def _process_tx(tx: dict, slot: int, current_epoch: int) -> None:
             logger.exception("vote 処理エラー tx=%s: %s", tx_id, e)
 
     # 集約通知発火（drep_id ごとに 1 回。vote_count で個別/集約を出し分ける）
-    for drep_id, votes_list in drep_votes_by_id.items():
-        try:
-            _notify_drep_vote(drep_id, votes_list, tx_id)
-        except Exception as e:
-            logger.exception("drep_vote 通知エラー drep=%s tx=%s: %s", drep_id, tx_id, e)
+    # rationale 取得 (IPFS + OpenAI) と通知発火はバックグラウンドタスクに切り出して
+    # listener のメインループを止めない。IPFS / OpenAI が失敗しても _process_drep_vote_post
+    # 内で通知は必ず飛ぶ仕様。
+    if drep_votes_by_id:
+        loop = asyncio.get_event_loop()
+        for drep_id, votes_list in drep_votes_by_id.items():
+            loop.create_task(_process_drep_vote_post(drep_id, votes_list, tx_id))
 
 
 def _process_block(block: dict, prev_epoch: int) -> int:
