@@ -34,8 +34,9 @@ from notify_worker import (
     get_state, set_state,
     already_sent,
     flex_and_log, email_and_log,
-    get_users_with_event, get_users_with_email_event,
+    get_users_with_event, get_users_with_email_event, get_users_with_telegram_event,
     get_stake_addrs_with_event, get_stake_addrs_with_email_event,
+    get_stake_addrs_with_telegram_event,
     _merge_stake_channels,
     CARDANOISM_URL,
 )
@@ -248,11 +249,7 @@ def _notify_epoch_start(epoch: int) -> None:
 
     line_users = get_users_with_event("epoch_start")
     email_users = get_users_with_email_event("epoch_start")
-    try:
-        from notify_worker import get_users_with_telegram_event
-        tg_users = get_users_with_telegram_event("epoch_start")
-    except Exception:
-        tg_users = []
+    tg_users = get_users_with_telegram_event("epoch_start")
 
     addrs = merge_user_channels(line_users, email_users, tg_users)
     if not addrs:
