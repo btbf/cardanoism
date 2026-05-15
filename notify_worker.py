@@ -2436,9 +2436,10 @@ def check_notify_test():
     """管理者用の通知疎通テスト。
 
     環境変数 ADMIN_USER_ID で指定したユーザーの notification_channels に登録された
-    LINE / Telegram / email へ、簡単なテキストを 1 通ずつ送る。enabled の ON/OFF に
-    関わらず登録済みの全チャンネルへ送る（疎通確認が目的のため）。
-    各通知のテンプレートは使わない。
+    LINE / Telegram / email へ、本番と同じ送信ヘルパー (flex_and_log /
+    telegram_and_log / email_and_log) を通してテストメッセージを送る。
+    notification_log にも記録され、本番経路の疎通確認となる。
+    enabled の ON/OFF は問わない。dedup_key はタイムスタンプ込みで毎回ユニーク。
     """
     from datetime import datetime, timezone
 
@@ -2458,9 +2459,27 @@ def check_notify_test():
         logger.warning("notify_test: user_id=%s に登録チャンネルがありません", uid)
         return
 
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    now = datetime.now(timezone.utc)
+    ts = now.strftime("%Y-%m-%d %H:%M:%S UTC")
     msg = f"Cardanoism 通知疎通テスト ({ts})"
+    event_type = "notify_test"
+    dedup_key = f"notify_test_{int(now.timestamp())}"
     logger.info("通知疎通テスト 開始 (user_id=%s, %d チャンネル)", uid, len(channels))
+
+    # LINE 用の最小 Flex bubble (本番と同じ flex_and_log を通すため)
+    flex_contents = {
+        "type": "bubble",
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {"type": "text", "text": "Cardanoism 通知疎通テスト",
+                 "weight": "bold", "size": "md"},
+                {"type": "text", "text": ts,
+                 "size": "sm", "color": "#888888", "wrap": True, "margin": "md"},
+            ],
+        },
+    }
 
     for ch in channels:
         ctype = str(ch.get("channel_type") or "")
@@ -2470,14 +2489,14 @@ def check_notify_test():
             continue
         try:
             if ctype == "line":
-                from cardanoism.backend.line_notify import send_line_push
-                ok = send_line_push(cvalue, msg)
+                ok = flex_and_log(cvalue, uid, event_type, dedup_key, msg, flex_contents)
             elif ctype == "telegram":
-                from cardanoism.backend.telegram_notify import send_telegram
-                ok = send_telegram(cvalue, msg)
+                ok = telegram_and_log(cvalue, uid, event_type, dedup_key, msg)
             elif ctype == "email":
-                from cardanoism.backend.mail_notify import send_email
-                ok = send_email(cvalue, "Cardanoism 通知疎通テスト", f"<p>{msg}</p>", msg)
+                ok = email_and_log(
+                    cvalue, uid, event_type, dedup_key,
+                    "Cardanoism 通知疎通テスト", f"<p>{msg}</p>", msg,
+                )
             else:
                 logger.info("notify_test %s: skip (未対応チャンネル)", ctype)
                 continue
