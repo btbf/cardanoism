@@ -182,7 +182,21 @@ OpenAI gpt-5.4-mini で GA の**ファクト整理**をする常駐ワーカー�
 
 セットアップ詳細: [`docs/ga-ai-analysis-backend.md`](docs/ga-ai-analysis-backend.md)
 
-### 3-4. 共通実装
+### 3-4. 投票理由ワーカー（`vote_rationale_worker.py`）
+
+`ogmios_listener.py` が DRep 投票を検知して `proposal_votes` に即時書き込みするが、`rationale` 本文は IPFS fetch + OpenAI 翻訳が必要なので listener では行わない。代わりにこの常駐ワーカーが短間隔（デフォルト 10 秒）で polling して、`rationale IS NULL AND meta_url IS NOT NULL` の行を見つけて埋める。
+
+**設計方針**: listener は「チェーン検知 + DB 書き込み」に専念し、重い I/O（IPFS / OpenAI）はこのワーカーに切り出す責務分離。
+
+**CLI コマンド**:
+- `python vote_rationale_worker.py` — 常駐起動
+- `python vote_rationale_worker.py --poll-interval 10 --fetch-limit 20 --translate-limit 10` — パラメータ指定
+
+`notify_worker.py --event vote_rationale_sync` の 4h cron はバックアップとして残す（このワーカーが止まっていても遅延付きで処理される）。
+
+セットアップ詳細: [`docs/realtime-notification-backend.md`](docs/realtime-notification-backend.md) の systemd セクションを参照。
+
+### 3-5. 共通実装
 
 - 状態管理: `notification_check_state` テーブル
 - 重複送信防止: `notification_log` テーブル（`dedup_key` で判定）
