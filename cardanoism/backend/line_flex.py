@@ -476,28 +476,66 @@ def drep_new_governance_action(
     proposal_type: str,
     url: str,
     lang: str = "ja",
+    proposal_title: str | None = None,
+    proposal_count: int = 1,
 ) -> dict:
+    """新ガバナンスアクション通知。
+
+    proposal_count >= 2 のときは Tx 単位の集約表示 (件数のみ + governance ページリンク)。
+    proposal_count == 1 のときは proposal_title (あれば) と action_type を表示。
+    """
     t = get_flex(lang)
+
+    body_contents: list[dict] = []
+
+    if int(proposal_count) > 1:
+        # 集約モード: 件数のみ
+        if lang == "ja":
+            count_text = f"{proposal_count} 件の新しいガバナンスアクションが提出されました"
+        else:
+            count_text = f"{proposal_count} new governance actions submitted"
+        body_contents.append({
+            "type": "text",
+            "text": count_text,
+            "weight": "bold",
+            "size": "md",
+            "wrap": True,
+            "color": TEXT_PRIMARY,
+        })
+    else:
+        # 個別モード: タイトル (あれば) + 提案タイプ
+        if proposal_title:
+            body_contents.append({
+                "type": "text",
+                "text": proposal_title,
+                "weight": "bold",
+                "size": "md",
+                "wrap": True,
+                "color": TEXT_PRIMARY,
+            })
+            body_contents.append({"type": "separator", "margin": "md"})
+        body_contents.append({
+            "type": "box",
+            "layout": "vertical",
+            "margin": "md" if proposal_title else "none",
+            "spacing": "sm",
+            "contents": [
+                _row(t["drep_new_gov_type_label"], proposal_type, TEXT_PRIMARY),
+            ],
+        })
+
+    body_contents.append({
+        "type": "text",
+        "text": t["drep_new_gov_hint"],
+        "size": "xs",
+        "color": TEXT_SECONDARY,
+        "wrap": True,
+        "margin": "md",
+    })
+
     return _bubble(
         _header(t["drep_new_gov_title"], t["drep_new_gov_subtitle"]),
-        [
-            {
-                "type": "box",
-                "layout": "vertical",
-                "spacing": "sm",
-                "contents": [
-                    _row(t["drep_new_gov_type_label"], proposal_type, TEXT_PRIMARY),
-                ],
-            },
-            {
-                "type": "text",
-                "text": t["drep_new_gov_hint"],
-                "size": "xs",
-                "color": TEXT_SECONDARY,
-                "wrap": True,
-                "margin": "md",
-            },
-        ],
+        body_contents,
         url,
         t["footer_governance"],
     )
@@ -760,31 +798,64 @@ def spo_pending_vote(
     proposal_type_label: str,
     url: str,
     lang: str = "ja",
+    proposal_title: str | None = None,
+    proposal_count: int = 1,
 ) -> dict:
     """SPO 投票対象の新ガバナンスアクション提出通知。drep_new_governance_action と
     類似のレイアウトだが SPO 文脈を強調する。
+
+    proposal_count >= 2 のときは Tx 単位の集約表示。
     """
     t = get_flex(lang)
+
+    body_contents: list[dict] = []
+
+    if int(proposal_count) > 1:
+        if lang == "ja":
+            count_text = f"{proposal_count} 件の SPO 投票対象 GA が提出されました"
+        else:
+            count_text = f"{proposal_count} new SPO-eligible governance actions"
+        body_contents.append({
+            "type": "text",
+            "text": count_text,
+            "weight": "bold",
+            "size": "md",
+            "wrap": True,
+            "color": TEXT_PRIMARY,
+        })
+    else:
+        if proposal_title:
+            body_contents.append({
+                "type": "text",
+                "text": proposal_title,
+                "weight": "bold",
+                "size": "md",
+                "wrap": True,
+                "color": TEXT_PRIMARY,
+            })
+            body_contents.append({"type": "separator", "margin": "md"})
+        body_contents.append({
+            "type": "box",
+            "layout": "vertical",
+            "margin": "md" if proposal_title else "none",
+            "spacing": "sm",
+            "contents": [
+                _row(t["drep_new_gov_type_label"], proposal_type_label, TEXT_PRIMARY),
+            ],
+        })
+
+    body_contents.append({
+        "type": "text",
+        "text": t["spo_pending_vote_hint"],
+        "size": "xs",
+        "color": TEXT_SECONDARY,
+        "wrap": True,
+        "margin": "md",
+    })
+
     return _bubble(
         _header(t["spo_pending_vote_title"], t["spo_pending_vote_subtitle"]),
-        [
-            {
-                "type": "box",
-                "layout": "vertical",
-                "spacing": "sm",
-                "contents": [
-                    _row(t["drep_new_gov_type_label"], proposal_type_label, TEXT_PRIMARY),
-                ],
-            },
-            {
-                "type": "text",
-                "text": t["spo_pending_vote_hint"],
-                "size": "xs",
-                "color": TEXT_SECONDARY,
-                "wrap": True,
-                "margin": "md",
-            },
-        ],
+        body_contents,
         url,
         t["footer_governance"],
     )

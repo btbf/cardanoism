@@ -85,6 +85,9 @@ _DBG_CERT_DUMP = os.getenv("LISTENER_DEBUG_CERT_DUMP", "").strip().lower() in ("
 # 並列バースト (OpenAI レート制限ヒット) を避けるため、bg タスクは順次実行する。
 _rationale_lock: asyncio.Lock | None = None
 
+# 新規 GA → IPFS メタ取得 + 翻訳 を直列化するロック。
+_governance_lock: asyncio.Lock | None = None
+
 
 def _get_rationale_lock() -> asyncio.Lock:
     """asyncio.Lock を遅延初期化 (実行中の event loop に紐付ける)。"""
@@ -92,6 +95,14 @@ def _get_rationale_lock() -> asyncio.Lock:
     if _rationale_lock is None:
         _rationale_lock = asyncio.Lock()
     return _rationale_lock
+
+
+def _get_governance_lock() -> asyncio.Lock:
+    """asyncio.Lock を遅延初期化 (実行中の event loop に紐付ける)。"""
+    global _governance_lock
+    if _governance_lock is None:
+        _governance_lock = asyncio.Lock()
+    return _governance_lock
 
 _EPOCH_LENGTHS = {
     "mainnet": 432_000,
@@ -350,16 +361,20 @@ def _notify_pool_fee_change(pool_id: str, margin: float, fixed_cost: int, pledge
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 通知発火: drep_new_governance_action
+# 通知発火: drep_new_governance_action (Tx 単位で集約)
+#   proposals: [{"proposal_id": str, "proposal_index": int, "action_type": str,
+#                "proposal_title": str | None, "is_spo": bool}, ...]
+#   - 1 件のみ : 個別通知 (タイトル + action_type + GA リンク)
+#   - 2 件以上 : 集約通知 (N 件の新 GA + governance ページリンク)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _notify_governance_action(tx_id: str, proposal_idx: int, action_type_raw: str) -> None:
+def _notify_governance_action(tx_id: str, proposals: list[dict]) -> None:
     from cardanoism.backend.notify_templates import deliver
     from cardanoism.backend.notify_templates.drep_new_governance_action import (
         context as build_ctx, EVENT_TYPE,
     )
-    from cardanoism.backend.listener_governance import encode_proposal_id
-
+    if not proposals:
+        return
     addrs = _merge_stake_channels(
         get_stake_addrs_with_event("drep_new_governance_action"),
         get_stake_addrs_with_email_event("drep_new_governance_action"),
@@ -368,31 +383,49 @@ def _notify_governance_action(tx_id: str, proposal_idx: int, action_type_raw: st
     if not addrs:
         return
 
-    proposal_id = encode_proposal_id(tx_id, proposal_idx) or ""
-
-    for addr in addrs:
-        lang = addr.get("language", "ja")
-        label = (_GA_TYPE_MAP_JA if lang == "ja" else _GA_TYPE_MAP_EN).get(action_type_raw, action_type_raw)
-        ctx = build_ctx(action_label=label, base_url=CARDANOISM_URL, proposal_id=proposal_id)
-        deliver(addr, EVENT_TYPE, ctx, dedup_base=f"new_gov_{tx_id}_{proposal_idx}_{addr['stake_id']}")
+    count = len(proposals)
+    if count == 1:
+        p = proposals[0]
+        action_type_raw = p["action_type"]
+        for addr in addrs:
+            lang = addr.get("language", "ja")
+            label = (_GA_TYPE_MAP_JA if lang == "ja" else _GA_TYPE_MAP_EN).get(action_type_raw, action_type_raw)
+            ctx = build_ctx(
+                action_label=label, base_url=CARDANOISM_URL,
+                proposal_id=p["proposal_id"],
+                proposal_title=p.get("proposal_title") or None,
+                proposal_count=1,
+            )
+            deliver(addr, EVENT_TYPE, ctx,
+                    dedup_base=f"new_gov_{tx_id}_{p['proposal_index']}_{addr['stake_id']}")
+    else:
+        # 集約: 1 Tx に複数 GA
+        for addr in addrs:
+            ctx = build_ctx(
+                action_label="", base_url=CARDANOISM_URL,
+                proposal_id=None, proposal_title=None,
+                proposal_count=count,
+            )
+            deliver(addr, EVENT_TYPE, ctx,
+                    dedup_base=f"new_gov_batch_{tx_id}_{addr['stake_id']}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 通知発火: spo_pending_vote (SPO 対象 GA が新規提出された)
+# 通知発火: spo_pending_vote (SPO 対象 GA が新規提出された、Tx 単位で集約)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _notify_spo_pending_vote(tx_id: str, proposal_idx: int, action_type_raw: str) -> None:
+def _notify_spo_pending_vote(tx_id: str, proposals: list[dict]) -> None:
     """SPO 対象の新規 GA が提出されたとき、SPO 設定があるユーザーへ催促通知。
 
     対象判定は spo_pool_id が NULL でない stake_address のみ。通知設定 spo_pending_vote
-    が ON のチャンネルに送信。
+    が ON のチャンネルに送信。proposals は SPO 対象に絞り込み済み。
     """
     from cardanoism.backend.notify_templates import deliver
     from cardanoism.backend.notify_templates.spo_pending_vote import (
         context as build_ctx, EVENT_TYPE,
     )
-    from cardanoism.backend.listener_governance import encode_proposal_id
-
+    if not proposals:
+        return
     addrs = _merge_stake_channels(
         get_stake_addrs_with_event("spo_pending_vote"),
         get_stake_addrs_with_email_event("spo_pending_vote"),
@@ -402,14 +435,172 @@ def _notify_spo_pending_vote(tx_id: str, proposal_idx: int, action_type_raw: str
     if not addrs:
         return
 
-    proposal_id = encode_proposal_id(tx_id, proposal_idx) or ""
+    count = len(proposals)
+    if count == 1:
+        p = proposals[0]
+        action_type_raw = p["action_type"]
+        for addr in addrs:
+            lang = addr.get("language", "ja")
+            label = (_GA_TYPE_MAP_JA if lang == "ja" else _GA_TYPE_MAP_EN).get(action_type_raw, action_type_raw)
+            ctx = build_ctx(
+                action_label=label, base_url=CARDANOISM_URL,
+                proposal_id=p["proposal_id"],
+                proposal_title=p.get("proposal_title") or None,
+                proposal_count=1,
+            )
+            deliver(addr, EVENT_TYPE, ctx,
+                    dedup_base=f"spo_pending_{tx_id}_{p['proposal_index']}_{addr['stake_id']}")
+    else:
+        for addr in addrs:
+            ctx = build_ctx(
+                action_label="", base_url=CARDANOISM_URL,
+                proposal_id=None, proposal_title=None,
+                proposal_count=count,
+            )
+            deliver(addr, EVENT_TYPE, ctx,
+                    dedup_base=f"spo_pending_batch_{tx_id}_{addr['stake_id']}")
 
-    for addr in addrs:
-        lang = addr.get("language", "ja")
-        label = (_GA_TYPE_MAP_JA if lang == "ja" else _GA_TYPE_MAP_EN).get(action_type_raw, action_type_raw)
-        ctx = build_ctx(action_label=label, base_url=CARDANOISM_URL, proposal_id=proposal_id)
-        deliver(addr, EVENT_TYPE, ctx,
-                dedup_base=f"spo_pending_{tx_id}_{proposal_idx}_{addr['stake_id']}")
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 新規 GA 提案検知後のバックグラウンドタスク (IPFS フェッチ + 翻訳 + 通知)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _fetch_and_save_proposal_meta(proposal_id: str, meta_url: str | None) -> dict | None:
+    """IPFS / HTTPS から CIP-100/108 body を取得して governance_actions を UPDATE する。
+    取得後の行 (翻訳ターゲット形式) を返す。失敗時は None。
+    """
+    from cardanoism.backend.db_connect import get_db
+    from cardanoism.backend.vote_meta_fetch import fetch_vote_metadata_json, _extract_str
+
+    title = abstract = motivation = rationale = None
+    authors_json = None
+    if meta_url:
+        try:
+            meta = fetch_vote_metadata_json(meta_url)
+            if isinstance(meta, dict):
+                body = meta.get("body") or {}
+                if isinstance(body, dict):
+                    title = _extract_str(body.get("title")) or None
+                    abstract = _extract_str(body.get("abstract")) or None
+                    motivation = _extract_str(body.get("motivation")) or None
+                    rationale = _extract_str(body.get("rationale")) or None
+                authors = meta.get("authors")
+                if isinstance(authors, list):
+                    names = [
+                        str(a.get("name")).strip()
+                        for a in authors
+                        if isinstance(a, dict) and a.get("name")
+                    ]
+                    if names:
+                        authors_json = json.dumps(names, ensure_ascii=False)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("listener: IPFS メタ取得失敗 proposal_id=%s url=%s: %s",
+                           proposal_id, meta_url, e)
+
+    with get_db() as (cursor, conn):
+        # 取得できたフィールドだけ COALESCE で上書き (既存値を消さない)
+        cursor.execute(
+            """
+            UPDATE governance_actions
+               SET title       = COALESCE(?, title),
+                   `abstract`  = COALESCE(?, `abstract`),
+                   motivation  = COALESCE(?, motivation),
+                   rationale   = COALESCE(?, rationale),
+                   authors_json= COALESCE(?, authors_json),
+                   updated_at  = NOW()
+             WHERE proposal_id = ?
+            """,
+            (title, abstract, motivation, rationale, authors_json, proposal_id),
+        )
+        conn.commit()
+        cursor.execute(
+            "SELECT id, proposal_tx_hash, title, `abstract`, motivation, rationale, "
+            "title_ja, abstract_ja, motivation_ja, rationale_ja "
+            "FROM governance_actions WHERE proposal_id = ? LIMIT 1",
+            (proposal_id,),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def _process_proposal_post(tx_id: str, proposals: list[dict]) -> None:
+    """新規 GA 提案検知後の bg タスク。
+
+    proposals: [{"proposal_id": str, "proposal_index": int, "action_type": str,
+                 "meta_url": str | None, "is_spo": bool}, ...]
+
+    1. 各 proposal について IPFS から CIP-100/108 body を取得して DB を埋める
+    2. OpenAI で title/abstract/motivation/rationale を翻訳して *_ja に保存
+    3. AI 分析キューに enqueue (ga_ai_worker が後で拾う)
+    4. 翻訳完了後、Tx 単位で集約 / 個別通知を発火
+       - 1 件 : 個別通知 (タイトル + action_type + GA リンク)
+       - 2 件以上 : 集約通知 (N 件の新 GA + governance ページリンク)
+
+    listener のメインループはこのタスクを待たない (asyncio.create_task で発火)。
+    並列バースト (OpenAI レート制限) を避けるため _governance_lock で順次実行する。
+    """
+    if not proposals:
+        return
+    loop = asyncio.get_event_loop()
+
+    async with _get_governance_lock():
+        translator = None
+        try:
+            from cardanoism.backend.governance import build_translator
+            translator = await loop.run_in_executor(None, build_translator)
+        except Exception as e:  # noqa: BLE001
+            logger.exception("listener: translator 初期化失敗 (翻訳スキップ): %s", e)
+
+        from cardanoism.backend.governance import _translate_one, save_translation
+        for p in proposals:
+            pid = p["proposal_id"]
+            meta_url = p.get("meta_url")
+            try:
+                row = await loop.run_in_executor(
+                    None, _fetch_and_save_proposal_meta, pid, meta_url,
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.exception("listener: proposal メタ取得失敗 proposal_id=%s: %s", pid, e)
+                row = None
+
+            chosen_title: str | None = None
+            if row:
+                if translator and row.get("title"):
+                    try:
+                        updates = await loop.run_in_executor(
+                            None, _translate_one, translator, row, False,
+                        )
+                        if updates:
+                            await loop.run_in_executor(
+                                None, save_translation, row["id"], updates,
+                            )
+                            row.update(updates)
+                    except Exception as e:  # noqa: BLE001
+                        logger.exception("listener: 翻訳失敗 proposal_id=%s: %s", pid, e)
+                chosen_title = row.get("title_ja") or row.get("title")
+            p["proposal_title"] = chosen_title
+
+    # AI 分析キューに enqueue (ga_ai_worker が後で拾う)。listener bg は AI を回さない。
+    try:
+        from cardanoism.backend.governance_ai_db import bulk_enqueue
+        ids = [p["proposal_id"] for p in proposals if p.get("proposal_id")]
+        if ids:
+            await loop.run_in_executor(None, bulk_enqueue, ids)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("listener: AI enqueue 失敗 (継続): %s", e)
+
+    # 通知発火: 全員向け
+    try:
+        _notify_governance_action(tx_id, proposals)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("listener: drep_new_governance_action 通知失敗 tx=%s: %s", tx_id, e)
+
+    spo_proposals = [p for p in proposals if p.get("is_spo")]
+    if spo_proposals:
+        try:
+            _notify_spo_pending_vote(tx_id, spo_proposals)
+        except Exception as e:  # noqa: BLE001
+            logger.exception("listener: spo_pending_vote 通知失敗 tx=%s: %s", tx_id, e)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -629,28 +820,48 @@ def _process_tx(tx: dict, slot: int, current_epoch: int) -> None:
         except Exception as e:
             logger.exception("cert 処理エラー tx=%s: %s", tx_id, e)
 
+    # 新規 GA 提案を Tx 単位に集約し、Tx 終わりにバックグラウンドタスクへ流す。
+    # bg 内で IPFS フェッチ + 翻訳 → 通知の順に処理する (タイトル抜きで先行通知しない)。
+    tx_proposals: list[dict] = []
     for proposal_idx, proposal in enumerate(tx.get("proposals", []) or []):
         try:
             action_type = proposal.get("action", {}).get("type", "")
             logger.info("governance_action 検知: tx=%s idx=%d type=%s", tx_id, proposal_idx, action_type)
-            # Phase 1: governance_actions に直接 INSERT
+            # Phase 1: governance_actions に直接 INSERT (タイトル等は bg で後埋め)
+            proposal_id = None
             try:
-                record_proposal_from_event(tx_id, proposal_idx, proposal, slot, current_epoch)
+                _is_new, proposal_id = record_proposal_from_event(
+                    tx_id, proposal_idx, proposal, slot, current_epoch,
+                )
             except Exception as e:
                 logger.exception("listener: GA DB 書込み失敗 tx=%s idx=%d: %s", tx_id, proposal_idx, e)
-            # 通知発火: 全員向け (drep_new_governance_action)
-            _notify_governance_action(tx_id, proposal_idx, action_type)
-            # SPO 対象の場合は SPO 専用通知も発火
+            if not proposal_id:
+                continue
+            # SPO 対象判定 (security group の ParameterChange 等)
+            is_spo = False
             try:
                 from cardanoism.backend.spo_targets import compute_spo_target
                 from cardanoism.backend.listener_governance import _ACTION_TYPE_MAP
                 proposal_type_pascal = _ACTION_TYPE_MAP.get(action_type, action_type)
-                if compute_spo_target(proposal_type_pascal, proposal.get("action")):
-                    _notify_spo_pending_vote(tx_id, proposal_idx, action_type)
+                is_spo = bool(compute_spo_target(proposal_type_pascal, proposal.get("action")))
             except Exception as e:
-                logger.exception("listener: spo_pending_vote 通知失敗: %s", e)
+                logger.exception("listener: spo 判定失敗 tx=%s idx=%d: %s", tx_id, proposal_idx, e)
+            # IPFS メタ URL (Ogmios v6.10+ は "metadata"、旧は "anchor")
+            anchor = proposal.get("metadata") or proposal.get("anchor") or {}
+            meta_url = anchor.get("url") if isinstance(anchor, dict) else None
+            tx_proposals.append({
+                "proposal_id":    proposal_id,
+                "proposal_index": proposal_idx,
+                "action_type":    action_type,
+                "meta_url":       meta_url,
+                "is_spo":         is_spo,
+            })
         except Exception as e:
             logger.exception("proposal 処理エラー tx=%s: %s", tx_id, e)
+
+    if tx_proposals:
+        loop = asyncio.get_event_loop()
+        loop.create_task(_process_proposal_post(tx_id, tx_proposals))
 
     # DRep 投票を drep_id 単位に集約して、Tx 終わりに 1 回だけ通知発火する。
     # (1 Tx で複数 GA に投票するケースを集約通知に切り替えるため)
