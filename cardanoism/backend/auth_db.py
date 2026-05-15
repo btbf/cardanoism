@@ -45,6 +45,7 @@ DELEGATOR_NOTIFICATION_EVENT_TYPES = [
 # DRep本人のみ
 DREP_ONLY_NOTIFICATION_EVENT_TYPES = [
     "drep_new_governance_action",
+    "drep_vote",
     "drep_unvoted_ga",
 ]
 
