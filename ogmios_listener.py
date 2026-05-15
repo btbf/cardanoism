@@ -538,11 +538,12 @@ def _process_tx(tx: dict, slot: int, current_epoch: int) -> None:
             _dbg_tx_keys_logged += 1
         if tx.get("votes") or tx.get("proposals"):
             logger.warning(
-                "DEBUG_TX_GOV tx=%s slot=%d votes=%d proposals=%d raw_votes=%s",
+                "DEBUG_TX_GOV tx=%s slot=%d votes=%d proposals=%d raw_votes=%s raw_proposals=%s",
                 tx_id, slot,
                 len(tx.get("votes") or []),
                 len(tx.get("proposals") or []),
-                json.dumps(tx.get("votes") or [], ensure_ascii=False)[:800],
+                json.dumps(tx.get("votes") or [], ensure_ascii=False)[:600],
+                json.dumps(tx.get("proposals") or [], ensure_ascii=False)[:1200],
             )
 
     for cert in tx.get("certificates", []):

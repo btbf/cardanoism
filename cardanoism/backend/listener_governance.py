@@ -152,7 +152,8 @@ def record_proposal_from_event(
     deposit = deposit_obj.get("lovelace") if isinstance(deposit_obj, dict) else None
     return_address = proposal_obj.get("returnAccount")
 
-    anchor = proposal_obj.get("anchor") or {}
+    # Ogmios v6.10+ は "metadata"、旧は "anchor"
+    anchor = proposal_obj.get("metadata") or proposal_obj.get("anchor") or {}
     meta_url = anchor.get("url") if isinstance(anchor, dict) else None
     meta_hash = anchor.get("hash") if isinstance(anchor, dict) else None
 
