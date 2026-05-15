@@ -203,14 +203,6 @@ def _save_cursor(slot: int, block_id: str) -> None:
     set_state("global", None, "ogmios_last_id", block_id)
 
 
-def _get_pool_fee_state(pool_id: str) -> str | None:
-    return get_state("global", None, f"pool_fee:{pool_id}")
-
-
-def _set_pool_fee_state(pool_id: str, value: str) -> None:
-    set_state("global", None, f"pool_fee:{pool_id}", value)
-
-
 # ──────────────────────────────────────────────────────────────────────────────
 # 通知発火: pool_epoch_performance（エポック切り替わり時に前エポック実績を通知）
 # ──────────────────────────────────────────────────────────────────────────────
@@ -311,11 +303,8 @@ def _notify_pool_retire(pool_id: str, retiring_epoch: int) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # 通知発火: pool_fee_change（margin / fixed_cost / pledge の変化を統合検知）
 #
-# 比較ベースラインの優先順位:
-#   1. pools テーブル (Koios sync が常時更新する live 値) ← 最優先
-#   2. notification_check_state (前回 listener が観測した cert) ← fallback
-# pools 値があれば cert と比較してすぐ通知判定できるため、listener が初めて
-# pool の registration cert を見た場合でも変更通知を取りこぼさない。
+# 比較ベースラインは pools テーブル (Koios sync が常時更新する live 値) を使う。
+# 再配信時の二重通知防止は notification_log.dedup_key 側で担保する。
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _read_pool_pending_epoch(pool_id: str) -> int | None:
@@ -370,38 +359,23 @@ def _notify_pool_fee_change(
     pool_id: str, margin: float, fixed_cost: int, pledge: int,
     prev: tuple[float | None, int | None, int | None] | None = None,
 ) -> None:
-    current_val = f"{margin}:{fixed_cost}:{pledge}"
+    """pools テーブル (Koios sync が常時更新) の前回値を比較ベースラインに通知判定する。
 
-    # 旧値の決定: pools テーブル → notification_check_state の順に試す
-    old_margin = old_fixed = old_pledge = None
-    if prev is not None:
-        old_margin, old_fixed, old_pledge = prev
-
+    prev が None または三項全 NULL の場合は比較ベースライン無しとみなして黙って終了
+    する (新規プール / Koios sync 未到達)。
+    """
+    if prev is None:
+        return
+    old_margin, old_fixed, old_pledge = prev
     if old_margin is None and old_fixed is None and old_pledge is None:
-        # pools に値が無い → 過去 listener 観測値 (notification_check_state) を見る
-        stored = _get_pool_fee_state(pool_id)
-        if stored is None:
-            # 比較ベースライン無し: 静かに state だけ更新して終わる
-            _set_pool_fee_state(pool_id, current_val)
-            return
-        parts = stored.split(":")
-        try:
-            old_margin = float(parts[0])
-            old_fixed = int(parts[1]) if len(parts) > 1 else 0
-            old_pledge = int(parts[2]) if len(parts) > 2 else None
-        except (ValueError, IndexError):
-            _set_pool_fee_state(pool_id, current_val)
-            return
+        return
 
     # 変更判定: margin は float なので tolerance 比較、その他は整数比較
     margin_changed = old_margin is None or abs(float(old_margin) - float(margin)) > 1e-9
     fixed_changed = old_fixed is None or int(old_fixed) != int(fixed_cost)
     pledge_changed = old_pledge is None or int(old_pledge) != int(pledge)
     if not (margin_changed or fixed_changed or pledge_changed):
-        # 同値: state だけ最新化して終わる
-        _set_pool_fee_state(pool_id, current_val)
         return
-    _set_pool_fee_state(pool_id, current_val)
 
     addrs = _merge_stake_channels(
         get_stake_addrs_with_event("pool_fee_change"),
@@ -438,8 +412,11 @@ def _notify_pool_fee_change(
             nickname=addr["nickname"], base_url=CARDANOISM_URL,
             effective_epoch=effective_epoch,
         )
+        # dedup_key は cert の (margin, fixed_cost, pledge) で構成。同一 cert が
+        # 再配信されても二重通知しない。
+        dedup_val = f"{margin}:{fixed_cost}:{pledge}"
         deliver(addr, EVENT_TYPE, ctx,
-                dedup_base=f"pool_fee_change_{addr['stake_id']}_{current_val}")
+                dedup_base=f"pool_fee_change_{addr['stake_id']}_{dedup_val}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1036,7 +1013,16 @@ def _process_block(block: dict, prev_epoch: int) -> int:
 # WebSocket セッション管理
 # ──────────────────────────────────────────────────────────────────────────────
 
-async def _find_intersection(ws, points: list) -> None:
+async def _find_intersection(ws, points: list) -> str:
+    """findIntersection を投げて intersection 種別を返す。
+
+    戻り値:
+      "matched"          : 要求した非 origin の point に intersection 成立
+      "origin_fallback"  : 要求は非 origin だったが Ogmios が origin に落とした
+                           (= 保存カーソルが Ogmios の chain で見つからない)
+      "origin_only"      : 元から origin だけ要求していて origin で成立 (新規同期)
+      "error"            : JSON-RPC error
+    """
     await ws.send(json.dumps({
         "jsonrpc": "2.0",
         "method": "findIntersection",
@@ -1044,21 +1030,32 @@ async def _find_intersection(ws, points: list) -> None:
     }))
     resp = json.loads(await ws.recv())
     if "error" in resp:
-        logger.warning("findIntersection 失敗（カーソル不一致）: %s — origin から再開", resp.get("error"))
-    else:
-        tip = resp.get("result", {}).get("tip", {})
-        intersection = resp.get("result", {}).get("intersection", {})
-        # intersection / tip は "origin" 文字列の場合があるので dict 限定で slot を取り出す
-        inter_disp = intersection.get("slot", "?") if isinstance(intersection, dict) else str(intersection)
-        tip_disp = tip.get("slot", "?") if isinstance(tip, dict) else str(tip)
-        logger.info("findIntersection 成功: intersection=%s, tip slot=%s", inter_disp, tip_disp)
-        if isinstance(tip, dict) and isinstance(intersection, dict):
-            tip_slot = tip.get("slot", 0)
-            inter_slot = intersection.get("slot", 0)
-            if tip_slot and inter_slot and tip_slot - inter_slot > 10000:
-                logger.info("同期待ち: tip まで %d slot 残っています（しばらくログが続きます）", tip_slot - inter_slot)
-            else:
-                logger.info("tip 付近から開始: 新しいブロックを待機します（mainnet は約20秒ごと）")
+        logger.warning("findIntersection 失敗: %s", resp.get("error"))
+        return "error"
+
+    tip = resp.get("result", {}).get("tip", {})
+    intersection = resp.get("result", {}).get("intersection", {})
+    inter_disp = intersection.get("slot", "?") if isinstance(intersection, dict) else str(intersection)
+    tip_disp = tip.get("slot", "?") if isinstance(tip, dict) else str(tip)
+    logger.info("findIntersection 成功: intersection=%s, tip slot=%s", inter_disp, tip_disp)
+
+    if isinstance(tip, dict) and isinstance(intersection, dict):
+        tip_slot = tip.get("slot", 0)
+        inter_slot = intersection.get("slot", 0)
+        if tip_slot and inter_slot and tip_slot - inter_slot > 10000:
+            logger.info("同期待ち: tip まで %d slot 残っています（しばらくログが続きます）", tip_slot - inter_slot)
+        else:
+            logger.info("tip 付近から開始: 新しいブロックを待機します（mainnet は約20秒ごと）")
+
+    # 要求 points に非 origin が含まれていたかを判定
+    requested_non_origin = any(p != "origin" for p in points)
+    intersected_at_origin = (
+        intersection == "origin"
+        or (isinstance(intersection, dict) and intersection.get("slot", 0) == 0)
+    )
+    if requested_non_origin and intersected_at_origin:
+        return "origin_fallback"
+    return "matched" if requested_non_origin else "origin_only"
 
 
 def _fetch_tip(ogmios_url: str) -> tuple[int, str]:
@@ -1148,7 +1145,22 @@ async def _run(ogmios_url: str, from_tip: bool = False) -> None:
             prev_epoch = -1
 
     async with websockets.connect(ogmios_url, ping_interval=30) as ws:
-        await _find_intersection(ws, points)
+        result = await _find_intersection(ws, points)
+        # 保存カーソルが Ogmios の chain に見つからない (= ネットワーク切替や
+        # Ogmios DB 再構築) と Ogmios は points 列の次候補 "origin" で intersection
+        # を成立させてしまい、その後の nextBlock がジェネシスから流れ始める。
+        # 想定外の全期間再生を避けるため、tip にジャンプして再 intersect する。
+        if result == "origin_fallback":
+            logger.warning(
+                "保存カーソル (slot=%s) が Ogmios の chain に見つかりません — "
+                "ジェネシス再生を回避するため tip にジャンプします",
+                str(points[0].get("slot")) if isinstance(points[0], dict) else "?",
+            )
+            tip_slot, tip_id = _fetch_tip(ogmios_url)
+            _save_cursor(tip_slot, tip_id)
+            points = [{"slot": tip_slot, "id": tip_id}, "origin"]
+            prev_epoch = _epoch_from_slot(tip_slot)
+            await _find_intersection(ws, points)
 
         while True:
             await ws.send(json.dumps({"jsonrpc": "2.0", "method": "nextBlock"}))
