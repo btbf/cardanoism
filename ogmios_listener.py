@@ -70,6 +70,11 @@ logger = logging.getLogger("ogmios_listener")
 
 KOIOS_NETWORK = os.getenv("KOIOS_NETWORK", "mainnet").lower()
 
+# 診断用: LISTENER_DEBUG_TX_DUMP=1 のとき、tx のキー一覧と votes/proposals の生 JSON を WARNING ログに出す。
+# 未設定なら無効。本番では env を立てないこと。
+_DBG_TX_DUMP = os.getenv("LISTENER_DEBUG_TX_DUMP", "").strip().lower() in ("1", "true", "yes")
+_dbg_tx_keys_logged = 0
+
 _EPOCH_LENGTHS = {
     "mainnet": 432_000,
     "preprod": 432_000,
@@ -518,6 +523,27 @@ def _process_cert(cert: dict, slot: int) -> None:
 
 def _process_tx(tx: dict, slot: int, current_epoch: int) -> None:
     tx_id = tx.get("id", "")
+
+    # ── 診断 (LISTENER_DEBUG_TX_DUMP=1 のときのみ) ──
+    # listener が受け取った tx オブジェクトの構造を確認するためのログ。
+    # (1) 最初の 5 件: tx のトップレベルキー一覧
+    # (2) votes / proposals を持つ tx: 生 JSON (Conway era で実際に渡される内容を確認)
+    if _DBG_TX_DUMP:
+        global _dbg_tx_keys_logged
+        if _dbg_tx_keys_logged < 5:
+            logger.warning(
+                "DEBUG_TX_KEYS tx=%s slot=%d keys=%s",
+                tx_id[:16], slot, list(tx.keys()),
+            )
+            _dbg_tx_keys_logged += 1
+        if tx.get("votes") or tx.get("proposals"):
+            logger.warning(
+                "DEBUG_TX_GOV tx=%s slot=%d votes=%d proposals=%d raw_votes=%s",
+                tx_id, slot,
+                len(tx.get("votes") or []),
+                len(tx.get("proposals") or []),
+                json.dumps(tx.get("votes") or [], ensure_ascii=False)[:800],
+            )
 
     for cert in tx.get("certificates", []):
         try:
