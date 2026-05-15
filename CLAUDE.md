@@ -245,6 +245,7 @@ VPS では Machine Identity (Service Token) で非対話認証する。詳細は
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | Google OAuth | - |
 | `MAIL_SMTP_HOST` / `MAIL_SMTP_PORT` / `MAIL_SMTP_USER` / `MAIL_SMTP_PASSWORD` / `MAIL_FROM_NAME` | SMTP メール | - |
 | `TELEGRAM_BOT_TOKEN` | Telegram 通知 | - |
+| `ADMIN_USER_ID` | 管理者用通知疎通テスト（`notify_worker.py --event notify_test`）の対象ユーザー。このユーザーの `notification_channels` に登録済みの全チャンネルへ送信 | - |
 | `GPT_API_KEY` | OpenAI API キー（GA AI 分析・投票理由翻訳） | - |
 | `OPENAI_MODEL` | OpenAI モデル名 | `gpt-4o-mini` |
 | `EPOCH_CHECK_WINDOW_MIN` | エポック切り替わりウィンドウ（分）。0=常に実行 | `0` |

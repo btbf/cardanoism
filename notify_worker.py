@@ -2428,12 +2428,72 @@ def check_ga_ai_reanalyze(proposal_id: str | None = None, all_flag: bool = False
 # エントリポイント
 # ============================================================
 
+# ============================================================
+# 管理者用: 通知疎通テスト
+# ============================================================
+
+def check_notify_test():
+    """管理者用の通知疎通テスト。
+
+    環境変数 ADMIN_USER_ID で指定したユーザーの notification_channels に登録された
+    LINE / Telegram / email へ、簡単なテキストを 1 通ずつ送る。enabled の ON/OFF に
+    関わらず登録済みの全チャンネルへ送る（疎通確認が目的のため）。
+    各通知のテンプレートは使わない。
+    """
+    from datetime import datetime, timezone
+
+    admin_user_id = os.getenv("ADMIN_USER_ID", "").strip()
+    if not admin_user_id:
+        logger.warning("notify_test: ADMIN_USER_ID が未設定です")
+        return
+    try:
+        uid = int(admin_user_id)
+    except ValueError:
+        logger.warning("notify_test: ADMIN_USER_ID が数値ではありません: %s", admin_user_id)
+        return
+
+    from cardanoism.backend.auth_db import get_notification_channels
+    channels = get_notification_channels(uid)
+    if not channels:
+        logger.warning("notify_test: user_id=%s に登録チャンネルがありません", uid)
+        return
+
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    msg = f"Cardanoism 通知疎通テスト ({ts})"
+    logger.info("通知疎通テスト 開始 (user_id=%s, %d チャンネル)", uid, len(channels))
+
+    for ch in channels:
+        ctype = str(ch.get("channel_type") or "")
+        cvalue = str(ch.get("channel_value") or "")
+        if not cvalue:
+            logger.info("notify_test %s: skip (channel_value 空)", ctype)
+            continue
+        try:
+            if ctype == "line":
+                from cardanoism.backend.line_notify import send_line_push
+                ok = send_line_push(cvalue, msg)
+            elif ctype == "telegram":
+                from cardanoism.backend.telegram_notify import send_telegram
+                ok = send_telegram(cvalue, msg)
+            elif ctype == "email":
+                from cardanoism.backend.mail_notify import send_email
+                ok = send_email(cvalue, "Cardanoism 通知疎通テスト", f"<p>{msg}</p>", msg)
+            else:
+                logger.info("notify_test %s: skip (未対応チャンネル)", ctype)
+                continue
+            logger.info("notify_test %s: %s", ctype, "OK" if ok else "FAILED")
+        except Exception as e:  # noqa: BLE001
+            logger.exception("notify_test %s 失敗: %s", ctype, e)
+
+    logger.info("通知疎通テスト 完了")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Cardanoism 通知バッチワーカー")
     parser.add_argument(
         "--event",
         default="all",
-        choices=["all", "pool", "drep", "drep_unvoted", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync", "spo_role_initial_sync"],
+        choices=["all", "pool", "drep", "drep_unvoted", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync", "spo_role_initial_sync", "notify_test"],
         help="実行するイベントグループ",
     )
     parser.add_argument(
@@ -2525,6 +2585,10 @@ def main():
     # SPO 判定 初期投入: --event spo_role_initial_sync で明示指定（"all" には含めない）
     if args.event == "spo_role_initial_sync":
         check_spo_role_initial_sync()
+
+    # 管理者用 通知疎通テスト: --event notify_test で明示指定（"all" には含めない）
+    if args.event == "notify_test":
+        check_notify_test()
 
     logger.info("完了")
 
