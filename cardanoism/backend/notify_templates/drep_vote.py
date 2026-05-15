@@ -86,9 +86,11 @@ def render_flex(ctx: dict, lang: str) -> dict:
     count = int(ctx.get("vote_count", 1))
     # 集約通知のときは DRep ページに、個別のときは GA ページに飛ばす
     url = ctx["drep_url"] if count > 1 else ctx["proposal_url"]
+    cta = "投票内容を確認" if lang == "ja" else "View vote details"
     return line_flex.drep_vote(
         ctx["drep_name"], ctx["vote"], ctx["proposal_title"] or None,
         ctx["nickname"], url, lang=lang, vote_count=count,
+        cta_label=cta,
     )
 
 
@@ -152,8 +154,8 @@ def render_telegram(ctx: dict, lang: str) -> str:
                 "投票内容がご自身の意思と異なる場合は、",
                 "いつでも委任先 DRep を変更できます。",
                 "",
-                f'→ <a href="{ctx["drep_url"]}">DRep の詳細を見る</a>',
-                f'→ <a href="{mypage_url}">マイページで委任先を変更</a>',
+                f"→ DRep の詳細: {ctx['drep_url']}",
+                f"→ マイページで委任先を変更: {mypage_url}",
             ]
         else:
             out = [
@@ -165,8 +167,8 @@ def render_telegram(ctx: dict, lang: str) -> str:
                 "If the vote does not align with your intent,",
                 "you can change your delegated DRep at any time.",
                 "",
-                f'→ <a href="{ctx["drep_url"]}">View DRep details</a>',
-                f'→ <a href="{mypage_url}">Change delegation on MyPage</a>',
+                f"→ View DRep details: {ctx['drep_url']}",
+                f"→ Change delegation on MyPage: {mypage_url}",
             ]
         return "\n".join(out)
 
@@ -188,8 +190,8 @@ def render_telegram(ctx: dict, lang: str) -> str:
             "投票内容がご自身の意思と異なる場合は、",
             "いつでも委任先 DRep を変更できます。",
             "",
-            f'→ <a href="{ctx["proposal_url"]}">ガバナンス提案を確認する</a>',
-            f'→ <a href="{mypage_url}">マイページで委任先を変更</a>',
+            f"→ ガバナンス提案を確認する: {ctx['proposal_url']}",
+            f"→ マイページで委任先を変更: {mypage_url}",
         ])
     else:
         out = ["<b>🗳️ Cardanoism — DRep Vote</b>", ""]
@@ -206,8 +208,8 @@ def render_telegram(ctx: dict, lang: str) -> str:
             "If the vote does not align with your intent,",
             "you can change your delegated DRep at any time.",
             "",
-            f'→ <a href="{ctx["proposal_url"]}">View proposal</a>',
-            f'→ <a href="{mypage_url}">Change delegation on MyPage</a>',
+            f"→ View proposal: {ctx['proposal_url']}",
+            f"→ Change delegation on MyPage: {mypage_url}",
         ])
     return "\n".join(out)
 

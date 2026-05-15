@@ -515,6 +515,7 @@ def drep_vote(
     url: str,
     lang: str = "ja",
     vote_count: int = 1,
+    cta_label: str | None = None,
 ) -> dict:
     """
     vote: "yes" / "no" / "abstain"（Koios からの raw 値）
@@ -574,7 +575,7 @@ def drep_vote(
             _wallet_row(nickname, lang),
         ],
         url,
-        t["footer_governance"],
+        cta_label if cta_label else t["footer_governance"],
     )
 
 
