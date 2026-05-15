@@ -164,12 +164,22 @@ POOL_EVENT_TYPES = [
 # 状態管理
 # ============================================================
 
+def _norm_scope_id(scope_id) -> int:
+    """global scope (None) を 0 に正規化。
+    scope_id は NOT NULL DEFAULT 0 で扱うため、UNIQUE 制約と ON DUPLICATE KEY UPDATE
+    が正しく機能する。NULL 許容にすると MySQL は毎回別物扱いして行が増殖する。
+    """
+    if scope_id is None:
+        return 0
+    return int(scope_id)
+
+
 def get_state(scope_type: str, scope_id, key: str) -> str | None:
     with get_db() as (cursor, _):
         cursor.execute(
             "SELECT last_value FROM notification_check_state "
-            "WHERE scope_type = ? AND scope_id <=> ? AND key_name = ?",
-            (scope_type, scope_id, key),
+            "WHERE scope_type = ? AND scope_id = ? AND key_name = ?",
+            (scope_type, _norm_scope_id(scope_id), key),
         )
         row = cursor.fetchone()
         return row["last_value"] if row else None
@@ -183,7 +193,7 @@ def set_state(scope_type: str, scope_id, key: str, value: str):
             VALUES (?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE last_value = ?, checked_at = NOW()
             """,
-            (scope_type, scope_id, key, value, value),
+            (scope_type, _norm_scope_id(scope_id), key, value, value),
         )
         conn.commit()
 
@@ -192,12 +202,13 @@ def bulk_get_state(scope_type: str, scope_ids: list, key: str) -> dict:
     """複数 scope_id の状態を1クエリで一括取得。{scope_id: last_value}"""
     if not scope_ids:
         return {}
-    placeholders = ",".join(["?"] * len(scope_ids))
+    normalized = [_norm_scope_id(s) for s in scope_ids]
+    placeholders = ",".join(["?"] * len(normalized))
     with get_db() as (cursor, _):
         cursor.execute(
             f"SELECT scope_id, last_value FROM notification_check_state "
             f"WHERE scope_type = ? AND scope_id IN ({placeholders}) AND key_name = ?",
-            [scope_type, *scope_ids, key],
+            [scope_type, *normalized, key],
         )
         return {row["scope_id"]: row["last_value"] for row in cursor.fetchall()}
 

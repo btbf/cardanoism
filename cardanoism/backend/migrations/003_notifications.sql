@@ -40,12 +40,17 @@ CREATE TABLE IF NOT EXISTS stake_notification_settings (
 
 -- バッチ実行ステート (前回値の保持)
 -- scope_type:
---   global         : ユーザー横断 (current_epoch, ogmios_last_slot, pool_fee:<pool_id> 等)
+--   global         : ユーザー横断 (current_epoch, ogmios_last_slot 等)。scope_id = 0
 --   stake_address  : ステークアドレス単位 (scope_id = stake_addresses.id)
+--
+-- 重要: scope_id を NULL 許容にすると MySQL/MariaDB の UNIQUE は NULL を毎回
+-- 別物として扱うため ON DUPLICATE KEY UPDATE が機能せず、global scope の
+-- set_state が呼ばれるたびに新規行が INSERT され、テーブルが急速に肥大化する。
+-- そのため NOT NULL DEFAULT 0 とし、global scope は scope_id = 0 を使う。
 CREATE TABLE IF NOT EXISTS notification_check_state (
     id         INT          AUTO_INCREMENT PRIMARY KEY,
     scope_type ENUM('global', 'stake_address') NOT NULL DEFAULT 'global',
-    scope_id   INT          DEFAULT NULL,
+    scope_id   INT          NOT NULL DEFAULT 0,
     key_name   VARCHAR(100) NOT NULL,
     last_value TEXT,
     checked_at DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
