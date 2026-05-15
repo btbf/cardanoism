@@ -152,7 +152,8 @@ def record_proposal_from_event(
     deposit = deposit_obj.get("lovelace") if isinstance(deposit_obj, dict) else None
     return_address = proposal_obj.get("returnAccount")
 
-    anchor = proposal_obj.get("anchor") or {}
+    # Ogmios v6.10+ は "metadata"、旧は "anchor"
+    anchor = proposal_obj.get("metadata") or proposal_obj.get("anchor") or {}
     meta_url = anchor.get("url") if isinstance(anchor, dict) else None
     meta_hash = anchor.get("hash") if isinstance(anchor, dict) else None
 
@@ -207,8 +208,14 @@ def record_proposal_from_event(
 
 
 def record_vote_from_event(vote_obj: dict, slot: int) -> bool:
-    """Ogmios の vote を proposal_votes に upsert する。"""
-    voter = vote_obj.get("voter") or {}
+    """Ogmios の vote を proposal_votes に upsert する。
+
+    Ogmios v6.10 以降は vote の構造が変わっており、以下の対応で両対応する:
+      - voter   → issuer
+      - actionId → proposal
+      - anchor   → metadata
+    """
+    voter = vote_obj.get("issuer") or vote_obj.get("voter") or {}
     role_raw = voter.get("role") or ""
     role = _VOTER_ROLE_MAP.get(role_raw)
     if not role:
@@ -226,7 +233,8 @@ def record_vote_from_event(vote_obj: dict, slot: int) -> bool:
         logger.warning("listener: voter_id 計算失敗 role=%s id=%s", role, voter_hex)
         return False
 
-    action_id = vote_obj.get("actionId") or {}
+    # v6.10+ は "proposal"、旧は "actionId"
+    action_id = vote_obj.get("proposal") or vote_obj.get("actionId") or {}
     gov_tx = (action_id.get("transaction") or {}).get("id") or ""
     gov_idx = int(action_id.get("index") or 0)
     proposal_id = encode_proposal_id(gov_tx, gov_idx)
@@ -236,7 +244,8 @@ def record_vote_from_event(vote_obj: dict, slot: int) -> bool:
 
     vote_str = (vote_obj.get("vote") or "").lower()
 
-    anchor = vote_obj.get("anchor") or {}
+    # v6.10+ は "metadata"、旧は "anchor"
+    anchor = vote_obj.get("metadata") or vote_obj.get("anchor") or {}
     meta_url = anchor.get("url") if isinstance(anchor, dict) else None
     meta_hash = anchor.get("hash") if isinstance(anchor, dict) else None
 

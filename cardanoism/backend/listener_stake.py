@@ -134,9 +134,12 @@ def record_stake_delegation(cert: dict, slot: int) -> bool:
     stake_addr, _ = _resolve_stake_addr_from_cert(cert)
     if not stake_addr:
         return False
-    pool_id = cert.get("pool")
-    if isinstance(pool_id, dict):
-        pool_id = pool_id.get("id")
+    # Ogmios v6.10+ は "stakePool" (dict)、旧は "pool" (string or dict)
+    pool_obj = cert.get("stakePool") or cert.get("pool")
+    if isinstance(pool_obj, dict):
+        pool_id = pool_obj.get("id")
+    else:
+        pool_id = pool_obj
     if not pool_id:
         return False
     updated = _update_stake_delegation(stake_addr, pool_id=pool_id, slot=slot)
@@ -168,9 +171,12 @@ def record_stake_and_vote_delegation(cert: dict, slot: int) -> bool:
     stake_addr, _ = _resolve_stake_addr_from_cert(cert)
     if not stake_addr:
         return False
-    pool_id = cert.get("pool")
-    if isinstance(pool_id, dict):
-        pool_id = pool_id.get("id")
+    # Ogmios v6.10+ は "stakePool" (dict)、旧は "pool" (string or dict)
+    pool_obj = cert.get("stakePool") or cert.get("pool")
+    if isinstance(pool_obj, dict):
+        pool_id = pool_obj.get("id")
+    else:
+        pool_id = pool_obj
     drep_obj = cert.get("delegateRepresentative") or cert.get("dRep") or {}
     drep_id = _resolve_drep_target(drep_obj)
 
