@@ -553,6 +553,12 @@ def drep_vote(
             rows.append(_row(t["drep_vote_action_label"], proposal_title, TEXT_PRIMARY))
         rows.append(_row(t["drep_vote_label"], vote_label, vote_color))
 
+    disclaimer = (
+        "投票内容がご自身の意思と異なる場合は、いつでも委任先 DRep を変更できます。"
+        if lang == "ja" else
+        "If the vote does not align with your intent, you can change your delegated DRep at any time."
+    )
+
     return _bubble(
         _header(t["drep_vote_title"], t["drep_vote_subtitle"]),
         [
@@ -573,6 +579,15 @@ def drep_vote(
                 "contents": rows,
             },
             _wallet_row(nickname, lang),
+            {"type": "separator", "margin": "md"},
+            {
+                "type": "text",
+                "text": disclaimer,
+                "size": "xs",
+                "color": TEXT_SECONDARY,
+                "wrap": True,
+                "margin": "md",
+            },
         ],
         url,
         cta_label if cta_label else t["footer_governance"],

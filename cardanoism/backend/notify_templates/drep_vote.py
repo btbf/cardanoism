@@ -113,30 +113,40 @@ def render_email(ctx: dict, lang: str) -> tuple[str, list[str], str, str]:
                 f"Voted on {count} governance actions",
             ]
             cta_label = "View DRep details"
-        return subj, lines, ctx["drep_url"], cta_label
-
-    label = _label(ctx["vote"], lang)
-    if lang == "ja":
-        subj = f"委任先DRep「{ctx['drep_name']}」が投票しました({label})"
-        lines = [
-            f"ウォレット: {ctx['nickname']}",
-            f"DRep: {ctx['drep_name']}",
-            f"投票結果: {label}",
-        ]
-        if ctx["proposal_title"]:
-            lines.append(f"対象: {ctx['proposal_title']}")
-        cta_label = "ガバナンス提案を確認"
+        cta_url = ctx["drep_url"]
     else:
-        subj = f"Delegated DRep '{ctx['drep_name']}' voted ({label})"
-        lines = [
-            f"Wallet: {ctx['nickname']}",
-            f"DRep: {ctx['drep_name']}",
-            f"Vote: {label}",
-        ]
-        if ctx["proposal_title"]:
-            lines.append(f"Proposal: {ctx['proposal_title']}")
-        cta_label = "View proposal"
-    return subj, lines, ctx["proposal_url"], cta_label
+        label = _label(ctx["vote"], lang)
+        if lang == "ja":
+            subj = f"委任先DRep「{ctx['drep_name']}」が投票しました({label})"
+            lines = [
+                f"ウォレット: {ctx['nickname']}",
+                f"DRep: {ctx['drep_name']}",
+                f"投票結果: {label}",
+            ]
+            if ctx["proposal_title"]:
+                lines.append(f"対象: {ctx['proposal_title']}")
+            cta_label = "ガバナンス提案を確認"
+        else:
+            subj = f"Delegated DRep '{ctx['drep_name']}' voted ({label})"
+            lines = [
+                f"Wallet: {ctx['nickname']}",
+                f"DRep: {ctx['drep_name']}",
+                f"Vote: {label}",
+            ]
+            if ctx["proposal_title"]:
+                lines.append(f"Proposal: {ctx['proposal_title']}")
+            cta_label = "View proposal"
+        cta_url = ctx["proposal_url"]
+
+    # 共通: 委任先変更の案内
+    if lang == "ja":
+        lines.append("")
+        lines.append("投票内容がご自身の意思と異なる場合は、いつでも委任先 DRep を変更できます。")
+    else:
+        lines.append("")
+        lines.append("If the vote does not align with your intent, you can change your delegated DRep at any time.")
+
+    return subj, lines, cta_url, cta_label
 
 
 def render_telegram(ctx: dict, lang: str) -> str:
