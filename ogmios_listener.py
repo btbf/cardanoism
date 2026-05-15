@@ -310,17 +310,76 @@ def _notify_pool_retire(pool_id: str, retiring_epoch: int) -> None:
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 通知発火: pool_fee_change（margin / fixed_cost / pledge の変化を統合検知）
-# state は pool 単位で管理（複数ユーザーが委任していても Cert 検知は1回）
-# state フォーマット: "{margin}:{fixed_cost}:{pledge_lovelace}"
+#
+# 比較ベースラインの優先順位:
+#   1. pools テーブル (Koios sync が常時更新する live 値) ← 最優先
+#   2. notification_check_state (前回 listener が観測した cert) ← fallback
+# pools 値があれば cert と比較してすぐ通知判定できるため、listener が初めて
+# pool の registration cert を見た場合でも変更通知を取りこぼさない。
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _notify_pool_fee_change(pool_id: str, margin: float, fixed_cost: int, pledge: int) -> None:
+def _read_pool_prev_fees(pool_id: str) -> tuple[float | None, int | None, int | None]:
+    """pools テーブルの現在値 (margin, fixed_cost, pledge) を返す。
+    cert 上書き前に呼ぶ前提。行が無い場合は (None, None, None)。
+    """
+    try:
+        from cardanoism.backend.db_connect import get_db
+        with get_db() as (cursor, _):
+            cursor.execute(
+                "SELECT margin, fixed_cost, pledge FROM pools "
+                "WHERE pool_id_bech32 = ? LIMIT 1",
+                (pool_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return (None, None, None)
+            m = row["margin"]
+            fc = row["fixed_cost"]
+            pl = row["pledge"]
+            return (
+                float(m) if m is not None else None,
+                int(fc) if fc is not None else None,
+                int(pl) if pl is not None else None,
+            )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("listener: pools 旧値読み出し失敗 pool=%s: %s", pool_id, e)
+        return (None, None, None)
+
+
+def _notify_pool_fee_change(
+    pool_id: str, margin: float, fixed_cost: int, pledge: int,
+    prev: tuple[float | None, int | None, int | None] | None = None,
+) -> None:
     current_val = f"{margin}:{fixed_cost}:{pledge}"
-    stored = _get_pool_fee_state(pool_id)
-    if stored is None:
+
+    # 旧値の決定: pools テーブル → notification_check_state の順に試す
+    old_margin = old_fixed = old_pledge = None
+    if prev is not None:
+        old_margin, old_fixed, old_pledge = prev
+
+    if old_margin is None and old_fixed is None and old_pledge is None:
+        # pools に値が無い → 過去 listener 観測値 (notification_check_state) を見る
+        stored = _get_pool_fee_state(pool_id)
+        if stored is None:
+            # 比較ベースライン無し: 静かに state だけ更新して終わる
+            _set_pool_fee_state(pool_id, current_val)
+            return
+        parts = stored.split(":")
+        try:
+            old_margin = float(parts[0])
+            old_fixed = int(parts[1]) if len(parts) > 1 else 0
+            old_pledge = int(parts[2]) if len(parts) > 2 else None
+        except (ValueError, IndexError):
+            _set_pool_fee_state(pool_id, current_val)
+            return
+
+    # 変更判定: margin は float なので tolerance 比較、その他は整数比較
+    margin_changed = old_margin is None or abs(float(old_margin) - float(margin)) > 1e-9
+    fixed_changed = old_fixed is None or int(old_fixed) != int(fixed_cost)
+    pledge_changed = old_pledge is None or int(old_pledge) != int(pledge)
+    if not (margin_changed or fixed_changed or pledge_changed):
+        # 同値: state だけ最新化して終わる
         _set_pool_fee_state(pool_id, current_val)
-        return
-    if stored == current_val:
         return
     _set_pool_fee_state(pool_id, current_val)
 
@@ -333,11 +392,9 @@ def _notify_pool_fee_change(pool_id: str, margin: float, fixed_cost: int, pledge
     if not addrs:
         return
 
-    # 旧フォーマット（pledge なし）に対する後方互換
-    parts = stored.split(":")
-    old_margin_pct = float(parts[0]) * 100
-    old_fixed_ada = int(parts[1]) / 1_000_000 if len(parts) > 1 else 0.0
-    old_pledge_ada = int(parts[2]) / 1_000_000 if len(parts) > 2 else None
+    old_margin_pct = (float(old_margin) * 100) if old_margin is not None else 0.0
+    old_fixed_ada = (int(old_fixed) / 1_000_000) if old_fixed is not None else 0.0
+    old_pledge_ada = (int(old_pledge) / 1_000_000) if old_pledge is not None else None
 
     margin_pct = margin * 100
     fixed_ada = fixed_cost / 1_000_000
@@ -733,12 +790,16 @@ def _process_cert(cert: dict, slot: int) -> None:
             return
         logger.info("pool_registration 検知: pool=%s margin=%.4f cost=%d pledge=%d",
                     pool_id, margin, cost_lovelace, pledge_lovelace)
+        # cert で上書きする前に pools の旧値を読み出して通知判定に渡す
+        prev_fees = _read_pool_prev_fees(pool_id)
         # Phase 3: pools テーブルに反映
         try:
             record_pool_registration(cert, slot)
         except Exception as e:
             logger.exception("listener: pool 登録 DB 書込み失敗: %s", e)
-        _notify_pool_fee_change(pool_id, margin, cost_lovelace, pledge_lovelace)
+        _notify_pool_fee_change(
+            pool_id, margin, cost_lovelace, pledge_lovelace, prev=prev_fees,
+        )
 
     # ── Phase 2: DRep cert ─────────────────────────────────────────────────
     elif cert_type == "delegateRepresentativeRegistration":
