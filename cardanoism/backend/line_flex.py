@@ -563,21 +563,32 @@ def drep_vote(
     """
     t = get_flex(lang)
 
-    rows = []
+    rows: list[dict] = []
+
+    def _plain(text: str, color: str = TEXT_PRIMARY, weight: str | None = None,
+               size: str = "sm") -> dict:
+        node: dict = {
+            "type": "text",
+            "text": text,
+            "size": size,
+            "color": color,
+            "wrap": True,
+        }
+        if weight:
+            node["weight"] = weight
+        return node
 
     if int(vote_count) > 1:
-        # 集約モード: 件数だけ表示
+        # 集約モード: 件数だけ表示 (見出し無し)
         if lang == "ja":
             count_text = f"{vote_count} 件のガバナンス提案に投票"
         else:
             count_text = f"Voted on {vote_count} governance actions"
-        rows.append(_row(t["drep_vote_action_label"], count_text, TEXT_PRIMARY))
+        rows.append(_plain(count_text, TEXT_PRIMARY, weight="bold"))
     else:
-        # 個別モード: タイトル + 投票内容
-        # raw vote key → 言語別ラベルに変換
+        # 個別モード: タイトル + 投票内容 (見出し無し)
         vote_key_map = {
             "yes": "vote_yes", "no": "vote_no", "abstain": "vote_abstain",
-            # 後方互換（日本語で渡された場合）
             "賛成": "vote_yes", "反対": "vote_no", "棄権": "vote_abstain",
         }
         vote_label = t.get(vote_key_map.get(vote.lower(), ""), vote)
@@ -588,8 +599,11 @@ def drep_vote(
         }
         vote_color = vote_colors.get(vote_label, TEXT_PRIMARY)
         if proposal_title:
-            rows.append(_row(t["drep_vote_action_label"], proposal_title, TEXT_PRIMARY))
-        rows.append(_row(t["drep_vote_label"], vote_label, vote_color))
+            rows.append(_plain(proposal_title, TEXT_PRIMARY, weight="bold"))
+        rows.append(_plain(vote_label, vote_color, weight="bold"))
+
+    # ニックネームも見出し無しで小さめに表示
+    rows.append(_plain(nickname, TEXT_SECONDARY, size="xs"))
 
     disclaimer = (
         "投票内容がご自身の意思と異なる場合は、いつでも委任先 DRep を変更できます。"
@@ -616,7 +630,6 @@ def drep_vote(
                 "spacing": "sm",
                 "contents": rows,
             },
-            _wallet_row(nickname, lang),
             {"type": "separator", "margin": "md"},
             {
                 "type": "text",
