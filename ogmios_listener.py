@@ -75,6 +75,10 @@ KOIOS_NETWORK = os.getenv("KOIOS_NETWORK", "mainnet").lower()
 _DBG_TX_DUMP = os.getenv("LISTENER_DEBUG_TX_DUMP", "").strip().lower() in ("1", "true", "yes")
 _dbg_tx_keys_logged = 0
 
+# 診断用: LISTENER_DEBUG_CERT_DUMP=1 のとき、各 cert の type と生 JSON を WARNING ログに出す。
+# Ogmios v6 の cert (delegation / DRep registration 等) の構造確認用。
+_DBG_CERT_DUMP = os.getenv("LISTENER_DEBUG_CERT_DUMP", "").strip().lower() in ("1", "true", "yes")
+
 _EPOCH_LENGTHS = {
     "mainnet": 432_000,
     "preprod": 432_000,
@@ -438,6 +442,15 @@ def _notify_drep_vote(drep_id: str, vote_str: str, gov_tx_hash: str, gov_index: 
 
 def _process_cert(cert: dict, slot: int) -> None:
     cert_type = cert.get("type")
+
+    # ── 診断 (LISTENER_DEBUG_CERT_DUMP=1 のときのみ) ──
+    # cert の生 JSON を出して Ogmios v6 の実構造を確認する。
+    if _DBG_CERT_DUMP:
+        logger.warning(
+            "DEBUG_CERT type=%s slot=%d raw=%s",
+            cert_type, slot,
+            json.dumps(cert, ensure_ascii=False)[:800],
+        )
 
     if cert_type == "stakePoolRetirement":
         pool = cert.get("stakePool", {})

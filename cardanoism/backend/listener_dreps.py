@@ -97,7 +97,8 @@ def _upsert_drep_static(
 
 
 def _extract_anchor(cert: dict) -> tuple[str | None, str | None]:
-    anchor = cert.get("anchor") or {}
+    # Ogmios v6.10+ は "metadata"、旧は "anchor"
+    anchor = cert.get("metadata") or cert.get("anchor") or {}
     if not isinstance(anchor, dict):
         return None, None
     return anchor.get("url"), anchor.get("hash")
