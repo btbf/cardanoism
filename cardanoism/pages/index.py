@@ -440,10 +440,32 @@ def hero_section() -> rx.Component:
         max_width="600px",
     )
     # CTA はスマホで full-width にして親指タップしやすく。
+    # ログイン状態 + アドレス登録状況で文言と遷移先を切り替える。
+    #   未ログイン           : 無料で始める → /login
+    #   ログイン済み・アドレス未登録 : アドレスを登録する → /mypage?tab=stake
+    #   ログイン済み・アドレス登録済 : ダッシュボードへ → /mypage
+    cta_label = rx.cond(
+        AuthState.is_logged_in,
+        rx.cond(
+            AuthState.is_stake_addresses_empty,
+            AuthState.t["hero_cta_register_address"],
+            AuthState.t["hero_cta_dashboard"],
+        ),
+        AuthState.t["hero_cta_primary"],
+    )
+    cta_href = rx.cond(
+        AuthState.is_logged_in,
+        rx.cond(
+            AuthState.is_stake_addresses_empty,
+            "/mypage?tab=stake",
+            "/mypage",
+        ),
+        "/login",
+    )
     cta = rx.link(
         rx.button(
             rx.icon("rocket", size=18),
-            rx.text(AuthState.t["hero_cta_primary"], weight="bold"),
+            rx.text(cta_label, weight="bold"),
             size="4",
             background="linear-gradient(135deg, #ffcf00, #ff9500)",
             color="#111",
@@ -456,7 +478,7 @@ def hero_section() -> rx.Component:
                 "width": "100%",
             },
         ),
-        href="/login",
+        href=cta_href,
         underline="none",
         width=["100%", "100%", "auto"],
         # PC は max 360px くらいで詰めて中央寄せ感を出す
@@ -1025,6 +1047,25 @@ def setup_section() -> rx.Component:
 # ─── Final CTA ──────────────────────────────────────────────────────────────
 
 def final_cta_section() -> rx.Component:
+    # ログイン状態に応じてラベルと遷移先を切替 (hero CTA と同じロジック)
+    cta_label = rx.cond(
+        AuthState.is_logged_in,
+        rx.cond(
+            AuthState.is_stake_addresses_empty,
+            AuthState.t["hero_cta_register_address"],
+            AuthState.t["hero_cta_dashboard"],
+        ),
+        AuthState.t["home_final_cta_button"],
+    )
+    cta_href = rx.cond(
+        AuthState.is_logged_in,
+        rx.cond(
+            AuthState.is_stake_addresses_empty,
+            "/mypage?tab=stake",
+            "/mypage",
+        ),
+        "/login",
+    )
     return rx.box(
         _shell(
             rx.vstack(
@@ -1041,7 +1082,7 @@ def final_cta_section() -> rx.Component:
                 rx.link(
                     rx.button(
                         rx.icon("rocket", size=16),
-                        AuthState.t["home_final_cta_button"],
+                        cta_label,
                         rx.icon("arrow-right", size=16),
                         size="4",
                         background="linear-gradient(135deg, #ffcf00, #ff7e5f)",
@@ -1052,7 +1093,7 @@ def final_cta_section() -> rx.Component:
                         _hover={"background": "linear-gradient(135deg, #ff7e5f, #ffcf00)"},
                         style={"boxShadow": "0 14px 36px -10px rgba(255,154,0,0.6)"},
                     ),
-                    href="/login",
+                    href=cta_href,
                     underline="none",
                 ),
                 spacing="5",

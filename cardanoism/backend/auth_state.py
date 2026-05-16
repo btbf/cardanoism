@@ -252,6 +252,11 @@ class AuthState(rx.State):
     # ログインモーダル
     show_login_modal: bool = False
 
+    # アドレス未登録ガイドモーダル (ダッシュボード初回案内)
+    # デフォルト True、ユーザーが閉じたらこのセッション中は再表示しない。
+    # アドレスが登録されると自然に open 条件が False になり、表示も消える。
+    show_address_guide_modal: bool = True
+
     # コールバックエラー
     auth_error: str = ""
 
@@ -460,6 +465,9 @@ class AuthState(rx.State):
 
     def close_login_modal(self):
         self.show_login_modal = False
+
+    def close_address_guide_modal(self):
+        self.show_address_guide_modal = False
 
     # ============================================================
     # LINE OAuth フロー

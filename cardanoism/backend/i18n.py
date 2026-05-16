@@ -453,7 +453,7 @@ UI_JA: dict[str, str] = {
 
     # ステーキングページ
     "staking_subnav_why":          "ステーキングとは？",
-    "staking_subnav_dashboard":    "ダッシュボード",
+    "staking_subnav_dashboard":    "ネットワーク状況",
     "staking_subnav_spo":          "ステークプール",
 
     # ── /pricing プラン比較ページ ──
@@ -641,7 +641,7 @@ UI_JA: dict[str, str] = {
     "staking_my_delegations_manage":         "管理",
     "staking_my_delegations_empty":          "ステークアドレスが未登録です。マイページで登録すると委任先がここに表示されます。",
     "staking_my_delegations_add":            "ステークアドレスを登録",
-    "staking_my_delegations_login_required": "ログインしてステークアドレスを登録し、委任状況を管理しよう！",
+    "staking_my_delegations_login_required": "ログインしてCardano受信アドレスを登録し、委任状況を管理しよう！",
     "staking_delegation_pool_label":         "委任先プール",
     "staking_delegation_drep_label":         "委任先 DRep",
     "staking_delegation_unset":              "未委任",
@@ -667,6 +667,17 @@ UI_JA: dict[str, str] = {
     "staking_heatmap_title":       "プール活動ヒートマップ",
     "staking_heatmap_subtitle":    "アクティブプール × 直近5エポックのブロック生成数",
     "staking_heatmap_empty":       "ヒートマップ用のデータがまだ取得されていません (pool_block_history_sync を実行してください)",
+    "staking_activity_bar_title":      "プール活動状況",
+    "staking_activity_bar_subtitle":   "直近5エポックにブロックを生成したプールの割合",
+    "staking_activity_bar_kpi_prefix":   "全プール",
+    "staking_activity_bar_kpi_middle":   "のうち ブロック生成",
+    "staking_activity_bar_kpi_suffix":   "プール",
+    "staking_activity_bar_kpi_note":     "（直近5エポックにブロックを生成したプール）",
+    "staking_activity_bar_explain":    "Cardanoでは確率的に選ばれたプールだけがブロックを生成します。直近5エポックで一度もリーダーになれなかったプールは「割当なし」として表示しています。",
+    "staking_activity_bar_legend_green":  "50ブロック以上",
+    "staking_activity_bar_legend_yellow": "10〜49ブロック",
+    "staking_activity_bar_legend_pink":   "1〜9ブロック",
+    "staking_activity_bar_legend_gray":   "0ブロック",
     "staking_live_blocks_title":   "リアルタイムブロック生成",
     "staking_live_blocks_subtitle":"直近 34 ブロック",
     "staking_live_blocks_poll_hint":"リアルタイム更新",
@@ -733,6 +744,14 @@ UI_JA: dict[str, str] = {
     # ダッシュボード (ログイン時 / トップ)
     "dashboard_welcome":                  "ようこそ",
     "dashboard_welcome_sub":              "あなたの Cardano 参加状況をひと目で確認できます",
+    "dashboard_empty_card_title":         "委任状況を確認したいカルダノ受信アドレスを登録してください。",
+    "dashboard_empty_card_desc":          "Cardano の参加状況を確認するには、まず Cardano 受信アドレスを登録してください。登録すると、SPO 委任先、DRep 委任状況、報酬情報、通知対象イベントを確認できます。",
+    "dashboard_empty_card_button":        "アドレスを登録する",
+    "dashboard_empty_card_dismiss":       "あとで登録する",
+    "dashboard_empty_card_feature_spo":       "SPO 委任先",
+    "dashboard_empty_card_feature_drep":      "DRep 委任状況",
+    "dashboard_empty_card_feature_rewards":   "報酬情報",
+    "dashboard_empty_card_feature_notify":    "通知対象イベント",
     "dashboard_action_drep":              "DRep を選ぶ",
     "dashboard_action_drep_sub":          "代表者を一覧から委任",
     "dashboard_action_spo":               "SPO を選ぶ",
@@ -846,6 +865,8 @@ UI_JA: dict[str, str] = {
     "hero_beta_badge_text":  "現在ベータ版として全機能を無料公開中。",
     "hero_beta_badge_cta":   "フィードバックはこちら",
     "hero_cta_primary": "無料で始める",
+    "hero_cta_register_address": "アドレスを登録する",
+    "hero_cta_dashboard": "ダッシュボードへ",
     "hero_cta_secondary": "ステークプールをチェック",
     "home_preview_label": "通知センター",
     "home_preview_badge": "即時通知",
@@ -918,7 +939,7 @@ UI_JA: dict[str, str] = {
 
     # ── 新ホーム: Final CTA ────────────────────────────────
     "home_final_cta_title":      "今日から始めよう",
-    "home_final_cta_subtitle":   "ログインしてステークアドレスを登録するだけ。無料プランからすぐに使い始められます。",
+    "home_final_cta_subtitle":   "ログインしてCardano受信アドレスを登録するだけ。無料プランからすぐに使い始められます。",
     "home_final_cta_button":     "無料で始める",
 
     # ── 新ホーム: LINE 通知 mock ──────────────────────────
@@ -933,6 +954,9 @@ UI_JA: dict[str, str] = {
     "home_line_mock_msg3_title": "🔔 委任先 DRep が投票",
     "home_line_mock_msg3_body":  "Cardano Foundation が GA #4280 に Yes を投票しました。",
     "home_line_mock_msg3_time":  "9:43",
+
+    # ナビバー
+    "nav_rate_fetched_prefix": "取得:",
 
     # タブ
     "tab_dashboard": "ダッシュボード",
@@ -965,7 +989,7 @@ UI_JA: dict[str, str] = {
 
     # ステークアドレスタブ
     "stake_tab_desc": "登録したアドレスのイベントを通知します。最大3件まで登録できます。",
-    "stake_empty": "登録されたステークアドレスはありません",
+    "stake_empty": "登録されたCardanoアドレスはありません。",
     "stake_role_loading": "委任先情報を確認中...",
     "stake_new_title": "新規登録",
     "stake_nickname_label": "ニックネーム",
@@ -973,12 +997,21 @@ UI_JA: dict[str, str] = {
     "stake_address_label": "受信アドレス",
     "stake_address_hint": "ウォレットの受信アドレスを入力してください",
     "stake_wallet_auto_title": "ウォレットから自動取得",
-    "stake_wallet_auto_desc":  "対応ウォレットを選ぶとアクティブアドレスが自動入力されます",
+    "stake_wallet_auto_desc":  "対応ウォレットを選ぶとアクティブな受信アドレスが自動入力されます",
     "stake_wallet_mobile_note": "📱 モバイルの場合はウォレットアプリ内の DApp ブラウザからアクセスしてください",
     "stake_wallet_pick_button": "ウォレットで取得",
     "stake_wallet_or_manual":   "または手動で入力",
+    "stake_tab_wallet_label":   "ウォレットから取得",
+    "stake_tab_manual_label":   "手動で入力",
+    "stake_manual_title":       "手動でアドレスを登録",
+    "stake_manual_desc":        "受信アドレスを直接入力してください。",
+    "stake_manual_address_label": "受信アドレス",
+    "stake_manual_address_hint": "受信アドレス(addr〜)を入力してください",
+    "stake_manual_nickname_placeholder": "例) メインウォレット、家族用アドレスなど",
+    "stake_manual_nickname_hint": "このアドレスを識別するための名前をつけてください",
     "stake_add_button": "追加",
-    "stake_limit_message": "ステークアドレスの登録上限（3件）に達しています。",
+    "stake_limit_message": "アドレスの登録上限（3件）に達しています。",
+    "stake_limit_upgrade_link": "上限を増やす",
     "stake_nickname_edit_title":   "ニックネームを編集",
     "stake_nickname_save":         "保存",
     "stake_nickname_cancel":       "キャンセル",
@@ -1014,7 +1047,7 @@ UI_JA: dict[str, str] = {
     "notification_tab_telegram_reload_button": "連携済み！ページを更新",
     "notification_tab_telegram_disconnect_button": "連携を解除する",
     "notification_tab_telegram_not_connected": "Telegramと連携すると、イベント発生時にTelegramで通知を受け取れます。",
-    "notification_tab_no_stake": "ステークアドレスを登録すると、アドレスごとに通知を設定できます。",
+    "notification_tab_no_stake": "ウォレット受信アドレスを登録すると、アドレスごとに通知を設定できます。",
     "notification_tab_per_addr_title": "アドレスごとの通知設定",
     "notification_pool_label": "委任プール",
     "notification_drep_label": "委任DRep",
@@ -1438,7 +1471,7 @@ UI_EN: dict[str, str] = {
 
     # Staking page
     "staking_subnav_why":          "What is staking?",
-    "staking_subnav_dashboard":    "Dashboard",
+    "staking_subnav_dashboard":    "Network status",
     "staking_subnav_spo":          "SPO List",
 
     # ── /pricing ──
@@ -1648,6 +1681,17 @@ UI_EN: dict[str, str] = {
     "staking_mempool_tx_unit":     "tx",
     "staking_heatmap_title":       "Pool activity heatmap",
     "staking_heatmap_subtitle":    "Active pools × blocks produced in last 5 epochs",
+    "staking_activity_bar_title":      "Pool activity overview",
+    "staking_activity_bar_subtitle":   "Share of pools that produced blocks in the last 5 epochs",
+    "staking_activity_bar_kpi_prefix":   "Of",
+    "staking_activity_bar_kpi_middle":   "pools,",
+    "staking_activity_bar_kpi_suffix":   "produced blocks",
+    "staking_activity_bar_kpi_note":     "(Pools that produced at least one block in the last 5 epochs)",
+    "staking_activity_bar_explain":    "On Cardano, only stochastically-elected pools produce blocks. Pools that were never elected in the last 5 epochs are shown as 'Unassigned'.",
+    "staking_activity_bar_legend_green":  "50+ blocks",
+    "staking_activity_bar_legend_yellow": "10-49 blocks",
+    "staking_activity_bar_legend_pink":   "1-9 blocks",
+    "staking_activity_bar_legend_gray":   "0 blocks",
     "staking_heatmap_empty":       "No heatmap data yet (run pool_block_history_sync)",
     "staking_live_blocks_title":   "Live block stream",
     "staking_live_blocks_subtitle":"Latest 34 blocks",
@@ -1715,6 +1759,14 @@ UI_EN: dict[str, str] = {
     # Dashboard (logged-in / top page)
     "dashboard_welcome":                  "Welcome,",
     "dashboard_welcome_sub":              "Your Cardano participation at a glance",
+    "dashboard_empty_card_title":         "Register the Cardano receive address whose delegation you'd like to track.",
+    "dashboard_empty_card_desc":          "To see your Cardano participation, please register your Cardano receive address. Once registered, you'll see your SPO delegation, DRep delegation, rewards, and notification targets.",
+    "dashboard_empty_card_button":        "Register address",
+    "dashboard_empty_card_dismiss":       "Register later",
+    "dashboard_empty_card_feature_spo":       "SPO delegation",
+    "dashboard_empty_card_feature_drep":      "DRep delegation",
+    "dashboard_empty_card_feature_rewards":   "Rewards",
+    "dashboard_empty_card_feature_notify":    "Notifications",
     "dashboard_action_drep":              "Pick a DRep",
     "dashboard_action_drep_sub":          "Browse and delegate",
     "dashboard_action_spo":               "Pick an SPO",
@@ -1828,6 +1880,8 @@ UI_EN: dict[str, str] = {
     "hero_beta_badge_text":  "All features unlocked during beta.",
     "hero_beta_badge_cta":   "Share your feedback",
     "hero_cta_primary": "Start for free",
+    "hero_cta_register_address": "Register your address",
+    "hero_cta_dashboard": "Go to dashboard",
     "hero_cta_secondary": "Check stake pools",
     "home_preview_label": "Notification center",
     "home_preview_badge": "Instant",
@@ -1917,6 +1971,9 @@ UI_EN: dict[str, str] = {
     "home_line_mock_msg3_body":  "Cardano Foundation voted Yes on GA #4280.",
     "home_line_mock_msg3_time":  "9:43",
 
+    # Nav bar
+    "nav_rate_fetched_prefix": "Fetched:",
+
     # Tabs
     "tab_dashboard": "Dashboard",
     "tab_favorites": "Favorites",
@@ -1960,8 +2017,17 @@ UI_EN: dict[str, str] = {
     "stake_wallet_mobile_note": "📱 On mobile, please access via your wallet's built-in DApp browser",
     "stake_wallet_pick_button": "Pick wallet",
     "stake_wallet_or_manual":   "or enter manually",
+    "stake_tab_wallet_label":   "From wallet",
+    "stake_tab_manual_label":   "Manual entry",
+    "stake_manual_title":       "Register address manually",
+    "stake_manual_desc":        "Enter your receive address directly.",
+    "stake_manual_address_label": "Receive address",
+    "stake_manual_address_hint": "Enter a receive address (addr~)",
+    "stake_manual_nickname_placeholder": "e.g., Main Wallet, Family Address",
+    "stake_manual_nickname_hint": "Give this address a name to identify it",
     "stake_add_button": "Add",
-    "stake_limit_message": "Maximum stake address limit (3) reached.",
+    "stake_limit_message": "Maximum address limit (3) reached.",
+    "stake_limit_upgrade_link": "Increase limit",
     "stake_nickname_edit_title":   "Edit nickname",
     "stake_nickname_save":         "Save",
     "stake_nickname_cancel":       "Cancel",

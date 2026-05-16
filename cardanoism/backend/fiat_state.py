@@ -7,7 +7,7 @@ fiat_state.py
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import reflex as rx
 
@@ -15,11 +15,15 @@ from cardanoism.backend.fiat_db import get_fiat_rate
 
 logger = logging.getLogger(__name__)
 
+# 表示用 TZ: 日本語版は JST (UTC+9)、英語版は UTC をそのまま表示する。
+_JST = timezone(timedelta(hours=9), name="JST")
+
 
 class FiatRateState(rx.State):
     ada_jpy: str = "—"
     ada_usd: str = "—"
-    updated_label: str = ""
+    updated_label_jst: str = ""  # 例: "14:30 JST"
+    updated_label_utc: str = ""  # 例: "05:30 UTC"
 
     @rx.event
     def load_rates(self):
@@ -49,9 +53,15 @@ class FiatRateState(rx.State):
             return
         try:
             if isinstance(updated, datetime):
-                # MariaDB の DATETIME はサーバ TZ。表示用に HH:MM だけ取り出す。
-                self.updated_label = updated.strftime("%H:%M")
+                # MariaDB の DATETIME はサーバ TZ (UTC 前提)。
+                dt_utc = updated if updated.tzinfo else updated.replace(tzinfo=timezone.utc)
+                self.updated_label_utc = dt_utc.astimezone(timezone.utc).strftime("%H:%M UTC")
+                self.updated_label_jst = dt_utc.astimezone(_JST).strftime("%H:%M JST")
             else:
-                self.updated_label = str(updated)[11:16]
+                # 文字列で来た場合は HH:MM 部分だけ抜き出して UTC タグ
+                hhmm = str(updated)[11:16]
+                self.updated_label_utc = f"{hhmm} UTC"
+                self.updated_label_jst = ""
         except Exception:
-            self.updated_label = ""
+            self.updated_label_jst = ""
+            self.updated_label_utc = ""

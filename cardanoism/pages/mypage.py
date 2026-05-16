@@ -28,7 +28,6 @@ ACCENT_DARK = "#c7a300"
 
 GENERAL_EVENTS = [
     "epoch_start",
-    "treasury_withdrawal_enacted",
 ]
 
 
@@ -732,126 +731,13 @@ def stake_tab() -> rx.Component:
             ),
             rx.fragment(),
         ),
-        # 新規登録フォーム
+        # 新規登録フォーム (タブ切替: ウォレット自動取得 / 手動入力)
         rx.cond(
             AuthState.stake_addresses_count < 3,
             rx.box(
                 rx.vstack(
                     rx.text(AuthState.t["stake_new_title"], size="4", weight="medium"),
-                    # ── ウォレットで自動取得 ──────────────
-                    rx.box(
-                        rx.vstack(
-                            rx.flex(
-                                rx.icon("wallet", size=16, color="var(--amber-11)",
-                                        style={"flexShrink": "0"}),
-                                rx.vstack(
-                                    rx.text(
-                                        AuthState.t["stake_wallet_auto_title"],
-                                        size="2", weight="medium",
-                                    ),
-                                    rx.text(
-                                        AuthState.t["stake_wallet_auto_desc"],
-                                        size="1", color="var(--gray-10)",
-                                        style={"wordBreak": "break-word"},
-                                    ),
-                                    spacing="0", align_items="start",
-                                    style={"minWidth": "0", "flex": "1 1 auto"},
-                                ),
-                                rx.spacer(),
-                                wallet_register_picker_menu(
-                                    rx.button(
-                                        rx.icon("wallet", size=12),
-                                        rx.text(
-                                            AuthState.t["stake_wallet_pick_button"],
-                                            size="1",
-                                        ),
-                                        rx.icon("chevron-down", size=12),
-                                        size="2",
-                                        variant="soft",
-                                        color_scheme="amber",
-                                        cursor="pointer",
-                                    ),
-                                ),
-                                spacing="3",
-                                align="center",
-                                width="100%",
-                                wrap="wrap",
-                            ),
-                            # モバイルユーザー向け注意書き
-                            rx.text(
-                                AuthState.t["stake_wallet_mobile_note"],
-                                size="1",
-                                color="var(--amber-11)",
-                                style={
-                                    "wordBreak": "break-word",
-                                    "lineHeight": "1.6",
-                                },
-                            ),
-                            spacing="2",
-                            align_items="start",
-                            width="100%",
-                        ),
-                        padding="12px 14px",
-                        border_radius="8px",
-                        border="1px dashed var(--amber-7)",
-                        background="var(--amber-2)",
-                        width="100%",
-                    ),
-                    rx.hstack(
-                        rx.divider(flex="1"),
-                        rx.text(
-                            AuthState.t["stake_wallet_or_manual"],
-                            size="1", color="var(--gray-9)",
-                        ),
-                        rx.divider(flex="1"),
-                        spacing="3", align="center", width="100%",
-                    ),
-                    rx.vstack(
-                        rx.text(AuthState.t["stake_nickname_label"], size="3"),
-                        rx.input(
-                            value=AuthState.new_stake_nickname,
-                            on_change=AuthState.set_new_stake_nickname,
-                            placeholder=AuthState.t["stake_nickname_placeholder"],
-                            size="3",
-                            width="100%",
-                        ),
-                        spacing="1",
-                        width="100%",
-                        align_items="start",
-                    ),
-                    rx.vstack(
-                        rx.text(AuthState.t["stake_address_label"], size="3"),
-                        rx.input(
-                            value=AuthState.new_stake_address,
-                            on_change=AuthState.set_new_stake_address,
-                            placeholder="addr1...",
-                            size="3",
-                            width="100%",
-                            font_family="monospace",
-                        ),
-                        rx.text(
-                            AuthState.t["stake_address_hint"],
-                            size="2",
-                            color="var(--gray-8)",
-                        ),
-                        spacing="1",
-                        width="100%",
-                        align_items="start",
-                    ),
-                    rx.cond(
-                        AuthState.stake_error != "",
-                        rx.text(AuthState.stake_error, size="3", color="var(--red-9)"),
-                        rx.box(),
-                    ),
-                    rx.button(
-                        rx.icon("plus", size=14),
-                        AuthState.t["stake_add_button"],
-                        on_click=AuthState.add_stake_address_handler,
-                        size="2",
-                        cursor="pointer",
-                        loading=AuthState.stake_adding | AuthState.stake_role_loading,
-                        disabled=AuthState.stake_adding | AuthState.stake_role_loading,
-                    ),
+                    _stake_register_tabs(),
                     spacing="3",
                     width="100%",
                     align_items="start",
@@ -862,13 +748,234 @@ def stake_tab() -> rx.Component:
                 background=rx.color_mode_cond("var(--gray-2)", "rgba(15,15,25,0.5)"),
                 width="100%",
             ),
-            rx.text(
-                AuthState.t["stake_limit_message"],
-                size="3",
-                color="var(--gray-8)",
+            # 登録上限到達: info アイコン + メッセージ + プランページへの導線
+            rx.hstack(
+                rx.icon("info", size=16, color="var(--gray-10)", style={"flexShrink": "0"}),
+                rx.text(
+                    AuthState.t["stake_limit_message"],
+                    size="2", color="var(--gray-11)",
+                ),
+                rx.spacer(),
+                rx.link(
+                    rx.hstack(
+                        rx.text(
+                            AuthState.t["stake_limit_upgrade_link"],
+                            size="2", weight="medium",
+                            style={"textDecoration": "underline"},
+                        ),
+                        rx.icon("external-link", size=12),
+                        spacing="1", align="center",
+                    ),
+                    href="/pricing",
+                    color="var(--amber-11)",
+                    underline="none",
+                    style={"flexShrink": "0", "whiteSpace": "nowrap"},
+                ),
+                spacing="2", align="center", wrap="wrap",
+                padding="12px 14px",
+                border_radius="10px",
+                border=f"1px solid {rx.color('gray', 4)}",
+                background=rx.color_mode_cond("var(--gray-2)", "rgba(15,15,25,0.5)"),
+                width="100%",
             ),
         ),
         spacing="4",
+        width="100%",
+    )
+
+
+# ── 新規アドレス登録: タブ切替コンポーネント ──
+def _stake_nickname_input(*, placeholder_key: str, hint_key: str | None = None) -> rx.Component:
+    """ニックネーム入力欄。タブごとに placeholder / hint を変えて使い回す。"""
+    parts = [
+        rx.text(AuthState.t["stake_nickname_label"], size="3"),
+        rx.input(
+            value=AuthState.new_stake_nickname,
+            on_change=AuthState.set_new_stake_nickname,
+            placeholder=AuthState.t[placeholder_key],
+            size="3",
+            width="100%",
+        ),
+    ]
+    if hint_key:
+        parts.append(rx.text(AuthState.t[hint_key], size="2", color="var(--gray-8)"))
+    return rx.vstack(*parts, spacing="1", width="100%", align_items="start")
+
+
+def _stake_add_button() -> rx.Component:
+    return rx.button(
+        rx.icon("plus", size=14),
+        AuthState.t["stake_add_button"],
+        on_click=AuthState.add_stake_address_handler,
+        size="2",
+        cursor="pointer",
+        loading=AuthState.stake_adding | AuthState.stake_role_loading,
+        disabled=AuthState.stake_adding | AuthState.stake_role_loading,
+    )
+
+
+def _stake_error_text() -> rx.Component:
+    return rx.cond(
+        AuthState.stake_error != "",
+        rx.text(AuthState.stake_error, size="3", color="var(--red-9)"),
+        rx.box(),
+    )
+
+
+def _stake_tab_wallet() -> rx.Component:
+    """タブ: ウォレットから取得"""
+    return rx.vstack(
+        rx.box(
+            rx.vstack(
+                rx.flex(
+                    rx.icon("wallet", size=16, color="var(--amber-11)",
+                            style={"flexShrink": "0"}),
+                    rx.vstack(
+                        rx.text(
+                            AuthState.t["stake_wallet_auto_title"],
+                            size="2", weight="medium",
+                        ),
+                        rx.text(
+                            AuthState.t["stake_wallet_auto_desc"],
+                            size="1", color="var(--gray-10)",
+                            style={"wordBreak": "break-word"},
+                        ),
+                        spacing="0", align_items="start",
+                        style={"minWidth": "0", "flex": "1 1 auto"},
+                    ),
+                    rx.spacer(),
+                    wallet_register_picker_menu(
+                        rx.button(
+                            rx.icon("wallet", size=12),
+                            rx.text(
+                                AuthState.t["stake_wallet_pick_button"],
+                                size="1",
+                            ),
+                            rx.icon("chevron-down", size=12),
+                            size="2",
+                            variant="soft",
+                            color_scheme="amber",
+                            cursor="pointer",
+                        ),
+                    ),
+                    spacing="3",
+                    align="center",
+                    width="100%",
+                    wrap="wrap",
+                ),
+                rx.text(
+                    AuthState.t["stake_wallet_mobile_note"],
+                    size="1", color="var(--amber-11)",
+                    style={"wordBreak": "break-word", "lineHeight": "1.6"},
+                ),
+                spacing="2", align_items="start", width="100%",
+            ),
+            padding="12px 14px",
+            border_radius="8px",
+            border="1px dashed var(--amber-7)",
+            background="var(--amber-2)",
+            width="100%",
+        ),
+        _stake_nickname_input(placeholder_key="stake_nickname_placeholder"),
+        rx.vstack(
+            rx.text(AuthState.t["stake_address_label"], size="3"),
+            # ウォレットから取得した値を表示する読み取り専用フィールド。
+            # 手動編集は隣の「手動で入力」タブで行う。
+            rx.input(
+                value=AuthState.new_stake_address,
+                placeholder="addr1...",
+                size="3", width="100%", font_family="monospace",
+                read_only=True,
+            ),
+            rx.text(
+                AuthState.t["stake_address_hint"],
+                size="2", color="var(--gray-8)",
+            ),
+            spacing="1", width="100%", align_items="start",
+        ),
+        _stake_error_text(),
+        _stake_add_button(),
+        spacing="3", width="100%", align_items="start",
+    )
+
+
+def _stake_tab_manual() -> rx.Component:
+    """タブ: 手動で入力"""
+    return rx.vstack(
+        rx.box(
+            rx.vstack(
+                rx.hstack(
+                    rx.icon("info", size=16, color="var(--amber-11)",
+                            style={"flexShrink": "0"}),
+                    rx.text(
+                        AuthState.t["stake_manual_title"],
+                        size="2", weight="medium",
+                    ),
+                    spacing="2", align="center",
+                ),
+                rx.text(
+                    AuthState.t["stake_manual_desc"],
+                    size="1", color="var(--gray-11)",
+                    style={"wordBreak": "break-word", "lineHeight": "1.6"},
+                ),
+                spacing="2", align_items="start", width="100%",
+            ),
+            padding="12px 14px",
+            border_radius="8px",
+            border="1px solid var(--amber-7)",
+            background="var(--amber-2)",
+            width="100%",
+        ),
+        _stake_nickname_input(
+            placeholder_key="stake_manual_nickname_placeholder",
+            hint_key="stake_manual_nickname_hint",
+        ),
+        rx.vstack(
+            rx.text(AuthState.t["stake_manual_address_label"], size="3"),
+            rx.input(
+                value=AuthState.new_stake_address,
+                on_change=AuthState.set_new_stake_address,
+                placeholder="addr1q...",
+                size="3", width="100%", font_family="monospace",
+            ),
+            rx.text(
+                AuthState.t["stake_manual_address_hint"],
+                size="2", color="var(--gray-8)",
+            ),
+            spacing="1", width="100%", align_items="start",
+        ),
+        _stake_error_text(),
+        _stake_add_button(),
+        spacing="3", width="100%", align_items="start",
+    )
+
+
+def _stake_register_tabs() -> rx.Component:
+    """ウォレット自動取得 / 手動入力の 2 タブ。状態 (nickname / address) は共通。"""
+    return rx.tabs.root(
+        rx.tabs.list(
+            rx.tabs.trigger(
+                rx.hstack(
+                    rx.icon("wallet", size=14),
+                    rx.text(AuthState.t["stake_tab_wallet_label"]),
+                    spacing="2", align="center",
+                ),
+                value="wallet",
+                cursor="pointer",
+            ),
+            rx.tabs.trigger(
+                rx.hstack(
+                    rx.icon("pencil", size=14),
+                    rx.text(AuthState.t["stake_tab_manual_label"]),
+                    spacing="2", align="center",
+                ),
+                value="manual",
+                cursor="pointer",
+            ),
+        ),
+        rx.tabs.content(_stake_tab_wallet(), value="wallet", padding_top="16px"),
+        rx.tabs.content(_stake_tab_manual(), value="manual", padding_top="16px"),
+        default_value="wallet",
         width="100%",
     )
 
@@ -1486,7 +1593,7 @@ def notification_tab() -> rx.Component:
                         # 連携済み
                         rx.vstack(
                             rx.hstack(
-                                rx.icon("check-circle", size=16, color="var(--green-9)"),
+                                rx.icon("circle-check", size=16, color="var(--green-9)"),
                                 rx.text(AuthState.t["notification_tab_line_connected"], size="3", color="var(--green-9)", weight="medium"),
                                 spacing="1",
                                 align="center",

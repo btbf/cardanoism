@@ -50,13 +50,25 @@ def fiat_rates_pill() -> rx.Component:
                 rx.el.span(FiatRateState.ada_usd, style=value_style),
             ),
         ),
+        # JA → JST、EN → UTC で表示する
         rx.cond(
-            FiatRateState.updated_label != "",
-            rx.el.span(
-                "(", FiatRateState.updated_label, ")",
-                style={"color": "var(--gray-9)", "fontSize": "11px", "marginLeft": "4px"},
+            AuthState.language == "ja",
+            rx.cond(
+                FiatRateState.updated_label_jst != "",
+                rx.el.span(
+                    AuthState.t["nav_rate_fetched_prefix"], " ", FiatRateState.updated_label_jst,
+                    style={"color": "var(--gray-9)", "fontSize": "11px", "marginLeft": "4px"},
+                ),
+                rx.fragment(),
             ),
-            rx.fragment(),
+            rx.cond(
+                FiatRateState.updated_label_utc != "",
+                rx.el.span(
+                    AuthState.t["nav_rate_fetched_prefix"], " ", FiatRateState.updated_label_utc,
+                    style={"color": "var(--gray-9)", "fontSize": "11px", "marginLeft": "4px"},
+                ),
+                rx.fragment(),
+            ),
         ),
         spacing="2",
         align="center",

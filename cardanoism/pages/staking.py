@@ -100,6 +100,83 @@ class StakingDashboardState(rx.State):
             items[-1]["connector"] = ""
         return items
 
+    # ── プール活動状況 (積み上げ横棒表示用の computed) ──
+    @rx.var
+    def pool_activity_total(self) -> int:
+        return (
+            self.heatmap_count_green + self.heatmap_count_yellow
+            + self.heatmap_count_pink + self.heatmap_count_gray
+        )
+
+    @rx.var
+    def pool_activity_active_count(self) -> int:
+        # green + yellow + pink (= 1 ブロック以上生成したプール)
+        return self.heatmap_count_green + self.heatmap_count_yellow + self.heatmap_count_pink
+
+    @rx.var
+    def pool_activity_active_pct(self) -> str:
+        total = self.pool_activity_total
+        if total <= 0:
+            return "0.0"
+        return f"{self.pool_activity_active_count / total * 100:.1f}"
+
+    @rx.var
+    def pool_activity_green_pct(self) -> str:
+        total = self.pool_activity_total
+        if total <= 0:
+            return "0"
+        return f"{self.heatmap_count_green / total * 100:.4f}"
+
+    @rx.var
+    def pool_activity_yellow_pct(self) -> str:
+        total = self.pool_activity_total
+        if total <= 0:
+            return "0"
+        return f"{self.heatmap_count_yellow / total * 100:.4f}"
+
+    @rx.var
+    def pool_activity_pink_pct(self) -> str:
+        total = self.pool_activity_total
+        if total <= 0:
+            return "0"
+        return f"{self.heatmap_count_pink / total * 100:.4f}"
+
+    @rx.var
+    def pool_activity_gray_pct(self) -> str:
+        total = self.pool_activity_total
+        if total <= 0:
+            return "0"
+        return f"{self.heatmap_count_gray / total * 100:.4f}"
+
+    @rx.var
+    def pool_activity_green_label_pct(self) -> str:
+        # 凡例の % 表示は 1 桁丸めで OK
+        total = self.pool_activity_total
+        if total <= 0:
+            return "0.0"
+        return f"{self.heatmap_count_green / total * 100:.1f}"
+
+    @rx.var
+    def pool_activity_yellow_label_pct(self) -> str:
+        total = self.pool_activity_total
+        if total <= 0:
+            return "0.0"
+        return f"{self.heatmap_count_yellow / total * 100:.1f}"
+
+    @rx.var
+    def pool_activity_pink_label_pct(self) -> str:
+        total = self.pool_activity_total
+        if total <= 0:
+            return "0.0"
+        return f"{self.heatmap_count_pink / total * 100:.1f}"
+
+    @rx.var
+    def pool_activity_gray_label_pct(self) -> str:
+        total = self.pool_activity_total
+        if total <= 0:
+            return "0.0"
+        return f"{self.heatmap_count_gray / total * 100:.1f}"
+
     def _fetch_summary(self):
         """ネットワーク集計とサチュレーション関連を取得する（軽い処理）。"""
         try:
@@ -673,6 +750,28 @@ DASHBOARD_CSS = """
   display: inline-block;
 }
 
+/* プール活動状況: 積み上げ横棒 (全プール中の割合を 4 色で並べる) */
+.cdn-pool-activity-bar {
+  display: flex;
+  width: 100%;
+  height: 28px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--gray-5);
+  background: var(--gray-3);
+}
+.cdn-pool-activity-seg {
+  height: 100%;
+  transition: transform 0.12s ease;
+}
+.cdn-pool-activity-seg:hover {
+  transform: scaleY(1.06);
+}
+.cdn-pool-activity-seg-green  { background: var(--green-9); }
+.cdn-pool-activity-seg-yellow { background: var(--yellow-9); }
+.cdn-pool-activity-seg-pink   { background: var(--pink-9); }
+.cdn-pool-activity-seg-gray   { background: var(--gray-6); }
+
 /* Mempool 専用の「流れ込む」インジケータ — チェーンではなく右方向の動きで
    "これから次のブロックに tx が入る" を表現する */
 @keyframes cdn_mempool_flow {
@@ -1134,36 +1233,123 @@ def _heatmap_cell(p) -> rx.Component:
     )
 
 
-def _heatmap_legend_item(swatch_class: str, label, count) -> rx.Component:
+def _activity_legend_item(swatch_class: str, label, count, pct_str) -> rx.Component:
+    """活動状況横棒の凡例。色見本 + ラベル + 件数 + %。"""
     return rx.hstack(
         rx.box(class_name="cdn-heatmap-legend-swatch " + swatch_class),
-        rx.text(label, " (", count.to_string(), ")",
-                size="1", color="var(--gray-11)", weight="medium",
+        rx.text(label, size="1", color="var(--gray-11)", weight="medium",
                 style={"whiteSpace": "nowrap"}),
+        rx.text(
+            count.to_string(), " (", pct_str, "%)",
+            size="1", color="var(--gray-10)",
+            style={"whiteSpace": "nowrap"},
+        ),
         spacing="2", align="center", flex_shrink="0",
     )
 
 
-def _heatmap_section() -> rx.Component:
-    """全アクティブプールを直近5エポックのブロック数で色分けしたヒートマップ。
-    凡例: 50+ 緑 / 10-49 黄 / 1-9 ピンク / 0 グレー。
-    親コンテナ (max-width 1130px) を突き抜けてビューポート全幅まで広げる。
+def _pool_activity_section() -> rx.Component:
+    """プール活動状況: KPI + 積み上げ横棒 + 凡例 + ヒートマップ (個別プール詳細)
+    を 1 セクションに統合。
     """
+    state = StakingDashboardState
+    seg_style_base = {"flexShrink": 0}
     return rx.box(
         rx.vstack(
+            # ── ヘッダー ──
             rx.hstack(
-                rx.heading(AuthState.t["staking_heatmap_title"], size="5", as_="h2"),
+                rx.heading(AuthState.t["staking_activity_bar_title"], size="5", as_="h2"),
                 rx.spacer(),
-                rx.text(AuthState.t["staking_heatmap_subtitle"], size="1", color="var(--gray-10)"),
+                rx.text(
+                    AuthState.t["staking_activity_bar_subtitle"],
+                    size="1", color="var(--gray-10)",
+                ),
                 width="100%", align="center", wrap="wrap",
             ),
+            # ── KPI: 「全プール ◯◯ のうち ブロック生成 ◯ プール (◯%)」 ──
+            rx.vstack(
+                rx.hstack(
+                    rx.text(
+                        AuthState.t["staking_activity_bar_kpi_prefix"],
+                        size="2", color="var(--gray-11)",
+                    ),
+                    rx.text(
+                        state.pool_activity_total.to_string(),
+                        size="4", weight="bold", color="var(--gray-12)",
+                    ),
+                    rx.text(
+                        AuthState.t["staking_activity_bar_kpi_middle"],
+                        size="2", color="var(--gray-11)",
+                    ),
+                    rx.text(
+                        state.pool_activity_active_count.to_string(),
+                        size="4", weight="bold", color="var(--green-11)",
+                    ),
+                    rx.text(
+                        AuthState.t["staking_activity_bar_kpi_suffix"],
+                        size="2", color="var(--gray-11)",
+                    ),
+                    rx.text(
+                        "(", state.pool_activity_active_pct, "%)",
+                        size="2", color="var(--green-10)", weight="medium",
+                    ),
+                    spacing="2", align="baseline", wrap="wrap",
+                ),
+                rx.text(
+                    AuthState.t["staking_activity_bar_kpi_note"],
+                    size="1", color="var(--gray-10)",
+                ),
+                spacing="1", align_items="start", width="100%",
+            ),
+            # ── 積み上げ横棒 (4 色を比例で並べる) ──
+            rx.box(
+                rx.box(
+                    class_name="cdn-pool-activity-seg cdn-pool-activity-seg-green",
+                    style={**seg_style_base, "width": state.pool_activity_green_pct + "%"},
+                ),
+                rx.box(
+                    class_name="cdn-pool-activity-seg cdn-pool-activity-seg-yellow",
+                    style={**seg_style_base, "width": state.pool_activity_yellow_pct + "%"},
+                ),
+                rx.box(
+                    class_name="cdn-pool-activity-seg cdn-pool-activity-seg-pink",
+                    style={**seg_style_base, "width": state.pool_activity_pink_pct + "%"},
+                ),
+                rx.box(
+                    class_name="cdn-pool-activity-seg cdn-pool-activity-seg-gray",
+                    style={**seg_style_base, "width": state.pool_activity_gray_pct + "%"},
+                ),
+                class_name="cdn-pool-activity-bar",
+            ),
+            # ── 凡例 (色見本 + ラベル + 件数 + %) — ヒートマップとも共通 ──
             rx.hstack(
-                _heatmap_legend_item("cdn-heatmap-cell-green",  "50+",   StakingDashboardState.heatmap_count_green),
-                _heatmap_legend_item("cdn-heatmap-cell-yellow", "10-49", StakingDashboardState.heatmap_count_yellow),
-                _heatmap_legend_item("cdn-heatmap-cell-pink",   "1-9",   StakingDashboardState.heatmap_count_pink),
-                _heatmap_legend_item("cdn-heatmap-cell-gray",   "0",     StakingDashboardState.heatmap_count_gray),
+                _activity_legend_item(
+                    "cdn-heatmap-cell-green",
+                    AuthState.t["staking_activity_bar_legend_green"],
+                    state.heatmap_count_green,
+                    state.pool_activity_green_label_pct,
+                ),
+                _activity_legend_item(
+                    "cdn-heatmap-cell-yellow",
+                    AuthState.t["staking_activity_bar_legend_yellow"],
+                    state.heatmap_count_yellow,
+                    state.pool_activity_yellow_label_pct,
+                ),
+                _activity_legend_item(
+                    "cdn-heatmap-cell-pink",
+                    AuthState.t["staking_activity_bar_legend_pink"],
+                    state.heatmap_count_pink,
+                    state.pool_activity_pink_label_pct,
+                ),
+                _activity_legend_item(
+                    "cdn-heatmap-cell-gray",
+                    AuthState.t["staking_activity_bar_legend_gray"],
+                    state.heatmap_count_gray,
+                    state.pool_activity_gray_label_pct,
+                ),
                 spacing="4", align="center", wrap="wrap",
             ),
+            # ── 個別プールヒートマップ (詳細ビュー) ──
             rx.cond(
                 StakingDashboardState.heatmap_pools,
                 rx.box(
@@ -1172,9 +1358,23 @@ def _heatmap_section() -> rx.Component:
                 ),
                 rx.callout(AuthState.t["staking_heatmap_empty"], icon="info", color_scheme="gray"),
             ),
+            # ── 解説 ──
+            rx.hstack(
+                rx.icon("info", size=14, color="var(--gray-10)", style={"flexShrink": "0"}),
+                rx.text(
+                    AuthState.t["staking_activity_bar_explain"],
+                    size="1", color="var(--gray-10)",
+                    style={"lineHeight": "1.6"},
+                ),
+                spacing="2", align="start", width="100%",
+            ),
             spacing="3", align_items="stretch", width="100%",
         ),
-        padding_top="8px", width="100%",
+        padding="14px 16px",
+        border_radius="10px",
+        border=f"1px solid {rx.color('gray', 4)}",
+        background=rx.color_mode_cond("var(--gray-2)", "rgba(15,15,25,0.5)"),
+        width="100%",
     )
 
 
@@ -1351,7 +1551,7 @@ def staking_page() -> rx.Component:
                 _saturation_info_card(),
                 _user_delegation_section(),
                 _live_blocks_section(),
-                _heatmap_section(),
+                _pool_activity_section(),
                 spacing="4",
                 width="100%",
             ),
