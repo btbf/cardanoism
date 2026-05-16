@@ -515,14 +515,47 @@ class DashboardState(rx.State):
         }
 
     def _load_delegations(self, stake_addresses: list[dict]) -> None:
+        from datetime import datetime, timezone
+        from cardanoism.backend.koios import batch_account_update_history
+
+        # 全アドレスぶんの委任日履歴を 1 リクエストで取得
+        stake_addrs = [
+            str(a.get("address") or "").strip()
+            for a in stake_addresses if a.get("address")
+        ]
+        history_map: dict[str, list] = {}
+        if stake_addrs:
+            try:
+                history_map = batch_account_update_history(stake_addrs)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("batch_account_update_history failed: %s", e)
+
+        def _days_since(action_type: str, sa: str) -> int | None:
+            entries = history_map.get(sa, []) or []
+            matched = [
+                e for e in entries
+                if e.get("action_type") == action_type and e.get("block_time")
+            ]
+            if not matched:
+                return None
+            latest = max(matched, key=lambda e: int(e.get("block_time") or 0))
+            try:
+                dt = datetime.fromtimestamp(int(latest["block_time"]), tz=timezone.utc)
+            except (TypeError, ValueError):
+                return None
+            return max(0, (datetime.now(timezone.utc) - dt).days)
+
         out: list[dict[str, str]] = []
         votes_map: dict[str, list[dict[str, str]]] = {}
         relay_warning_cnt = 0
 
         for addr in stake_addresses:
+            sa = str(addr.get("address") or "")
+            pool_days = _days_since("delegation_pool", sa)
+            drep_days = _days_since("delegation_drep", sa)
             entry: dict[str, str] = {
                 "nickname":   str(addr.get("nickname") or ""),
-                "address":    str(addr.get("address") or ""),
+                "address":    sa,
                 "verified":   "1" if addr.get("verified") else "0",
                 "role":       str(addr.get("role") or ""),
                 "pool_id":    "",
@@ -531,6 +564,10 @@ class DashboardState(rx.State):
                 "relay_alive": "1",  # 未取得は OK 扱い
                 "drep_id":    "",
                 "drep_name":  "",
+                "pool_days":  str(pool_days) if pool_days is not None else "",
+                "drep_days":  str(drep_days) if drep_days is not None else "",
+                "pool_days_365_plus": "1" if (pool_days is not None and pool_days >= 365) else "",
+                "drep_days_365_plus": "1" if (drep_days is not None and drep_days >= 365) else "",
             }
 
             pool_id = str(addr.get("delegated_pool_id") or "")

@@ -162,6 +162,22 @@ def _quick_actions_section() -> rx.Component:
 
 def _delegation_row(d: rx.Var) -> rx.Component:
     """ステークアドレス 1 件の委任先サマリー行。"""
+
+    def _days_badge(days_str, is_365_plus):
+        # 365 日以上は「365 日以上委任中」、未満は「N 日委任中」
+        return rx.badge(
+            rx.cond(
+                is_365_plus != "",
+                rx.text(AuthState.t["staking_delegation_days_365_plus"], size="1"),
+                rx.hstack(
+                    rx.text(days_str, size="1"),
+                    rx.text(AuthState.t["staking_delegation_days_unit"], size="1"),
+                    spacing="1", align="center",
+                ),
+            ),
+            variant="soft", color_scheme="amber", size="1",
+        )
+
     pool_label = rx.cond(
         d["pool_id"] != "",
         rx.hstack(
@@ -174,6 +190,11 @@ def _delegation_row(d: rx.Var) -> rx.Component:
                     rx.cond(d["pool_name"] != "", d["pool_name"], d["pool_id"][:12] + "…"),
                 ),
                 size="2", weight="medium", color="var(--gray-12)",
+            ),
+            rx.cond(
+                d["pool_days"] != "",
+                _days_badge(d["pool_days"], d["pool_days_365_plus"]),
+                rx.fragment(),
             ),
             rx.cond(
                 d["relay_alive"] == "0",
@@ -214,7 +235,12 @@ def _delegation_row(d: rx.Var) -> rx.Component:
                     ),
                     size="2", weight="medium", color="var(--gray-12)",
                 ),
-                spacing="1", align="center",
+                rx.cond(
+                    d["drep_days"] != "",
+                    _days_badge(d["drep_days"], d["drep_days_365_plus"]),
+                    rx.fragment(),
+                ),
+                spacing="1", align="center", wrap="wrap",
             ),
             rx.hstack(
                 rx.icon("user", size=13, color="var(--gray-9)"),
