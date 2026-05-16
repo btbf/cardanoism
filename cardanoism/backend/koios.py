@@ -912,6 +912,37 @@ def get_pool_info_batch(pool_ids: list[str], timeout: float = 60.0) -> list[dict
     return out
 
 
+def get_pool_updates_batch(pool_ids: list[str], timeout: float = 60.0) -> dict[str, list[dict]]:
+    """複数プールの全アップデート履歴を一括取得 (10 件チャンク + 413 自動分割)。
+
+    Returns: {pool_id_bech32: [{active_epoch_no, block_time, pledge, margin,
+                                fixed_cost, meta_url, meta_hash, vrf_key_hash,
+                                update_type, ...}, ...]}
+
+    /pool_updates は cert 提出ごとの履歴を返すため active_epoch_no を見て
+    「現在 active な値」と「未来エポックで active になる pending 値」を識別できる。
+    /pool_info は最新 cert の値しか返さないため、未来反映予定が判別不能。
+    """
+    if not pool_ids:
+        return {}
+    total_chunks = (len(pool_ids) + POOL_BATCH_SIZE - 1) // POOL_BATCH_SIZE
+    logger.info("/pool_updates フェッチ開始: %d 件 / %d チャンク (バッチ=%d, timeout=%.0fs)",
+                len(pool_ids), total_chunks, POOL_BATCH_SIZE, timeout)
+    out: dict[str, list[dict]] = {}
+    done_chunks = 0
+    for chunk in _chunks(pool_ids, POOL_BATCH_SIZE):
+        rows = _post_split_on_413("/pool_updates", "_pool_bech32_ids", chunk, timeout=timeout)
+        for r in rows or []:
+            pid = r.get("pool_id_bech32")
+            if pid:
+                out.setdefault(pid, []).append(r)
+        done_chunks += 1
+        if done_chunks % 25 == 0 or done_chunks == total_chunks:
+            logger.info("/pool_updates 進捗: %d / %d チャンク完了 (%d プール記録)",
+                        done_chunks, total_chunks, len(out))
+    return out
+
+
 def get_proposal_title(proposal_tx_hash: str, proposal_index: int = 0) -> str | None:
     """
     ガバナンスアクションのタイトルを取得する。

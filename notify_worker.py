@@ -1760,14 +1760,71 @@ def check_pool_block_history(epochs: int = 5):
                 inserted, len(pool_ids), apy_captured, APY_WINDOW)
 
 
+def _split_pool_updates(updates: list[dict], current_epoch: int) -> tuple[dict | None, dict | None]:
+    """/pool_updates の一覧から (active 更新, pending 更新) を抽出する。
+
+    Koios `/pool_updates` は提出された cert ごとの履歴を返す。フィールド:
+      active_epoch_no : この cert の値が active になる epoch
+      pledge / margin / fixed_cost : cert の値 (deregistration では NULL)
+
+    判定:
+      active  : active_epoch_no <= current_epoch のうち active_epoch_no 最大
+      pending : active_epoch_no >  current_epoch のうち active_epoch_no 最大 (= 最新の予告)
+                ※ 更に未来の予告がある場合も「直近の反映予告」を表示したいので最大を採る
+
+    deregistration entry (= update_type == "deregistration") は pledge/margin が
+    NULL のため除外して扱う。
+    """
+    if not updates:
+        return None, None
+    # registration / re-registration のみ (deregistration は除外)
+    regs = [
+        u for u in updates
+        if u.get("update_type") != "deregistration"
+        and u.get("pledge") is not None
+        and u.get("margin") is not None
+    ]
+    if not regs:
+        return None, None
+
+    active_candidates = [
+        u for u in regs
+        if u.get("active_epoch_no") is not None and int(u["active_epoch_no"]) <= int(current_epoch)
+    ]
+    pending_candidates = [
+        u for u in regs
+        if u.get("active_epoch_no") is not None and int(u["active_epoch_no"]) > int(current_epoch)
+    ]
+
+    active = max(active_candidates, key=lambda u: int(u["active_epoch_no"])) if active_candidates else None
+    pending = max(pending_candidates, key=lambda u: int(u["active_epoch_no"])) if pending_candidates else None
+
+    # pending が active と完全一致する場合 (= 同じ値で再登録された予告) は表示不要
+    if active and pending:
+        same = (
+            int(active.get("pledge") or 0) == int(pending.get("pledge") or 0)
+            and float(active.get("margin") or 0) == float(pending.get("margin") or 0)
+            and int(active.get("fixed_cost") or 0) == int(pending.get("fixed_cost") or 0)
+        )
+        if same:
+            pending = None
+    return active, pending
+
+
 def check_pool_sync():
     """
     Koios から全プールの情報を取得して DB にキャッシュする。
-    - /pool_list: 全プールの最小情報（status / ticker / retiring_epoch 等）
-    - /pool_info: 詳細（pledge / margin / live_stake / saturation / blocks / メタデータ）
+    - /pool_list   : 全プールの最小情報（status / ticker / retiring_epoch 等）
+    - /pool_info   : ライブ系 (active_stake / live_stake / saturation / blocks / メタデータ)
+    - /pool_updates: cert 履歴 (pledge / margin / fixed_cost を active / pending に分離)
+
+    /pool_info は最新 cert の pledge/margin/fixed_cost をそのまま返してしまうので、
+    「未来エポックで反映予定の値」と「現在 active な値」が区別できない。
+    /pool_updates の active_epoch_no を使って正しく振り分ける。
     """
     from cardanoism.backend.koios import (
         KOIOS_BASE_URL, get_pool_list, get_pool_info_batch,
+        get_pool_updates_batch, get_current_epoch,
     )
     from cardanoism.backend.pool_db import bulk_upsert_pools
 
@@ -1789,6 +1846,10 @@ def check_pool_sync():
     logger.info("/pool_info 対象: %d 件", len(target_ids))
 
     info_map = {i["pool_id_bech32"]: i for i in get_pool_info_batch(target_ids)}
+
+    # /pool_updates を全プール分取得して active/pending を判定
+    current_epoch = get_current_epoch() or 0
+    updates_map = get_pool_updates_batch(target_ids)
 
     # 各プールの基本フィールド (ticker / name / homepage 等) を抽出。
     # extended は Koios meta_json には乗らないので、meta_url を直叩きするための URL も集める。
@@ -1816,6 +1877,15 @@ def check_pool_sync():
         info = info_map.get(pid, {})
         meta = pool_meta_cache.get(pid) or _extract_pool_meta(info)
         ext = extended_map.get(pid) or {}
+        # /pool_updates から active / pending を判定。fallback として /pool_info の値を使う。
+        active_upd, pending_upd = _split_pool_updates(updates_map.get(pid, []), current_epoch)
+        active_pledge = active_upd.get("pledge") if active_upd else info.get("pledge")
+        active_margin = active_upd.get("margin") if active_upd else info.get("margin")
+        active_fixed_cost = active_upd.get("fixed_cost") if active_upd else info.get("fixed_cost")
+        pending_pledge = pending_upd.get("pledge") if pending_upd else None
+        pending_margin = pending_upd.get("margin") if pending_upd else None
+        pending_fixed_cost = pending_upd.get("fixed_cost") if pending_upd else None
+        pending_effective_epoch = pending_upd.get("active_epoch_no") if pending_upd else None
 
         records.append({
             "pool_id_bech32":   pid,
@@ -1826,9 +1896,13 @@ def check_pool_sync():
             "op_cert":          info.get("op_cert"),
             "op_cert_counter": info.get("op_cert_counter"),
             "vrf_key_hash":     info.get("vrf_key_hash"),
-            "pledge":           info.get("pledge"),
-            "margin":           info.get("margin"),
-            "fixed_cost":       info.get("fixed_cost"),
+            "pledge":           active_pledge,
+            "margin":           active_margin,
+            "fixed_cost":       active_fixed_cost,
+            "pending_pledge":          pending_pledge,
+            "pending_margin":          pending_margin,
+            "pending_fixed_cost":      pending_fixed_cost,
+            "pending_effective_epoch": pending_effective_epoch,
             "active_stake":     info.get("active_stake"),
             "live_stake":       info.get("live_stake"),
             "live_pledge":      info.get("live_pledge"),

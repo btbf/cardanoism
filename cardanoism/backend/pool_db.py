@@ -19,7 +19,16 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 def upsert_pool(data: dict[str, Any]) -> None:
-    """pools 1 行を UPSERT。Koios /pool_list + /pool_info をマージした dict を想定。"""
+    """pools 1 行を UPSERT。
+
+    pledge / margin / fixed_cost は「真の active 値」(/pool_updates の
+    active_epoch_no <= current_epoch の最新 update) を渡す前提。/pool_info の
+    pledge は最新 cert の値で、未来反映予定の値も含むため使わない。
+
+    pending_pledge / pending_margin / pending_fixed_cost / pending_effective_epoch
+    は「future pending」を渡す前提。pending が存在しない場合は明示的に NULL を
+    渡してクリアする (Koios sync が真理値で上書きする)。
+    """
     with get_db() as (cursor, conn):
         cursor.execute(
             """
@@ -28,6 +37,7 @@ def upsert_pool(data: dict[str, Any]) -> None:
                 pool_status, active_epoch_no, retiring_epoch,
                 op_cert, op_cert_counter, vrf_key_hash,
                 pledge, margin, fixed_cost,
+                pending_pledge, pending_margin, pending_fixed_cost, pending_effective_epoch,
                 active_stake, live_stake, live_pledge, live_delegators,
                 live_saturation, sigma, block_count,
                 reward_addr, owners, relays,
@@ -39,6 +49,7 @@ def upsert_pool(data: dict[str, Any]) -> None:
                 ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?,
+                ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?,
@@ -57,6 +68,11 @@ def upsert_pool(data: dict[str, Any]) -> None:
                 pledge           = VALUES(pledge),
                 margin           = VALUES(margin),
                 fixed_cost       = VALUES(fixed_cost),
+                -- pending_* は Koios sync が真理値で常に上書き (NULL も明示的に渡す)
+                pending_pledge          = VALUES(pending_pledge),
+                pending_margin          = VALUES(pending_margin),
+                pending_fixed_cost      = VALUES(pending_fixed_cost),
+                pending_effective_epoch = VALUES(pending_effective_epoch),
                 active_stake     = VALUES(active_stake),
                 live_stake       = VALUES(live_stake),
                 live_pledge      = VALUES(live_pledge),
@@ -93,6 +109,10 @@ def upsert_pool(data: dict[str, Any]) -> None:
                 _int_or_zero(data.get("pledge")),
                 _decimal_or_none(data.get("margin")),
                 _int_or_zero(data.get("fixed_cost")),
+                _int_or_none(data.get("pending_pledge")),
+                _decimal_or_none(data.get("pending_margin")),
+                _int_or_none(data.get("pending_fixed_cost")),
+                _int_or_none(data.get("pending_effective_epoch")),
                 _int_or_zero(data.get("active_stake")),
                 _int_or_zero(data.get("live_stake")),
                 _int_or_zero(data.get("live_pledge")),
@@ -117,25 +137,6 @@ def upsert_pool(data: dict[str, Any]) -> None:
                 _truncate(data.get("youtube_handle"), 255),
                 _truncate(data.get("github_handle"), 128),
             ),
-        )
-        # pending_* の自動クリア:
-        # Koios が報告した active 値 (pledge / margin / fixed_cost) が pending と
-        # 完全一致したら、その変更は ledger に反映済みと判断して pending_* を NULL に戻す。
-        # 不一致のままなら次回 Koios sync で再評価される。
-        cursor.execute(
-            """
-            UPDATE pools
-               SET pending_pledge          = NULL,
-                   pending_margin          = NULL,
-                   pending_fixed_cost      = NULL,
-                   pending_effective_epoch = NULL
-             WHERE pool_id_bech32 = ?
-               AND pending_effective_epoch IS NOT NULL
-               AND pending_pledge      = pledge
-               AND pending_margin      = margin
-               AND pending_fixed_cost  = fixed_cost
-            """,
-            (data.get("pool_id_bech32"),),
         )
         conn.commit()
 
