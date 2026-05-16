@@ -462,9 +462,14 @@ def pool_delegation_reminder(
     lang: str = "ja",
 ) -> dict:
     t = get_flex(lang)
+    # 365 以上は「365 日以上 / 365+ days」、それ未満は通常 "N 日" 表記
+    if int(days) >= 365:
+        days_text = f"{days} 日以上" if lang == "ja" else f"{days}+ days"
+    else:
+        days_text = t["pool_remind_days_value"].format(days=days)
     rows = [
         _row(t["pool_remind_pool_label"], pool_name, TEXT_PRIMARY),
-        _row(t["pool_remind_days_label"], t["pool_remind_days_value"].format(days=days), TEXT_WARN),
+        _row(t["pool_remind_days_label"], days_text, TEXT_WARN),
     ]
     if apy is not None:
         rows.append(_row(t["apy_label"], f"{apy:.2f}%", TEXT_APY))
@@ -771,6 +776,10 @@ def drep_delegation_reminder(
     lang: str = "ja",
 ) -> dict:
     t = get_flex(lang)
+    if int(days) >= 365:
+        days_text = f"{days} 日以上" if lang == "ja" else f"{days}+ days"
+    else:
+        days_text = t["drep_remind_days_value"].format(days=days)
     return _bubble(
         _header(t["drep_remind_title"], t["drep_remind_subtitle"]),
         [
@@ -780,7 +789,7 @@ def drep_delegation_reminder(
                 "spacing": "sm",
                 "contents": [
                     _row(t["drep_remind_drep_label"], drep_name, TEXT_PRIMARY),
-                    _row(t["drep_remind_days_label"], t["drep_remind_days_value"].format(days=days), TEXT_WARN),
+                    _row(t["drep_remind_days_label"], days_text, TEXT_WARN),
                 ],
             },
             _wallet_row(nickname, lang),

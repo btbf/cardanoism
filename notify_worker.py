@@ -728,6 +728,19 @@ def _days_since_dt(dt) -> int | None:
     return (datetime.now(timezone.utc) - dt).days
 
 
+def _highest_passed_milestone(days: int) -> int | None:
+    """days が到達している最高のマイルストーンを返す。
+    例: days=400 → 365、days=121 → 120、days=80 → None。
+
+    365 日以上経過したアドレスを新規登録した場合に 90/120/365 を 3 通同時に
+    送らないため、必ず最高 1 件だけを通知対象にする。
+    """
+    for ms in sorted(REMINDER_MILESTONES, reverse=True):
+        if days >= ms:
+            return ms
+    return None
+
+
 
 def _check_pool_delegation_reminder():
     addrs = _merge_stake_channels(
@@ -772,22 +785,22 @@ def _check_pool_delegation_reminder():
         pool_id = addr["delegated_pool_id"]
         pool_name = addr.get("delegated_pool_name") or pool_id[:12]
         apy = pool_apys.get(pool_id)
-        lang = addr.get("language", "ja")
-        for milestone in REMINDER_MILESTONES:
-            if days < milestone:
-                continue
-            dedup_key = f"pool_remind_{addr['stake_id']}_{milestone}d"
-            if already_sent(addr["user_id"], "pool_delegation_reminder", dedup_key):
-                continue
-            from cardanoism.backend.notify_templates import deliver
-            from cardanoism.backend.notify_templates.pool_delegation_reminder import (
-                context as ctx_pool_remind,
-            )
-            ctx = ctx_pool_remind(
-                pool_name=pool_name, milestone=milestone, apy=apy,
-                nickname=addr["nickname"], base_url=CARDANOISM_URL,
-            )
-            deliver(addr, "pool_delegation_reminder", ctx, dedup_base=dedup_key)
+        # 到達済みの最高マイルストーン 1 件だけ通知する (3 通同時送信を防ぐ)
+        milestone = _highest_passed_milestone(days)
+        if milestone is None:
+            continue
+        dedup_key = f"pool_remind_{addr['stake_id']}_{milestone}d"
+        if already_sent(addr["user_id"], "pool_delegation_reminder", dedup_key):
+            continue
+        from cardanoism.backend.notify_templates import deliver
+        from cardanoism.backend.notify_templates.pool_delegation_reminder import (
+            context as ctx_pool_remind,
+        )
+        ctx = ctx_pool_remind(
+            pool_name=pool_name, milestone=milestone, apy=apy,
+            nickname=addr["nickname"], base_url=CARDANOISM_URL,
+        )
+        deliver(addr, "pool_delegation_reminder", ctx, dedup_base=dedup_key)
 
 
 def _check_drep_delegation_reminder():
@@ -828,22 +841,22 @@ def _check_drep_delegation_reminder():
 
         drep_id = addr["delegated_drep_id"]
         drep_name = addr.get("delegated_drep_name") or drep_id[:12]
-        lang = addr.get("language", "ja")
-        for milestone in REMINDER_MILESTONES:
-            if days < milestone:
-                continue
-            dedup_key = f"drep_remind_{addr['stake_id']}_{milestone}d"
-            if already_sent(addr["user_id"], "drep_delegation_reminder", dedup_key):
-                continue
-            from cardanoism.backend.notify_templates import deliver
-            from cardanoism.backend.notify_templates.drep_delegation_reminder import (
-                context as ctx_drep_remind,
-            )
-            ctx = ctx_drep_remind(
-                drep_name=drep_name, milestone=milestone,
-                nickname=addr["nickname"], base_url=CARDANOISM_URL,
-            )
-            deliver(addr, "drep_delegation_reminder", ctx, dedup_base=dedup_key)
+        # 到達済みの最高マイルストーン 1 件だけ通知する (3 通同時送信を防ぐ)
+        milestone = _highest_passed_milestone(days)
+        if milestone is None:
+            continue
+        dedup_key = f"drep_remind_{addr['stake_id']}_{milestone}d"
+        if already_sent(addr["user_id"], "drep_delegation_reminder", dedup_key):
+            continue
+        from cardanoism.backend.notify_templates import deliver
+        from cardanoism.backend.notify_templates.drep_delegation_reminder import (
+            context as ctx_drep_remind,
+        )
+        ctx = ctx_drep_remind(
+            drep_name=drep_name, milestone=milestone,
+            nickname=addr["nickname"], base_url=CARDANOISM_URL,
+        )
+        deliver(addr, "drep_delegation_reminder", ctx, dedup_base=dedup_key)
 
 
 def check_drep_events():
