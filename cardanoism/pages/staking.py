@@ -313,15 +313,45 @@ class StakingDashboardState(rx.State):
         self.load = True
 
     def _fetch_user_delegated_pools(self, addresses: list[dict]) -> None:
-        """ユーザーの stake_addresses から委任先プールを fetch して SPO カード形式に整形する。"""
+        """ユーザーの stake_addresses から委任先プールを fetch して SPO カード形式に整形する。
+        併せて Koios /account_update_history を一括取得し、最終委任日 (pool / drep) からの
+        経過日数 (pool_days / drep_days) を entry に格納する。
+        """
+        from datetime import datetime, timezone
         from cardanoism.backend.pool_db import get_pool
+        from cardanoism.backend.koios import batch_account_update_history
         from cardanoism.pages.staking_spo import format_pool_card_data
+
+        # 1 リクエストで全アドレスの委任日を取得
+        stake_addrs = [str(a.get("address") or "").strip() for a in addresses if a.get("address")]
+        history_map: dict[str, list] = {}
+        if stake_addrs:
+            try:
+                history_map = batch_account_update_history(stake_addrs)
+            except Exception as e:
+                logger.warning("batch_account_update_history failed: %s", e)
+
+        def _days_since(action_type: str, sa: str) -> int | None:
+            entries = history_map.get(sa, []) or []
+            matched = [e for e in entries if e.get("action_type") == action_type and e.get("block_time")]
+            if not matched:
+                return None
+            latest = max(matched, key=lambda e: int(e.get("block_time") or 0))
+            try:
+                dt = datetime.fromtimestamp(int(latest["block_time"]), tz=timezone.utc)
+            except (TypeError, ValueError):
+                return None
+            return max(0, (datetime.now(timezone.utc) - dt).days)
 
         out: list[dict[str, str]] = []
         for idx, addr in enumerate(addresses, start=1):
             pool_id = str(addr.get("delegated_pool_id") or "").strip()
             nickname = str(addr.get("nickname") or "")
             address = str(addr.get("address") or "")
+            drep_id = str(addr.get("delegated_drep_id") or "").strip()
+            drep_name = str(addr.get("delegated_drep_name") or "").strip()
+            pool_days = _days_since("delegation_pool", address) if pool_id else None
+            drep_days = _days_since("delegation_drep", address) if drep_id else None
             entry: dict[str, str]
             if pool_id:
                 try:
@@ -378,6 +408,13 @@ class StakingDashboardState(rx.State):
             entry["nickname"] = nickname
             entry["address"] = address
             entry["has_pool"] = "1" if pool_id else ""
+            entry["drep_id"] = drep_id
+            entry["drep_name"] = drep_name
+            entry["has_drep"] = "1" if drep_id else ""
+            entry["pool_days"] = str(pool_days) if pool_days is not None else ""
+            entry["drep_days"] = str(drep_days) if drep_days is not None else ""
+            entry["pool_days_365_plus"] = "1" if (pool_days is not None and pool_days >= 365) else ""
+            entry["drep_days_365_plus"] = "1" if (drep_days is not None and drep_days >= 365) else ""
             out.append(entry)
         self.user_delegated_pools = out
 
@@ -1184,6 +1221,7 @@ def _heatmap_section() -> rx.Component:
 def _user_delegation_card(p) -> rx.Component:
     """1 件のステークアドレスとその委任先プールカードを上下に並べて表示する。
     プールカードは SPO 一覧と同じ意匠（_pool_card）を再利用。
+    委任先情報行で SPO / DRep 名 + 委任日数を表示する。
     """
     from cardanoism.pages.staking_spo import _pool_card
 
@@ -1202,6 +1240,78 @@ def _user_delegation_card(p) -> rx.Component:
             },
         ),
         spacing="2", align="center", wrap="wrap", width="100%",
+    )
+
+    def _days_badge(days_str, is_365_plus):
+        # 365 日以上は「365 日以上委任中」、それ未満は「N 日委任中」
+        return rx.badge(
+            rx.cond(
+                is_365_plus != "",
+                rx.text(AuthState.t["staking_delegation_days_365_plus"], size="1"),
+                rx.hstack(
+                    rx.text(days_str, size="1"),
+                    rx.text(AuthState.t["staking_delegation_days_unit"], size="1"),
+                    spacing="1", align="center",
+                ),
+            ),
+            variant="soft", color_scheme="amber", size="1",
+        )
+
+    # SPO + 委任日数
+    spo_row = rx.cond(
+        p["has_pool"] != "",
+        rx.hstack(
+            rx.icon("anchor", size=14, color="var(--blue-11)"),
+            rx.text(AuthState.t["staking_delegation_pool_label"], size="2", color="var(--gray-10)"),
+            rx.text(
+                rx.cond(p["pool_name"] != "", p["pool_name"], p["pool_id_short"]),
+                size="2", weight="bold", color="var(--gray-12)",
+            ),
+            rx.cond(
+                p["pool_days"] != "",
+                _days_badge(p["pool_days"], p["pool_days_365_plus"]),
+                rx.fragment(),
+            ),
+            spacing="2", align="center", wrap="wrap",
+        ),
+        rx.fragment(),
+    )
+
+    # DRep + 委任日数
+    drep_row = rx.cond(
+        p["has_drep"] != "",
+        rx.hstack(
+            rx.icon("vote", size=14, color="var(--green-11)"),
+            rx.text(AuthState.t["staking_delegation_drep_label"], size="2", color="var(--gray-10)"),
+            rx.text(
+                rx.cond(p["drep_name"] != "", p["drep_name"], p["drep_id"]),
+                size="2", weight="bold", color="var(--gray-12)",
+                style={
+                    "fontFamily": "var(--code-font-family, ui-monospace, monospace)",
+                    "wordBreak": "break-all",
+                },
+            ),
+            rx.cond(
+                p["drep_days"] != "",
+                _days_badge(p["drep_days"], p["drep_days_365_plus"]),
+                rx.fragment(),
+            ),
+            spacing="2", align="center", wrap="wrap",
+        ),
+        rx.hstack(
+            rx.icon("vote", size=14, color="var(--gray-9)"),
+            rx.text(
+                AuthState.t["staking_delegation_drep_unset"],
+                size="2", color="var(--gray-10)",
+            ),
+            spacing="2", align="center",
+        ),
+    )
+
+    delegation_info = rx.vstack(
+        spo_row,
+        drep_row,
+        spacing="1", align_items="start", width="100%",
     )
 
     body = rx.cond(
@@ -1226,6 +1336,7 @@ def _user_delegation_card(p) -> rx.Component:
 
     return rx.vstack(
         address_label,
+        delegation_info,
         body,
         spacing="2", align="stretch", width="100%",
     )
