@@ -971,7 +971,7 @@ UI_JA: dict[str, str] = {
     "stake_nickname_label": "ニックネーム",
     "stake_nickname_placeholder": "メインウォレット",
     "stake_address_label": "受信アドレス",
-    "stake_address_hint": "ウォレットの受信アドレスを入力するとステークアドレスを自動取得します",
+    "stake_address_hint": "ウォレットの受信アドレスを入力してください",
     "stake_wallet_auto_title": "ウォレットから自動取得",
     "stake_wallet_auto_desc":  "対応ウォレットを選ぶとアクティブアドレスが自動入力されます",
     "stake_wallet_mobile_note": "📱 モバイルの場合はウォレットアプリ内の DApp ブラウザからアクセスしてください",
