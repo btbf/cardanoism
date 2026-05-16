@@ -912,34 +912,49 @@ def get_pool_info_batch(pool_ids: list[str], timeout: float = 60.0) -> list[dict
     return out
 
 
-def get_pool_updates_batch(pool_ids: list[str], timeout: float = 60.0) -> dict[str, list[dict]]:
-    """複数プールの全アップデート履歴を一括取得 (10 件チャンク + 413 自動分割)。
+def get_recent_pool_updates(min_active_epoch: int, timeout: float = 30.0) -> dict[str, list[dict]]:
+    """active_epoch_no >= min_active_epoch の cert 更新を全プール分一括取得する。
 
-    Returns: {pool_id_bech32: [{active_epoch_no, block_time, pledge, margin,
-                                fixed_cost, meta_url, meta_hash, vrf_key_hash,
-                                update_type, ...}, ...]}
+    Koios `/pool_updates` は GET エンドポイントで `_pool_bech32` (単数) しか
+    受け付けないため、3000+ プールを 1 件ずつ叩くのは現実的でない。代わりに
+    PostgREST フィルタ (`active_epoch_no=gte.N`) で「直近のみ」を全プール横断
+    1 リクエストで取得し、pagination で全件回収する。
 
-    /pool_updates は cert 提出ごとの履歴を返すため active_epoch_no を見て
-    「現在 active な値」と「未来エポックで active になる pending 値」を識別できる。
-    /pool_info は最新 cert の値しか返さないため、未来反映予定が判別不能。
+    `min_active_epoch = current_epoch - 1` 程度を渡せば:
+      - active 候補 (active_epoch_no = current_epoch or current_epoch - 1)
+      - pending 候補 (active_epoch_no > current_epoch)
+    の両方をカバーできる。それより古い更新しか無いプールは「ここ最近変化無し」
+    として扱い、active 値は呼び出し側で /pool_info の値を使えばよい。
+
+    Returns: {pool_id_bech32: [update_dict, ...]} (active_epoch_no DESC)
     """
-    if not pool_ids:
-        return {}
-    total_chunks = (len(pool_ids) + POOL_BATCH_SIZE - 1) // POOL_BATCH_SIZE
-    logger.info("/pool_updates フェッチ開始: %d 件 / %d チャンク (バッチ=%d, timeout=%.0fs)",
-                len(pool_ids), total_chunks, POOL_BATCH_SIZE, timeout)
     out: dict[str, list[dict]] = {}
-    done_chunks = 0
-    for chunk in _chunks(pool_ids, POOL_BATCH_SIZE):
-        rows = _post_split_on_413("/pool_updates", "_pool_bech32_ids", chunk, timeout=timeout)
-        for r in rows or []:
+    limit = 1000
+    offset = 0
+    while True:
+        data = _get(
+            "/pool_updates",
+            {
+                "active_epoch_no": f"gte.{int(min_active_epoch)}",
+                "order": "active_epoch_no.desc",
+                "offset": offset,
+                "limit": limit,
+            },
+            timeout=timeout,
+        )
+        if not data or not isinstance(data, list):
+            break
+        for r in data:
             pid = r.get("pool_id_bech32")
             if pid:
                 out.setdefault(pid, []).append(r)
-        done_chunks += 1
-        if done_chunks % 25 == 0 or done_chunks == total_chunks:
-            logger.info("/pool_updates 進捗: %d / %d チャンク完了 (%d プール記録)",
-                        done_chunks, total_chunks, len(out))
+        logger.info(
+            "/pool_updates 取得: offset=%d 件=%d 累計プール=%d",
+            offset, len(data), len(out),
+        )
+        if len(data) < limit:
+            break
+        offset += limit
     return out
 
 

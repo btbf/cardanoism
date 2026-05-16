@@ -1824,7 +1824,7 @@ def check_pool_sync():
     """
     from cardanoism.backend.koios import (
         KOIOS_BASE_URL, get_pool_list, get_pool_info_batch,
-        get_pool_updates_batch, get_current_epoch,
+        get_recent_pool_updates, get_current_epoch,
     )
     from cardanoism.backend.pool_db import bulk_upsert_pools
 
@@ -1847,9 +1847,12 @@ def check_pool_sync():
 
     info_map = {i["pool_id_bech32"]: i for i in get_pool_info_batch(target_ids)}
 
-    # /pool_updates を全プール分取得して active/pending を判定
+    # /pool_updates を直近 2 エポック分だけ全プール横断で 1 リクエスト取得。
+    # それより古い変更しかないプール ("ここ最近静か") は /pool_info の値を
+    # そのまま active として採用すれば足りる。
     current_epoch = get_current_epoch() or 0
-    updates_map = get_pool_updates_batch(target_ids)
+    updates_map = get_recent_pool_updates(max(0, current_epoch - 1))
+    logger.info("/pool_updates 直近変更: %d プール", len(updates_map))
 
     # 各プールの基本フィールド (ticker / name / homepage 等) を抽出。
     # extended は Koios meta_json には乗らないので、meta_url を直叩きするための URL も集める。
