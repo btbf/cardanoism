@@ -1125,6 +1125,26 @@ async def _run_mempool_poller(ogmios_url: str, interval: float = 1.0) -> None:
 
 
 async def _run(ogmios_url: str, from_tip: bool = False) -> None:
+    """chainsync ループ本体。
+
+    WebSocket 切断 (keepalive ping timeout / Ogmios 側エラー等) で例外が出たら
+    5 秒待って再接続する。--from-tip 指定は初回起動時のみ有効で、再接続時は
+    常に保存カーソルから再開する。
+    """
+    first_iter_from_tip = from_tip
+    while True:
+        try:
+            await _run_session(ogmios_url, from_tip=first_iter_from_tip)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            logger.warning("chainsync 切断/エラー、5秒後に再接続: %s", e)
+        first_iter_from_tip = False
+        await asyncio.sleep(5)
+
+
+async def _run_session(ogmios_url: str, from_tip: bool = False) -> None:
+    """1 回ぶんの chainsync セッション。例外は呼び出し元 (_run) が拾って再接続。"""
     if from_tip:
         slot, block_id = _fetch_tip(ogmios_url)
         _save_cursor(slot, block_id)
