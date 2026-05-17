@@ -294,19 +294,47 @@ def upsert_proposal(fields: dict) -> bool:
                 ?
             )
             ON DUPLICATE KEY UPDATE
-                -- ステータスエポック + 引き出し情報 + authors + action anchor を更新
+                -- 全体方針: Koios 由来の値で上書きするが、Koios が NULL を返した場合は
+                -- 既存値 (listener / 過去 Koios sync が書いた値) を保持するため COALESCE。
+                -- 翻訳済み *_ja カラムだけは Koios sync では絶対に触らない (翻訳ロジック管理)。
+
+                -- 不変フィールド (一度確定したら変わらない、Koios が正解)
+                proposal_type             = COALESCE(VALUES(proposal_type),     proposal_type),
+                deposit                   = COALESCE(VALUES(deposit),           deposit),
+                return_address            = COALESCE(VALUES(return_address),    return_address),
+                expiration                = COALESCE(VALUES(expiration),        expiration),
+                block_time                = COALESCE(VALUES(block_time),        block_time),
+
                 -- proposed_epoch は Koios が正解 (listener の slot 由来計算は Byron 遷移を考慮しても
                 -- 補正のずれが出るため Koios の値で上書きする)
-                proposed_epoch            = COALESCE(VALUES(proposed_epoch), proposed_epoch),
+                proposed_epoch            = COALESCE(VALUES(proposed_epoch),    proposed_epoch),
+
+                -- ステータスエポック (Koios が状態遷移を確定的に持つ)
                 ratified_epoch            = VALUES(ratified_epoch),
                 enacted_epoch             = VALUES(enacted_epoch),
                 dropped_epoch             = VALUES(dropped_epoch),
                 expired_epoch             = VALUES(expired_epoch),
+
+                -- IPFS メタ情報 (Koios が meta_url から resolved 済みなので Koios が正解)
+                meta_url                  = COALESCE(VALUES(meta_url),          meta_url),
+                meta_hash                 = COALESCE(VALUES(meta_hash),         meta_hash),
+                meta_is_valid             = COALESCE(VALUES(meta_is_valid),     meta_is_valid),
+
+                -- 本文系 (listener bg task が IPFS から書く / Koios も meta_json で取得)
+                -- どちらの経路でも同じソースなので Koios 値で上書き OK。NULL なら既存維持。
+                title                     = COALESCE(VALUES(title),             title),
+                `abstract`                = COALESCE(VALUES(`abstract`),        `abstract`),
+                motivation                = COALESCE(VALUES(motivation),        motivation),
+                rationale                 = COALESCE(VALUES(rationale),         rationale),
+                references_json           = COALESCE(VALUES(references_json),   references_json),
+
+                -- 引き出し情報 / authors / action anchor
                 withdrawal_total_lovelace = VALUES(withdrawal_total_lovelace),
                 withdrawal_json           = VALUES(withdrawal_json),
                 authors_json              = VALUES(authors_json),
                 action_anchor_url         = VALUES(action_anchor_url),
                 action_anchor_hash        = VALUES(action_anchor_hash),
+
                 -- last_event_slot は listener が書いた値を保持 (Koios 由来 NULL で上書きしない)
                 last_event_slot           = COALESCE(VALUES(last_event_slot), last_event_slot),
                 -- spo_target も同様。listener が確定値を持つので上書き優先 (NULL なら既存維持)
