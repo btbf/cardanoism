@@ -37,7 +37,6 @@ _WALLET_DEFS: list[tuple[str, str, str]] = [
     ("lace",        "Lace",   "PC / Mobile"),
     ("yoroi",       "Yoroi",  "PC / Mobile"),
     ("typhoncip30", "Typhon", "PC"),
-    ("tokeo",       "Tokeo",  "PC / Mobile"),
     ("vespr",       "VESPR",  "Mobile"),
 ]
 
@@ -359,7 +358,7 @@ def wallet_connect_pill(addr) -> rx.Component:
 
     connect_button = rx.button(
         rx.icon("wallet", size=12),
-        rx.text("ウォレット接続", size="1"),
+        rx.text("ウォレット認証", size="1"),
         size="1",
         variant="soft",
         color_scheme="amber",

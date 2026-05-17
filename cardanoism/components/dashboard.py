@@ -1522,308 +1522,156 @@ def _address_filter_section() -> rx.Component:
     )
 
 
-def _empty_card_feature_chip(icon_name: str, label_key: str) -> rx.Component:
-    """ガイドカードの「登録後に見られる項目」用の小さなチップ。"""
-    return rx.hstack(
-        rx.icon(icon_name, size=14, color="var(--amber-11)"),
-        rx.text(
-            AuthState.t[label_key],
-            size="2", weight="medium", color="var(--gray-12)",
-        ),
-        spacing="2", align="center",
-        padding="8px 14px",
-        border_radius="999px",
-        background=rx.color_mode_cond(
-            "rgba(255,207,0,0.08)",
-            "rgba(245,158,11,0.10)",
-        ),
-        border="1px solid",
-        border_color=rx.color_mode_cond("var(--amber-6)", "rgba(245,158,11,0.30)"),
-        style={"backdropFilter": "blur(8px)", "WebkitBackdropFilter": "blur(8px)"},
-    )
-
-
-def _empty_address_guide_card() -> rx.Component:
-    """アドレス未登録ユーザー向けの導線カード (モダン版)。
-
-    モダン化のポイント:
-      - 重ねた光彩 (radial gradient) と amber→orange のグラデーション背景
-      - アイコンに glow / ring エフェクト
-      - タイトルにグラデーションテキスト
-      - 登録後に見られる項目を chip で可視化
-      - ボタンはピル形状 + hover で持ち上がる
-      - 全体に soft shadow とグラスモーフィズム
-    """
-    return rx.box(
-        # 装飾レイヤー: 背景の光彩
-        rx.box(
-            style={
-                "position": "absolute",
-                "inset": "-1px",
-                "borderRadius": "20px",
-                "background":
-                    "radial-gradient(circle at 20% 0%, rgba(255,207,0,0.25), transparent 55%),"
-                    " radial-gradient(circle at 80% 100%, rgba(255,126,95,0.20), transparent 55%)",
-                "pointerEvents": "none",
-                "zIndex": 0,
-            },
-        ),
-        # 本体
-        rx.vstack(
-            # アイコン + リング/グロー
-            rx.box(
-                rx.box(
-                    rx.icon("wallet", size=32, color="#fff"),
-                    style={
-                        "width": "76px",
-                        "height": "76px",
-                        "borderRadius": "999px",
-                        "display": "flex",
-                        "alignItems": "center",
-                        "justifyContent": "center",
-                        "background": "linear-gradient(135deg, #ffcf00 0%, #ff7e5f 100%)",
-                        "boxShadow":
-                            "0 18px 40px -14px rgba(255,126,95,0.55),"
-                            " 0 0 0 6px rgba(255,207,0,0.12)",
-                    },
-                ),
-                style={"position": "relative"},
-            ),
-            # タイトル (グラデーションテキスト)
-            rx.heading(
-                AuthState.t["dashboard_empty_card_title"],
-                as_="h2",
-                size={"base": "6", "md": "7"},
-                weight="bold",
-                text_align="center",
-                style={
-                    "maxWidth": "620px",
-                    "lineHeight": "1.35",
-                    "background": "linear-gradient(120deg, #ff9500 0%, #ffcf00 60%, #ff7e5f 100%)",
-                    "WebkitBackgroundClip": "text",
-                    "backgroundClip": "text",
-                    "color": "transparent",
-                    "letterSpacing": "0.005em",
-                },
-            ),
-            # 説明文
-            rx.text(
-                AuthState.t["dashboard_empty_card_desc"],
-                size="3",
-                color=rx.color_mode_cond("var(--gray-11)", "rgba(235,235,245,0.75)"),
-                text_align="center",
-                style={"maxWidth": "580px", "lineHeight": "1.75"},
-            ),
-            # 登録後に見られる機能 (chips)
-            rx.flex(
-                _empty_card_feature_chip("server", "dashboard_empty_card_feature_spo"),
-                _empty_card_feature_chip("user", "dashboard_empty_card_feature_drep"),
-                _empty_card_feature_chip("coins", "dashboard_empty_card_feature_rewards"),
-                _empty_card_feature_chip("bell", "dashboard_empty_card_feature_notify"),
-                wrap="wrap",
-                justify="center",
-                gap="10px",
-                style={"maxWidth": "640px"},
-            ),
-            # CTA ボタン
-            rx.link(
-                rx.button(
-                    rx.icon("plus", size=18),
-                    rx.text(
-                        AuthState.t["dashboard_empty_card_button"],
-                        weight="bold", size="3",
-                    ),
-                    rx.icon("arrow-right", size=16),
-                    size="4",
-                    cursor="pointer",
-                    style={
-                        "background": "linear-gradient(135deg, #ffcf00 0%, #ff7e5f 100%)",
-                        "color": "#1a1410",
-                        "border": "1px solid rgba(199,163,0,0.5)",
-                        "padding": "0 28px",
-                        "borderRadius": "999px",
-                        "boxShadow": "0 14px 36px -10px rgba(255,154,0,0.55)",
-                        "transition":
-                            "transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease",
-                    },
-                    _hover={
-                        "transform": "translateY(-2px)",
-                        "background": "linear-gradient(135deg, #ff7e5f 0%, #ffcf00 100%)",
-                        "boxShadow": "0 20px 44px -10px rgba(255,154,0,0.70)",
-                    },
-                ),
-                href="/mypage?tab=stake",
-                underline="none",
-            ),
-            spacing="5",
-            align="center",
-            width="100%",
-            style={"position": "relative", "zIndex": 1},
-        ),
-        padding=["36px 22px", "48px 32px", "56px 40px"],
-        border_radius="20px",
-        border="1px solid",
-        border_color=rx.color_mode_cond("var(--amber-6)", "rgba(245,158,11,0.25)"),
-        background=rx.color_mode_cond(
-            "linear-gradient(135deg, rgba(255,247,217,0.95), rgba(255,234,200,0.85))",
-            "linear-gradient(135deg, rgba(28,22,12,0.85), rgba(20,16,10,0.80))",
-        ),
-        style={
-            "position": "relative",
-            "overflow": "hidden",
-            "backdropFilter": "blur(14px)",
-            "WebkitBackdropFilter": "blur(14px)",
-            "boxShadow": rx.color_mode_cond(
-                "0 24px 60px -28px rgba(245,158,11,0.30)",
-                "0 24px 60px -28px rgba(0,0,0,0.60)",
-            ),
-        },
-        width="100%",
-    )
-
-
 def _modal_feature_row(icon_name: str, label_key: str) -> rx.Component:
-    """モーダル内の「登録後に見られる項目」行 (アイコン + テキスト)。"""
+    """モーダル内の「登録後に見られる項目」行 (アイコン + テキスト)。
+    auth_required_modal の _step_row と同じデザインで統一。
+    """
     return rx.hstack(
         rx.box(
             rx.icon(icon_name, size=14, color="var(--amber-11)"),
             style={
-                "width": "28px",
-                "height": "28px",
-                "borderRadius": "8px",
+                "minWidth": "26px",
+                "height": "26px",
+                "borderRadius": "999px",
                 "display": "flex",
                 "alignItems": "center",
                 "justifyContent": "center",
-                "background": rx.color_mode_cond("var(--amber-3)", "rgba(245,158,11,0.16)"),
-                "flexShrink": 0,
+                "background": rx.color_mode_cond("var(--amber-3)", "rgba(245,158,11,0.14)"),
+                "border": "1px solid",
+                "borderColor": rx.color_mode_cond("var(--amber-6)", "rgba(245,158,11,0.30)"),
             },
         ),
         rx.text(
             AuthState.t[label_key],
-            size="2", color="var(--gray-12)", weight="medium",
+            size="3", color="var(--gray-12)", style={"lineHeight": "1.6"},
         ),
         spacing="3", align="center", width="100%",
     )
 
 
 def _empty_address_guide_modal() -> rx.Component:
-    """アドレス未登録ユーザー向けの導線をモーダルで表示する。
-
-    モーダル内では Reflex 標準の dialog 背景 + 通常 padding を使い、
-    薄い背景の上にコントラスト高めのテキスト/CTA で読みやすさを優先する。
+    """アドレス未登録ユーザー向けの導線モーダル。
+    auth_required_modal と同じデザイン言語に統一:
+      - 右上 absolute の X ボタン
+      - 控えめな amber tinted アイコン (gradient なし)
+      - 普通の濃いテキストでタイトル
+      - 機能リスト (薄カード)
+      - フッター: 左 ghost / 右 amber solid CTA
     """
     return rx.dialog.root(
         rx.dialog.content(
-            rx.vstack(
-                # アクセントバー (上部の細いグラデーション)
-                rx.box(
-                    style={
-                        "height": "4px",
-                        "width": "64px",
-                        "borderRadius": "4px",
-                        "background": "linear-gradient(90deg, #ffcf00 0%, #ff7e5f 100%)",
-                    },
-                ),
-                # アイコンバッジ
-                rx.box(
-                    rx.icon("wallet", size=28, color="#1a1410"),
-                    style={
-                        "width": "64px",
-                        "height": "64px",
-                        "borderRadius": "16px",
-                        "display": "flex",
-                        "alignItems": "center",
-                        "justifyContent": "center",
-                        "background": "linear-gradient(135deg, #ffcf00 0%, #ff7e5f 100%)",
-                        "boxShadow": "0 12px 28px -10px rgba(255,126,95,0.5)",
-                    },
-                ),
-                # タイトル (普通の濃いテキストで読みやすく)
-                rx.dialog.title(
-                    rx.text(
-                        AuthState.t["dashboard_empty_card_title"],
-                        as_="span",
-                        size="5",
-                        weight="bold",
-                        color=rx.color_mode_cond("var(--gray-12)", "var(--gray-12)"),
-                        style={"lineHeight": "1.5", "letterSpacing": "0.005em"},
-                    ),
-                    style={"textAlign": "center", "margin": "0"},
-                ),
-                # 説明
-                rx.dialog.description(
-                    rx.text(
-                        AuthState.t["dashboard_empty_card_desc"],
+            # 右上の X 閉じる (absolute で常に最前面に固定)
+            rx.box(
+                rx.dialog.close(
+                    rx.icon_button(
+                        rx.icon("x", size=16),
+                        variant="ghost",
+                        color_scheme="gray",
                         size="2",
-                        color="var(--gray-11)",
-                        text_align="center",
-                        style={"lineHeight": "1.7"},
+                        cursor="pointer",
+                        on_click=AuthState.close_address_guide_modal,
                     ),
-                    style={"margin": "0"},
                 ),
-                # 「登録後に見られる項目」リスト (縦並び、フォーマル)
+                style={
+                    "position": "absolute",
+                    "top": "12px",
+                    "right": "12px",
+                    "zIndex": 10,
+                },
+            ),
+            rx.vstack(
+                # ヒーロー: アイコン + タイトル + 説明 (中央寄せ)
+                rx.vstack(
+                    rx.box(
+                        rx.icon("wallet", size=26, color="var(--amber-11)"),
+                        style={
+                            "width": "56px",
+                            "height": "56px",
+                            "borderRadius": "16px",
+                            "display": "flex",
+                            "alignItems": "center",
+                            "justifyContent": "center",
+                            "background": rx.color_mode_cond(
+                                "linear-gradient(135deg, var(--amber-2), var(--amber-3))",
+                                "linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.04))",
+                            ),
+                            "border": "1px solid",
+                            "borderColor": rx.color_mode_cond("var(--amber-5)", "rgba(245,158,11,0.20)"),
+                        },
+                    ),
+                    rx.dialog.title(
+                        rx.text(
+                            AuthState.t["dashboard_empty_card_title"],
+                            size="6", weight="bold", color="var(--gray-12)",
+                            text_align="center",
+                            style={"letterSpacing": "0.005em"},
+                        ),
+                        style={"margin": "0", "textAlign": "center"},
+                    ),
+                    rx.dialog.description(
+                        rx.text(
+                            AuthState.t["dashboard_empty_card_desc"],
+                            size="3", color="var(--gray-11)",
+                            text_align="center",
+                            style={"lineHeight": "1.75", "maxWidth": "400px"},
+                        ),
+                        style={"margin": "0"},
+                    ),
+                    spacing="3", align="center", width="100%",
+                ),
+                # 登録後に見られる項目 (薄カード)
                 rx.vstack(
                     _modal_feature_row("server", "dashboard_empty_card_feature_spo"),
                     _modal_feature_row("user", "dashboard_empty_card_feature_drep"),
                     _modal_feature_row("coins", "dashboard_empty_card_feature_rewards"),
                     _modal_feature_row("bell", "dashboard_empty_card_feature_notify"),
-                    spacing="2",
-                    align_items="start",
+                    spacing="3",
                     width="100%",
-                    padding="14px 16px",
-                    border_radius="10px",
-                    border=f"1px solid {rx.color('gray', 4)}",
+                    padding="16px 18px",
+                    border_radius="12px",
                     background=rx.color_mode_cond("var(--gray-2)", "rgba(255,255,255,0.03)"),
+                    border="1px solid",
+                    border_color=rx.color_mode_cond("var(--gray-4)", "rgba(255,255,255,0.06)"),
                 ),
-                # ボタン: メイン CTA + 後で
-                rx.vstack(
-                    rx.link(
-                        rx.button(
-                            rx.icon("plus", size=16),
-                            rx.text(
-                                AuthState.t["dashboard_empty_card_button"],
-                                weight="bold", size="3",
-                            ),
-                            rx.icon("arrow-right", size=14),
-                            size="3",
-                            cursor="pointer",
-                            width="100%",
-                            style={
-                                "background": "linear-gradient(135deg, #ffcf00 0%, #ff7e5f 100%)",
-                                "color": "#1a1410",
-                                "border": "1px solid rgba(199,163,0,0.5)",
-                                "borderRadius": "10px",
-                                "boxShadow": "0 10px 24px -10px rgba(255,154,0,0.55)",
-                                "transition":
-                                    "transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease",
-                            },
-                            _hover={
-                                "transform": "translateY(-1px)",
-                                "background": "linear-gradient(135deg, #ff7e5f 0%, #ffcf00 100%)",
-                                "boxShadow": "0 14px 30px -10px rgba(255,154,0,0.70)",
-                            },
-                        ),
-                        href="/mypage?tab=stake",
-                        underline="none",
-                        width="100%",
-                    ),
+                # アクション: あとで登録 (ghost) + 主 CTA (amber solid)
+                rx.hstack(
                     rx.dialog.close(
                         rx.button(
                             AuthState.t["dashboard_empty_card_dismiss"],
-                            variant="ghost", size="2",
-                            color="var(--gray-9)",
+                            variant="ghost", size="3",
+                            color="var(--gray-10)",
                             cursor="pointer",
                             on_click=AuthState.close_address_guide_modal,
                         ),
                     ),
-                    spacing="2", align="center", width="100%",
+                    rx.spacer(),
+                    rx.link(
+                        rx.button(
+                            rx.text(
+                                AuthState.t["dashboard_empty_card_button"],
+                                weight="bold", size="3",
+                            ),
+                            rx.icon("arrow-right", size=16),
+                            size="3",
+                            color_scheme="amber",
+                            variant="solid",
+                            cursor="pointer",
+                            style={"borderRadius": "8px", "padding": "0 20px"},
+                            on_click=AuthState.close_address_guide_modal,
+                        ),
+                        href="/mypage?tab=stake",
+                        underline="none",
+                    ),
+                    width="100%",
+                    align="center",
                 ),
-                spacing="4",
-                align="center",
+                spacing="5",
+                align="stretch",
                 width="100%",
-                padding="8px",
+                padding="20px 4px 4px",
             ),
-            max_width="460px",
+            max_width="500px",
+            style={"position": "relative"},
         ),
         open=(
             AuthState.is_logged_in

@@ -147,15 +147,36 @@ class WalletState(rx.State):
     # ── 起動シーケンス ──────────────────────────────────
     @rx.event
     def bootstrap(self):
-        """ナビバーのマウント時に検出 + 自動再接続を試みる。"""
+        """ナビバーのマウント時に検出 + 自動再接続を試みる。
+        Yoroi など injection が遅いウォレットも拾うため detectWalletsWithRetry を使う
+        (即時 + 200ms / 600ms / 1500ms / 3000ms の 5 回試行で最終結果を返す Promise)。
+        """
         if self.bootstrapped:
             return
         self.bootstrapped = True
         return rx.call_script(
-            "(() => {"
+            "(async () => {"
             "  const w = window.cardanoismWallet;"
             "  if (!w) return { detected: [], stored: '' };"
-            "  return { detected: w.detectWallets(), stored: w.getStoredWallet() };"
+            "  const detected = w.detectWalletsWithRetry"
+            "    ? await w.detectWalletsWithRetry()"
+            "    : w.detectWallets();"
+            "  return { detected, stored: w.getStoredWallet() };"
+            "})()",
+            callback=WalletState.bootstrap_result,
+        )
+
+    @rx.event
+    def refresh_wallets(self):
+        """検出済みウォレット一覧を再走査する (ウォレット拡張をあとから有効化した場合等)。"""
+        return rx.call_script(
+            "(async () => {"
+            "  const w = window.cardanoismWallet;"
+            "  if (!w) return { detected: [], stored: '' };"
+            "  const detected = w.detectWalletsWithRetry"
+            "    ? await w.detectWalletsWithRetry()"
+            "    : w.detectWallets();"
+            "  return { detected, stored: w.getStoredWallet() };"
             "})()",
             callback=WalletState.bootstrap_result,
         )
@@ -352,9 +373,8 @@ class WalletState(rx.State):
             wallet_key = str(result.get("wallet", ""))
             auth.new_stake_nickname = wallet_label_map.get(wallet_key, wallet_key.capitalize() or "Wallet")
 
-        return rx.toast.success(
-            "ウォレットからアドレスを取得しました。ニックネームを確認して登録してください。"
-        )
+        # 登録確認ダイアログを開く (ニックネーム入力 + 登録ボタン)
+        auth.show_wallet_register_confirm = True
 
     # ── Phase 2: 検証フロー ────────────────────────────────────
 

@@ -199,6 +199,12 @@ class AuthState(rx.State):
     stake_error: str = ""
     stake_adding: bool = False
     stake_role_loading: bool = False
+    # ウォレットからアドレスを取得した直後に表示する登録確認ダイアログ
+    show_wallet_register_confirm: bool = False
+    # 新規登録時のウォレット選択モーダル
+    show_wallet_picker_modal: bool = False
+    # 委任ボタン等で未認証ユーザーに表示する誘導モーダル
+    show_auth_required_modal: bool = False
     # ニックネーム編集中の stake_address.id (0 = 編集中なし)
     editing_stake_id: int = 0
     editing_stake_nickname: str = ""
@@ -468,6 +474,27 @@ class AuthState(rx.State):
 
     def close_address_guide_modal(self):
         self.show_address_guide_modal = False
+
+    def close_wallet_register_confirm(self):
+        """ウォレット登録確認ダイアログを閉じる。
+        キャンセル扱いで address / nickname もクリアし、次のウォレット選択を空状態から始められるようにする。
+        """
+        self.show_wallet_register_confirm = False
+        self.new_stake_address = ""
+        self.new_stake_nickname = ""
+        self.stake_error = ""
+
+    def open_wallet_picker_modal(self):
+        self.show_wallet_picker_modal = True
+
+    def close_wallet_picker_modal(self):
+        self.show_wallet_picker_modal = False
+
+    def open_auth_required_modal(self):
+        self.show_auth_required_modal = True
+
+    def close_auth_required_modal(self):
+        self.show_auth_required_modal = False
 
     # ============================================================
     # LINE OAuth フロー
@@ -1002,6 +1029,8 @@ class AuthState(rx.State):
         if result == "ok":
             self.new_stake_address = ""
             self.new_stake_nickname = ""
+            # ウォレット登録確認ダイアログが開いていれば自動的に閉じる
+            self.show_wallet_register_confirm = False
             self.stake_addresses = get_stake_addresses(self.user_id)
             self._load_stake_notification_settings()
             self.stake_role_loading = True

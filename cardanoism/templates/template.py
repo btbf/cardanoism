@@ -8,6 +8,7 @@ from cardanoism.components.navbar import navbar_icons
 from cardanoism.components.footer import footer_three_columns
 from cardanoism.components.cookie_banner import cookie_banner
 from cardanoism.components.mobile_page_subnav import mobile_page_subnav
+from cardanoism.components.auth_required_modal import auth_required_modal
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.backend.fiat_state import FiatRateState
 from cardanoism.backend.cookie_consent_state import CookieConsentState
@@ -104,6 +105,7 @@ def template(
                 mobile_page_subnav(),
                 footer_three_columns(),
                 cookie_banner(),
+                auth_required_modal(),
                 align="start",
                 position="relative",
                 style={"scrollbar_gutter": "stable", "min-height": "100vh", "display": "flex", "flex_direction": "column"},

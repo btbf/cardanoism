@@ -15,6 +15,7 @@ from cardanoism.components.dashboard import dashboard
 from cardanoism.components.wallet_button import (
     wallet_connect_pill,
     wallet_register_picker_menu,
+    _WALLET_DEFS,
 )
 from cardanoism.backend.wallet_state import WalletState
 from cardanoism.backend.auth_db import (
@@ -779,6 +780,10 @@ def stake_tab() -> rx.Component:
                 width="100%",
             ),
         ),
+        # ウォレット選択モーダル (ウォレット接続ボタン → このモーダル)
+        _wallet_picker_modal(),
+        # ウォレット取得後の登録確認ダイアログ (open は AuthState で制御)
+        _wallet_register_confirm_dialog(),
         spacing="4",
         width="100%",
     )
@@ -823,7 +828,12 @@ def _stake_error_text() -> rx.Component:
 
 
 def _stake_tab_wallet() -> rx.Component:
-    """タブ: ウォレットから取得"""
+    """タブ: ウォレットから取得
+
+    ニックネーム / アドレス入力欄はデフォルト非表示。
+    ウォレット選択後に登録確認ダイアログ (_wallet_register_confirm_dialog) で
+    ニックネームを入力させて登録する。
+    """
     return rx.vstack(
         rx.box(
             rx.vstack(
@@ -844,19 +854,21 @@ def _stake_tab_wallet() -> rx.Component:
                         style={"minWidth": "0", "flex": "1 1 auto"},
                     ),
                     rx.spacer(),
-                    wallet_register_picker_menu(
-                        rx.button(
-                            rx.icon("wallet", size=12),
-                            rx.text(
-                                AuthState.t["stake_wallet_pick_button"],
-                                size="1",
-                            ),
-                            rx.icon("chevron-down", size=12),
-                            size="2",
-                            variant="soft",
-                            color_scheme="amber",
-                            cursor="pointer",
+                    rx.button(
+                        rx.icon("wallet", size=18),
+                        rx.text(
+                            AuthState.t["stake_wallet_pick_button"],
+                            size="3", weight="bold",
                         ),
+                        size="3",
+                        variant="solid",
+                        color_scheme="amber",
+                        cursor="pointer",
+                        on_click=AuthState.open_wallet_picker_modal,
+                        style={
+                            "padding": "0 22px",
+                            "boxShadow": "0 8px 20px -8px rgba(245,158,11,0.45)",
+                        },
                     ),
                     spacing="3",
                     align="center",
@@ -876,26 +888,281 @@ def _stake_tab_wallet() -> rx.Component:
             background="var(--amber-2)",
             width="100%",
         ),
-        _stake_nickname_input(placeholder_key="stake_nickname_placeholder"),
-        rx.vstack(
-            rx.text(AuthState.t["stake_address_label"], size="3"),
-            # ウォレットから取得した値を表示する読み取り専用フィールド。
-            # 手動編集は隣の「手動で入力」タブで行う。
-            rx.input(
-                value=AuthState.new_stake_address,
-                placeholder="addr1...",
-                size="3", width="100%", font_family="monospace",
-                read_only=True,
-            ),
-            rx.text(
-                AuthState.t["stake_address_hint"],
-                size="2", color="var(--gray-8)",
-            ),
-            spacing="1", width="100%", align_items="start",
-        ),
         _stake_error_text(),
-        _stake_add_button(),
         spacing="3", width="100%", align_items="start",
+    )
+
+
+_WALLET_LOGO_PATHS: dict[str, str] = {
+    "eternl":      "/wallet-logo/eternl.png",
+    "lace":        "/wallet-logo/lace.jpg",
+    "yoroi":       "/wallet-logo/yoroi.png",
+    "typhoncip30": "/wallet-logo/typhon.png",
+    "vespr":       "/wallet-logo/vespr.svg",
+}
+
+
+def _wallet_picker_card(wallet_key: str, label: str) -> rx.Component:
+    """ウォレット選択モーダル内の 1 ウォレットカード。
+    クリックで fetch_for_register + モーダルを閉じる。
+    未インストールはグレーアウトしてクリック不可。
+    """
+    is_available = WalletState.available_wallets.contains(wallet_key)
+    logo_src = _WALLET_LOGO_PATHS.get(wallet_key, "")
+    return rx.box(
+        rx.vstack(
+            # ウォレットロゴ
+            rx.box(
+                rx.image(
+                    src=logo_src,
+                    alt=label,
+                    style={
+                        "width": "40px",
+                        "height": "40px",
+                        "objectFit": "contain",
+                        # 未インストールはモノクロ + 半透明で disabled 表現
+                        "filter": rx.cond(is_available, "none", "grayscale(1)"),
+                    },
+                ),
+                style={
+                    "width": "56px",
+                    "height": "56px",
+                    "borderRadius": "12px",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                    "background": rx.color_mode_cond("var(--gray-3)", "rgba(255,255,255,0.05)"),
+                    "border": "1px solid",
+                    "borderColor": rx.color_mode_cond("var(--gray-5)", "rgba(255,255,255,0.10)"),
+                },
+            ),
+            # ウォレット名
+            rx.text(
+                label,
+                size="2", weight="bold",
+                color=rx.cond(is_available, "var(--gray-12)", "var(--gray-10)"),
+                style={"letterSpacing": "0.04em"},
+            ),
+            # 未インストールのみバッジ表示 (検出済みは表示しない)
+            rx.cond(
+                is_available,
+                rx.fragment(),
+                rx.badge(
+                    AuthState.t["stake_wallet_picker_not_installed"],
+                    color_scheme="gray", variant="soft", size="1",
+                ),
+            ),
+            spacing="2",
+            align="center",
+            width="100%",
+        ),
+        # on_click は常時バインド。未インストールは pointer-events:none で
+        # クリックを物理的に無効化する (Reflex は on_click 内 rx.cond 非対応)。
+        on_click=[
+            AuthState.close_wallet_picker_modal,
+            WalletState.fetch_for_register(wallet_key),
+        ],
+        cursor=rx.cond(is_available, "pointer", "not-allowed"),
+        opacity=rx.cond(is_available, "1", "0.55"),
+        padding="20px 12px",
+        border_radius="12px",
+        border="1px solid",
+        border_color=rx.color_mode_cond("var(--gray-5)", "rgba(255,255,255,0.08)"),
+        background=rx.color_mode_cond("var(--gray-1)", "rgba(255,255,255,0.02)"),
+        style={
+            "transition": "transform 0.15s ease, border-color 0.15s ease, background 0.15s ease",
+            "pointerEvents": rx.cond(is_available, "auto", "none"),
+        },
+        _hover={
+            "transform": "translateY(-2px)",
+            "border_color": "var(--amber-7)",
+            "background": rx.color_mode_cond("var(--amber-2)", "rgba(245,158,11,0.06)"),
+        },
+    )
+
+
+def _wallet_picker_modal() -> rx.Component:
+    """新規アドレス登録時のウォレット選択モーダル。
+    ボタン (ウォレット接続) クリック → このモーダル → ウォレットカードクリック →
+    fetch_for_register → 登録確認ダイアログ自動表示。
+    """
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.vstack(
+                rx.hstack(
+                    rx.dialog.title(
+                        rx.text(
+                            AuthState.t["stake_wallet_picker_modal_title"],
+                            size="5", weight="bold", color="var(--gray-12)",
+                        ),
+                        style={"margin": "0"},
+                    ),
+                    rx.spacer(),
+                    rx.dialog.close(
+                        rx.icon_button(
+                            rx.icon("x", size=16),
+                            variant="ghost",
+                            color_scheme="gray",
+                            size="2",
+                            cursor="pointer",
+                            on_click=AuthState.close_wallet_picker_modal,
+                        ),
+                    ),
+                    spacing="2", align="center", width="100%",
+                ),
+                rx.hstack(
+                    rx.dialog.description(
+                        rx.text(
+                            AuthState.t["stake_wallet_picker_modal_desc"],
+                            size="2", color="var(--gray-10)",
+                        ),
+                        style={"margin": "0"},
+                    ),
+                    rx.spacer(),
+                    rx.button(
+                        rx.icon("refresh-cw", size=12),
+                        AuthState.t["stake_wallet_picker_refresh"],
+                        size="1",
+                        variant="ghost",
+                        color_scheme="gray",
+                        cursor="pointer",
+                        on_click=WalletState.refresh_wallets,
+                    ),
+                    spacing="2", align="center", width="100%",
+                ),
+                # ウォレットグリッド (PC 3 列 / mobile 2 列)
+                rx.grid(
+                    *[
+                        _wallet_picker_card(key, label)
+                        for key, label, _hint in _WALLET_DEFS
+                    ],
+                    columns={"base": "2", "sm": "3"},
+                    spacing="3",
+                    width="100%",
+                ),
+                # モバイル向け注意
+                rx.hstack(
+                    rx.icon("info", size=14, color="var(--amber-11)", style={"flexShrink": "0"}),
+                    rx.text(
+                        AuthState.t["stake_wallet_mobile_note"],
+                        size="1", color="var(--amber-11)",
+                        style={"lineHeight": "1.6"},
+                    ),
+                    spacing="2", align="start", width="100%",
+                ),
+                spacing="4",
+                align="stretch",
+                width="100%",
+                padding="4px",
+            ),
+            max_width="560px",
+        ),
+        open=AuthState.show_wallet_picker_modal,
+        on_open_change=AuthState.close_wallet_picker_modal,
+    )
+
+
+def _wallet_register_confirm_dialog() -> rx.Component:
+    """ウォレット取得後の登録確認ダイアログ。
+    ウォレットからアドレス取得 → このダイアログ自動表示 →
+    ニックネーム編集 → 「登録する」で add_stake_address_handler 実行。
+    """
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.vstack(
+                rx.dialog.title(
+                    rx.text(
+                        AuthState.t["stake_wallet_confirm_title"],
+                        size="5", weight="bold", color="var(--gray-12)",
+                        text_align="center",
+                    ),
+                    style={"margin": "0", "textAlign": "center"},
+                ),
+                rx.dialog.description(
+                    rx.text(
+                        AuthState.t["stake_wallet_confirm_desc"],
+                        size="2", color="var(--gray-11)",
+                        text_align="center",
+                        style={"lineHeight": "1.7"},
+                    ),
+                    style={"margin": "0"},
+                ),
+                # 受信アドレス (read-only 表示)
+                rx.vstack(
+                    rx.text(
+                        AuthState.t["stake_wallet_confirm_address_label"],
+                        size="2", color="var(--gray-10)",
+                    ),
+                    rx.box(
+                        rx.text(
+                            AuthState.new_stake_address,
+                            size="2", color="var(--gray-12)",
+                            style={
+                                "fontFamily": "ui-monospace, monospace",
+                                "wordBreak": "break-all",
+                            },
+                        ),
+                        padding="10px 12px",
+                        border_radius="8px",
+                        border=f"1px solid {rx.color('gray', 5)}",
+                        background=rx.color_mode_cond("var(--gray-2)", "rgba(255,255,255,0.04)"),
+                        width="100%",
+                    ),
+                    spacing="1", width="100%", align_items="start",
+                ),
+                # ウォレット名入力 (デフォルト = ウォレット名仮置き、ユーザが編集可)
+                # 手動入力タブと同じ placeholder / hint を使う
+                rx.vstack(
+                    rx.text(
+                        AuthState.t["stake_wallet_confirm_nickname_label"],
+                        size="2", color="var(--gray-10)",
+                    ),
+                    rx.input(
+                        value=AuthState.new_stake_nickname,
+                        on_change=AuthState.set_new_stake_nickname,
+                        placeholder=AuthState.t["stake_manual_nickname_placeholder"],
+                        size="3", width="100%",
+                    ),
+                    rx.text(
+                        AuthState.t["stake_manual_nickname_hint"],
+                        size="2", color="var(--gray-8)",
+                    ),
+                    spacing="1", width="100%", align_items="start",
+                ),
+                _stake_error_text(),
+                # ボタン: 登録 + キャンセル
+                rx.hstack(
+                    rx.dialog.close(
+                        rx.button(
+                            AuthState.t["stake_wallet_confirm_cancel"],
+                            variant="soft",
+                            color_scheme="gray",
+                            size="3",
+                            cursor="pointer",
+                            on_click=AuthState.close_wallet_register_confirm,
+                        ),
+                    ),
+                    rx.button(
+                        rx.icon("plus", size=14),
+                        AuthState.t["stake_wallet_confirm_register"],
+                        size="3",
+                        color_scheme="amber",
+                        cursor="pointer",
+                        loading=AuthState.stake_adding | AuthState.stake_role_loading,
+                        disabled=AuthState.stake_adding | AuthState.stake_role_loading,
+                        on_click=AuthState.add_stake_address_handler,
+                    ),
+                    spacing="3", justify="end", width="100%",
+                ),
+                spacing="4",
+                align="stretch",
+                width="100%",
+                padding="4px",
+            ),
+            max_width="480px",
+        ),
+        open=AuthState.show_wallet_register_confirm,
+        on_open_change=AuthState.close_wallet_register_confirm,
     )
 
 
@@ -1575,8 +1842,8 @@ def subscription_tab() -> rx.Component:
 
 def notification_tab() -> rx.Component:
     return rx.vstack(
-        # 通知チャンネル選択
-        notification_channel_section(),
+        # LINE / Telegram 連携セクション (PC は 2 カラム、スマホは縦並び)
+        rx.grid(
         # LINE連携セクション
         rx.box(
             rx.vstack(
@@ -1661,9 +1928,10 @@ def notification_tab() -> rx.Component:
                         rx.image(
                             src="/line-qr.png",
                             width="90px",
-                            height="90px",
+                            height="auto",
                             alt="Cardanoism LINE公式QRコード",
                             border_radius="8px",
+                            style={"objectFit": "contain"},
                         ),
                         href="https://line.me/R/ti/p/@022cmuds",
                         is_external=True,
@@ -1758,6 +2026,12 @@ def notification_tab() -> rx.Component:
             border=f"1px solid {rx.color('gray', 4)}",
             width="100%",
         ),
+            columns={"base": "1", "md": "2"},
+            spacing="3",
+            width="100%",
+        ),
+        # 通知チャンネル選択 (LINE/Telegram 連携の下に配置)
+        notification_channel_section(),
         # ステークアドレスごとの通知設定
         rx.cond(
             AuthState.is_stake_addresses_empty,

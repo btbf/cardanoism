@@ -575,38 +575,50 @@ def _pool_card(p) -> rx.Component:
             "box_shadow": "0 4px 10px -2px rgba(245,158,11,0.25)",
         },
     )
-    delegate_disabled = rx.hstack(
-        rx.icon("zap", size=14, color="var(--gray-9)"),
+    # 未認証用ボタン: 見た目は active と同じ amber スタイル。クリックで委任ではなく
+    # 認証誘導モーダル (AuthState.show_auth_required_modal) を開く。
+    delegate_prompt_auth = rx.el.button(
+        rx.icon("zap", size=14, color="var(--amber-11)"),
         rx.text(
             AuthState.t["delegate_btn"],
-            color="var(--gray-10)",
+            color="var(--amber-12)",
             style={
                 "fontSize": "13px",
-                "fontWeight": "600",
+                "fontWeight": "700",
                 "lineHeight": "1.0",
                 "whiteSpace": "nowrap",
             },
         ),
-        spacing="2",
-        align="center",
-        padding="8px 16px",
-        border_radius="999px",
-        background="var(--gray-3)",
-        border="1.5px solid var(--gray-6)",
-        cursor="not-allowed",
+        on_click=AuthState.open_auth_required_modal,
+        cursor="pointer",
         style={
-            "opacity": "0.7",
             "display": "inline-flex",
+            "alignItems": "center",
+            "gap": "6px",
+            "padding": "8px 16px",
+            "borderRadius": "999px",
+            "background": "transparent",
+            "border": "1.5px solid var(--amber-8)",
+            "transition": "background 0.15s ease, border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease",
             "flexShrink": "0",
+            "boxShadow": "0 1px 2px rgba(0,0,0,0.04)",
+        },
+        _hover={
+            "background": "var(--amber-3)",
+            "border_color": "var(--amber-10)",
+            "transform": "translateY(-1px)",
+            "box_shadow": "0 4px 10px -2px rgba(245,158,11,0.25)",
         },
     )
+
     delegate_button = rx.cond(
         is_currently_delegated,
         delegated_badge,
         rx.cond(
             WalletState.connected,
             delegate_active,
-            delegate_disabled,
+            # 未接続: active と同じ amber スタイル。クリックで認証誘導モーダル
+            delegate_prompt_auth,
         ),
     )
 

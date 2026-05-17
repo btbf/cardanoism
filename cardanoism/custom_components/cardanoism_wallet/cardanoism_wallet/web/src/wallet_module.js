@@ -18,19 +18,52 @@
     { key: "vespr",       label: "VESPR",   platform: "mobile" },
   ];
 
+  /**
+   * window.cardano から SUPPORTED_WALLETS のキー / alias で検出する。
+   * `enable` 関数の存在で CIP-30 準拠を確認 (キーだけ生やしているプレースホルダーを排除)。
+   */
   function detectInstalledWallets() {
     const cardano = window.cardano;
     if (!cardano || typeof cardano !== "object") return [];
     const found = [];
     for (const def of SUPPORTED_WALLETS) {
-      if (cardano[def.key]) { found.push(def.key); continue; }
+      const main = cardano[def.key];
+      if (main && typeof main.enable === "function") {
+        found.push(def.key);
+        continue;
+      }
       if (def.aliases) {
         for (const alias of def.aliases) {
-          if (cardano[alias]) { found.push(def.key); break; }
+          const a = cardano[alias];
+          if (a && typeof a.enable === "function") { found.push(def.key); break; }
         }
       }
     }
     return found;
+  }
+
+  /**
+   * 検出を一定時間内に複数回試す。Yoroi など injection が遅いウォレットに対応。
+   * - 即時 + 200ms / 600ms / 1500ms / 3000ms の 5 回試行
+   * - いずれかで >= 1 件 検出できたら以降の試行も続けて最終結果を返す
+   *   (途中で増えた場合に取りこぼさないため)
+   * 戻り値: Promise<string[]>
+   */
+  function detectInstalledWalletsWithRetry() {
+    const delays = [0, 200, 600, 1500, 3000];
+    return new Promise((resolve) => {
+      const seen = new Set();
+      let pending = delays.length;
+      delays.forEach((ms) => {
+        setTimeout(() => {
+          try {
+            for (const key of detectInstalledWallets()) seen.add(key);
+          } catch (_) {}
+          pending -= 1;
+          if (pending === 0) resolve(Array.from(seen));
+        }, ms);
+      });
+    });
   }
 
   function resolveWalletApi(key) {
@@ -434,14 +467,15 @@
   }
 
   window.cardanoismWallet = {
-    detectWallets:    detectInstalledWallets,
-    connect:          connect,
-    disconnect:       disconnect,
-    getAddress:       getAddress,
-    signOwnership:    signOwnership,
-    delegateToPool:   delegateToPool,
-    delegateToDRep:   delegateToDRep,
-    getStoredWallet:  getStoredWallet,
-    isConnected:      isConnected,
+    detectWallets:          detectInstalledWallets,
+    detectWalletsWithRetry: detectInstalledWalletsWithRetry,
+    connect:                connect,
+    disconnect:             disconnect,
+    getAddress:             getAddress,
+    signOwnership:          signOwnership,
+    delegateToPool:         delegateToPool,
+    delegateToDRep:         delegateToDRep,
+    getStoredWallet:        getStoredWallet,
+    isConnected:            isConnected,
   };
 })();
