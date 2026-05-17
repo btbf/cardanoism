@@ -34,8 +34,8 @@
 | `pool_saturation` | アドレス | プール飽和度の超過（`live_saturation` は計算値） |
 | `pool_pledge_shortage` | アドレス | プール誓約不足（`live_pledge` は集計値） |
 | `pool_reward_received` | アドレス | エポック報酬の入金（ledger state 計算値） |
-| `pool_delegation_reminder` | アドレス | 長期委任リマインダー（90/120/365日） |
-| `drep_delegation_reminder` | アドレス | 長期 DRep 委任リマインダー |
+| `pool_delegation_reminder` | アドレス | 長期委任リマインダー（90 / 120 / 365 日）。**到達済み最高マイルストーン 1 件のみ**送信 (新規登録時に 3 通同時発火を防止) |
+| `drep_delegation_reminder` | アドレス | 長期 DRep 委任リマインダー（90 / 120 / 365 日）。同上の 1 件発火仕様 |
 | `drep_status_change` | アドレス | DRep ステータス変化（activity 期間超過は ledger state 判定） |
 | `treasury_withdrawal_enacted` | ユーザー | トレジャリー引き出し提案の Enacted 検知 |
 
@@ -51,14 +51,42 @@
 | `vote_sync` | `proposal_votes` | 投票履歴 |
 | `summary_sync` | `proposal_voting_summary` | 投票集計 |
 | `params_sync` | `protocol_params` / `cc_members` | プロトコルパラメータ・憲法委員会 |
-| `vote_rationale_sync` | `proposal_votes.rationale_ja` | OpenAI で投票理由を翻訳 |
-| `pool_sync` | `pools` | SPO 一覧 + 拡張メタ |
-| `pool_block_history_sync` | `pools_block_history` | プール別エポック作成ブロック数の履歴 |
+| `vote_rationale_sync` | `proposal_votes.rationale` / `rationale_ja` | **backup**: listener bg task が主で 4h cron は fallback (§ 1-3 参照) |
+| `pool_sync` | `pools` (active + pending) | SPO 一覧 + 拡張メタ。`/pool_updates.active_epoch_no` で「現在 active な値」と「未来エポック反映予定の pending 値」を分離書込み (§ 1-4 参照) |
+| `pool_block_history_sync` | `pools.block_history_5ep` / `apy_history_7ep` | プール別エポック作成ブロック数の履歴 |
 | `relay_check` | `pools.relay_alive` | リレー疎通チェック |
 | `constitution_sync` | `constitution_cache` | Cardano 憲法本文の取得 + 翻訳 |
-| `ga_ai_initial_sync` | `governance_ai_analysis` (pending) | 既存 GA を AI 分析キューに一括投入 |
+| `ga_ai_initial_sync` | `governance_ai_analysis` (pending) | 既存 GA を AI 分析キューに一括投入 (空 DB の再投入用、通常は governance.py が自動 enqueue) |
+| `ga_ai_reanalyze` | `governance_ai_analysis` | 単一 GA の再分析。`--proposal-id <id>` か `--all` (Active かつ analyzed) を併用 |
+| `spo_role_initial_sync` | `stake_addresses.spo_pool_id` | 全 stake_address の SPO 判定を一括再計算 (新規 VPS の初回投入向け) |
+| `notify_test` | (送信のみ、DB 変更なし) | `ADMIN_USER_ID` の登録チャンネル全て (LINE / メール / Telegram) に管理者用疎通テスト通知を 1 通ずつ送信 |
 
-> リアルタイムバックエンド（Ogmios）が担当するイベント（`epoch_start` / `pool_retire` / `pool_fee_change` / `pool_epoch_performance` / `drep_new_governance_action` / `drep_vote`）は notify_worker.py からは送信されない。Ogmios デーモンが必須。
+> リアルタイムバックエンド（Ogmios）が担当するイベント（`epoch_start` / `pool_retire` / `pool_fee_change` / `pool_epoch_performance` / `drep_new_governance_action` / `drep_vote` / `spo_pending_vote`）は notify_worker.py からは送信されない。Ogmios デーモンが必須。
+
+### 1-3. vote_rationale_sync の責務移行
+
+DRep 投票検知時の rationale 取得 + 翻訳は **`ogmios_listener.py` 内バックグラウンドタスク** が主体で行う:
+
+1. listener が DRep 投票を検知 → `record_vote_from_event` で `proposal_votes` に即時書き込み (rationale 空、meta_url 入り)
+2. 同じ Tx 内の DRep を集約 → `asyncio.create_task(_process_drep_vote_post(...))` で bg 起動
+3. bg 内で IPFS fetch + OpenAI 翻訳 → DB UPDATE → `_notify_drep_vote` 発火
+4. IPFS / OpenAI 失敗時でも通知は必ず飛ぶ (UX 優先)
+5. `_rationale_lock` (asyncio.Lock) で bg タスクを順次実行し OpenAI レートバーストを回避
+
+cron の `vote_rationale_sync` (4h) は **listener が落ちている間に Koios sync 経由で proposal_votes に書かれた古い行** をフォローするバックアップ。
+
+### 1-4. pool_sync の active / pending 分離
+
+`/pool_info` は最新 cert の pledge/margin/fixed_cost をそのまま返してしまうため、ledger 上で未来エポック反映予定の値も「現在の値」として書き込まれてしまう問題があった。
+
+修正後の `check_pool_sync`:
+- **`/pool_info`** ... live 系 (active_stake / live_stake / saturation / blocks / メタ) のみ採用
+- **`/pool_updates`** ... 直近 2 エポックぶんを `active_epoch_no=gte.<current-1>` で全プール 1 リクエスト取得し:
+  - `active_epoch_no <= current_epoch` の最新 → `pools.pledge / margin / fixed_cost` (現在 active な値)
+  - `active_epoch_no >  current_epoch` の最新 → `pools.pending_pledge / pending_margin / pending_fixed_cost / pending_effective_epoch` (次エポック反映予定)
+- 直近で更新が無いプールは `/pool_info` の値を active 値として採用 (= 長らく変化が無い静かなプール)
+
+これに連動して UI には「次エポックで変更」バッジを表示 (`pending_effective_epoch IS NOT NULL` で判定)。listener 側 (`record_pool_registration`) も新規プール以外は pending_* 列に書く設計に変更済み。
 
 ---
 
@@ -115,7 +143,10 @@ done
 | `MAIL_SMTP_HOST` / `MAIL_SMTP_PORT` / `MAIL_SMTP_USER` / `MAIL_SMTP_PASSWORD` | ⚠️ | メール通知 |
 | `MAIL_FROM_NAME` | 任意 | 送信者表示名（既定: `Cardanoism`） |
 | `TELEGRAM_BOT_TOKEN` | ⚠️ | Telegram 通知 |
-| `GPT_API_KEY` | 任意 | OpenAI API キー（投票理由翻訳 `vote_rationale_sync` で使用） |
+| `GPT_API_KEY` | 任意 | OpenAI API キー（GA AI 分析 / 投票理由翻訳 / GA 翻訳で使用） |
+| `OPENAI_MODEL` | 任意 | OpenAI モデル名（既定: `gpt-4o-mini`） |
+| `ADMIN_USER_ID` | 任意 | `notify_test` イベントの送信先ユーザー ID。この user の `notification_channels` に登録済みのチャンネル全て (LINE / メール / Telegram) に管理者用テスト通知が飛ぶ |
+| `FEEDBACK_FORM_URL` / `FEEDBACK_FORM_USER_ID_ENTRY` / `FEEDBACK_FORM_USERNAME_ENTRY` | 任意 | ベータ版フィードバックフォーム連携 (UI 側) |
 
 ⚠️ は通知チャンネルを使う場合のみ必須。最低 1 つは設定。
 
@@ -231,8 +262,10 @@ infisical run --env=preview -- python notify_worker.py
 ```bash
 # 通知だけ
 infisical run --env=preview -- python notify_worker.py --event pool
-infisical run --env=preview -- python notify_worker.py --event drep
+infisical run --env=preview -- python notify_worker.py --event drep           # status_change + drep_unvoted_ga
+infisical run --env=preview -- python notify_worker.py --event drep_unvoted   # drep_unvoted_ga のみ (status_change スキップ)
 infisical run --env=preview -- python notify_worker.py --event reminder
+infisical run --env=preview -- python notify_worker.py --event treasury
 
 # 同期だけ
 infisical run --env=preview -- python notify_worker.py --event drep_sync
@@ -241,11 +274,20 @@ infisical run --env=preview -- python notify_worker.py --event summary_sync
 infisical run --env=preview -- python notify_worker.py --event params_sync
 infisical run --env=preview -- python notify_worker.py --event treasury_sync
 infisical run --env=preview -- python notify_worker.py --event fiat_sync
+infisical run --env=preview -- python notify_worker.py --event vote_rationale_sync   # listener bg の backup
 
 # SPO 系
 infisical run --env=preview -- python notify_worker.py --event pool_sync
 infisical run --env=preview -- python notify_worker.py --event pool_block_history_sync
 infisical run --env=preview -- python notify_worker.py --event relay_check
+
+# 単発系 (--event "all" には含まれず、明示指定でのみ実行)
+infisical run --env=preview -- python notify_worker.py --event constitution_sync         # 憲法本文取得 + 翻訳
+infisical run --env=preview -- python notify_worker.py --event ga_ai_initial_sync        # GA AI 分析キューに既存 GA を一括 enqueue (空 DB 再投入用)
+infisical run --env=preview -- python notify_worker.py --event ga_ai_reanalyze --proposal-id <gov_action_id>  # 単一 GA 再分析
+infisical run --env=preview -- python notify_worker.py --event ga_ai_reanalyze --all     # Active analyzed 全件を再分析
+infisical run --env=preview -- python notify_worker.py --event spo_role_initial_sync     # 全 stake_address の spo_pool_id を再判定
+infisical run --env=preview -- python notify_worker.py --event notify_test               # ADMIN_USER_ID へ管理者用 疎通テスト通知
 ```
 
 ### 5-3. 初回投入 / DB リセット時の同期手順
@@ -364,6 +406,40 @@ FROM notification_check_state
 ORDER BY checked_at DESC LIMIT 50;
 ```
 
+> `notification_check_state.scope_id` は **`NOT NULL DEFAULT 0`** で運用 (global scope は `scope_id = 0`)。MySQL/MariaDB の UNIQUE は NULL を毎回別物として扱うため、NULL 許容にすると ON DUPLICATE KEY UPDATE が動かず行が増殖するバグがあったため修正済み。
+>
+> 既存 DB のクリーンアップ:
+>
+> ```sql
+> -- 重複削除 (最新 id を残す)
+> DELETE n1 FROM notification_check_state n1
+> INNER JOIN notification_check_state n2
+>   ON n1.scope_type = n2.scope_type
+>  AND COALESCE(n1.scope_id, -1) = COALESCE(n2.scope_id, -1)
+>  AND n1.key_name = n2.key_name
+>  AND n1.id < n2.id;
+> -- NULL → 0
+> UPDATE notification_check_state SET scope_id = 0 WHERE scope_id IS NULL;
+> -- NOT NULL DEFAULT 0 に変更
+> ALTER TABLE notification_check_state MODIFY COLUMN scope_id INT NOT NULL DEFAULT 0;
+> -- 既に廃止された pool_fee:* 行の掃除
+> DELETE FROM notification_check_state WHERE key_name LIKE 'pool_fee:%';
+> ```
+
+#### 現在使われている key_name 一覧
+
+| scope_type | key_name | 用途 |
+|---|---|---|
+| `global` (id=0) | `ogmios_last_slot` / `ogmios_last_id` | Ogmios ChainSync **カーソル** (listener が書込み) |
+| `global` (id=0) | `current_epoch` | epoch_start 通知の多重発火防止 (listener) |
+| `stake_address` | `pool_saturated` | 飽和フラグ (連続通知抑止) |
+| `stake_address` | `pool_pledge_short` | 誓約不足フラグ |
+| `stake_address` | `pool_delegation_date` | プール委任日 (90 / 120 / 365 日リマインダー起算) |
+| `stake_address` | `drep_delegation_date` | DRep 委任日 (同上) |
+| `stake_address` | `drep_status` | DRep ステータス前回値 (変化検知) |
+
+`pool_fee:<pool_id>` は廃止 (比較ベースラインは `pools` テーブルから直接読む方式に変更)。
+
 ---
 
 ## 7. トラブルシューティング
@@ -373,10 +449,13 @@ ORDER BY checked_at DESC LIMIT 50;
 | Koios `429 Too Many Requests` | rate limit。`KOIOS_API_KEY` を設定するか、cron 頻度を下げる |
 | 通知が来ない | `notification_settings` / `stake_notification_settings` の `enabled = 0` を確認、`notification_channels` 登録の有無を確認 |
 | 同じ通知が繰り返される | `notification_log` に該当 dedup_key の行があるか確認、`notification_check_state` の前回値を確認 |
-| `vote_rationale_sync` が遅い／高額 | `--fetch-limit` / `--translate-limit` で制限。OpenAI コスト次第で間引く |
+| `vote_rationale_sync` が遅い／高額 | `--fetch-limit` / `--translate-limit` で制限。listener bg が主体なので通常コストは listener 側で発生 (バーストは `_rationale_lock` で抑止) |
 | `treasury_sync` で残高が更新されない | Koios 側の同期遅延。1〜2エポック分は遅延するのが正常 |
 | ログが急増 | DB 上で `SELECT COUNT(*) FROM notification_channels WHERE channel_type='line'` を確認、`MAX_WORKERS = 10`（並列 Koios コール数）を絞ると軽減 |
 | エポック開始通知が重複 | リアルタイムバックエンドが担当しているため、`notify_worker.py --event epoch_start` は cron に登録しない |
+| 「次エポックで変更」バッジが消えない / 出るべきタイミングで出ない | `pools.pending_*` と active 値が `/pool_updates.active_epoch_no` の判定に基づいて反映されているか確認。次回の `pool_sync` で正される。手動で再判定するなら `--event pool_sync` を直接実行 |
+| `notification_check_state` が急増する | scope_id NULL バグの旧 DB。§ 6-3 のクリーンアップ SQL で重複削除 + NOT NULL DEFAULT 0 に ALTER |
+| `notify_test` 通知が届かない | `ADMIN_USER_ID` の設定確認、対象ユーザーが `notification_channels` (line / email / telegram) を登録済みかチェック |
 
 ---
 
@@ -387,16 +466,18 @@ ORDER BY checked_at DESC LIMIT 50;
 | epoch_start | ✅ | — |
 | pool_epoch_performance | ✅ | — |
 | pool_retire | ✅ | — |
-| pool_fee_change | ✅ | — |
-| drep_new_governance_action | ✅ | — |
-| drep_vote | ✅ | — |
+| pool_fee_change | ✅ (pending_* に書込み) | — |
+| drep_new_governance_action | ✅ (listener bg で IPFS fetch + 翻訳 → 通知) | — |
+| drep_vote | ✅ (listener bg で IPFS fetch + 翻訳 → 通知) | — |
+| spo_pending_vote | ✅ (drep_new_governance_action と同じ bg タスクで発火) | — |
 | pool_saturation | — | ✅ |
 | pool_pledge_shortage | — | ✅ |
 | pool_reward_received | — | ✅ |
-| pool/drep_delegation_reminder | — | ✅ |
+| pool / drep_delegation_reminder | — | ✅ |
 | drep_status_change | — | ✅ |
-| treasury_withdrawal_enacted | — | ✅ |
-| 全 *_sync（キャッシュ） | — | ✅ |
+| treasury_withdrawal_enacted | (listener も拾うが軽量な safety net 用) | ✅ |
+| vote_rationale_sync | ✅ (listener bg = primary) | ✅ (4h cron = backup) |
+| 全 *_sync（キャッシュ） | (一部 listener が epoch_start で chain 起動) | ✅ |
 
 リアルタイムバックエンドが停止しても Koios ポーリング側で多くは代替できるが、検知遅延が発生する（最大 cron 周期分）。本番運用は両系統 + 監視を強く推奨。
 

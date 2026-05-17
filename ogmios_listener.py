@@ -104,11 +104,22 @@ def _get_governance_lock() -> asyncio.Lock:
         _governance_lock = asyncio.Lock()
     return _governance_lock
 
-_EPOCH_LENGTHS = {
+# Shelley+ era の epoch 長 (slot/epoch)。Byron-Shelley 遷移後はこの値で固定。
+_SHELLEY_EPOCH_LENGTHS = {
     "mainnet": 432_000,
     "preprod": 432_000,
     "preview": 86_400,
 }
+
+# Byron-Shelley 遷移点 (Shelley が始まる絶対 slot と epoch 番号)。
+# Byron era は 1 epoch = 21_600 slot 固定。
+# preview は genesis から Shelley なので遷移点なし (slot 0 / epoch 0)。
+_SHELLEY_TRANSITION = {
+    "mainnet": (4_492_800, 208),   # epoch 0〜207 が Byron
+    "preprod": (   86_400,   4),   # epoch 0〜3   が Byron
+    "preview": (        0,   0),   # 純粋 Shelley
+}
+_BYRON_EPOCH_LENGTH = 21_600
 
 _GA_TYPE_MAP_JA = {
     "treasuryWithdrawals": "国庫引き出し",
@@ -132,7 +143,18 @@ _GA_TYPE_MAP_EN = {
 
 
 def _epoch_from_slot(slot: int) -> int:
-    return slot // _EPOCH_LENGTHS.get(KOIOS_NETWORK, 432_000)
+    """絶対 slot から epoch 番号を導出する。
+
+    mainnet / preprod は Byron-Shelley 遷移を考慮する。preview は純粋 Shelley。
+    Shelley era の epoch 長はネットワークごとに違う (mainnet/preprod=432_000、
+    preview=86_400)。
+    """
+    network = KOIOS_NETWORK if KOIOS_NETWORK in _SHELLEY_TRANSITION else "mainnet"
+    transition_slot, transition_epoch = _SHELLEY_TRANSITION[network]
+    shelley_len = _SHELLEY_EPOCH_LENGTHS[network]
+    if slot < transition_slot:
+        return slot // _BYRON_EPOCH_LENGTH
+    return transition_epoch + (slot - transition_slot) // shelley_len
 
 
 # ブロック記録の TRIM 頻度（毎ブロックではなくこの間隔で古い行を削除）

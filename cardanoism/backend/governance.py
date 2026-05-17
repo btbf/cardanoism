@@ -295,6 +295,9 @@ def upsert_proposal(fields: dict) -> bool:
             )
             ON DUPLICATE KEY UPDATE
                 -- ステータスエポック + 引き出し情報 + authors + action anchor を更新
+                -- proposed_epoch は Koios が正解 (listener の slot 由来計算は Byron 遷移を考慮しても
+                -- 補正のずれが出るため Koios の値で上書きする)
+                proposed_epoch            = COALESCE(VALUES(proposed_epoch), proposed_epoch),
                 ratified_epoch            = VALUES(ratified_epoch),
                 enacted_epoch             = VALUES(enacted_epoch),
                 dropped_epoch             = VALUES(dropped_epoch),
