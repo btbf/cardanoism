@@ -67,16 +67,21 @@ def claim_next(worker_id: str) -> str | None:
     """次の処理対象を排他取得する。
     pending または failed の中から 1 件選び、analyzing 状態に遷移させて proposal_id を返す。
     競合時は他ワーカーが取った扱いで None。
+
+    並列 drainer 対策:
+      `FOR UPDATE SKIP LOCKED` で他ワーカーがロック中の行を読み飛ばす。
+      これがないと InnoDB の gap lock で複数 drainer がデッドロックする
+      (MariaDB 10.6+ / MySQL 8.0+ で SKIP LOCKED サポート)。
     """
     with get_db() as (cursor, conn):
-        # 候補を 1 件 SELECT FOR UPDATE
+        # 候補を 1 件 SELECT FOR UPDATE SKIP LOCKED
         cursor.execute(
             """
             SELECT proposal_id FROM governance_ai_analysis
             WHERE status IN ('pending', 'failed')
             ORDER BY enqueued_at ASC
             LIMIT 1
-            FOR UPDATE
+            FOR UPDATE SKIP LOCKED
             """
         )
         row = cursor.fetchone()
