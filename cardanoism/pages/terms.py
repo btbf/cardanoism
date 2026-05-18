@@ -250,8 +250,6 @@ _TERMS_JA = """\
 本規約に関するお問い合わせは、以下までご連絡ください。
 
 - 事業者名: 株式会社クヒト
-- 代表者: 加賀谷 侑
-- 所在地: 神奈川県横浜市西区北幸二丁目10番48号 むつみビル3階
 - メール: contact@kuhito.co.jp
 """
 
@@ -493,8 +491,6 @@ We may revise these Terms as necessary. Revised Terms take effect when posted on
 For inquiries regarding these Terms, please contact us at:
 
 - Company: Kuhito Co., Ltd.
-- Representative: Yu Kagaya
-- Address: Mutsumi Building 3F, 2-10-48 Kitasaiwai, Nishi-ku, Yokohama, Kanagawa, Japan
 - Email: contact@kuhito.co.jp
 """
 
