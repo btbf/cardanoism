@@ -680,7 +680,7 @@ UI_JA: dict[str, str] = {
     "help_data_f7_title":          "Cardano 憲法 (日本語訳付き)",
     "help_data_f7_desc":           "現行憲法本文を全文閲覧。原文 / 日本語訳の切替対応。",
     "help_data_f7_link":           "憲法",
-    "help_data_f7_href":           "/constitution",
+    "help_data_f7_href":           "/governance/constitution",
 
     # ── /help: ネットワーク状況 ──
     "help_network_kicker":         "NETWORK STATUS",
@@ -2230,7 +2230,7 @@ UI_EN: dict[str, str] = {
     "help_data_f7_title":          "Cardano Constitution (with JA translation)",
     "help_data_f7_desc":           "Browse the current Constitution full text. Toggle original / Japanese.",
     "help_data_f7_link":           "Constitution",
-    "help_data_f7_href":           "/constitution",
+    "help_data_f7_href":           "/governance/constitution",
 
     # /help: network
     "help_network_kicker":         "NETWORK STATUS",

@@ -1071,13 +1071,21 @@ class AuthState(rx.State):
         self._load_stake_notification_settings()
 
     def _load_subscription(self) -> None:
-        """サブスクリプション情報を State に反映する (Phase 0: 表示のみ)。"""
+        """サブスクリプション情報を State に反映する (Phase 0: 表示のみ)。
+
+        BETA_MODE が True の間はログイン済みユーザー全員に BETA_AUTO_TIER ("pro")
+        を強制適用する。subscription_db.get_user_tier() と同じ扱いで、DB の実
+        tier 行は無視する。ベータ終了時に BETA_MODE=False にすれば DB 値に戻る。
+        """
         try:
-            from cardanoism.backend.subscription_db import get_user_subscription
+            from cardanoism.backend.subscription_db import (
+                get_user_subscription, BETA_AUTO_TIER,
+            )
+            from cardanoism.backend.plan_config import BETA_MODE
             sub = get_user_subscription(self.user_id) or {}
         except Exception as e:
             logger.debug("_load_subscription failed: %s", e)
-            sub = {}
+            sub, BETA_MODE, BETA_AUTO_TIER = {}, False, "pro"
 
         def _fmt(dt) -> str:
             if not dt:
@@ -1087,8 +1095,14 @@ class AuthState(rx.State):
             except Exception:
                 return ""
 
-        self.subscription_tier          = str(sub.get("tier") or "")
-        self.subscription_status        = str(sub.get("status") or "")
+        # ベータ期間中は tier / status を表示用に上書き (DB は変更しない)
+        if BETA_MODE and self.user_id and int(self.user_id) > 0:
+            self.subscription_tier   = BETA_AUTO_TIER
+            self.subscription_status = "active"
+        else:
+            self.subscription_tier   = str(sub.get("tier") or "")
+            self.subscription_status = str(sub.get("status") or "")
+
         self.subscription_billing_cycle = str(sub.get("billing_cycle") or "")
         self.subscription_started_at    = _fmt(sub.get("started_at"))
         self.subscription_period_end    = _fmt(sub.get("current_period_end"))

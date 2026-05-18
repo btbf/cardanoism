@@ -459,7 +459,7 @@ def _ch7_explore() -> rx.Component:
         _link_row(_link_button("help_data_f5_link", "/catalyst")),
         _h3("7.4", "doc_toc_7_4", "constitution"),
         _p("doc_s7_4_p"),
-        _link_row(_link_button("help_data_f7_link", "/constitution")),
+        _link_row(_link_button("help_data_f7_link", "/governance/constitution")),
         _h3("7.5", "doc_toc_7_5", "treasury"),
         _p("doc_s7_5_p"),
         _link_row(_link_button("help_data_f6_link", "/governance/treasury")),
