@@ -645,7 +645,7 @@ class AuthState(rx.State):
             return rx.redirect("/login?error=session_error")
 
         self._apply_login(user, token)
-        return rx.redirect("/mypage")
+        return rx.redirect("/help" if user.get("is_new") else "/mypage")
 
     def disconnect_line(self):
         """LINE通知チャンネルを解除する。"""
@@ -782,7 +782,7 @@ class AuthState(rx.State):
             return rx.redirect("/login?error=session_error")
 
         self._apply_login(user, token)
-        return rx.redirect("/mypage")
+        return rx.redirect("/help" if user.get("is_new") else "/mypage")
 
     # ============================================================
     # X (Twitter) OAuth 2.0 + PKCE フロー
@@ -896,7 +896,7 @@ class AuthState(rx.State):
 
         self._apply_login(user, token)
         self._twitter_code_verifier = ""
-        return rx.redirect("/mypage")
+        return rx.redirect("/help" if user.get("is_new") else "/mypage")
 
     # ============================================================
     # ログアウト

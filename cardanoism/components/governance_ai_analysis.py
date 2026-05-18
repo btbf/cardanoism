@@ -161,7 +161,7 @@ def _state_analyzing() -> rx.Component:
                     AuthState.t["ga_ai_state_analyzing_title"],
                     size="2", weight="bold", color="var(--gray-12)",
                 ),
-                rx.badge("OpenAI gpt-5.4-mini", color_scheme="violet", variant="soft", size="1"),
+                rx.badge("AI", color_scheme="violet", variant="soft", size="1"),
                 spacing="2", align="center",
             ),
             rx.text(

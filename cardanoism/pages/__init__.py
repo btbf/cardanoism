@@ -23,6 +23,7 @@ from .pricing import pricing_page
 from .tokushoho import tokushoho_page
 from .company import company_page
 from .maintenance import maintenance_page
+from .help import help_page
 from .auth import (
     line_login_redirect,
     line_callback,

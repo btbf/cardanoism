@@ -104,6 +104,8 @@ def _legal_links() -> rx.Component:
         return rx.text("·", color="var(--gray-7)", style={"fontSize": "13px"})
 
     return rx.flex(
+        rx.link(rx.text(AuthState.t["nav_help"], style=item_style), href="/help"),
+        _sep(),
         rx.link(rx.text(AuthState.t["nav_company"], style=item_style), href="/company"),
         _sep(),
         rx.link(rx.text(AuthState.t["nav_pricing"], style=item_style), href="/pricing"),

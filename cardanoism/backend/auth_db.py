@@ -130,7 +130,9 @@ def get_or_create_user_by_provider(
         )
         row = cursor.fetchone()
         if row:
-            return dict(row)
+            existing = dict(row)
+            existing["is_new"] = False
+            return existing
 
         # 新規ユーザー作成
         user_id = _create_user(cursor, conn, username, avatar_url, email)
@@ -172,7 +174,9 @@ def get_or_create_user_by_provider(
 
         conn.commit()
         cursor.execute(f"{_USER_SELECT} WHERE id = ?", (user_id,))
-        return dict(cursor.fetchone())
+        created = dict(cursor.fetchone())
+        created["is_new"] = True
+        return created
 
 
 def get_user_providers(user_id: int) -> list[dict]:

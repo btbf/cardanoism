@@ -462,7 +462,7 @@ def hero_section() -> rx.Component:
         ),
         "/login",
     )
-    cta = rx.link(
+    primary_cta = rx.link(
         rx.button(
             rx.icon("rocket", size=18),
             rx.text(cta_label, weight="bold"),
@@ -483,6 +483,30 @@ def hero_section() -> rx.Component:
         width=["100%", "100%", "auto"],
         # PC は max 360px くらいで詰めて中央寄せ感を出す
         max_width=["100%", "100%", "360px"],
+    )
+    help_cta = rx.link(
+        rx.button(
+            rx.icon("book-open", size=16),
+            rx.text(AuthState.t["nav_help"], weight="medium"),
+            size="4",
+            variant="outline",
+            color_scheme="gray",
+            cursor="pointer",
+            padding="0 24px",
+            style={"width": "100%"},
+        ),
+        href="/help",
+        underline="none",
+        width=["100%", "100%", "auto"],
+        max_width=["100%", "100%", "240px"],
+    )
+    cta = rx.flex(
+        primary_cta,
+        help_cta,
+        flex_direction=["column", "column", "row"],
+        spacing="3",
+        align="stretch",
+        width=["100%", "100%", "auto"],
         # サブタイトルとの間に呼吸を入れる
         margin_top=["16px", "20px", "24px"],
     )
