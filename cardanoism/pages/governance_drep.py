@@ -179,24 +179,29 @@ def _drep_card(d) -> rx.Component:
         background="var(--gray-4)",
         flex_shrink="0",
     )
-    avatar = rx.cond(
-        d["image_url"] != "",
-        rx.image(
-            src=d["image_url"],
-            width="56px",
-            height="56px",
-            border_radius="50%",
-            style={"objectFit": "cover"},
-            flex_shrink="0",
+    avatar = rx.link(
+        rx.cond(
+            d["image_url"] != "",
+            rx.image(
+                src=d["image_url"],
+                width="56px",
+                height="56px",
+                border_radius="50%",
+                style={"objectFit": "cover"},
+                flex_shrink="0",
+            ),
+            rx.center(
+                rx.icon("user-round", size=28, color="var(--gray-9)"),
+                width="56px",
+                height="56px",
+                border_radius="50%",
+                background="var(--gray-4)",
+                flex_shrink="0",
+            ),
         ),
-        rx.center(
-            rx.icon("user-round", size=28, color="var(--gray-9)"),
-            width="56px",
-            height="56px",
-            border_radius="50%",
-            background="var(--gray-4)",
-            flex_shrink="0",
-        ),
+        href="/drep/" + d["drep_id"],
+        underline="none",
+        style={"display": "inline-block", "lineHeight": 0},
     )
     status_badge = rx.cond(
         d["is_active"] != "",
@@ -459,24 +464,29 @@ def _drep_card(d) -> rx.Component:
         background="var(--gray-4)",
         flex_shrink="0",
     )
-    mobile_avatar = rx.cond(
-        d["image_url"] != "",
-        rx.image(
-            src=d["image_url"],
-            width="40px",
-            height="40px",
-            border_radius="50%",
-            style={"objectFit": "cover"},
-            flex_shrink="0",
+    mobile_avatar = rx.link(
+        rx.cond(
+            d["image_url"] != "",
+            rx.image(
+                src=d["image_url"],
+                width="40px",
+                height="40px",
+                border_radius="50%",
+                style={"objectFit": "cover"},
+                flex_shrink="0",
+            ),
+            rx.center(
+                rx.icon("user-round", size=20, color="var(--gray-9)"),
+                width="40px",
+                height="40px",
+                border_radius="50%",
+                background="var(--gray-4)",
+                flex_shrink="0",
+            ),
         ),
-        rx.center(
-            rx.icon("user-round", size=20, color="var(--gray-9)"),
-            width="40px",
-            height="40px",
-            border_radius="50%",
-            background="var(--gray-4)",
-            flex_shrink="0",
-        ),
+        href="/drep/" + d["drep_id"],
+        underline="none",
+        style={"display": "inline-block", "lineHeight": 0},
     )
     mobile_amount_row = rx.hstack(
         rx.text(AuthState.t["drep_delegated_label"], size="1", color="var(--gray-10)"),
