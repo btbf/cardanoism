@@ -18,7 +18,7 @@ _TERMS_JA = """\
 
 本利用規約（以下「本規約」といいます。）は、株式会社クヒト（以下「当社」といいます。）が提供する Cardanoism（以下「本サービス」といいます。）の利用条件を定めるものです。本サービスを利用するすべてのユーザーは、本規約に同意したものとみなします。
 
-最終更新日: 2026 年 5 月 7 日
+最終更新日: 2026 年 5 月 18 日
 
 ---
 
@@ -118,6 +118,37 @@ _TERMS_JA = """\
 1. 本サービスはベータ期間中、有料プランの一部機能を全ユーザーに無料で開放することがあります。
 2. ベータ期間の終了および機能開放範囲の変更は、当社の裁量で行うことができ、その際は事前に本サービス上で告知します。
 
+### 6-9. プラン変更 (アップグレード / ダウングレード)
+
+1. ユーザーは [マイページ > サブスクリプションタブ](/mypage?tab=subscription) からいつでも他の有料プランへ変更 (アップグレード / ダウングレード) できます。
+2. **アップグレード** (上位プランへの変更) は変更操作の完了時点で即時反映され、次回更新日までの残日数に応じた差額が変更時点で課金されます。
+3. **ダウングレード** (下位プランまたは Free プランへの変更) は、現在の課金期間の末日まで現プランの機能を維持し、次回更新日から新プランが適用されます。差額の返金は行いません。
+4. 請求サイクル変更 (月額 ↔ 年額) も同様の取扱いとし、アップグレードは即時 + 日割り課金、ダウングレードは次回更新日から適用とします。
+
+### 6-10. デジタルコンテンツに関する留意事項
+
+1. 本サービスの有料プランは、特定商取引法に定める「指定権利」に該当しない**デジタルコンテンツ提供サービス**です。
+2. 申込み完了 (購入手続きの確定) と同時に提供が開始されるため、**特定商取引法上のクーリングオフは適用されません**。
+3. 詳細な販売条件は [特定商取引法に基づく表記](/tokushoho) を参照してください。
+
+### 6-11. 未成年者の利用
+
+1. 未成年者が有料プランに申込む場合、**法定代理人 (親権者等) の同意**を得たうえで申込むものとします。
+2. 未成年者が法定代理人の同意を得ずに有料プランに申込んだ場合でも、当社が当該未成年者を成年であると誤認した場合、または未成年者もしくは法定代理人による追認があったとみなされる場合は、未成年者取消権を主張できないものとします。
+3. 当社は、申込時にユーザーが満 18 歳未満であり、かつ法定代理人の同意が確認できないと判明した場合、申込みの承諾を拒否し、または契約を解除することがあります。
+
+### 6-12. 申込みの成立と提供開始
+
+1. 有料プランの利用契約は、ユーザーが申込み手続きを行い、**Stripe による決済が完了した時点**で当社とユーザーの間に成立します。
+2. 利用契約の成立と同時に有料プランの提供を開始します。これにより、第 6-10 条のとおりクーリングオフは適用されません。
+3. 当社は、決済の不成立、申込み内容の不備、その他正当な事由がある場合、申込みの承諾を留保または拒否することがあります。
+
+### 6-13. 領収書および請求書
+
+1. 各回の決済に対する領収書 (Receipt) は、Stripe からご登録のメールアドレスに自動配信されるほか、Stripe Customer Portal からいつでもダウンロードできます。
+2. 適格請求書 (インボイス制度に基づく適格請求書) の発行を希望する場合は、第 16 章のお問い合わせ窓口までご連絡ください。当社の適格請求書発行事業者としての登録状況および対応可否については、お問い合わせ時にご案内します。
+3. 領収書または請求書の再発行は、Stripe Customer Portal からの自己発行で対応いただくものとし、当社による個別再発行は原則として行いません。
+
 ---
 
 ## 7. ユーザーの責任
@@ -183,7 +214,15 @@ _TERMS_JA = """\
     - ウォレット連携によって構築されたトランザクションの送信結果 (失敗、二重送信、想定外の効果等)
     - Cardano ブロックチェーン自体の障害、ハードフォーク、ネットワーク混雑等
     - ユーザーが本サービスから得た情報をもとに行った判断・行動の結果
-3. 当社が責任を負う場合であっても、当社の責任の範囲は、当該ユーザーが直近 12 か月間に当社に支払った料金の総額を上限とします。
+3. **AI 生成コンテンツに関する免責**
+
+    本サービスは、ガバナンス提案の要約や Cardano 憲法の参考訳など、生成 AI (OpenAI 等の大規模言語モデルを含みます。以下「AI」といいます。) を用いて自動生成されたコンテンツを含みます。AI 生成コンテンツについて、ユーザーは以下の事項にあらかじめ同意するものとします。
+
+    - AI 生成コンテンツはその性質上、**不正確・不完全・偏った内容、または事実と異なる内容（いわゆるハルシネーション）を含む可能性があります**。当社はその正確性・完全性・最新性を保証しません。
+    - AI 生成コンテンツは**情報提供のみを目的としたものであり、投資判断、税務、法務、その他いかなる専門的助言にも該当しません**。ガバナンス投票、委任先 (SPO / DRep) の選択、ウォレット署名を伴うトランザクション実行を含む、本サービスから得た情報に基づく一切の意思決定は、ユーザー自身の責任で行うものとします。
+    - AI の提供事業者によるモデルの仕様変更、廃止、出力規制等により、AI 生成コンテンツの品質・内容・継続提供が予告なく変動または停止する可能性があります。
+    - AI 生成コンテンツに、第三者の著作権、商標権、肖像権、プライバシー権その他の権利を侵害する内容が含まれる可能性を完全に排除することはできません。当該コンテンツに起因してユーザーまたは第三者に損害が生じた場合でも、当社は一切責任を負いません。
+4. 当社が責任を負う場合であっても、当社の責任の範囲は、当該ユーザーが直近 12 か月間に当社に支払った料金の総額を上限とします。
 
 ---
 
@@ -222,7 +261,7 @@ _TERMS_EN = """\
 
 These Terms of Service ("Terms") govern the use of Cardanoism (the "Service") provided by Kuhito Co., Ltd. ("we", "our", or "us"). By using the Service, all users are deemed to have agreed to these Terms.
 
-Last updated: May 7, 2026
+Last updated: May 18, 2026
 
 ---
 
@@ -322,6 +361,37 @@ The specific features may change without notice.
 1. During the beta period, we may offer paid-plan features for free to all users.
 2. Termination of the beta period and changes to the scope of free features are at our discretion, and will be announced on the Service in advance.
 
+### 6-9. Plan changes (upgrade / downgrade)
+
+1. Users may change their paid plan (upgrade or downgrade) at any time from [My Page > Subscription tab](/mypage?tab=subscription).
+2. **Upgrades** (to a higher plan) take effect immediately upon completion of the change. The prorated difference for the remaining days until the next renewal is charged at the time of the change.
+3. **Downgrades** (to a lower plan or to the Free plan) maintain the current plan's features through the end of the current billing period; the new plan takes effect from the next renewal date. No refund is issued for the difference.
+4. Changing the billing cycle (monthly ↔ yearly) follows the same rules: upgrades take effect immediately with a prorated charge; downgrades take effect from the next renewal.
+
+### 6-10. Digital content notice
+
+1. The paid plans of the Service are **digital content delivery services** and do not constitute "designated rights" under the Japanese Act on Specified Commercial Transactions.
+2. Because service provision begins immediately upon order completion, **the cooling-off right under the Act on Specified Commercial Transactions does not apply**.
+3. For detailed sales terms, please refer to the [Commercial Transactions Notice](/tokushoho).
+
+### 6-11. Use by minors
+
+1. Minors may subscribe to paid plans only with the consent of a **legal representative (such as a parent or guardian)**.
+2. If a minor subscribes without legal representative consent, and either we reasonably believe the user to be an adult, or the minor or legal representative is deemed to have ratified the subscription, the minor may not invoke the right to rescind on grounds of minority.
+3. If we discover at the time of application that a user is under 18 years old and that legal representative consent cannot be verified, we may refuse to accept the application or terminate the contract.
+
+### 6-12. Formation of contract and start of service
+
+1. A paid-plan service contract between us and the user is formed at the moment **payment via Stripe is successfully completed** after the user submits the application.
+2. The paid plan is provided immediately upon formation of the contract. As such, the cooling-off right does not apply, as stated in § 6-10.
+3. We may withhold or refuse acceptance of an application in the event of failed payment, deficient application details, or other reasonable grounds.
+
+### 6-13. Receipts and invoices
+
+1. A receipt for each payment is automatically sent by Stripe to the registered email address and is also downloadable at any time from the Stripe Customer Portal.
+2. If you require a qualified invoice (適格請求書) under the Japanese Qualified Invoice System, please contact us via the channel in § 16. We will inform you of our registration status as a qualified invoice issuer and the available options when you contact us.
+3. Re-issuance of receipts or invoices is handled via self-service at the Stripe Customer Portal; we do not, as a rule, re-issue them on an individual basis.
+
 ---
 
 ## 7. User Responsibilities
@@ -387,7 +457,15 @@ Users represent and warrant that they do not currently and will not in the futur
     - Results of transactions built via wallet integration (failures, double-sending, unintended effects, etc.)
     - Failures of the Cardano blockchain itself, hard forks, network congestion, etc.
     - Decisions or actions made based on information obtained from the Service
-3. Even if we are liable, our liability is limited to the total amount paid by the user to us in the most recent 12 months.
+3. **Disclaimer regarding AI-generated content**
+
+    The Service includes content automatically generated by generative AI (including large language models provided by OpenAI and others; hereinafter "AI"), such as summaries of governance actions and reference translations of the Cardano Constitution. With respect to AI-generated content, the user agrees in advance to the following:
+
+    - AI-generated content may, by its nature, **contain inaccurate, incomplete, biased, or factually incorrect information (so-called hallucinations)**. We make no warranty as to its accuracy, completeness, or currency.
+    - AI-generated content is provided **for informational purposes only and does not constitute investment, tax, legal, or any other professional advice**. All decisions made based on information obtained from the Service — including governance voting, delegation choice (SPO / DRep), and execution of wallet-signed transactions — are the sole responsibility of the user.
+    - The quality, content, or continued availability of AI-generated content may change or be discontinued without notice due to model specification changes, deprecations, or output restrictions imposed by the AI provider.
+    - We cannot completely rule out the possibility that AI-generated content may include material that infringes the copyright, trademark, portrait, privacy, or other rights of third parties. We bear no liability for any damage caused to the user or third parties arising from such content.
+4. Even if we are liable, our liability is limited to the total amount paid by the user to us in the most recent 12 months.
 
 ---
 
