@@ -808,22 +808,52 @@ def treasury_withdrawal_enacted(
     enacted_epoch: int,
     url: str,
     lang: str = "ja",
+    proposal_count: int = 1,
 ) -> dict:
-    """トレジャリー引き出し提案が enacted (施行) されたときの全ユーザー向け通知。"""
+    """トレジャリー引き出し提案が enacted (施行) されたときの全ユーザー向け通知。
+
+    proposal_count >= 2 のときは「同一エポックで N 件施行」の集約表示。
+    """
     t = get_flex(lang)
+
+    body_contents: list[dict] = []
+    if int(proposal_count) > 1:
+        if lang == "ja":
+            count_text = f"{proposal_count} 件のトレジャリー引き出しが施行されました"
+        else:
+            count_text = f"{proposal_count} treasury withdrawals enacted"
+        body_contents.append({
+            "type": "text",
+            "text": count_text,
+            "weight": "bold",
+            "size": "md",
+            "wrap": True,
+            "color": TEXT_PRIMARY,
+        })
+        body_contents.append({"type": "separator", "margin": "md"})
+        body_contents.append({
+            "type": "box",
+            "layout": "vertical",
+            "margin": "md",
+            "spacing": "sm",
+            "contents": [
+                _row(t["treasury_enacted_epoch_label"], f"Epoch {enacted_epoch}", TEXT_DOWN),
+            ],
+        })
+    else:
+        body_contents.append({
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "sm",
+            "contents": [
+                _row(t["treasury_enacted_proposal_label"], title or "-", TEXT_PRIMARY),
+                _row(t["treasury_enacted_epoch_label"], f"Epoch {enacted_epoch}", TEXT_DOWN),
+            ],
+        })
+
     return _bubble(
         _header(t["treasury_enacted_title"], t["treasury_enacted_subtitle"]),
-        [
-            {
-                "type": "box",
-                "layout": "vertical",
-                "spacing": "sm",
-                "contents": [
-                    _row(t["treasury_enacted_proposal_label"], title or "-", TEXT_PRIMARY),
-                    _row(t["treasury_enacted_epoch_label"], f"Epoch {enacted_epoch}", TEXT_DOWN),
-                ],
-            },
-        ],
+        body_contents,
         url,
         t["footer_governance"],
     )

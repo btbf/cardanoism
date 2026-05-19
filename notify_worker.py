@@ -268,7 +268,8 @@ def get_users_with_email_event(event_type: str) -> list[dict]:
     with get_db() as (cursor, _):
         cursor.execute(
             """
-            SELECT u.id, nc.channel_value AS email_addr, COALESCE(u.language, 'ja') AS language
+            SELECT u.id, u.created_at AS user_created_at,
+                   nc.channel_value AS email_addr, COALESCE(u.language, 'ja') AS language
             FROM users u
             JOIN notification_settings ns ON u.id = ns.user_id
             JOIN notification_channels nc ON u.id = nc.user_id
@@ -309,7 +310,8 @@ def get_users_with_telegram_event(event_type: str) -> list[dict]:
     with get_db() as (cursor, _):
         cursor.execute(
             """
-            SELECT u.id, nc.channel_value AS telegram_chat_id, COALESCE(u.language, 'ja') AS language
+            SELECT u.id, u.created_at AS user_created_at,
+                   nc.channel_value AS telegram_chat_id, COALESCE(u.language, 'ja') AS language
             FROM users u
             JOIN notification_settings ns ON u.id = ns.user_id
             JOIN notification_channels nc ON u.id = nc.user_id
@@ -394,7 +396,8 @@ def get_users_with_event(event_type: str) -> list[dict]:
     with get_db() as (cursor, _):
         cursor.execute(
             """
-            SELECT u.id, nc.channel_value AS line_notify_id, COALESCE(u.language, 'ja') AS language
+            SELECT u.id, u.created_at AS user_created_at,
+                   nc.channel_value AS line_notify_id, COALESCE(u.language, 'ja') AS language
             FROM users u
             JOIN notification_settings ns ON u.id = ns.user_id
             JOIN notification_channels nc ON u.id = nc.user_id
@@ -1093,6 +1096,20 @@ def _check_drep_unvoted_ga():
         for addr in drep_addrs:
             drep_id = addr["delegated_drep_id"]
             if (drep_id, pid) in voted_pairs:
+                continue
+
+            # 新規ユーザー保護: ユーザーがこのアドレスを登録するより前に提出された
+            # GA は通知しない。これがないと「アドレス登録 + 通知チャンネル連携」と
+            # 同時に過去の Active GA すべてを 1 ユーザーに洪水的に通知してしまう。
+            addr_created_at = addr.get("created_at")
+            if isinstance(addr_created_at, str):
+                try:
+                    addr_created_at = datetime.fromisoformat(addr_created_at)
+                except ValueError:
+                    addr_created_at = None
+            if addr_created_at and addr_created_at.tzinfo is None:
+                addr_created_at = addr_created_at.replace(tzinfo=timezone.utc)
+            if addr_created_at and block_dt < addr_created_at:
                 continue
 
             stake_id = addr["stake_id"]
@@ -2265,6 +2282,23 @@ def _sync_ga_withdrawal_payouts():
 # トレジャリーイベント
 # ============================================================
 
+def _datetime_to_mainnet_epoch(dt: datetime) -> int | None:
+    """datetime を Cardano mainnet のエポック番号に変換する。Shelley 以前 (epoch < 208)
+    は 0 を返す。preprod / preview ではずれるが、treasury withdrawals は mainnet 主体。
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    SHELLEY_UNIX = 1596059091   # 2020-07-29 21:44:51Z = epoch 208 start
+    SHELLEY_EPOCH = 208
+    EPOCH_SECONDS = 432000
+    t = dt.timestamp()
+    if t < SHELLEY_UNIX:
+        return 0
+    return SHELLEY_EPOCH + int((t - SHELLEY_UNIX) // EPOCH_SECONDS)
+
+
 def check_treasury_events():
     """TreasuryWithdrawals ガバナンスアクションが enacted（施行）されたのを検知して全ユーザーへ通知。"""
     logger.info("トレジャリーイベント チェック開始")
@@ -2289,11 +2323,24 @@ def check_treasury_events():
         logger.info("通知対象ユーザーがいません")
         return
 
-    for p in enacted:
-        proposal_id = p.get("proposal_id") or ""
-        enacted_epoch = p.get("enacted_epoch")
-        dedup_base = f"treasury_enacted:{proposal_id}"
+    # 新規ユーザー保護: ユーザー登録より前に施行された GA はスキップする。
+    # ユーザーの users.created_at を mainnet エポック番号に換算してキャッシュ。
+    user_signup_epoch: dict[int, int | None] = {}
+    for a in addrs:
+        uid = a.get("user_id")
+        if uid is None:
+            continue
+        created = a.get("user_created_at")
+        if isinstance(created, str):
+            try:
+                created = datetime.fromisoformat(created)
+            except ValueError:
+                created = None
+        user_signup_epoch[uid] = _datetime_to_mainnet_epoch(created) if created else None
 
+    # 同一エポックで施行された複数の GA は 1 通の集約通知にまとめる。
+    # 単発時は従来通り提案タイトルと個別 URL を表示。
+    def _extract_title(p: dict) -> str:
         meta_body = ((p.get("meta_json") or {}).get("body") or {}) if isinstance(p.get("meta_json"), dict) else {}
         title = ""
         if isinstance(meta_body, dict):
@@ -2302,16 +2349,48 @@ def check_treasury_events():
                 title = str(raw_title.get("@value") or "").strip()
             elif isinstance(raw_title, str):
                 title = raw_title.strip()
-        if not title:
-            title = proposal_id[:24] + "..."
+        return title or (p.get("proposal_id") or "")[:24] + "..."
 
-        proposal_url = f"{CARDANOISM_URL}/governance/{proposal_id}"
-        ctx = build_ctx(
-            proposal_title=title,
-            enacted_epoch=enacted_epoch,
-            proposal_url=proposal_url,
-        )
+    # enacted_epoch でグルーピング
+    by_epoch: dict[int, list[dict]] = {}
+    for p in enacted:
+        ep = p.get("enacted_epoch")
+        if ep is None:
+            continue
+        try:
+            ep_int = int(ep)
+        except (TypeError, ValueError):
+            continue
+        by_epoch.setdefault(ep_int, []).append(p)
+
+    governance_url = f"{CARDANOISM_URL}/governance"
+
+    for enacted_epoch, props in by_epoch.items():
+        count = len(props)
+        if count >= 2:
+            # 集約通知: タイトルは使わず件数と epoch だけ。URL は一覧ページ。
+            dedup_base = f"treasury_enacted_epoch:{enacted_epoch}"
+            ctx = build_ctx(
+                enacted_epoch=enacted_epoch,
+                proposal_url=governance_url,
+                proposal_count=count,
+            )
+        else:
+            # 単発: 従来通り提案個別の URL とタイトル
+            p = props[0]
+            proposal_id = p.get("proposal_id") or ""
+            dedup_base = f"treasury_enacted:{proposal_id}"
+            ctx = build_ctx(
+                proposal_title=_extract_title(p),
+                enacted_epoch=enacted_epoch,
+                proposal_url=f"{CARDANOISM_URL}/governance/{proposal_id}",
+            )
+
         for addr in addrs:
+            # 登録より前のエポックはスキップ
+            signup_epoch = user_signup_epoch.get(addr.get("user_id"))
+            if signup_epoch is not None and enacted_epoch < signup_epoch:
+                continue
             deliver(addr, EVENT_TYPE, ctx, dedup_base=dedup_base)
 
 

@@ -49,6 +49,7 @@ def merge_user_channels(
         merged.setdefault(uid, {
             "user_id":  uid,
             "language": u.get("language", "ja"),
+            "user_created_at":  u.get("user_created_at"),
             "line_notify_id":   None,
             "email_addr":       None,
             "telegram_chat_id": None,
@@ -61,6 +62,7 @@ def merge_user_channels(
         merged.setdefault(uid, {
             "user_id":  uid,
             "language": u.get("language", "ja"),
+            "user_created_at":  u.get("user_created_at"),
             "line_notify_id":   None,
             "email_addr":       None,
             "telegram_chat_id": None,
@@ -73,6 +75,7 @@ def merge_user_channels(
         merged.setdefault(uid, {
             "user_id":  uid,
             "language": u.get("language", "ja"),
+            "user_created_at":  u.get("user_created_at"),
             "line_notify_id":   None,
             "email_addr":       None,
             "telegram_chat_id": None,
