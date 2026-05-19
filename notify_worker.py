@@ -590,7 +590,9 @@ def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float |
         saturation = pool_info.get("live_saturation")
         if saturation is None:
             return
-        sat_pct = float(saturation) * 100
+        # Koios の live_saturation は既にパーセント値 (例: 53.51 = 53.51%)。× 100 不要。
+        # cf. pool_search.py の同フィールドコメント。
+        sat_pct = float(saturation)
         is_saturated = sat_pct > 100
         was_saturated = get_state("stake_address", stake_id, "pool_saturated")
         if is_saturated and was_saturated != "1":
@@ -644,10 +646,33 @@ def _check_pool_reward_received_batch(
         return
     reward_epoch = current_epoch - 2
 
+    def _eligible_for_reward(addr: dict) -> bool:
+        """新規ユーザー保護: アドレス登録前にウォレットへ入金済みの報酬は通知しない。
+
+        Cardano 報酬は snapshot(epoch N) → 入金(epoch N+2) で、入金は epoch N+1 終了
+        ⇒ epoch N+2 開始 のタイミング。アドレスを epoch R で登録した場合:
+          - reward_epoch = R-2 の報酬は epoch R 開始時点で既に入金済み → 通知しない
+          - reward_epoch = R-1 の報酬は epoch R+1 開始時点に入金 (登録後) → 通知する
+        よって閾値は `reward_epoch >= R - 1`。
+        """
+        created = addr.get("created_at")
+        if isinstance(created, str):
+            try:
+                created = datetime.fromisoformat(created)
+            except ValueError:
+                return True
+        if not created:
+            return True
+        addr_epoch = _datetime_to_mainnet_epoch(created)
+        if addr_epoch is None:
+            return True
+        return reward_epoch >= addr_epoch - 1
+
     # dedup 済みでない報酬通知対象アドレスを収集
     reward_addrs = [
         addr for stake_id, addr in all_addrs.items()
         if "pool_reward_received" in enabled_events.get(stake_id, set())
+        and _eligible_for_reward(addr)
         and not already_sent(
             addr["user_id"], "pool_reward_received", f"reward_{addr['stake_id']}_{reward_epoch}"
         )

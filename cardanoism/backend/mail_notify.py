@@ -15,6 +15,7 @@ import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.header import Header
+from email.utils import formatdate, make_msgid
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,12 @@ def send_email(to: str, subject: str, html: str, text: str = "") -> bool:
         msg["Subject"] = Header(subject, "utf-8").encode()
         msg["From"]    = mail_from
         msg["To"]      = to
+        # RFC 5322 必須ヘッダ + 配信レピュテーション対策。
+        # Gmail / Outlook は Date / Message-ID 不在のメールを silent drop することがある。
+        msg["Date"]       = formatdate(localtime=True)
+        msg["Message-ID"] = make_msgid(domain="cardanoism.com")
+        # Reply-To をユーザー対応用の窓口に設定。noreply 系の自動返信に返したい人を救う。
+        msg["Reply-To"]   = "contact@kuhito.co.jp"
 
         if text:
             msg.attach(MIMEText(text, "plain", "utf-8"))
