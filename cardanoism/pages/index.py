@@ -224,6 +224,43 @@ def _line_msg_bubble(title_key: str, body_key: str, time_key: str) -> rx.Compone
     )
 
 
+def _telegram_msg_bubble(title_key: str, body_key: str, time_key: str) -> rx.Component:
+    """Telegram 風のメッセージバブル (incoming)。時刻はバブル右下にインライン表示。"""
+    return rx.box(
+        rx.vstack(
+            rx.text(
+                AuthState.t[title_key],
+                size="1", weight="bold", color="#222",
+                style={"fontSize": "11px", "lineHeight": "1.4"},
+            ),
+            rx.text(
+                AuthState.t[body_key],
+                size="1", color="#333",
+                style={"fontSize": "10.5px", "lineHeight": "1.5"},
+            ),
+            rx.hstack(
+                rx.spacer(),
+                rx.text(
+                    AuthState.t[time_key],
+                    color="#7d8a99",
+                    style={"fontSize": "9px", "lineHeight": "1",
+                           "whiteSpace": "nowrap"},
+                ),
+                rx.icon("check-check", size=10, color=TG_BRAND),
+                spacing="1", align="center", width="100%",
+                style={"marginTop": "2px"},
+            ),
+            spacing="1", align_items="start",
+        ),
+        padding="6px 9px 4px 10px",
+        border_radius="14px 14px 14px 4px",
+        background="white",
+        box_shadow="0 1px 1.5px rgba(0,0,0,0.10)",
+        max_width="78%",
+        style={"alignSelf": "flex-start"},
+    )
+
+
 def _line_phone_screenshots() -> rx.Component:
     """JA 用: assets/moc/line_*.jpg を 3 秒間隔でクロスフェード表示。
 
@@ -251,9 +288,9 @@ def _line_phone_screenshots() -> rx.Component:
     )
 
 
-def _line_phone_mock() -> rx.Component:
-    """LINE 公式アカウントの通知画面を模したスマホ mock。"""
-    chat_mock = rx.vstack(
+def _telegram_phone_screen() -> rx.Component:
+    """EN 用: Telegram 風のチャット画面 mock。ステータスバー + 青ヘッダー + バブル。"""
+    return rx.vstack(
         # ── ステータスバー（時刻 / 電波 / バッテリー）
         rx.hstack(
             rx.text("9:41", size="1", weight="bold", color="#000",
@@ -266,11 +303,11 @@ def _line_phone_mock() -> rx.Component:
             padding="6px 22px 4px 18px",
             background="white",
         ),
-        # ── LINE チャットヘッダー（緑）
+        # ── Telegram チャットヘッダー（青）
         rx.hstack(
             rx.icon("chevron-left", size=18, color="white"),
             rx.box(
-                rx.text("C", size="2", weight="bold", color=ACCENT_DARK,
+                rx.text("C", size="2", weight="bold", color=TG_BRAND,
                         style={"lineHeight": "1"}),
                 width="34px", height="34px",
                 border_radius="999px",
@@ -283,41 +320,41 @@ def _line_phone_mock() -> rx.Component:
             rx.vstack(
                 rx.text("Cardanoism", size="2", weight="bold", color="white",
                         style={"fontSize": "13px", "lineHeight": "1.1"}),
-                rx.text(AuthState.t["home_line_mock_official"], size="1",
+                rx.text("bot", size="1",
                         color="rgba(255,255,255,0.85)",
                         style={"fontSize": "10px", "lineHeight": "1.1"}),
                 spacing="0", align_items="start",
             ),
             rx.spacer(),
-            rx.icon("phone", size=15, color="white"),
+            rx.icon("search", size=15, color="white"),
             rx.icon("more-vertical", size=15, color="white"),
             spacing="2", align="center", width="100%",
             padding="10px 14px",
-            background=LINE_BRAND,
+            background=TG_BRAND,
         ),
-        # ── チャット領域（LINE 風の青グレー背景）
+        # ── チャット領域（Telegram 風の淡い水色背景）
         rx.vstack(
-            # 日付チップ
+            # 日付チップ (Telegram は中央に半透明グレー)
             rx.box(
                 rx.text(AuthState.t["home_line_mock_today"], size="1",
                         color="white", weight="medium",
                         style={"fontSize": "10px"}),
                 padding="3px 12px",
                 border_radius="999px",
-                background="rgba(0,0,0,0.18)",
+                background="rgba(60,80,100,0.45)",
                 align_self="center",
             ),
-            _line_msg_bubble(
+            _telegram_msg_bubble(
                 "home_line_mock_msg1_title",
                 "home_line_mock_msg1_body",
                 "home_line_mock_msg1_time",
             ),
-            _line_msg_bubble(
+            _telegram_msg_bubble(
                 "home_line_mock_msg2_title",
                 "home_line_mock_msg2_body",
                 "home_line_mock_msg2_time",
             ),
-            _line_msg_bubble(
+            _telegram_msg_bubble(
                 "home_line_mock_msg3_title",
                 "home_line_mock_msg3_body",
                 "home_line_mock_msg3_time",
@@ -325,7 +362,7 @@ def _line_phone_mock() -> rx.Component:
             spacing="3",
             width="100%",
             padding="12px 12px 18px 12px",
-            background="#7B98B7",
+            background="linear-gradient(180deg, #cfe4f3 0%, #b3d7ec 100%)",
             flex="1",
             align_items="stretch",
             overflow="hidden",
@@ -336,11 +373,14 @@ def _line_phone_mock() -> rx.Component:
         align_items="stretch",
     )
 
+
+def _line_phone_mock() -> rx.Component:
+    """スマホ mock。JA は実機 LINE スクリーンショット、EN は Telegram 風 chat mock。"""
     # JA: 実機 LINE のスクリーンショットを 3 秒間隔フェードで表示
-    # EN: 既存の chat 風 mock を維持 (画像が JA 仕様なので)
+    # EN: Telegram 風 chat mock (海外ユーザー向けの代替表現)
     screen = rx.cond(
         AuthState.language == "en",
-        chat_mock,
+        _telegram_phone_screen(),
         _line_phone_screenshots(),
     )
     return rx.box(

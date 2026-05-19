@@ -984,7 +984,7 @@ UI_JA: dict[str, str] = {
     "doc_toc_label":      "目次",
 
     "doc_toc_1":          "はじめに",
-    "doc_toc_2":          "スタートアップ",
+    "doc_toc_2":          "始め方",
     "doc_toc_2_1":        "サインイン",
     "doc_toc_2_2":        "アドレスを登録",
     "doc_toc_2_3":        "ウォレットを認証",
@@ -1011,17 +1011,17 @@ UI_JA: dict[str, str] = {
     # 1. はじめに
     "doc_s1_p1":          "Cardanoism は、Cardano のステーキングとガバナンスを日本語で一元管理できる Web ポータルです。委任先選び・委任後の状況追跡・ガバナンス提案の閲覧と投票まで、すべての操作がこの一サイトで完結します。",
     "doc_s1_p2":          "中央集権型サービスとは異なり、Cardanoism はあなたの ADA を預かりません。ステーキングはすべてオンチェーンで完結し、Cardanoism は表示と通知の役割だけを担います。",
-    "doc_s1_hint":        "アカウントを作るには LINE / Google でのソーシャルログインのみ必要です。Web3 ウォレットも、専用パスワードも要りません。",
+    "doc_s1_hint":        "アカウントを作るには LINE / Google / X でのソーシャルログインのみ必要です。Web3 ウォレットも、専用パスワードも要りません。",
 
     # 2. スタートアップ
     "doc_s2_intro":       "Cardanoism を使い始めるには、3 ステップ・所要時間 5 分で完了します。",
-    "doc_s2_1_p":         "ナビバー右上の「ログイン」ボタンから、LINE または Google でサインインします。LINE を選んだ場合は通知チャンネルが自動連携され、Google を選んだ場合は登録メールアドレスがメール通知用に自動登録されます。",
-    "doc_s2_2_p":         "サインイン後、マイページの「アドレス管理」タブから Cardano 受信アドレス (addr1〜) を登録します。対応ブラウザウォレットを使えば「ウォレット接続」ボタンから 1 クリックで取得できます。最大 3 アドレスまで登録可能で、それぞれに別個の通知設定を持たせられます。",
+    "doc_s2_1_p":         "ナビバー右上の「ログイン」ボタンから、LINE / Google / X のいずれかでサインインします。LINE を選んだ場合は通知チャンネルが自動連携され、Google を選んだ場合は登録メールアドレスがメール通知用に自動登録されます。",
+    "doc_s2_2_p":         "サインイン後、マイページの「アドレス管理」タブから Cardano 受信アドレス (addr1〜) を登録します。対応ブラウザウォレットを使えば「ウォレット接続」ボタンから 1 クリックで取得できます。契約プランによって複数のアドレスを登録可能で、それぞれに別個の通知設定を持たせられます。",
     "doc_s2_2_tip":       "ウォレットを持っていない場合は、addr1〜 を手動入力でも OK。読み取り専用なので署名は不要です。",
     "doc_s2_3_p":         "「ウォレット認証」は任意ですが、認証すると「検証済み」バッジが付き、Cardanoism から直接 SPO / DRep へ委任 tx を送れるようになります。認証は CIP-30 規格の署名で、ウォレット拡張がポップアップして 1 度署名するだけです。",
 
     # 3. ダッシュボード
-    "doc_s3_p1":          "マイページ (`/mypage`) のダッシュボードは、登録した全アドレスの状況を 1 画面で把握できる「司令室」です。タブ切替なしで以下の情報が並びます。",
+    "doc_s3_p1":          "マイページのダッシュボードは、登録した全アドレスの状況を 1 画面で把握できる「司令室」です。タブ切替なしで以下の情報が並びます。",
     "doc_s3_b1":          "登録アドレスごとの委任先 SPO / DRep + 委任日数バッジ",
     "doc_s3_b2":          "お気に入り (SPO / DRep / ガバナンス提案 / カタリスト) の一覧",
     "doc_s3_b3":          "委任先 DRep の直近投票履歴 (投票理由の日本語翻訳付き)",
@@ -1033,21 +1033,21 @@ UI_JA: dict[str, str] = {
     "doc_s4_p1":          "通知は Cardanoism の中核機能です。委任先プールや委任先 DRep に何らかの変化が起こったとき、リアルタイムでお好きなチャンネルに通知が届きます。",
     "doc_s4_1_p":         "対応チャンネルは以下の 3 種類です。ユーザーごとに複数のチャンネルを並行して使えます。",
     "doc_s4_1_b1":        "メール: ユーザー登録メールアドレスへ自動配信",
-    "doc_s4_1_b2":        "LINE: Cardanoism 公式 LINE アカウントを Friend 追加して連携",
+    "doc_s4_1_b2":        "LINE: Cardanoism 公式 LINE アカウントを友達追加して連携",
     "doc_s4_1_b3":        "Telegram: Cardanoism Bot に Start を送って連携",
     "doc_s4_2_p":         "ステーキング系通知は全 8 種類。各イベントを ON/OFF で個別管理できます。",
     "doc_s4_3_p":         "ガバナンス系通知は全 5 種類。",
 
     # 5. ガバナンス
     "doc_s5_p1":          "Cardano は Conway era で本格的なオンチェーン投票ガバナンスを開始しました。Cardanoism は提案の閲覧から投票結果の追跡まで、日本語と AI 補助で支援します。",
-    "doc_s5_1_p":         "ガバナンス提案ページ (`/governance`) では、Active / Ratified / Enacted のすべての提案を閲覧できます。提案本文 (CIP-100 / CIP-108 メタデータ) は英語が一般的ですが、AI による日本語訳を併記しています。",
+    "doc_s5_1_p":         "ガバナンス提案ページでは、Active / Ratified / Enacted のすべての提案を閲覧できます。提案本文 (CIP-100 / CIP-108 メタデータ) は英語が一般的ですが、AI による日本語訳を併記しています。",
     "doc_s5_2_p":         "各提案には AI による要約が付きます。提案の主要パラメータ・対象範囲・影響範囲を中立的に抽出する役割で、AI 自身が「賛成」「反対」の判定をすることはありません。判断はあなた自身に委ねます。",
     "doc_s5_2_warning":   "TreasuryWithdrawals 提案の場合は、機械計算による NCL (Net Change Limit) 上限内チェックも追加表示されます。",
     "doc_s5_3_p":         "各提案には DRep / SPO / 憲法委員会 (CC) の投票集計がリアルタイム表示されます。投票閾値の達成状況もバーで可視化。",
 
     # 6. ステーキング・委任
     "doc_s6_p1":          "Cardanoism は CIP-30 規格に対応した 5 種類のブラウザウォレット (Eternl / Lace / Yoroi / Typhon / VESPR) を検出し、SPO や DRep への委任 tx 送信を Cardanoism 内から実行できます。",
-    "doc_s6_p2":          "委任の流れ: SPO 一覧 (`/staking/spo`) または DRep 一覧 (`/governance/drep`) から候補を選び、「委任する」ボタンをクリック。ウォレット拡張がポップアップして tx 内容を表示するので、署名すれば数秒後に Cardano 上で委任が確定します。",
+    "doc_s6_p2":          "委任の流れ: SPO 一覧または DRep 一覧から候補を選び、「委任する」ボタンをクリック。ウォレット拡張がポップアップして tx 内容を表示するので、署名すれば数秒後に Cardano 上で委任が確定します。",
     "doc_s6_hint":        "ウォレット認証が済んでいないアドレスでは「委任する」ボタンが代わりに「ウォレット認証が必要です」ダイアログを開きます。",
 
     # 7. データ探索
@@ -1503,6 +1503,7 @@ UI_JA: dict[str, str] = {
     # プロフィールタブ
     "display_name": "表示名",
     "email_address": "メールアドレス",
+    "email_register_hint": "メールアドレスを登録すると各種通知をメールでも受け取れます。@cardanoism.com からのメールを受信許可してください。",
     "save": "保存",
     "saved": "保存しました",
     "language": "言語",
@@ -2559,15 +2560,15 @@ UI_EN: dict[str, str] = {
 
     "doc_s1_p1":          "Cardanoism is a Japanese-language portal for managing Cardano staking and governance in one place. From picking delegates to tracking delegation, browsing governance proposals, and voting — all in one site.",
     "doc_s1_p2":          "Unlike custodial services, Cardanoism never holds your ADA. Staking happens on-chain; Cardanoism only displays and notifies.",
-    "doc_s1_hint":        "All you need to create an account is a LINE / Google sign-in. No Web3 wallet, no separate password required.",
+    "doc_s1_hint":        "All you need to create an account is a LINE / Google / X sign-in. No Web3 wallet, no separate password required.",
 
     "doc_s2_intro":       "Getting started takes three steps and about five minutes.",
-    "doc_s2_1_p":         "Click \"Login\" in the top nav and sign in with LINE or Google. LINE automatically connects the notification channel; Google auto-registers your email for email notifications.",
-    "doc_s2_2_p":         "After signing in, go to the \"Address\" tab on My Page and register a Cardano receive address (addr1…). With a supported browser wallet, you can grab one in a single click via \"Wallet Connect\". Up to 3 addresses, each with independent notification settings.",
+    "doc_s2_1_p":         "Click \"Login\" in the top nav and sign in with LINE / Google / X. LINE automatically connects the notification channel; Google auto-registers your email for email notifications.",
+    "doc_s2_2_p":         "After signing in, go to the \"Address\" tab on My Page and register a Cardano receive address (addr1…). With a supported browser wallet, you can grab one in a single click via \"Wallet Connect\". Multiple addresses can be registered (limit depends on your plan), each with independent notification settings.",
     "doc_s2_2_tip":       "No wallet? Just paste addr1… manually. It's read-only — no signature needed.",
     "doc_s2_3_p":         "\"Verify\" is optional but recommended. Once verified, a \"Verified\" badge appears and you can send delegation tx to SPOs / DReps directly from Cardanoism. Verification is a CIP-30 signature — your wallet extension pops up once for a single signature.",
 
-    "doc_s3_p1":          "The dashboard on My Page (`/mypage`) is your control center — every address you registered, all in one screen, no tabs:",
+    "doc_s3_p1":          "The dashboard on My Page is your control center — every address you registered, all in one screen, no tabs:",
     "doc_s3_b1":          "Per-address current SPO / DRep delegation with tenure badge",
     "doc_s3_b2":          "Favorites list (SPOs / DReps / governance proposals / Catalyst)",
     "doc_s3_b3":          "Recent votes by your delegated DRep (with Japanese-translated rationale)",
@@ -2584,13 +2585,13 @@ UI_EN: dict[str, str] = {
     "doc_s4_3_p":         "5 governance event types.",
 
     "doc_s5_p1":          "Cardano launched full on-chain governance with the Conway era. Cardanoism supports you from proposal browsing through vote tracking, all in Japanese with AI assistance.",
-    "doc_s5_1_p":         "The Governance page (`/governance`) lets you browse all Active / Ratified / Enacted proposals. Proposal bodies (CIP-100 / CIP-108 metadata) are typically in English, with Japanese AI translations included.",
+    "doc_s5_1_p":         "The Governance page lets you browse all Active / Ratified / Enacted proposals. Proposal bodies (CIP-100 / CIP-108 metadata) are typically in English, with Japanese AI translations included.",
     "doc_s5_2_p":         "Each proposal gets an AI-generated summary. It neutrally extracts key parameters, target scope, and impact — never decides for you. Judgment stays with the user.",
     "doc_s5_2_warning":   "TreasuryWithdrawals proposals also get a computed NCL (Net Change Limit) check.",
     "doc_s5_3_p":         "Every proposal shows live DRep / SPO / Constitutional Committee tallies. Threshold progress is visualized as bars.",
 
     "doc_s6_p1":          "Cardanoism detects 5 CIP-30 browser wallets (Eternl / Lace / Yoroi / Typhon / VESPR) and lets you send SPO / DRep delegation tx without leaving the site.",
-    "doc_s6_p2":          "Flow: pick a candidate from the SPO list (`/staking/spo`) or DRep list (`/governance/drep`), click \"Delegate\". Your wallet extension pops up with the tx; sign, and your delegation is confirmed on-chain seconds later.",
+    "doc_s6_p2":          "Flow: pick a candidate from the SPO list or DRep list, click \"Delegate\". Your wallet extension pops up with the tx; sign, and your delegation is confirmed on-chain seconds later.",
     "doc_s6_hint":        "For unverified addresses, the \"Delegate\" button instead opens a \"Wallet verification required\" dialog.",
 
     "doc_s7_p1":          "Cardanoism provides dedicated pages for deep-dive exploration of staking and governance data.",
@@ -3042,6 +3043,7 @@ UI_EN: dict[str, str] = {
     # Profile tab
     "display_name": "Display Name",
     "email_address": "Email Address",
+    "email_register_hint": "Register your email to also receive notifications by email. Please allow emails from @cardanoism.com.",
     "save": "Save",
     "saved": "Saved",
     "language": "Language",

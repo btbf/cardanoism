@@ -519,6 +519,12 @@ def profile_tab() -> rx.Component:
                 ),
                 rx.box(),
             ),
+            rx.text(
+                AuthState.t["email_register_hint"],
+                size="3",
+                color="var(--gray-11)",
+                style={"lineHeight": "1.7", "marginTop": "4px"},
+            ),
             spacing="1",
             width="100%",
             align_items="start",

@@ -306,8 +306,6 @@ EU 加盟国・英国・スイス・アイスランド・ノルウェー・リ�
 本ポリシーに関するお問い合わせ、保有個人データの開示等のご請求、苦情のお申出は以下までご連絡ください。
 
 - 事業者名: 株式会社クヒト
-- 代表者: 加賀谷 侑
-- 所在地: 神奈川県横浜市西区北幸二丁目10番48号 むつみビル3階
 - メール: contact@kuhito.co.jp
 """
 
@@ -600,8 +598,6 @@ This Policy is governed by and construed in accordance with the laws of Japan. T
 For inquiries regarding this Policy, requests concerning retained personal data, or to file complaints, please contact us at:
 
 - Company: Kuhito Co., Ltd.
-- Representative: Yu Kagaya
-- Address: Mutsumi Building 3F, 2-10-48 Kitasaiwai, Nishi-ku, Yokohama, Kanagawa, Japan
 - Email: contact@kuhito.co.jp
 """
 
