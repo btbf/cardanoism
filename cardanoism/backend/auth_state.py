@@ -172,6 +172,7 @@ class AuthState(rx.State):
 
     # 認証プロバイダ（どのSNSでログインしているか）
     auth_providers: list[str] = []  # ["line", "google", "twitter"]
+    external_uuid: str = ""         # users.external_uuid (フィードバックフォーム / サポートチケット等の外部識別子)
 
     # 通知チャンネル
     line_notify_channel: str = ""    # LINE通知送信先 (LINE user ID)
@@ -456,6 +457,7 @@ class AuthState(rx.State):
         self.username = user["username"]
         self.avatar_url = user.get("avatar_url") or ""
         self.email = user.get("email") or ""
+        self.external_uuid = user.get("external_uuid") or ""
         self.notification_frequency = user.get("notification_frequency") or "instant"
         self.language = user.get("language") or "ja"
         self.is_logged_in = True
@@ -920,6 +922,7 @@ class AuthState(rx.State):
         self.avatar_url = ""
         self.email = ""
         self.auth_providers = []
+        self.external_uuid = ""
         self.line_notify_channel = ""
         self.email_notify_channel = ""
         self.telegram_chat_id = ""

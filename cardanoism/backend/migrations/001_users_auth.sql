@@ -10,11 +10,15 @@
 -- ユーザー基本情報
 -- 認証 ID（line_id / google_id 等）は user_providers に正規化済み。
 -- 通知チャンネル（メール・LINE・Telegram）は notification_channels に正規化済み。
+-- external_uuid: 外部システム（フィードバックフォーム / サポートチケット等）で
+--                ユーザーを識別するための、OAuth アイデンティティと切り離された UUID v4。
+--                認証用ではなく、識別子としてのみ使用する。
 CREATE TABLE IF NOT EXISTS users (
     id                     INT          AUTO_INCREMENT PRIMARY KEY,
     username               VARCHAR(255) NOT NULL,
     email                  VARCHAR(255) DEFAULT NULL,
     avatar_url             TEXT         DEFAULT NULL,
+    external_uuid          CHAR(36)     DEFAULT NULL UNIQUE,
     notification_frequency ENUM('instant', 'daily') DEFAULT 'instant',
     language               ENUM('ja', 'en')          NOT NULL DEFAULT 'ja',
     created_at             DATETIME     DEFAULT CURRENT_TIMESTAMP,

@@ -1,19 +1,15 @@
 """feedback.py
 ベータ期間中のフィードバック収集ページ (/feedback)
 
-Google Form への誘導が役割。ログイン必須にし、user_id と username を
-prefill 用クエリパラメータに乗せて Google Form を新タブで開く。
+Google Form への誘導が役割。ログイン必須にし、ユーザーの external_uuid を
+prefill 用クエリパラメータ (UUID フィールド) に乗せて Google Form を新タブ
+で開く。フォーム URL は表示言語 (JA / EN) で切替。
 
-環境変数:
-  FEEDBACK_FORM_URL              : Google Form の viewform URL
-  FEEDBACK_FORM_USER_ID_ENTRY    : 例 entry.123456 (user_id を埋める短答 ID)
-  FEEDBACK_FORM_USERNAME_ENTRY   : 例 entry.789012 (username を埋める短答 ID)
-
-未設定の場合はセットアップ案内を表示する。
+external_uuid は users テーブルに保存される UUID v4 で、OAuth アイデンティティ
+(LINE userId / Google sub 等) と切り離された外部識別子。フォーム回答から
+DB の user を逆引きする際に使う。
 """
 from __future__ import annotations
-
-import os
 
 import reflex as rx
 
@@ -21,10 +17,10 @@ from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
 
 
-FORM_URL = os.getenv("FEEDBACK_FORM_URL", "").strip()
-USER_ID_ENTRY = os.getenv("FEEDBACK_FORM_USER_ID_ENTRY", "").strip()
-USERNAME_ENTRY = os.getenv("FEEDBACK_FORM_USERNAME_ENTRY", "").strip()
-FORM_CONFIGURED = bool(FORM_URL and USER_ID_ENTRY)
+# Google Form (本番リリース版)。両フォームとも UUID フィールドの entry ID は共通。
+FORM_URL_JA = "https://docs.google.com/forms/d/e/1FAIpQLScEXjBgTV1cPWBHoRd_vAFPfYTfrEBWhySGGETeX2vjJkDU0Q/viewform"
+FORM_URL_EN = "https://docs.google.com/forms/d/e/1FAIpQLSej7Y4J7bk-h_bxlQIpysW3zuz5G6dWMf44lz4hNViiyVZu2Q/viewform"
+UUID_ENTRY  = "entry.2123253329"
 
 
 ACCENT = "#ffcf00"
@@ -33,11 +29,11 @@ TEXT_MUTED = "var(--gray-10)"
 
 
 def _prefilled_url():
-    """ログイン中ユーザの user_id / username を prefill した Google Form URL を生成。"""
-    base = FORM_URL + "?" + USER_ID_ENTRY + "=" + AuthState.user_id.to(str)
-    if USERNAME_ENTRY:
-        base = base + "&" + USERNAME_ENTRY + "=" + AuthState.username
-    return base
+    """ログイン中ユーザの external_uuid を UUID フィールドに prefill した Google Form URL を生成。
+    AuthState.language に応じて JA / EN のフォームを使い分ける。
+    """
+    base = rx.cond(AuthState.language == "en", FORM_URL_EN, FORM_URL_JA)
+    return base + "?usp=pp_url&" + UUID_ENTRY + "=" + AuthState.external_uuid
 
 
 def _hero() -> rx.Component:
@@ -167,26 +163,13 @@ def _login_prompt() -> rx.Component:
     )
 
 
-def _not_configured() -> rx.Component:
-    """環境変数未設定時のフォールバック表示。"""
-    return rx.callout(
-        AuthState.t["feedback_not_configured"],
-        icon="triangle_alert",
-        color_scheme="amber",
-        width="100%",
-    )
-
-
 @template(route="/feedback", title="フィードバック | Cardanoism")
 def feedback_page() -> rx.Component:
-    if not FORM_CONFIGURED:
-        body = _not_configured()
-    else:
-        body = rx.cond(
-            AuthState.is_logged_in,
-            _logged_in_cta(),
-            _login_prompt(),
-        )
+    body = rx.cond(
+        AuthState.is_logged_in,
+        _logged_in_cta(),
+        _login_prompt(),
+    )
 
     return rx.box(
         rx.vstack(

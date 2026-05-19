@@ -5,6 +5,7 @@ auth_db.py
 """
 import secrets
 import logging
+import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -56,7 +57,7 @@ STAKE_NOTIFICATION_EVENT_TYPES = list(dict.fromkeys(
     + DREP_ONLY_NOTIFICATION_EVENT_TYPES
 ))
 
-_USER_SELECT = "SELECT id, username, email, avatar_url, notification_frequency, language FROM users"
+_USER_SELECT = "SELECT id, username, email, avatar_url, external_uuid, notification_frequency, language FROM users"
 
 # ============================================================
 # ユーザー基本操作
@@ -84,10 +85,12 @@ def update_user_profile(
 
 
 def _create_user(cursor, conn, username: str, avatar_url: str, email: str) -> int:
-    """users テーブルに新規ユーザーを作成して user_id を返す内部ヘルパー。"""
+    """users テーブルに新規ユーザーを作成して user_id を返す内部ヘルパー。
+    external_uuid (UUID v4) を同時に発行する。
+    """
     cursor.execute(
-        "INSERT INTO users (username, email, avatar_url) VALUES (?, ?, ?)",
-        (username, email or None, avatar_url or None),
+        "INSERT INTO users (username, email, avatar_url, external_uuid) VALUES (?, ?, ?, ?)",
+        (username, email or None, avatar_url or None, str(uuid.uuid4())),
     )
     conn.commit()
     user_id = cursor.lastrowid
