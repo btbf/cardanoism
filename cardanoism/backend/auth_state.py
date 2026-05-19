@@ -409,6 +409,7 @@ class AuthState(rx.State):
             self.username = user["username"]
             self.avatar_url = user.get("avatar_url") or ""
             self.email = user.get("email") or ""
+            self.external_uuid = user.get("external_uuid") or ""
             self.notification_frequency = user.get("notification_frequency") or "instant"
             self.language = user.get("language") or "ja"
             self.is_logged_in = True

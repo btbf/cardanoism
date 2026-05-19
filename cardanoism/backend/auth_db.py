@@ -789,8 +789,14 @@ def consume_telegram_token(token: str) -> Optional[int]:
         )
         row = cursor.fetchone()
         if not row:
+            logger.warning("telegram token not found in DB: prefix=%s", token[:8])
             return None
-        if datetime.utcnow() > row["expires_at"]:
+        now = datetime.utcnow()
+        if now > row["expires_at"]:
+            logger.warning(
+                "telegram token expired: prefix=%s now=%s expires_at=%s",
+                token[:8], now.isoformat(), row["expires_at"],
+            )
             cursor.execute("DELETE FROM telegram_connect_tokens WHERE token = ?", (token,))
             conn.commit()
             return None

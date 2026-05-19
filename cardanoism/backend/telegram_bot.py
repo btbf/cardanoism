@@ -51,13 +51,23 @@ async def telegram_webhook(request: Request):
     token = parts[1] if len(parts) > 1 else ""
 
     if not token:
+        logger.info("telegram /start with no token from chat_id=%s", chat_id)
         send_telegram(chat_id, "Cardanoism のマイページから連携を開始してください。\n\n<a href='" + CARDANOISM_URL + "/mypage?tab=notification'>マイページを開く</a>")
         return Response(status_code=200)
 
+    logger.info(
+        "telegram /start with token chat_id=%s token_prefix=%s len=%d",
+        chat_id, token[:8], len(token),
+    )
     user_id = consume_telegram_token(token)
     if user_id is None:
+        logger.warning(
+            "telegram token rejected (not found / expired): chat_id=%s token_prefix=%s",
+            chat_id, token[:8],
+        )
         send_telegram(chat_id, "⚠️ 連携リンクが無効または期限切れです。\nマイページから再度連携を開始してください。")
         return Response(status_code=200)
+    logger.info("telegram token accepted: chat_id=%s user_id=%s", chat_id, user_id)
 
     try:
         upsert_notification_channel(user_id, "telegram", chat_id)

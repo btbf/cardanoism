@@ -120,6 +120,24 @@ h1, h2, h3, h4, h5, h6 {{ font-family: {styles.font_family}; }}
 .cdn-mini-block {{
   animation: cdn_block_drop 0.9s ease-out;
 }}
+
+/* スマホ mock スクリーンショット 3 枚クロスフェード (9s で 1 ループ、各 3s 表示) */
+@keyframes cdn_slide_fade_3 {{
+  0%, 100%       {{ opacity: 0; }}
+  5.55%, 33.33%  {{ opacity: 1; }}
+  38.88%         {{ opacity: 0; }}
+}}
+.cdn-slide-img {{
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  opacity: 0;
+  animation: cdn_slide_fade_3 9s ease-in-out infinite;
+}}
+.cdn-slide-img-1 {{ animation-delay: -0.5s; }}
+.cdn-slide-img-2 {{ animation-delay: 2.5s; }}
+.cdn-slide-img-3 {{ animation-delay: 5.5s; }}
 </style>
 """
 
@@ -206,9 +224,36 @@ def _line_msg_bubble(title_key: str, body_key: str, time_key: str) -> rx.Compone
     )
 
 
+def _line_phone_screenshots() -> rx.Component:
+    """JA 用: assets/moc/line_*.jpg を 3 秒間隔でクロスフェード表示。
+
+    アニメーションは HOME_CSS の cdn_slide_fade_3 keyframes に集約。
+    各画像は cdn-slide-img-{1,2,3} クラスで delay が異なる。
+    """
+    images = [
+        "/moc/line_Screenshot_staking.jpg",
+        "/moc/line_Screenshot_drepvote.jpg",
+        "/moc/line_Screenshot_drepremind.jpg",
+    ]
+    return rx.box(
+        *[
+            rx.image(
+                src=src,
+                alt="Cardanoism LINE notification",
+                class_name=f"cdn-slide-img cdn-slide-img-{i + 1}",
+            )
+            for i, src in enumerate(images)
+        ],
+        position="relative",
+        width="100%",
+        height="100%",
+        background="black",
+    )
+
+
 def _line_phone_mock() -> rx.Component:
     """LINE 公式アカウントの通知画面を模したスマホ mock。"""
-    screen = rx.vstack(
+    chat_mock = rx.vstack(
         # ── ステータスバー（時刻 / 電波 / バッテリー）
         rx.hstack(
             rx.text("9:41", size="1", weight="bold", color="#000",
@@ -291,6 +336,13 @@ def _line_phone_mock() -> rx.Component:
         align_items="stretch",
     )
 
+    # JA: 実機 LINE のスクリーンショットを 3 秒間隔フェードで表示
+    # EN: 既存の chat 風 mock を維持 (画像が JA 仕様なので)
+    screen = rx.cond(
+        AuthState.language == "en",
+        chat_mock,
+        _line_phone_screenshots(),
+    )
     return rx.box(
         # 内側の画面（ベゼルのパディングで囲む）
         rx.box(
@@ -298,26 +350,28 @@ def _line_phone_mock() -> rx.Component:
             position="relative",
             width="100%",
             height="100%",
-            border_radius="34px",
+            border_radius="22px",
             overflow="hidden",
             background="white",
         ),
-        # ノッチ（カメラ + スピーカー）
+        # パンチホール（前面カメラ）
         rx.box(
-            width="86px",
-            height="22px",
-            border_radius="0 0 14px 14px",
+            width="10px",
+            height="10px",
+            border_radius="50%",
             background="#0a0a0a",
             position="absolute",
-            top="6px",
+            top="14px",
             left="50%",
             style={"transform": "translateX(-50%)",
-                   "zIndex": "10"},
+                   "zIndex": "10",
+                   "boxShadow": "inset 0 0 0 1px rgba(255,255,255,0.08)"},
         ),
         position="relative",
-        width="270px",
+        # 内側 528px 高さ × 画像アスペクト (1172/2748) ≒ 225.2px 幅 → 外形 238×540
+        width="238px",
         height="540px",
-        border_radius="40px",
+        border_radius="28px",
         background="linear-gradient(145deg, #1a1a1a 0%, #2c2c30 100%)",
         padding="6px",
         box_shadow=("0 32px 80px -22px rgba(0,0,0,0.45), "
