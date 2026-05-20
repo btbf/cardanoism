@@ -7,8 +7,9 @@
   - これにより MeshSDK / Lucid 等のフロントエンド側 WASM/Vite 問題を完全に回避
 
 Chain context:
-  - Ogmios v6 (109.123.231.103:1337, mainnet) を使用
-  - 環境変数 OGMIOS_URL / OGMIOS_HOST / OGMIOS_PORT で上書き可能
+  - Ogmios v6 を使用
+  - 接続先は環境変数 OGMIOS_URL (例: ws://HOST:1337) のみで指定
+    (未設定なら get_chain_context が RuntimeError を送出。ハードコードはしない)
   - 必要なら BlockFrost / Koios チェーンコンテキストにも切替可能
 
 提供する API:
@@ -28,6 +29,7 @@ from __future__ import annotations
 import logging
 import os
 from typing import Optional
+from urllib.parse import urlparse
 
 from pycardano import (
     Address,
@@ -66,14 +68,30 @@ def _get_network() -> Network:
 
 
 def get_chain_context() -> OgmiosV6ChainContext:
-    """Ogmios chain context を返す (singleton)。"""
+    """Ogmios chain context を返す (singleton)。
+
+    接続先は環境変数 OGMIOS_URL (例: ws://host:1337 / wss://host:443) のみで決まる。
+    プロジェクトの他モジュール (ogmios_listener.py 等) と同じ変数に統一。
+    未設定 / 形式不正なら RuntimeError を送出する (デフォルト値・ハードコードは持たない)。
+    """
     global _chain_context
     if _chain_context is not None:
         return _chain_context
 
-    host = os.environ.get("OGMIOS_HOST", "109.123.231.103")
-    port = int(os.environ.get("OGMIOS_PORT", "1337"))
-    secure = os.environ.get("OGMIOS_SECURE", "0") == "1"
+    ogmios_url = os.environ.get("OGMIOS_URL", "").strip()
+    if not ogmios_url:
+        raise RuntimeError(
+            "OGMIOS_URL が未設定です。環境変数 OGMIOS_URL (例: ws://HOST:1337) を設定してください。"
+        )
+
+    parsed = urlparse(ogmios_url)
+    host = parsed.hostname
+    port = parsed.port
+    secure = parsed.scheme in ("wss", "https")
+    if not host or not port:
+        raise RuntimeError(
+            f"OGMIOS_URL の形式が不正です: {ogmios_url!r} (例: ws://HOST:1337)"
+        )
     network = _get_network()
 
     logger.info(
