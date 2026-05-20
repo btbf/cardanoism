@@ -440,7 +440,10 @@ def get_stake_addrs_with_event(event_type: str) -> list[dict]:
 def refresh_stake_delegations():
     """全ステークアドレスの委任先（プール・DRep）を /account_info で一括リフレッシュしDBを更新する。
     1リクエストで全アドレスを処理し、変化があった行のみ UPDATE する。
+    委任先が変わった場合は delegated_pool_name / delegated_drep_name も再解決する。
     """
+    from cardanoism.backend.koios import get_pool_name, _fetch_drep_name
+
     with get_db() as (cursor, _):
         cursor.execute(
             "SELECT id, address, delegated_pool_id, delegated_drep_id FROM stake_addresses"
@@ -455,6 +458,32 @@ def refresh_stake_delegations():
     if not account_map:
         logger.warning("refresh_stake_delegations: /account_info の取得に失敗しました")
         return
+
+    # 同一 pool / drep への名前解決を 1 run 内で重複 Koios コールしないようメモ化
+    _pool_name_memo: dict[str, str] = {}
+    _drep_name_memo: dict[str, str] = {}
+
+    def _pool_name(pid: str | None) -> str | None:
+        if not pid:
+            return None
+        if pid not in _pool_name_memo:
+            try:
+                _pool_name_memo[pid] = get_pool_name(pid) or ""
+            except Exception as e:  # noqa: BLE001
+                logger.warning("pool 名解決失敗 %s: %s", pid, e)
+                _pool_name_memo[pid] = ""
+        return _pool_name_memo[pid] or None
+
+    def _drep_name(did: str | None) -> str | None:
+        if not did:
+            return None
+        if did not in _drep_name_memo:
+            try:
+                _drep_name_memo[did] = _fetch_drep_name(did) or ""
+            except Exception as e:  # noqa: BLE001
+                logger.warning("drep 名解決失敗 %s: %s", did, e)
+                _drep_name_memo[did] = ""
+        return _drep_name_memo[did] or None
 
     updated = 0
     for row in rows:
@@ -472,20 +501,26 @@ def refresh_stake_delegations():
         if new_pool_id == row["delegated_pool_id"] and new_drep_id == row["delegated_drep_id"]:
             continue  # 変化なし
 
+        # 委任先が変わったので名前も再解決する (旧名がダッシュボードに残る不具合の修正)
+        new_pool_name = _pool_name(new_pool_id)
+        new_drep_name = _drep_name(new_drep_id)
+
         with get_db() as (cursor, conn):
             cursor.execute(
                 """UPDATE stake_addresses
-                   SET delegated_pool_id = ?, delegated_drep_id = ?, role_checked_at = NOW()
+                   SET delegated_pool_id = ?, delegated_pool_name = ?,
+                       delegated_drep_id = ?, delegated_drep_name = ?,
+                       role_checked_at = NOW()
                    WHERE id = ?""",
-                (new_pool_id, new_drep_id, row["id"]),
+                (new_pool_id, new_pool_name, new_drep_id, new_drep_name, row["id"]),
             )
             conn.commit()
 
         logger.info(
-            "委任先更新: address_id=%d  pool %s→%s  drep %s→%s",
+            "委任先更新: address_id=%d  pool %s→%s (%s)  drep %s→%s (%s)",
             row["id"],
-            row["delegated_pool_id"], new_pool_id,
-            row["delegated_drep_id"], new_drep_id,
+            row["delegated_pool_id"], new_pool_id, new_pool_name,
+            row["delegated_drep_id"], new_drep_id, new_drep_name,
         )
         updated += 1
 
