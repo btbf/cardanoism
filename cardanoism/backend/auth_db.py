@@ -84,13 +84,17 @@ def update_user_profile(
         conn.commit()
 
 
-def _create_user(cursor, conn, username: str, avatar_url: str, email: str) -> int:
+def _create_user(cursor, conn, username: str, avatar_url: str, email: str,
+                 language: str = "ja") -> int:
     """users テーブルに新規ユーザーを作成して user_id を返す内部ヘルパー。
     external_uuid (UUID v4) を同時に発行する。
+    language はサインアップ時のブラウザ判定言語 ('ja' / 'en')。
     """
+    lang = language if language in ("ja", "en") else "ja"
     cursor.execute(
-        "INSERT INTO users (username, email, avatar_url, external_uuid) VALUES (?, ?, ?, ?)",
-        (username, email or None, avatar_url or None, str(uuid.uuid4())),
+        "INSERT INTO users (username, email, avatar_url, external_uuid, language) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (username, email or None, avatar_url or None, str(uuid.uuid4()), lang),
     )
     conn.commit()
     user_id = cursor.lastrowid
@@ -113,11 +117,13 @@ def get_or_create_user_by_provider(
     username: str,
     avatar_url: str = "",
     email: str = "",
+    language: str = "ja",
 ) -> dict:
     """
     provider/provider_id でユーザーを取得または新規作成する。
     LINE ログイン時は LINE 通知チャンネルも自動作成する。
     Google ログイン時はメール通知チャンネルも自動作成する。
+    language は新規作成時の users.language 初期値 (既存ユーザーには影響しない)。
     """
     with get_db() as (cursor, conn):
         # 既存プロバイダ検索
@@ -138,7 +144,7 @@ def get_or_create_user_by_provider(
             return existing
 
         # 新規ユーザー作成
-        user_id = _create_user(cursor, conn, username, avatar_url, email)
+        user_id = _create_user(cursor, conn, username, avatar_url, email, language)
 
         # プロバイダ紐付け
         cursor.execute(

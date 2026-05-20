@@ -73,43 +73,47 @@ _OAUTH_STATE_SECRET = (
 _OAUTH_STATE_TTL_SECONDS = 600  # 10 分以内のコールバックのみ受け付ける
 
 
-def _make_signed_state(provider: str, mode: str = "login") -> str:
-    """形式: provider.mode.timestamp.nonce.signature
+def _make_signed_state(provider: str, mode: str = "login", lang: str = "ja") -> str:
+    """形式: provider.mode.lang.timestamp.nonce.signature
 
     HMAC-SHA256 で署名するためサーバ State を持たずに検証可能。
+    lang はログインボタン押下時点のブラウザ判定言語。新規ユーザー作成時の
+    users.language 初期値に使う (OAuth コールバックは別ページロードで
+    ブラウザ言語判定が間に合わないため、state に持たせて引き継ぐ)。
     """
     timestamp = int(_time.time())
     nonce = secrets.token_urlsafe(8)
-    payload = f"{provider}.{mode}.{timestamp}.{nonce}"
+    lang = lang if lang in ("ja", "en") else "ja"
+    payload = f"{provider}.{mode}.{lang}.{timestamp}.{nonce}"
     sig = hmac.new(
         _OAUTH_STATE_SECRET.encode(), payload.encode(), hashlib.sha256
     ).hexdigest()[:16]
     return f"{payload}.{sig}"
 
 
-def _verify_signed_state(state: str, expected_provider: str) -> tuple[bool, str]:
-    """state を検証。戻り値: (valid, mode)。失敗時は (False, "")。"""
+def _verify_signed_state(state: str, expected_provider: str) -> tuple[bool, str, str]:
+    """state を検証。戻り値: (valid, mode, lang)。失敗時は (False, "", "")。"""
     if not state:
-        return False, ""
+        return False, "", ""
     parts = state.split(".")
-    if len(parts) != 5:
-        return False, ""
-    provider, mode, ts_str, nonce, sig = parts
+    if len(parts) != 6:
+        return False, "", ""
+    provider, mode, lang, ts_str, nonce, sig = parts
     if provider != expected_provider:
-        return False, ""
+        return False, "", ""
     try:
         ts = int(ts_str)
     except ValueError:
-        return False, ""
+        return False, "", ""
     if int(_time.time()) - ts > _OAUTH_STATE_TTL_SECONDS:
-        return False, ""
-    payload = f"{provider}.{mode}.{ts}.{nonce}"
+        return False, "", ""
+    payload = f"{provider}.{mode}.{lang}.{ts}.{nonce}"
     expected_sig = hmac.new(
         _OAUTH_STATE_SECRET.encode(), payload.encode(), hashlib.sha256
     ).hexdigest()[:16]
     if not hmac.compare_digest(sig, expected_sig):
-        return False, ""
-    return True, mode
+        return False, "", ""
+    return True, mode, lang
 
 
 def _derive_twitter_verifier_from_nonce(nonce: str) -> str:
@@ -126,14 +130,16 @@ def _derive_twitter_verifier_from_nonce(nonce: str) -> str:
     return base64.urlsafe_b64encode(seed).rstrip(b"=").decode()  # 43 chars (RFC 7636)
 
 
-def _make_twitter_state_and_verifier() -> tuple[str, str]:
+def _make_twitter_state_and_verifier(lang: str = "ja") -> tuple[str, str]:
     """Twitter login 開始時の (state, code_verifier) を生成。
 
     state は signed state (provider=twitter)、verifier は nonce から派生。
+    lang はブラウザ判定言語 (新規ユーザーの初期言語に使う)。
     """
     timestamp = int(_time.time())
     nonce = secrets.token_urlsafe(16)
-    payload = f"twitter.login.{timestamp}.{nonce}"
+    lang = lang if lang in ("ja", "en") else "ja"
+    payload = f"twitter.login.{lang}.{timestamp}.{nonce}"
     sig = hmac.new(
         _OAUTH_STATE_SECRET.encode(), payload.encode(), hashlib.sha256
     ).hexdigest()[:16]
@@ -142,19 +148,19 @@ def _make_twitter_state_and_verifier() -> tuple[str, str]:
     return state, verifier
 
 
-def _verify_twitter_state(state: str) -> tuple[bool, str]:
+def _verify_twitter_state(state: str) -> tuple[bool, str, str]:
     """state を検証し、対応する code_verifier を返す。
 
-    戻り値: (valid, code_verifier)。失敗時は (False, "")。
+    戻り値: (valid, code_verifier, lang)。失敗時は (False, "", "")。
     """
-    valid, _mode = _verify_signed_state(state, "twitter")
+    valid, _mode, lang = _verify_signed_state(state, "twitter")
     if not valid:
-        return False, ""
+        return False, "", ""
     parts = state.split(".")
-    if len(parts) != 5:
-        return False, ""
-    nonce = parts[3]
-    return True, _derive_twitter_verifier_from_nonce(nonce)
+    if len(parts) != 6:
+        return False, "", ""
+    nonce = parts[4]  # provider.mode.lang.ts.nonce.sig
+    return True, _derive_twitter_verifier_from_nonce(nonce), lang
 
 
 class AuthState(rx.State):
@@ -505,7 +511,7 @@ class AuthState(rx.State):
 
     def start_line_login(self):
         """LINE認証ページへリダイレクトする。"""
-        state_param = _make_signed_state("line", "login")
+        state_param = _make_signed_state("line", "login", self.language)
 
         auth_url = (
             "https://access.line.me/oauth2/v2.1/authorize"
@@ -524,7 +530,7 @@ class AuthState(rx.State):
         if not self.is_logged_in:
             self.show_login_modal = True
             return
-        state_param = _make_signed_state("line", "connect")
+        state_param = _make_signed_state("line", "connect", self.language)
 
         auth_url = (
             "https://access.line.me/oauth2/v2.1/authorize"
@@ -553,7 +559,7 @@ class AuthState(rx.State):
             return rx.redirect("/login?error=line_denied")
 
         # HMAC 署名 state を検証 (Reflex State 不要なので WebView 切替でも壊れない)
-        valid, oauth_mode = _verify_signed_state(state, "line")
+        valid, oauth_mode, oauth_lang = _verify_signed_state(state, "line")
         if not valid:
             logger.warning("LINE OAuth state invalid (HMAC mismatch or expired): %s", state[:24])
             # mode 不明なので login 側にリダイレクト（connect 失敗もほぼここ）
@@ -630,7 +636,9 @@ class AuthState(rx.State):
 
         # ── login モード: ユーザー取得 or 作成 ──
         try:
-            user = get_or_create_user_by_provider("line", line_id, display_name, picture_url)
+            user = get_or_create_user_by_provider(
+                "line", line_id, display_name, picture_url, language=oauth_lang,
+            )
         except Exception as e:
             logger.error("DB error: %s", e)
             return rx.redirect("/login?error=db_error")
@@ -695,7 +703,7 @@ class AuthState(rx.State):
 
     def start_google_login(self):
         """Google認証ページへリダイレクトする。"""
-        state_param = _make_signed_state("google", "login")
+        state_param = _make_signed_state("google", "login", self.language)
 
         auth_url = (
             "https://accounts.google.com/o/oauth2/v2/auth"
@@ -722,7 +730,7 @@ class AuthState(rx.State):
         if error:
             return rx.redirect("/login?error=google_denied")
 
-        valid, _mode = _verify_signed_state(state, "google")
+        valid, _mode, oauth_lang = _verify_signed_state(state, "google")
         if not valid:
             logger.warning("Google OAuth state invalid (HMAC mismatch or expired): %s", state[:24])
             return rx.redirect("/login?error=state_mismatch")
@@ -773,7 +781,9 @@ class AuthState(rx.State):
             return rx.redirect("/login?error=no_user_id")
 
         try:
-            user = get_or_create_user_by_provider("google", google_id, display_name, picture_url, email)
+            user = get_or_create_user_by_provider(
+                "google", google_id, display_name, picture_url, email, language=oauth_lang,
+            )
         except Exception as e:
             logger.error("DB error: %s", e)
             return rx.redirect("/login?error=db_error")
@@ -797,7 +807,7 @@ class AuthState(rx.State):
         state と code_verifier を HMAC で導出するため、Reflex State に
         頼らず (= モバイル WebView 切替に耐える) PKCE が成立する。
         """
-        state, code_verifier = _make_twitter_state_and_verifier()
+        state, code_verifier = _make_twitter_state_and_verifier(self.language)
         code_challenge = base64.urlsafe_b64encode(
             hashlib.sha256(code_verifier.encode()).digest()
         ).rstrip(b"=").decode()
@@ -829,7 +839,7 @@ class AuthState(rx.State):
         if error:
             return rx.redirect("/login?error=twitter_denied")
 
-        valid, code_verifier = _verify_twitter_state(state)
+        valid, code_verifier, oauth_lang = _verify_twitter_state(state)
         if not valid:
             logger.warning("Twitter OAuth state invalid (HMAC mismatch or expired): %s", state[:24])
             return rx.redirect("/login?error=state_mismatch")
@@ -886,7 +896,9 @@ class AuthState(rx.State):
             return rx.redirect("/login?error=no_user_id")
 
         try:
-            user = get_or_create_user_by_provider("twitter", twitter_id, display_name, picture_url)
+            user = get_or_create_user_by_provider(
+                "twitter", twitter_id, display_name, picture_url, language=oauth_lang,
+            )
         except Exception as e:
             logger.error("DB error: %s", e)
             return rx.redirect("/login?error=db_error")

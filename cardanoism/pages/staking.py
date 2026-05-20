@@ -38,6 +38,26 @@ MAX_BLOCK_TOTAL_SIZE_BYTES = 91_212
 logger = logging.getLogger(__name__)
 
 
+def _is_client_connected(client_token: str) -> bool:
+    """client_token のクライアントがまだ WebSocket 接続中かを返す。
+
+    バックグラウンドポーリングの終了判定に使う。Reflex の EventNamespace は
+    接続中クライアントを token_to_sid に保持しており、切断時に削除される。
+    判定不能なとき (内部 API 差異・Redis 構成等) は True を返し、誤ってループを
+    止めないようにする。
+    """
+    if not client_token:
+        return True
+    try:
+        from reflex.utils.prerequisites import get_app
+        ns = get_app().app.event_namespace
+        if ns is None:
+            return True
+        return client_token in ns.token_to_sid
+    except Exception:
+        return True
+
+
 # ─── State ────────────────────────────────────────────────────────────────────
 
 
@@ -474,10 +494,18 @@ class StakingDashboardState(rx.State):
             if self.polling:
                 return
             self.polling = True
+            client_token = self.router.session.client_token
         try:
             while True:
                 try:
                     await asyncio.sleep(1)
+                    # クライアント切断検知: ブラウザを閉じる / 別ページへ移動すると
+                    # WebSocket が切れる。これを検知せず while True を回し続けると
+                    # 「disconnected client」警告 + DB/Koios を叩き続けるリソース
+                    # リークになる。切断していたらループを終了する。
+                    if not _is_client_connected(client_token):
+                        logger.info("start_live_polling: クライアント切断を検知、ポーリング停止")
+                        break
                     async with self:
                         self._fetch_live_blocks()
                 except asyncio.CancelledError:

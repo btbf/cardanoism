@@ -12,9 +12,13 @@ Ogmios listener から呼ばれる委任 cert の DB 直書きハンドラ (Phas
 書き込み: stake_addresses テーブルの該当ユーザー行のみ (address カラム一致時)。
 listener は無関係チェーンの委任を DB に流し込まない (= ユーザー所有データに限定)。
 
+delegated_pool_name / delegated_drep_name は cert に含まれないが、ユーザー登録
+アドレスが委任したときだけ Koios で名前を即解決して埋める (ダッシュボードに
+旧名が残らないようにするため)。名前解決は affected 行があったときのみ実行する
+ので、無関係チェーンの委任で Koios を叩くことはない。
+
 非対象 (Koios sync 担当):
   - role / role_checked_at の正確な確定 (DRep / abstain / delegator) は detect_stake_role が後追い
-  - delegated_pool_name / delegated_drep_name (この cert からは取れないので Koios sync で埋める)
 """
 from __future__ import annotations
 
@@ -92,6 +96,26 @@ def _resolve_drep_target(drep_obj: Any) -> str | _NoChange | None:
     return drep_id
 
 
+def _resolve_pool_name(pool_id: str) -> str:
+    """pool_id (bech32) からプール名を Koios で解決。失敗時は空文字。"""
+    try:
+        from cardanoism.backend.koios import get_pool_name
+        return get_pool_name(pool_id) or ""
+    except Exception as e:  # noqa: BLE001
+        logger.warning("listener: pool 名解決失敗 %s: %s", pool_id, e)
+        return ""
+
+
+def _resolve_drep_name(drep_id: str) -> str:
+    """drep_id (bech32) から DRep 名を Koios で解決。失敗時は空文字。"""
+    try:
+        from cardanoism.backend.koios import _fetch_drep_name
+        return _fetch_drep_name(drep_id) or ""
+    except Exception as e:  # noqa: BLE001
+        logger.warning("listener: drep 名解決失敗 %s: %s", drep_id, e)
+        return ""
+
+
 def _update_stake_delegation(
     stake_addr: str,
     *,
@@ -104,7 +128,10 @@ def _update_stake_delegation(
     pool_id / drep_id のうち _NO_CHANGE は触らない。
     None を渡すと NULL に設定される (Always Abstain 等の特殊値)。
 
-    戻り値: 影響行数 > 0 (= ユーザー登録済みアドレスだった) なら True。
+    影響行があった (= ユーザー登録済みアドレス) 場合は、続けて
+    delegated_pool_name / delegated_drep_name も Koios で解決して更新する。
+
+    戻り値: 影響行数 > 0 なら True。
     """
     sets = ["last_event_slot = ?", "role_checked_at = NOW()"]
     params: list = [int(slot)]
@@ -123,7 +150,34 @@ def _update_stake_delegation(
         )
         affected = cursor.rowcount or 0
         conn.commit()
-    return affected > 0
+
+    if affected <= 0:
+        return False
+
+    # ユーザー登録アドレスだったので名前も即時解決して更新する。
+    # (cert に名前は含まれないため Koios で引く。委任イベントは稀なのでコスト許容)
+    name_sets: list[str] = []
+    name_params: list = []
+    if pool_id is not _NO_CHANGE and pool_id:
+        name_sets.append("delegated_pool_name = ?")
+        name_params.append(_resolve_pool_name(pool_id) or None)
+    if drep_id is not _NO_CHANGE:
+        name_sets.append("delegated_drep_name = ?")
+        # drep_id が None (Always Abstain 等) なら名前も NULL
+        name_params.append(_resolve_drep_name(drep_id) or None if drep_id else None)
+    if name_sets:
+        name_params.append(stake_addr)
+        try:
+            with get_db() as (cursor, conn):
+                cursor.execute(
+                    f"UPDATE stake_addresses SET {', '.join(name_sets)} WHERE address = ?",
+                    name_params,
+                )
+                conn.commit()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("listener: 委任先名の更新失敗 stake=%s: %s", stake_addr[:30], e)
+
+    return True
 
 
 # ─── Cert ハンドラ ─────────────────────────────────────────
