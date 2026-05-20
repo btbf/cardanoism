@@ -1009,8 +1009,13 @@ def _process_block(block: dict, prev_epoch: int) -> int:
         last_notified = get_state("global", None, "current_epoch")
         if last_notified != str(current_epoch):
             set_state("global", None, "current_epoch", str(current_epoch))
+            # epoch_start 通知は listener 初回起動時の境界 (last_notified is None) でも
+            # 必ず送る。dedup_base=f"epoch_{epoch}" で重複送信は防がれるため、
+            # catch-up replay で複数回呼ばれても二重送信にはならない。
+            _notify_epoch_start(current_epoch)
+            # pool_epoch_performance / *_sync は初回起動時はスキップ。
+            # (前エポックのデータが揃っていない / 起動直後に重い sync を走らせない)
             if last_notified is not None:
-                _notify_epoch_start(current_epoch)
                 try:
                     _notify_pool_epoch_performance(prev_epoch)
                 except Exception as e:

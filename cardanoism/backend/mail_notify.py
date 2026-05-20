@@ -15,7 +15,7 @@ import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.header import Header
-from email.utils import formatdate, make_msgid
+from email.utils import formatdate, make_msgid, formataddr
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,9 @@ def send_email(to: str, subject: str, html: str, text: str = "") -> bool:
         logger.warning("送信先アドレスが空のためスキップ")
         return False
 
-    mail_from = f"{MAIL_FROM_NAME} <{SMTP_USER}>"
+    # 表示名に日本語等の非 ASCII が含まれても formataddr が RFC 2047 で
+    # 適切にエンコードする (charset デフォルト utf-8)。
+    mail_from = formataddr((MAIL_FROM_NAME, SMTP_USER))
 
     try:
         msg = MIMEMultipart("alternative")
@@ -50,8 +52,6 @@ def send_email(to: str, subject: str, html: str, text: str = "") -> bool:
         # Gmail / Outlook は Date / Message-ID 不在のメールを silent drop することがある。
         msg["Date"]       = formatdate(localtime=True)
         msg["Message-ID"] = make_msgid(domain="cardanoism.com")
-        # Reply-To をユーザー対応用の窓口に設定。noreply 系の自動返信に返したい人を救う。
-        msg["Reply-To"]   = "contact@kuhito.co.jp"
 
         if text:
             msg.attach(MIMEText(text, "plain", "utf-8"))
