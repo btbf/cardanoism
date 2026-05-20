@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cardanoism — 近日公開</title>
+<meta name="description" content="Cardano のステーキング・ガバナンス・カタリストを 1 箇所で。変化を見逃さないリアルタイム通知。Cardanoism 近日公開。">
+
+<!-- OGP -->
+<meta property="og:title" content="Cardanoism — 近日公開">
+<meta property="og:description" content="Cardano のステーキング・ガバナンス・カタリストを 1 箇所で。変化を見逃さないリアルタイム通知。">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://cardanoism.com">
+<meta name="twitter:card" content="summary_large_image">
+
+<style>
+  :root {
+    --amber: #ffcf00;
+    --amber-deep: #ff9500;
+    --bg-0: #0b0c11;
+    --bg-1: #14110a;
+    --text: #f4f4f5;
+    --text-dim: rgba(244,244,245,0.66);
+    --text-faint: rgba(244,244,245,0.40);
+    --card: rgba(255,255,255,0.04);
+    --card-border: rgba(255,255,255,0.09);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans",
+                 "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif;
+    background: var(--bg-0);
+    color: var(--text);
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: inherit; }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  /* ── 背景の光彩 ───────────────────────────── */
+  .aurora {
+    position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0;
+  }
+  .aurora::before, .aurora::after {
+    content: ""; position: absolute; width: 620px; height: 620px;
+    border-radius: 50%; filter: blur(120px); opacity: 0.40;
+  }
+  .aurora::before {
+    top: -260px; right: -140px;
+    background: radial-gradient(circle, rgba(255,207,0,0.55) 0%, transparent 70%);
+  }
+  .aurora::after {
+    bottom: -300px; left: -180px;
+    background: radial-gradient(circle, rgba(255,149,0,0.34) 0%, transparent 70%);
+  }
+
+  .page { position: relative; z-index: 1; }
+
+  /* ── ヘッダー ─────────────────────────────── */
+  header {
+    padding: 22px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .header-inner {
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .logo {
+    font-weight: 800; font-size: 20px; letter-spacing: -0.01em;
+  }
+  .logo span { color: var(--amber); }
+  .badge {
+    font-size: 12px; font-weight: 700; letter-spacing: 0.14em;
+    padding: 6px 14px; border-radius: 999px;
+    color: var(--amber);
+    border: 1px solid rgba(255,207,0,0.34);
+    background: rgba(255,207,0,0.07);
+    white-space: nowrap;
+  }
+
+  /* ── ヒーロー ─────────────────────────────── */
+  .hero {
+    padding: 84px 0 56px;
+    display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 56px;
+    align-items: center;
+  }
+  .hero-kicker {
+    font-size: 13px; font-weight: 700; letter-spacing: 0.2em;
+    color: var(--amber); margin-bottom: 18px;
+  }
+  .hero h1 {
+    font-size: clamp(34px, 5.4vw, 60px);
+    font-weight: 800; line-height: 1.18; letter-spacing: -0.02em;
+  }
+  .hero h1 .accent {
+    background: linear-gradient(135deg, #ffcf00 0%, #ff9500 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero p.lead {
+    margin-top: 22px; font-size: 17px; color: var(--text-dim);
+    max-width: 520px;
+  }
+  .hero-note {
+    margin-top: 28px; display: inline-flex; align-items: center; gap: 10px;
+    font-size: 14px; color: var(--text-faint);
+  }
+  .pulse {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--amber);
+    box-shadow: 0 0 0 0 rgba(255,207,0,0.6);
+    animation: pulse 2.4s infinite;
+  }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(255,207,0,0.55); }
+    70%  { box-shadow: 0 0 0 14px rgba(255,207,0,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,207,0,0); }
+  }
+
+  /* ── スマホモック ─────────────────────────── */
+  .phone-stage { display: flex; justify-content: center; }
+  .phone {
+    position: relative;
+    width: 270px; height: 552px;
+    border-radius: 44px;
+    background: linear-gradient(150deg, #1c1c20 0%, #2b2b30 100%);
+    padding: 7px;
+    box-shadow: 0 40px 90px -28px rgba(0,0,0,0.7),
+                0 18px 44px -16px rgba(255,149,0,0.28),
+                inset 0 0 0 1px rgba(255,255,255,0.06);
+    animation: float 6s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%,100% { transform: translateY(0); }
+    50%     { transform: translateY(-9px); }
+  }
+  .phone-screen {
+    position: relative; width: 100%; height: 100%;
+    border-radius: 38px; overflow: hidden;
+    background: linear-gradient(185deg, #1a2330 0%, #0f1722 60%, #0c1119 100%);
+  }
+  .phone-punch {
+    position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #050505; z-index: 5;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.07);
+  }
+  /* ロック画面の時計 */
+  .lock-time {
+    text-align: center; padding-top: 52px; color: #fff;
+  }
+  .lock-time .t { font-size: 56px; font-weight: 300; letter-spacing: 0.01em; }
+  .lock-time .d { font-size: 13px; color: rgba(255,255,255,0.6); margin-top: 2px; }
+
+  /* 通知カード群 */
+  .notif-stack {
+    padding: 26px 12px 0; display: flex; flex-direction: column; gap: 9px;
+  }
+  .notif {
+    background: rgba(255,255,255,0.92);
+    border-radius: 16px; padding: 11px 12px;
+    display: flex; gap: 9px; align-items: flex-start;
+    box-shadow: 0 6px 18px -8px rgba(0,0,0,0.45);
+  }
+  .notif:nth-child(2) { opacity: 0.96; }
+  .notif:nth-child(3) { opacity: 0.9; }
+  .notif-icon {
+    flex-shrink: 0; width: 30px; height: 30px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+    background: linear-gradient(135deg, #ffcf00, #ff9500);
+  }
+  .notif-body { min-width: 0; }
+  .notif-top {
+    display: flex; justify-content: space-between; gap: 6px;
+    font-size: 9.5px; color: #8a8f98; margin-bottom: 1px;
+  }
+  .notif-title {
+    font-size: 11.5px; font-weight: 700; color: #1a1a1a; line-height: 1.35;
+  }
+  .notif-text {
+    font-size: 10.5px; color: #5b606a; line-height: 1.4; margin-top: 1px;
+  }
+
+  /* ── セクション共通 ───────────────────────── */
+  section.block { padding: 60px 0; }
+  .sec-kicker {
+    font-size: 12px; font-weight: 700; letter-spacing: 0.18em;
+    color: var(--amber); text-align: center;
+  }
+  .sec-title {
+    margin-top: 12px; text-align: center;
+    font-size: clamp(24px, 3.6vw, 34px); font-weight: 800;
+    letter-spacing: -0.01em; line-height: 1.35;
+  }
+  .sec-lead {
+    margin: 14px auto 0; text-align: center; max-width: 560px;
+    color: var(--text-dim); font-size: 15px;
+  }
+
+  /* ── 3 本柱 ───────────────────────────────── */
+  .pillars {
+    margin-top: 44px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px;
+  }
+  .pillar {
+    background: var(--card); border: 1px solid var(--card-border);
+    border-radius: 16px; padding: 26px 22px;
+    transition: transform .18s ease, border-color .18s ease;
+  }
+  .pillar:hover { transform: translateY(-4px); border-color: rgba(255,207,0,0.32); }
+  .pillar-emoji { font-size: 30px; }
+  .pillar h3 { margin-top: 14px; font-size: 18px; font-weight: 800; }
+  .pillar p { margin-top: 8px; font-size: 13.5px; color: var(--text-dim); }
+
+  .one-place {
+    margin-top: 26px; text-align: center;
+    font-size: 14px; color: var(--text-faint);
+  }
+  .one-place b { color: var(--amber); font-weight: 700; }
+
+  /* ── 通知機能 詳細 ────────────────────────── */
+  .notify-feature {
+    margin-top: 40px;
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;
+    max-width: 720px; margin-left: auto; margin-right: auto;
+  }
+  .nf-item {
+    background: var(--card); border: 1px solid var(--card-border);
+    border-radius: 14px; padding: 18px 20px;
+    display: flex; gap: 13px; align-items: flex-start;
+  }
+  .nf-dot {
+    flex-shrink: 0; width: 34px; height: 34px; border-radius: 9px;
+    display: flex; align-items: center; justify-content: center; font-size: 16px;
+    background: rgba(255,207,0,0.10);
+    border: 1px solid rgba(255,207,0,0.26);
+  }
+  .nf-item h4 { font-size: 14.5px; font-weight: 700; }
+  .nf-item p { font-size: 12.5px; color: var(--text-dim); margin-top: 3px; }
+
+  /* ── CTA ──────────────────────────────────── */
+  .cta {
+    margin-top: 20px;
+    text-align: center;
+    padding: 52px 28px;
+    border-radius: 22px;
+    border: 1px solid rgba(255,207,0,0.26);
+    background: linear-gradient(135deg, rgba(255,207,0,0.10), rgba(255,149,0,0.04));
+  }
+  .cta h2 { font-size: clamp(22px, 3.2vw, 30px); font-weight: 800; }
+  .cta p { margin-top: 10px; color: var(--text-dim); font-size: 15px; }
+  .cta-btn {
+    margin-top: 26px; display: inline-flex; align-items: center; gap: 9px;
+    padding: 14px 30px; border-radius: 12px;
+    font-weight: 800; font-size: 15px; text-decoration: none;
+    color: #111;
+    background: linear-gradient(135deg, #ffcf00, #ff9500);
+    box-shadow: 0 14px 34px -12px rgba(255,149,0,0.6);
+    transition: transform .15s ease;
+  }
+  .cta-btn:hover { transform: translateY(-2px); }
+
+  /* ── フッター ─────────────────────────────── */
+  footer {
+    margin-top: 56px; padding: 30px 0 44px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    text-align: center; color: var(--text-faint); font-size: 12.5px;
+  }
+
+  /* ── レスポンシブ ─────────────────────────── */
+  @media (max-width: 820px) {
+    .hero {
+      grid-template-columns: 1fr; gap: 44px; padding: 56px 0 36px;
+      text-align: center;
+    }
+    .hero p.lead { margin-left: auto; margin-right: auto; }
+    .hero-note { justify-content: center; }
+    .pillars { grid-template-columns: 1fr; }
+    .notify-feature { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 460px) {
+    .header-inner .badge { font-size: 10px; padding: 5px 10px; }
+  }
+</style>
+</head>
+
+<body>
+<div class="aurora"></div>
+
+<div class="page">
+  <header>
+    <div class="wrap header-inner">
+      <div class="logo">Cardano<span>ism</span></div>
+      <div class="badge">近日公開 / COMING SOON</div>
+    </div>
+  </header>
+
+  <!-- ───── ヒーロー ───── -->
+  <div class="wrap">
+    <div class="hero">
+      <div class="hero-text">
+        <div class="hero-kicker">CARDANO ポータル</div>
+        <h1>
+          ステーキングも<br>
+          ガバナンスも<br>
+          カタリストも、<span class="accent">ひとつに。</span>
+        </h1>
+        <p class="lead">
+          バラバラだった Cardano の情報を 1 箇所へ。
+          委任先の状況も、ガバナンス提案も、カタリストの動向も、
+          Cardanoism がまとめて日本語で。
+        </p>
+        <div class="hero-note">
+          <span class="pulse"></span>
+          ローンチに向けて準備中です
+        </div>
+      </div>
+
+      <!-- スマホモック (ロック画面 + 通知) -->
+      <div class="phone-stage">
+        <div class="phone">
+          <div class="phone-screen">
+            <div class="phone-punch"></div>
+            <div class="lock-time">
+              <div class="t">9:41</div>
+              <div class="d">5 月 20 日（水）</div>
+            </div>
+            <div class="notif-stack">
+              <div class="notif">
+                <div class="notif-icon">🔔</div>
+                <div class="notif-body">
+                  <div class="notif-top"><span>Cardanoism</span><span>今</span></div>
+                  <div class="notif-title">委任先プールが手数料を変更</div>
+                  <div class="notif-text">margin が 2% → 3.5% に。次エポックで反映されます。</div>
+                </div>
+              </div>
+              <div class="notif">
+                <div class="notif-icon">🏛️</div>
+                <div class="notif-body">
+                  <div class="notif-top"><span>Cardanoism</span><span>3 分前</span></div>
+                  <div class="notif-title">新しいガバナンス提案</div>
+                  <div class="notif-text">委任先 DRep が確認できる新規 GA が提出されました。</div>
+                </div>
+              </div>
+              <div class="notif">
+                <div class="notif-icon">💰</div>
+                <div class="notif-body">
+                  <div class="notif-top"><span>Cardanoism</span><span>1 時間前</span></div>
+                  <div class="notif-title">エポック報酬が入金</div>
+                  <div class="notif-text">委任先プールから報酬を受け取りました。</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───── 3 本柱 ───── -->
+  <section class="block">
+    <div class="wrap">
+      <div class="sec-kicker">ALL-IN-ONE</div>
+      <h2 class="sec-title">3 つの世界を、1 つの画面で。</h2>
+      <p class="sec-lead">
+        いままで別々のサイトを行き来していた情報を、Cardanoism がひとまとめにします。
+      </p>
+
+      <div class="pillars">
+        <div class="pillar">
+          <div class="pillar-emoji">🪙</div>
+          <h3>ステーキング</h3>
+          <p>委任先プールの状況・報酬実績・飽和度を追跡。気になるプールを比較して選べます。</p>
+        </div>
+        <div class="pillar">
+          <div class="pillar-emoji">🏛️</div>
+          <h3>ガバナンス</h3>
+          <p>Conway era のガバナンス提案を日本語で。DRep の投票も、提案の集計も一望。</p>
+        </div>
+        <div class="pillar">
+          <div class="pillar-emoji">💡</div>
+          <h3>カタリスト</h3>
+          <p>Project Catalyst の提案を Fund 別・ステータス別に検索。お気に入りも保存。</p>
+        </div>
+      </div>
+
+      <div class="one-place">
+        — もう、タブを行き来しなくていい。<b>すべて Cardanoism の中で。</b>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── 通知機能 ───── -->
+  <section class="block">
+    <div class="wrap">
+      <div class="sec-kicker">REAL-TIME ALERTS</div>
+      <h2 class="sec-title">変化を、見逃さない。</h2>
+      <p class="sec-lead">
+        委任先やガバナンスに動きがあった瞬間、メール・LINE・Telegram の
+        お好きなチャンネルにリアルタイムでお知らせします。
+      </p>
+
+      <div class="notify-feature">
+        <div class="nf-item">
+          <div class="nf-dot">⛏️</div>
+          <div>
+            <h4>プールの異変を即キャッチ</h4>
+            <p>引退予告・手数料変更・飽和ライン超過・誓約不足を自動検知。</p>
+          </div>
+        </div>
+        <div class="nf-item">
+          <div class="nf-dot">🗳️</div>
+          <div>
+            <h4>ガバナンスの動きを通知</h4>
+            <p>新しい提案の提出、委任先 DRep の投票、ステータス変化をお知らせ。</p>
+          </div>
+        </div>
+        <div class="nf-item">
+          <div class="nf-dot">💸</div>
+          <div>
+            <h4>報酬・実績をお知らせ</h4>
+            <p>エポック報酬の入金や、プールのエポック実績をまとめて通知。</p>
+          </div>
+        </div>
+        <div class="nf-item">
+          <div class="nf-dot">📡</div>
+          <div>
+            <h4>3 つのチャンネル対応</h4>
+            <p>メール / LINE / Telegram。好きなチャンネルで、好きなイベントだけ。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── CTA ───── -->
+  <section class="block">
+    <div class="wrap">
+      <div class="cta">
+        <h2>公開まで、もう少し。</h2>
+        <p>最新情報は X (旧 Twitter) でお届けします。フォローしてお待ちください。</p>
+        <a class="cta-btn" href="https://x.com/cardanoism" target="_blank" rel="noopener">
+          𝕏 で最新情報を受け取る
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      © 2026 Cardanoism — Cardano をもっと身近に。
+    </div>
+  </footer>
+</div>
+</body>
+</html>
