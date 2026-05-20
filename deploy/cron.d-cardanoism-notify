@@ -58,6 +58,9 @@ LOG=/var/log/cardanoism
 # 投票理由の翻訳 (OpenAI、コスト抑制のため低頻度)
 0    */4 * * *  bttokeo cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event vote_rationale_sync >> $LOG/notify-vote_rationale_sync.log 2>&1
 
+# カタリスト提案フェッチ (Catalyst Explorer API、1 日 1 回 / fund 12-15)
+0    2 * * *  bttokeo cd $WORKDIR && for FUND in 12 13 14 15; do infisical run --env=$ENV -- $PY cardanoism/backend/proposals_update_new.py --fund $FUND; done >> $LOG/catalyst-proposals.log 2>&1
+
 # ── フォールバック (listener 停止対策、24 時間に 1 回深夜) ─────
 # 通常は Ogmios listener が epoch_start を検知してこれらを発火するが、
 # listener が落ちている間でもデータが完全停止しないよう 1 日 1 回バックアップ実行。
