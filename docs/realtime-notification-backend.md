@@ -186,9 +186,9 @@ curl http://127.0.0.1:1337/health | jq .
 ### 5-1. リポジトリ配置
 
 ```bash
-sudo mkdir -p /opt/cardanoism
-sudo chown cardanoism:cardanoism /opt/cardanoism
-cd /opt/cardanoism
+sudo mkdir -p /home/btism/cardanoism_tmp
+sudo chown cardanoism:cardanoism /home/btism/cardanoism_tmp
+cd /home/btism/cardanoism_tmp
 git clone <REPO_URL> .
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
@@ -228,7 +228,7 @@ sudo -u cardanoism infisical login
 ### 5-3. 起動方法
 
 ```bash
-cd /opt/cardanoism
+cd /home/btism/cardanoism_tmp
 infisical run --env=mainnet -- \
     .venv/bin/python ogmios_listener.py
 
@@ -246,15 +246,15 @@ infisical run --env=mainnet -- \
 ```ini
 [Unit]
 Description=Cardanoism Ogmios Chain Listener
-After=network.target ogmios.service
-Requires=ogmios.service
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=cardanoism
-WorkingDirectory=/opt/cardanoism
+WorkingDirectory=/home/btism/cardanoism_tmp
 # 実行ユーザー (cardanoism) の ~/.infisical/ にある対話 login の credentials を使う
-ExecStart=/usr/local/bin/infisical run --env=mainnet -- /opt/cardanoism/.venv/bin/python ogmios_listener.py
+ExecStart=/usr/bin/infisical run --env=mainnet -- /home/btism/cardanoism_tmp/.venv/bin/python ogmios_listener.py　
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -263,6 +263,13 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 ```
+
+> **Ogmios が同一ホストにある場合** は `[Unit]` に `After=network-online.target ogmios.service` /
+> `Requires=ogmios.service` を加えると起動順を保証できる。**Ogmios を別サーバで動かす構成**
+> (`OGMIOS_URL` がリモートを指す) では `ogmios.service` がこのホストに存在しないため、
+> これらを書くと `Unit ogmios.service not found` で起動失敗する。上記例はリモート Ogmios
+> 構成向け。`ogmios_listener.py` は WebSocket 接続失敗時に自動再接続するため、起動順を
+> systemd で縛る必要はない。
 
 > preview テストネット用の listener を別途立てるときは `--env=preview` に変更し、別 unit (`ogmios-listener-preview.service`) として登録する。
 

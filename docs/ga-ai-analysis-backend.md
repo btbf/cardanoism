@@ -105,15 +105,19 @@ python ga_ai_worker.py --poll-interval 20 --concurrency 3
 ```ini
 [Unit]
 Description=Cardanoism GA AI Worker
-After=mysql.service network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
-User=cardanoism
-WorkingDirectory=/path/to/cardanoism
-ExecStart=/usr/local/bin/infisical run --env=mainnet -- /path/to/cardanoism/.venv/bin/python /path/to/cardanoism/ga_ai_worker.py
+User=btism
+WorkingDirectory=/home/btism/cardanoism_tmp
+# 実行ユーザー (cardanoism) の ~/.infisical/ にある対話 login の credentials を使う
+ExecStart=/usr/bin/infisical run --env=mainnet -- /home/btism/cardanoism_tmp/.venv/bin/python ga_ai_worker.py
 Restart=always
 RestartSec=10
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
