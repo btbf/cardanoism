@@ -1528,11 +1528,19 @@ class GovernanceState(rx.State):
         params: list = []
         if self.inputed_value:
             sv = f"%{self.inputed_value}%"
-            conditions.append(
-                "(ga.title LIKE ? OR ga.title_ja LIKE ? OR ga.`abstract` LIKE ?"
-                " OR ga.abstract_ja LIKE ? OR ga.proposal_id LIKE ?)"
-            )
-            params.extend([sv, sv, sv, sv, sv])
+            # pool 検索と同じ方針で入力を分岐する。
+            # gov_action1 で始まる入力だけ proposal_id を検索対象にし、
+            # それ以外はタイトル / 概要のキーワード検索のみ
+            # (ID 文字列がキーワードにノイズマッチするのを避ける)。
+            if self.inputed_value.lower().startswith("gov_action1"):
+                conditions.append("ga.proposal_id LIKE ?")
+                params.append(sv)
+            else:
+                conditions.append(
+                    "(ga.title LIKE ? OR ga.title_ja LIKE ?"
+                    " OR ga.`abstract` LIKE ? OR ga.abstract_ja LIKE ?)"
+                )
+                params.extend([sv, sv, sv, sv])
         if self.filter_types:
             placeholders = ", ".join(["?"] * len(self.filter_types))
             conditions.append(f"ga.proposal_type IN ({placeholders})")
