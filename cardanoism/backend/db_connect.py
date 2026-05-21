@@ -87,12 +87,24 @@ def dbConnect():
 
 @contextmanager
 def get_db():
-    """Context manager that yields (cursor, conn) and always closes them."""
+    """Context manager that yields (cursor, conn) and always closes them.
+
+    finally で rollback してからプールに返す。MariaDB の既定は autocommit=False +
+    REPEATABLE READ なので、SELECT した瞬間にトランザクションが暗黙開始され一貫
+    スナップショットを握り続ける。読み取り専用パスは commit/rollback しないため、
+    その接続を再利用すると古いスナップショットを見続け、他セッションの変更
+    （手動 DB 編集など）が永遠に反映されない。rollback でスナップショットを解放する。
+    書き込みパスは既に commit 済みなのでこの rollback は no-op。
+    """
     cursor, conn = dbConnect()
     try:
         yield cursor, conn
     finally:
         try:
+            try:
+                conn.rollback()
+            except mariadb.Error:
+                pass
             cursor.close()
         finally:
             conn.close()
