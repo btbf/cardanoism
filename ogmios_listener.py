@@ -464,6 +464,14 @@ def _notify_governance_action(tx_id: str, proposals: list[dict]) -> None:
     if not addrs:
         return
 
+    # 新 GA 通知の内容はユーザーの委任先に依存しない (新 GA 自体の告知) ため、
+    # 複数アドレスを登録していても 1 ユーザー 1 通知にする (epoch_start と同じ方針)。
+    # 通知チャンネルは user 単位なので、user_id ごとに最初の 1 件だけ残せばよい。
+    by_user: dict = {}
+    for a in addrs:
+        by_user.setdefault(a["user_id"], a)
+    addrs = list(by_user.values())
+
     count = len(proposals)
     if count == 1:
         p = proposals[0]
@@ -478,7 +486,7 @@ def _notify_governance_action(tx_id: str, proposals: list[dict]) -> None:
                 proposal_count=1,
             )
             deliver(addr, EVENT_TYPE, ctx,
-                    dedup_base=f"new_gov_{tx_id}_{p['proposal_index']}_{addr['stake_id']}")
+                    dedup_base=f"new_gov_{tx_id}_{p['proposal_index']}_{addr['user_id']}")
     else:
         # 集約: 1 Tx に複数 GA
         for addr in addrs:
@@ -488,7 +496,7 @@ def _notify_governance_action(tx_id: str, proposals: list[dict]) -> None:
                 proposal_count=count,
             )
             deliver(addr, EVENT_TYPE, ctx,
-                    dedup_base=f"new_gov_batch_{tx_id}_{addr['stake_id']}")
+                    dedup_base=f"new_gov_batch_{tx_id}_{addr['user_id']}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────

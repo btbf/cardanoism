@@ -930,7 +930,16 @@ def governance_matrix_page() -> rx.Component:
                     rx.fragment(),
                 ),
                 _gas_pagination(),
-                _matrix_table(),
+                # 表だけはテンプレートの max-width 制限を抜けて全幅表示する。
+                # 親が中央寄せのため calc(50% - 48vw) で 96vw 幅を中央に展開する。
+                rx.box(
+                    _matrix_table(),
+                    style={
+                        "width": "96vw",
+                        "marginLeft": "calc(50% - 48vw)",
+                        "boxSizing": "border-box",
+                    },
+                ),
                 rx.hstack(
                     rx.text(
                         AuthState.t["matrix_total"], " ",
