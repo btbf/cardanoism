@@ -1238,9 +1238,6 @@ UI_JA: dict[str, str] = {
     "pool_detail_bh_blocks":           "ブロック数",
     "pool_detail_pending_fee_epoch": "手数料変更予定エポック",
     "pool_detail_retiring_epoch":    "退役予定エポック",
-    "pool_detail_health":            "健全性チェック",
-    "pool_detail_health_pledge":     "誓約達成",
-    "pool_detail_health_relay":      "リレー稼働",
 
     # 委任 (Phase 3): SPO カードのボタン + 委任ダイアログ
     "delegate_btn":                "委任する",
@@ -2792,9 +2789,6 @@ UI_EN: dict[str, str] = {
     "pool_detail_bh_blocks":           "Blocks",
     "pool_detail_pending_fee_epoch": "Fee change epoch",
     "pool_detail_retiring_epoch":    "Retiring epoch",
-    "pool_detail_health":            "Health check",
-    "pool_detail_health_pledge":     "Pledge met",
-    "pool_detail_health_relay":      "Relay",
 
     # Delegation (Phase 3): SPO card button + dialog
     "delegate_btn":                "Delegate",
