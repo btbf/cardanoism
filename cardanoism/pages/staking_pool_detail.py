@@ -69,25 +69,36 @@ class PoolDetailState(rx.State):
 
     # ブロック生成履歴（エポック降順）。各要素: epoch / block_cnt / bar_pct
     block_history: list[dict[str, str]] = []
+    # ブロック生成履歴の Koios フェッチ中フラグ（履歴セクションのスピナー制御）
+    history_loading: bool = False
 
     def on_load(self):
+        # 1) まず前回プールの残留 state を消し、ページスピナーを表示する。
+        #    ここで yield してクライアントへ即フラッシュしないと、重い Koios
+        #    フェッチ完了まで前回プールが残り続けてしまう。
         self.load = False
         self.not_found = False
         self.error = ""
         self.pool = {}
         self.block_history = []
-        try:
-            # URL 末尾から pool_id を取得
-            path = self.router.url.path or ""
-            parts = [p for p in path.split("/") if p]
-            pool_id = parts[-1] if parts else ""
-            if not pool_id:
-                self.not_found = True
-                return
+        self.history_loading = False
+        yield
 
+        # 2) URL 末尾から pool_id を取得
+        path = self.router.url.path or ""
+        parts = [p for p in path.split("/") if p]
+        pool_id = parts[-1] if parts else ""
+        if not pool_id:
+            self.not_found = True
+            self.load = True
+            return
+
+        try:
+            # 3) プール本体（DB + /totals）をロード。ここまでは速いので即表示する。
             row = get_pool(pool_id)
             if not row:
                 self.not_found = True
+                self.load = True
                 return
 
             # 飽和点（= ソフトキャップ / 500）を /totals から確定
@@ -111,8 +122,11 @@ class PoolDetailState(rx.State):
             data["active_epoch"] = str(ae) if ae is not None else ""
 
             self.pool = data
+            self.load = True            # プール本体を即表示
+            self.history_loading = True  # 履歴セクションはスピナー表示
+            yield
 
-            # ブロック生成履歴を Koios からオンデマンド取得（エポック降順）
+            # 4) ブロック生成履歴を Koios からオンデマンド取得（重い・エポック降順）
             hist = _fetch_pool_history_cached(pool_id)
             max_blocks = max(
                 (int(h.get("block_cnt") or 0) for h in hist), default=0
@@ -130,6 +144,7 @@ class PoolDetailState(rx.State):
             logger.exception("PoolDetailState.on_load: %s", e)
             self.error = str(e)
         finally:
+            self.history_loading = False
             self.load = True
 
 
@@ -508,19 +523,27 @@ def _block_history_section() -> rx.Component:
                 align="center", width="100%",
             ),
             rx.cond(
-                PoolDetailState.block_history,
-                rx.box(
-                    rx.vstack(
-                        rx.foreach(PoolDetailState.block_history, _bh_row),
-                        spacing="2", width="100%",
-                    ),
-                    max_height="360px",
-                    overflow_y="auto",
-                    width="100%",
+                PoolDetailState.history_loading,
+                rx.center(
+                    rx.spinner(size="2"),
+                    padding_y="30px", width="100%",
                 ),
-                rx.text(
-                    AuthState.t["pool_detail_block_history_empty"],
-                    size="2", color="var(--gray-10)",
+                rx.cond(
+                    PoolDetailState.block_history,
+                    rx.box(
+                        rx.vstack(
+                            rx.foreach(PoolDetailState.block_history, _bh_row),
+                            spacing="2", width="100%",
+                        ),
+                        max_height="360px",
+                        overflow_y="auto",
+                        width="100%",
+                        max_width="520px",
+                    ),
+                    rx.text(
+                        AuthState.t["pool_detail_block_history_empty"],
+                        size="2", color="var(--gray-10)",
+                    ),
                 ),
             ),
             spacing="3", align_items="stretch", width="100%",
