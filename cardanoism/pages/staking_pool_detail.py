@@ -187,16 +187,31 @@ def _header() -> rx.Component:
         _relay_status(p["relay_state"]),
         spacing="2", align="center", wrap="wrap",
     )
+    about = rx.cond(
+        p["about_full"] != "",
+        rx.text(
+            p["about_full"],
+            size="2", color="var(--gray-11)", line_height="1.7",
+            style={"whiteSpace": "pre-wrap"},
+        ),
+        rx.fragment(),
+    )
     return rx.box(
-        rx.hstack(
-            icon,
-            rx.vstack(
-                name_row,
-                social_row,
-                pool_id_row,
-                spacing="2", align_items="start", flex="1", min_width="0",
+        rx.vstack(
+            rx.hstack(
+                icon,
+                rx.vstack(
+                    name_row,
+                    social_row,
+                    pool_id_row,
+                    spacing="2", align_items="start", flex="1", min_width="0",
+                ),
+                # 委任 CTA はボックス右上に配置
+                _delegate_cta(),
+                spacing="4", align="start", width="100%", wrap="wrap",
             ),
-            spacing="4", align="start", width="100%",
+            about,
+            spacing="4", align_items="stretch", width="100%",
         ),
         padding="20px 22px",
         background=rx.color_mode_cond("white", "rgba(255,255,255,0.05)"),
@@ -387,33 +402,6 @@ def _info_section() -> rx.Component:
     )
 
 
-def _about_section() -> rx.Component:
-    p = PoolDetailState.pool
-    return rx.cond(
-        p["about_full"] != "",
-        rx.box(
-            rx.vstack(
-                rx.text(
-                    AuthState.t["pool_detail_about"],
-                    size="3", weight="bold", color="var(--gray-12)",
-                ),
-                rx.text(
-                    p["about_full"],
-                    size="2", color="var(--gray-11)", line_height="1.7",
-                    style={"whiteSpace": "pre-wrap"},
-                ),
-                spacing="3", align_items="start", width="100%",
-            ),
-            padding="20px 22px",
-            background=rx.color_mode_cond("white", "rgba(255,255,255,0.05)"),
-            border_radius="12px",
-            border=f"1px solid {rx.color('gray', 5)}",
-            width="100%",
-        ),
-        rx.fragment(),
-    )
-
-
 # ─── ページ ────────────────────────────────────────────────────────────────────
 
 
@@ -441,13 +429,7 @@ def staking_pool_detail_page() -> rx.Component:
                     ),
                     rx.vstack(
                         _header(),
-                        rx.flex(
-                            _delegate_cta(),
-                            justify="end",
-                            width="100%",
-                        ),
                         _info_section(),
-                        _about_section(),
                         spacing="4", width="100%",
                     ),
                 ),
