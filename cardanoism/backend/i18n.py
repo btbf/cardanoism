@@ -1228,6 +1228,17 @@ UI_JA: dict[str, str] = {
     "staking_badge_alive":         "リレー稼働中",
     "staking_badge_dead":          "リレー応答なし",
 
+    # プール詳細ページ (/pool/[pool_id])
+    "pool_detail_breadcrumb":        "プール詳細",
+    "pool_detail_not_found":         "指定されたプールが見つかりませんでした。",
+    "pool_detail_section_info":      "プール情報",
+    "pool_detail_block_history":       "ブロック生成履歴",
+    "pool_detail_block_history_empty": "ブロック生成履歴がありません。",
+    "pool_detail_bh_epoch":            "エポック",
+    "pool_detail_bh_blocks":           "ブロック数",
+    "pool_detail_pending_fee_epoch": "手数料変更予定エポック",
+    "pool_detail_retiring_epoch":    "退役予定エポック",
+
     # 委任 (Phase 3): SPO カードのボタン + 委任ダイアログ
     "delegate_btn":                "委任する",
     "delegate_btn_currently":      "委任中",
@@ -2767,6 +2778,17 @@ UI_EN: dict[str, str] = {
     "staking_badge_pending_fee":   "Change",
     "staking_badge_alive":         "Relay online",
     "staking_badge_dead":          "Relay offline",
+
+    # Pool detail page (/pool/[pool_id])
+    "pool_detail_breadcrumb":        "Pool detail",
+    "pool_detail_not_found":         "The requested pool was not found.",
+    "pool_detail_section_info":      "Pool information",
+    "pool_detail_block_history":       "Block production history",
+    "pool_detail_block_history_empty": "No block production history.",
+    "pool_detail_bh_epoch":            "Epoch",
+    "pool_detail_bh_blocks":           "Blocks",
+    "pool_detail_pending_fee_epoch": "Fee change epoch",
+    "pool_detail_retiring_epoch":    "Retiring epoch",
 
     # Delegation (Phase 3): SPO card button + dialog
     "delegate_btn":                "Delegate",
