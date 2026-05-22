@@ -1,7 +1,7 @@
 """governance_matrix.py
-DRep × GA 投票マトリクスページ (/governance/matrix)
+投票マトリクスページ (/governance/matrix)
 
-横軸: Active な GA、縦軸: 登録済み DRep。
+横軸: Active な GA、縦軸: DRep / 憲法委員会 / SPO（ロールタブで切り替え）。
 セルに ✅ / ❌ / ⚪ / — の投票結果と、投票理由をマウスオーバーで表示。
 """
 from __future__ import annotations
@@ -29,11 +29,10 @@ class Cell(TypedDict):
 
 
 class Row(TypedDict):
-    drep_id: str
-    drep_id_short: str
-    given_name: str
+    voter_link: str
+    voter_name: str
+    voter_id_short: str
     image_url: str
-    active: str
     cells: list[Cell]
 
 from cardanoism.templates import template
@@ -43,6 +42,10 @@ from cardanoism.backend.vote_matrix_db import (
     count_gas_for_matrix,
     count_dreps_for_matrix,
     get_dreps_for_matrix,
+    count_cc_for_matrix,
+    get_cc_for_matrix,
+    count_spo_for_matrix,
+    get_spo_for_matrix,
     get_votes_for_matrix,
 )
 from cardanoism.components.breadcrumb import breadcrumb
@@ -77,6 +80,9 @@ def _trim(s: str, n: int = _RATIONALE_MAX_CHARS) -> str:
 class VoteMatrixState(rx.State):
     load: bool = False
     error: str = ""
+
+    # 縦軸ロール: "drep" / "cc" / "spo"
+    role: str = "drep"
 
     inputed_value: str = ""
     search_query: str = ""
@@ -143,30 +149,79 @@ class VoteMatrixState(rx.State):
             ]
             proposal_ids = [g["proposal_id"] for g in self.gas]
 
-            # DRep 行のページング
+            # 縦軸 (voter) 行のページング — role で取得元を切り替える
             offset = (self.current_page - 1) * self.items_per_page
-            dreps = get_dreps_for_matrix(
-                search=self.search_query,
-                limit=self.items_per_page,
-                offset=offset,
-            )
-            total = count_dreps_for_matrix(search=self.search_query)
+            role = self.role
+            if role == "cc":
+                total = count_cc_for_matrix(search=self.search_query)
+                voters = get_cc_for_matrix(
+                    search=self.search_query, limit=self.items_per_page, offset=offset,
+                )
+                db_role = "ConstitutionalCommittee"
+            elif role == "spo":
+                total = count_spo_for_matrix(search=self.search_query)
+                voters = get_spo_for_matrix(
+                    search=self.search_query, limit=self.items_per_page, offset=offset,
+                )
+                db_role = "SPO"
+            else:
+                total = count_dreps_for_matrix(search=self.search_query)
+                voters = get_dreps_for_matrix(
+                    search=self.search_query, limit=self.items_per_page, offset=offset,
+                )
+                db_role = "DRep"
+
             self.total_items = total
             self.total_pages = max(1, (total + self.items_per_page - 1) // self.items_per_page)
             self.start_page = max(1, self.current_page - 3)
             self.end_page   = min(self.total_pages, self.current_page + 3)
             self.middle_page = list(range(self.start_page, self.end_page + 1))
 
-            drep_ids = [d["drep_id"] for d in dreps]
-            votes = get_votes_for_matrix(drep_ids, proposal_ids)
+            # 投票照合用の voter_id 一覧 (CC は hot/cold 両方を含める)
+            lookup_ids: list[str] = []
+            for v in voters:
+                if role == "cc":
+                    if v.get("cc_hot_id"):
+                        lookup_ids.append(v["cc_hot_id"])
+                    if v.get("cc_cold_id"):
+                        lookup_ids.append(v["cc_cold_id"])
+                elif role == "spo":
+                    lookup_ids.append(v["pool_id_bech32"])
+                else:
+                    lookup_ids.append(v["drep_id"])
+
+            votes = get_votes_for_matrix(lookup_ids, proposal_ids, voter_role=db_role)
 
             rows: list[dict[str, Any]] = []
-            for d in dreps:
-                drep_id = d["drep_id"]
+            for v in voters:
+                # role ごとに行の表示情報 / 照合 ID を正規化
+                if role == "cc":
+                    key_ids = [x for x in (v.get("cc_hot_id"), v.get("cc_cold_id")) if x]
+                    name = str(v.get("display_name") or "")
+                    image = ""
+                    link = ""
+                    primary = str(v.get("cc_hot_id") or v.get("cc_cold_id") or "")
+                elif role == "spo":
+                    key_ids = [str(v["pool_id_bech32"])]
+                    name = str(v.get("ticker") or v.get("pool_name") or "")
+                    image = str(v.get("pool_icon_url") or "")
+                    link = "/pool/" + str(v["pool_id_bech32"])
+                    primary = str(v["pool_id_bech32"])
+                else:
+                    key_ids = [str(v["drep_id"])]
+                    name = str(v.get("given_name") or "")
+                    image = str(v.get("image_url") or "")
+                    link = "/drep/" + str(v["drep_id"])
+                    primary = str(v["drep_id"])
+
                 cells: list[dict[str, str]] = []
                 for g in self.gas:
-                    vk = votes.get((drep_id, g["proposal_id"]))
-                    if vk is None:
+                    vk = None
+                    for kid in key_ids:
+                        vk = votes.get((kid, g["proposal_id"]))
+                        if vk:
+                            break
+                    if not vk:
                         cells.append({
                             "vote":         "",
                             "icon":         "—",
@@ -176,33 +231,32 @@ class VoteMatrixState(rx.State):
                             "proposal_id":  g["proposal_id"],
                         })
                     else:
-                        v = (vk.get("vote") or "").lower()
-                        if v == "yes":
+                        vv = (vk.get("vote") or "").lower()
+                        if vv == "yes":
                             icon, color = "Y", "var(--green-10)"
-                        elif v == "no":
+                        elif vv == "no":
                             icon, color = "N", "var(--red-10)"
-                        elif v == "abstain":
+                        elif vv == "abstain":
                             icon, color = "−", "var(--gray-10)"
                         else:
                             icon, color = "·", "var(--gray-7)"
                         cells.append({
-                            "vote":         v,
+                            "vote":         vv,
                             "icon":         icon,
                             "color":        color,
                             "rationale":    _trim(vk.get("rationale") or ""),
                             "rationale_ja": _trim(vk.get("rationale_ja") or ""),
                             "proposal_id":  g["proposal_id"],
                         })
-                drep_id_short = (
-                    drep_id[:10] + "…" + drep_id[-6:] if len(drep_id) > 24 else drep_id
+                id_short = (
+                    primary[:10] + "…" + primary[-6:] if len(primary) > 24 else primary
                 )
                 rows.append({
-                    "drep_id":       drep_id,
-                    "drep_id_short": drep_id_short,
-                    "given_name":    d.get("given_name") or "",
-                    "image_url":     d.get("image_url") or "",
-                    "active":        "1" if d.get("active") else "",
-                    "cells":         cells,
+                    "voter_link":     link,
+                    "voter_name":     name,
+                    "voter_id_short": id_short,
+                    "image_url":      image,
+                    "cells":          cells,
                 })
             self.matrix_rows = rows
         except Exception as e:  # noqa: BLE001
@@ -212,6 +266,7 @@ class VoteMatrixState(rx.State):
     def on_load(self):
         self.load = False
         self.error = ""
+        self.role = "drep"
         self.inputed_value = ""
         self.search_query = ""
         self.ga_status = "active"
@@ -221,6 +276,16 @@ class VoteMatrixState(rx.State):
         self.gas_current_page = 1
         self._fetch()
         self.load = True
+
+    def set_role(self, role: str):
+        """縦軸ロール (drep / cc / spo) を切り替える。"""
+        if role not in ("drep", "cc", "spo"):
+            return
+        self.role = role
+        self.current_page = 1
+        self.inputed_value = ""
+        self.search_query = ""
+        self._fetch()
 
     def set_ga_status(self, status: str):
         # 不正値はガード
@@ -308,6 +373,38 @@ class VoteMatrixState(rx.State):
 
 def _breadcrumb() -> rx.Component:
     return breadcrumb([("nav_governance", "/governance")], "gov_subnav_matrix")
+
+
+def _role_tab(role_key: str, label) -> rx.Component:
+    """縦軸ロール切り替えタブの 1 ボタン。"""
+    is_active = VoteMatrixState.role == role_key
+    return rx.el.button(
+        rx.text(label, size="2", weight="medium"),
+        on_click=VoteMatrixState.set_role(role_key),
+        cursor="pointer",
+        style={
+            "padding":      "7px 18px",
+            "borderRadius": "9999px",
+            "border":       "1px solid var(--gray-6)",
+            "background":   rx.cond(is_active, "var(--amber-9)", "transparent"),
+            "color":        rx.cond(is_active, "white", "var(--gray-11)"),
+            "fontWeight":   "600",
+            "whiteSpace":   "nowrap",
+            "transition":   "background 0.15s, color 0.15s",
+        },
+    )
+
+
+def _role_tabs() -> rx.Component:
+    """DRep / 憲法委員会 / SPO の縦軸ロール切り替えタブ。"""
+    return rx.hstack(
+        _role_tab("drep", AuthState.t["matrix_role_drep"]),
+        _role_tab("cc", AuthState.t["matrix_role_cc"]),
+        _role_tab("spo", AuthState.t["matrix_role_spo"]),
+        spacing="2",
+        wrap="wrap",
+        padding_y="4px",
+    )
 
 
 def _filter_bar() -> rx.Component:
@@ -468,12 +565,12 @@ def _ga_header_cell(ga) -> rx.Component:
     )
 
 
-def _drep_name_cell(row) -> rx.Component:
-    """先頭列 (DRep 名 + アバター)、左 sticky。クリックで /drep/<drep_id> へ。"""
+def _voter_name_inner(row) -> rx.Component:
+    """先頭列の中身 (アバター + 名前 + ID)。リンクの有無に関わらず使い回す。"""
     name_text = rx.cond(
-        row["given_name"] != "",
+        row["voter_name"] != "",
         rx.text(
-            row["given_name"],
+            row["voter_name"],
             size="2",
             weight="medium",
             color="var(--gray-12)",
@@ -489,7 +586,7 @@ def _drep_name_cell(row) -> rx.Component:
             },
         ),
         rx.text(
-            AuthState.t["drep_no_name"],
+            AuthState.t["staking_no_name"],
             size="2",
             color="var(--gray-10)",
             style={
@@ -506,6 +603,7 @@ def _drep_name_cell(row) -> rx.Component:
             width="24px", height="24px",
             border_radius="50%",
             style={"objectFit": "cover", "flexShrink": "0"},
+            custom_attrs={"referrerpolicy": "no-referrer"},
         ),
         rx.center(
             rx.icon("user-round", size=14, color="var(--gray-9)"),
@@ -515,37 +613,45 @@ def _drep_name_cell(row) -> rx.Component:
             style={"flexShrink": "0"},
         ),
     )
-    return rx.el.td(
-        rx.link(
-            rx.hstack(
-                avatar,
-                rx.vstack(
-                    name_text,
-                    rx.text(
-                        row["drep_id_short"],
-                        size="1",
-                        style={
-                            "fontFamily": "ui-monospace, monospace",
-                            "fontSize":   "10px",
-                            "color":      "var(--gray-10)",
-                            # モバイルでは ID を非表示にして DRep 列を狭くする
-                            "@media (max-width: 768px)": {
-                                "display": "none",
-                            },
-                        },
-                    ),
-                    spacing="0",
-                    align_items="start",
-                    style={"minWidth": "0"},
-                ),
-                spacing="2",
-                align="center",
+    return rx.hstack(
+        avatar,
+        rx.vstack(
+            name_text,
+            rx.text(
+                row["voter_id_short"],
+                size="1",
+                style={
+                    "fontFamily": "ui-monospace, monospace",
+                    "fontSize":   "10px",
+                    "color":      "var(--gray-10)",
+                    "@media (max-width: 768px)": {
+                        "display": "none",
+                    },
+                },
             ),
-            href="/drep/" + row["drep_id"],
-            color="inherit",
-            underline="none",
-            style={"display": "block"},
-            _hover={"color": "var(--amber-11)"},
+            spacing="0",
+            align_items="start",
+            style={"minWidth": "0"},
+        ),
+        spacing="2",
+        align="center",
+    )
+
+
+def _voter_name_cell(row) -> rx.Component:
+    """先頭列 (voter 名 + アバター)、左 sticky。voter_link があればリンクにする。"""
+    return rx.el.td(
+        rx.cond(
+            row["voter_link"] != "",
+            rx.link(
+                _voter_name_inner(row),
+                href=row["voter_link"],
+                color="inherit",
+                underline="none",
+                style={"display": "block"},
+                _hover={"color": "var(--amber-11)"},
+            ),
+            _voter_name_inner(row),
         ),
         style={
             "position":     "sticky",
@@ -695,7 +801,7 @@ def _vote_cell(c) -> rx.Component:
 
 def _matrix_row(row) -> rx.Component:
     return rx.el.tr(
-        _drep_name_cell(row),
+        _voter_name_cell(row),
         rx.foreach(row["cells"], _vote_cell),
         style={
             "transition": "background 0.15s",
@@ -724,7 +830,12 @@ def _matrix_table() -> rx.Component:
                     rx.el.tr(
                         rx.el.th(
                             rx.text(
-                                AuthState.t["matrix_col_drep"],
+                                rx.match(
+                                    VoteMatrixState.role,
+                                    ("cc", AuthState.t["matrix_col_cc"]),
+                                    ("spo", AuthState.t["matrix_col_spo"]),
+                                    AuthState.t["matrix_col_drep"],
+                                ),
                                 size="2",
                                 weight="bold",
                                 color="var(--gray-12)",
@@ -918,6 +1029,7 @@ def governance_matrix_page() -> rx.Component:
                     size="2",
                     color="var(--gray-10)",
                 ),
+                _role_tabs(),
                 _filter_bar(),
                 rx.cond(
                     VoteMatrixState.error != "",
