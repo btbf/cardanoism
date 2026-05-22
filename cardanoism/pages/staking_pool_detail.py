@@ -16,8 +16,9 @@ import reflex as rx
 from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.backend.wallet_state import WalletState
-from cardanoism.backend.pool_db import get_pool
+from cardanoism.backend.pool_db import get_pool, count_ticker_duplicates
 from cardanoism.backend.koios import get_totals, get_pool_history
+from cardanoism.backend.price import format_ada
 from cardanoism.components.breadcrumb import breadcrumb
 from cardanoism.components.staking_nav import staking_subnav
 from cardanoism.components.delegation_dialog import delegation_dialog
@@ -56,6 +57,50 @@ def _fetch_pool_history_cached(pool_id: str) -> list[dict]:
     return data
 
 
+def _compute_health(row: dict, data: dict, pool_id: str) -> dict[str, str]:
+    """既存 pools データ + ticker 重複クエリから健全性チェック結果を組み立てる。
+
+    追加のバックエンド同期は不要。meta_hash 整合性チェックは pool_sync 改修が
+    必要なため Phase B-2b で別途追加する。
+    """
+    declared_pledge = int(row.get("pledge") or 0)
+    live_pledge = int(row.get("live_pledge") or 0)
+
+    is_sat = data.get("is_saturated", "")
+    sat_status = "bad" if is_sat == "1" else ("warn" if is_sat == "warn" else "ok")
+
+    relay_alive = row.get("relay_alive")
+    if relay_alive is None:
+        relay_status = "unknown"
+    elif int(relay_alive) == 1:
+        relay_status = "ok"
+    else:
+        relay_status = "bad"
+    relay_checked = row.get("relay_checked_at")
+
+    ticker = str(row.get("ticker") or "").strip()
+    if ticker:
+        dup = count_ticker_duplicates(ticker, pool_id)
+        ticker_status = "warn" if dup > 0 else "ok"
+    else:
+        dup = 0
+        ticker_status = "skip"
+
+    return {
+        "pledge_status": "ok" if live_pledge >= declared_pledge else "bad",
+        "pledge_detail": (
+            f"{format_ada(live_pledge, integer=True) if live_pledge else '0'} / "
+            f"{format_ada(declared_pledge, integer=True) if declared_pledge else '0'} ADA"
+        ),
+        "sat_status": sat_status,
+        "sat_detail": data.get("saturation_pct", "0") + "%",
+        "relay_status": relay_status,
+        "relay_detail": str(relay_checked)[:16] if relay_checked else "",
+        "ticker_status": ticker_status,
+        "ticker_dup_count": str(dup),
+    }
+
+
 # ─── State ────────────────────────────────────────────────────────────────────
 
 
@@ -69,6 +114,9 @@ class PoolDetailState(rx.State):
 
     # pools 1 行を整形した表示用 dict（format_pool_card_data + 詳細用フィールド）
     pool: dict[str, str] = {}
+
+    # 健全性チェック結果（誓約 / 飽和 / リレー / ティッカー）
+    health: dict[str, str] = {}
 
     # ブロック生成履歴（エポック降順）。各要素: epoch / block_cnt / bar_pct
     block_history: list[dict[str, str]] = []
@@ -93,6 +141,7 @@ class PoolDetailState(rx.State):
         self.not_found = False
         self.error = ""
         self.pool = {}
+        self.health = {}
         self.block_history = []
         self.history_loading = False
         self.loaded_pool_id = ""
@@ -133,6 +182,7 @@ class PoolDetailState(rx.State):
             data["about_full"] = about_full
 
             self.pool = data
+            self.health = _compute_health(row, data, pool_id)
             self.history_loading = True   # 履歴セクションはスピナー表示
             self.loaded_pool_id = pool_id  # ready=True: プール本体を即表示
             yield
@@ -476,6 +526,77 @@ def _info_section() -> rx.Component:
     )
 
 
+def _health_row(status, label, detail) -> rx.Component:
+    """健全性チェックの 1 行（状態アイコン + ラベル + 詳細）。
+
+    status は "ok" / "warn" / "bad" / "unknown" のいずれか（State 由来の Var）。
+    """
+    icon = rx.match(
+        status,
+        ("ok",   rx.icon("circle-check", size=16, color="var(--green-10)")),
+        ("warn", rx.icon("triangle-alert", size=16, color="var(--amber-10)")),
+        ("bad",  rx.icon("circle-x", size=16, color="var(--red-10)")),
+        rx.icon("circle-help", size=16, color="var(--gray-8)"),
+    )
+    return rx.hstack(
+        rx.box(icon, flex_shrink="0", style={"display": "flex"}),
+        rx.text(
+            label,
+            size="2", weight="medium", color="var(--gray-12)",
+            width="140px", flex_shrink="0",
+        ),
+        rx.text(detail, size="2", color="var(--gray-11)"),
+        spacing="3", align="center", width="100%",
+    )
+
+
+def _health_section() -> rx.Component:
+    """SPO 健全性チェック（誓約 / 飽和 / リレー / ティッカー）。"""
+    h = PoolDetailState.health
+    return rx.box(
+        rx.vstack(
+            rx.text(
+                AuthState.t["pool_detail_health"],
+                size="3", weight="bold", color="var(--gray-12)",
+            ),
+            _health_row(
+                h["pledge_status"],
+                AuthState.t["pool_detail_health_pledge"],
+                h["pledge_detail"],
+            ),
+            _health_row(
+                h["sat_status"],
+                AuthState.t["staking_metric_saturation"],
+                h["sat_detail"],
+            ),
+            _health_row(
+                h["relay_status"],
+                AuthState.t["pool_detail_health_relay"],
+                h["relay_detail"],
+            ),
+            rx.cond(
+                h["ticker_status"] != "skip",
+                _health_row(
+                    h["ticker_status"],
+                    AuthState.t["pool_detail_health_ticker"],
+                    rx.cond(
+                        h["ticker_status"] == "warn",
+                        h["ticker_dup_count"] + AuthState.t["pool_detail_health_ticker_suffix"],
+                        AuthState.t["pool_detail_health_ticker_ok"],
+                    ),
+                ),
+                rx.fragment(),
+            ),
+            spacing="4", align_items="stretch", width="100%",
+        ),
+        padding="20px 22px",
+        background=rx.color_mode_cond("var(--gray-2)", "rgba(255,255,255,0.015)"),
+        border_radius="12px",
+        border=f"1px solid {rx.color('gray', 5)}",
+        width="100%",
+    )
+
+
 def _bh_header() -> rx.Component:
     """ブロック生成履歴の列ヘッダー（エポック / ブロック数）。"""
     return rx.hstack(
@@ -602,6 +723,7 @@ def staking_pool_detail_page() -> rx.Component:
                     rx.vstack(
                         _header(),
                         _info_section(),
+                        _health_section(),
                         _block_history_section(),
                         spacing="4", width="100%",
                     ),
