@@ -1236,7 +1236,6 @@ UI_JA: dict[str, str] = {
     "pool_detail_block_history_empty": "ブロック生成履歴がありません。",
     "pool_detail_bh_epoch":            "エポック",
     "pool_detail_bh_blocks":           "ブロック数",
-    "pool_detail_registered_epoch":  "登録エポック",
     "pool_detail_pending_fee_epoch": "手数料変更予定エポック",
     "pool_detail_retiring_epoch":    "退役予定エポック",
 
@@ -2788,7 +2787,6 @@ UI_EN: dict[str, str] = {
     "pool_detail_block_history_empty": "No block production history.",
     "pool_detail_bh_epoch":            "Epoch",
     "pool_detail_bh_blocks":           "Blocks",
-    "pool_detail_registered_epoch":  "Registered epoch",
     "pool_detail_pending_fee_epoch": "Fee change epoch",
     "pool_detail_retiring_epoch":    "Retiring epoch",
 

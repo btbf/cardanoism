@@ -131,8 +131,6 @@ class PoolDetailState(rx.State):
             if not about_full:
                 about_full = str(row.get("description") or "").strip()
             data["about_full"] = about_full
-            ae = row.get("active_epoch_no")
-            data["active_epoch"] = str(ae) if ae is not None else ""
 
             self.pool = data
             self.history_loading = True   # 履歴セクションはスピナー表示
@@ -447,7 +445,7 @@ def _info_section() -> rx.Component:
             ),
             _saturation_row(),
             _metrics_grid(),
-            # 手数料変更予告 / 退役予告 / 登録エポック
+            # 手数料変更予告 / 退役予告
             rx.cond(
                 p["has_pending_fee_change"] != "",
                 _note_row(
@@ -468,16 +466,6 @@ def _info_section() -> rx.Component:
                 ),
                 rx.fragment(),
             ),
-            rx.cond(
-                p["active_epoch"] != "",
-                _note_row(
-                    "calendar",
-                    AuthState.t["pool_detail_registered_epoch"],
-                    p["active_epoch"],
-                    "var(--gray-9)",
-                ),
-                rx.fragment(),
-            ),
             spacing="4", align_items="stretch", width="100%",
         ),
         padding="20px 22px",
@@ -494,12 +482,12 @@ def _bh_header() -> rx.Component:
         rx.text(
             AuthState.t["pool_detail_bh_epoch"],
             size="1", color="var(--gray-9)", weight="medium",
-            width="72px", flex_shrink="0",
+            width="56px", flex_shrink="0", text_align="right",
         ),
         rx.text(
             AuthState.t["pool_detail_bh_blocks"],
             size="1", color="var(--gray-9)", weight="medium",
-            width="64px", flex_shrink="0", text_align="right",
+            width="60px", flex_shrink="0",
         ),
         rx.box(flex="1"),
         spacing="3", align="center", width="100%",
@@ -515,13 +503,13 @@ def _bh_row(h) -> rx.Component:
         rx.text(
             h["epoch"],
             size="2", color="var(--gray-12)", weight="medium",
-            width="72px", flex_shrink="0",
+            width="56px", flex_shrink="0", text_align="right",
             style={"fontFamily": "ui-monospace, monospace"},
         ),
         rx.text(
             h["block_cnt"],
             size="2", weight="bold", color="var(--gray-12)",
-            width="64px", flex_shrink="0", text_align="right",
+            width="60px", flex_shrink="0",
         ),
         rx.box(
             rx.box(
@@ -562,6 +550,7 @@ def _block_history_section() -> rx.Component:
                             rx.vstack(
                                 rx.foreach(PoolDetailState.block_history, _bh_row),
                                 spacing="2", width="100%",
+                                padding_right="12px",
                             ),
                             max_height="360px",
                             overflow_y="auto",
