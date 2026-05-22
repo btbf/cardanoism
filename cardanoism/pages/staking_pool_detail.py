@@ -222,63 +222,81 @@ def _header() -> rx.Component:
 
 
 def _delegate_cta() -> rx.Component:
-    """委任 CTA。SPO 一覧と同じ 3 状態（委任中 / 委任する / 認証誘導）。"""
+    """委任 CTA。SPO 一覧カードと同じ 3 状態・同じボタンスタイル。"""
     pid = PoolDetailState.pool["pool_id"]
     is_currently_delegated = (
         WalletState.connected
         & (WalletState.current_delegated_pool_id == pid)
     )
     delegated_badge = rx.hstack(
-        rx.icon("circle-check", size=16, color="var(--amber-11)"),
+        rx.icon("circle-check", size=11, color="var(--amber-11)"),
         rx.text(
             AuthState.t["delegate_btn_currently"],
-            size="3", weight="bold", color="var(--amber-12)",
+            size="1", weight="bold", color="var(--amber-12)",
+            style={"whiteSpace": "nowrap"},
         ),
         spacing="2",
         align="center",
-        padding="12px 22px",
+        padding="4px 12px 4px 10px",
         border_radius="999px",
         background="var(--amber-3)",
         border="1px solid var(--amber-8)",
         cursor="default",
-        style={"display": "inline-flex"},
+        style={
+            "boxShadow": "0 1px 3px rgba(245,158,11,0.18)",
+            "display": "inline-flex",
+            "flexShrink": "0",
+        },
     )
     btn_style = {
         "display": "inline-flex",
         "alignItems": "center",
-        "gap": "8px",
-        "padding": "12px 26px",
+        "gap": "6px",
+        "padding": "8px 16px",
         "borderRadius": "999px",
-        "background": "var(--amber-9)",
-        "border": "1.5px solid var(--amber-9)",
-        "cursor": "pointer",
-        "transition": "background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease",
-        "boxShadow": "0 2px 6px rgba(245,158,11,0.25)",
+        "background": "transparent",
+        "border": "1.5px solid var(--amber-8)",
+        "transition": "background 0.15s ease, border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease",
+        "flexShrink": "0",
+        "boxShadow": "0 1px 2px rgba(0,0,0,0.04)",
     }
     btn_hover = {
-        "background": "var(--amber-10)",
+        "background": "var(--amber-3)",
+        "border_color": "var(--amber-10)",
         "transform": "translateY(-1px)",
-        "box_shadow": "0 6px 14px -2px rgba(245,158,11,0.35)",
+        "box_shadow": "0 4px 10px -2px rgba(245,158,11,0.25)",
     }
     delegate_active = rx.el.button(
-        rx.icon("zap", size=16, color="white"),
+        rx.icon("zap", size=14, color="var(--amber-11)"),
         rx.text(
             AuthState.t["delegate_btn"],
-            color="white",
-            style={"fontSize": "15px", "fontWeight": "700", "lineHeight": "1.0"},
+            color="var(--amber-12)",
+            style={
+                "fontSize": "13px",
+                "fontWeight": "700",
+                "lineHeight": "1.0",
+                "whiteSpace": "nowrap",
+            },
         ),
         on_click=WalletState.request_delegate_to_pool(pid),
+        cursor="pointer",
         style=btn_style,
         _hover=btn_hover,
     )
     delegate_prompt_auth = rx.el.button(
-        rx.icon("zap", size=16, color="white"),
+        rx.icon("zap", size=14, color="var(--amber-11)"),
         rx.text(
             AuthState.t["delegate_btn"],
-            color="white",
-            style={"fontSize": "15px", "fontWeight": "700", "lineHeight": "1.0"},
+            color="var(--amber-12)",
+            style={
+                "fontSize": "13px",
+                "fontWeight": "700",
+                "lineHeight": "1.0",
+                "whiteSpace": "nowrap",
+            },
         ),
         on_click=AuthState.open_auth_required_modal,
+        cursor="pointer",
         style=btn_style,
         _hover=btn_hover,
     )
