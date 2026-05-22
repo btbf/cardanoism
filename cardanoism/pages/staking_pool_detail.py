@@ -60,9 +60,12 @@ def _fetch_pool_history_cached(pool_id: str) -> list[dict]:
 
 
 class PoolDetailState(rx.State):
-    load: bool = False
     not_found: bool = False
     error: str = ""
+
+    # 現在 state に読み込まれているプール ID。URL のプール ID と一致するまで
+    # ページはスピナーを表示する（別プールへ遷移直後に前回プールが一瞬出るのを防ぐ）。
+    loaded_pool_id: str = ""
 
     # pools 1 行を整形した表示用 dict（format_pool_card_data + 詳細用フィールド）
     pool: dict[str, str] = {}
@@ -72,16 +75,27 @@ class PoolDetailState(rx.State):
     # ブロック生成履歴の Koios フェッチ中フラグ（履歴セクションのスピナー制御）
     history_loading: bool = False
 
+    @rx.var
+    def ready(self) -> bool:
+        """state 上のプールが現在 URL のプールと一致しているか。
+
+        ナビゲーション直後の最初のレンダリング時点では loaded_pool_id が前回
+        プールのままなので False になり、前回プールが一瞬表示されるのを防ぐ。
+        """
+        path = self.router.url.path or ""
+        parts = [p for p in path.split("/") if p]
+        url_pool_id = parts[-1] if parts else ""
+        return self.loaded_pool_id == url_pool_id
+
     def on_load(self):
-        # 1) まず前回プールの残留 state を消し、ページスピナーを表示する。
-        #    ここで yield してクライアントへ即フラッシュしないと、重い Koios
-        #    フェッチ完了まで前回プールが残り続けてしまう。
-        self.load = False
+        # 1) 前回プールの残留 state を消す。loaded_pool_id を空にすることで
+        #    ready が False となり、ページはスピナー表示に切り替わる。
         self.not_found = False
         self.error = ""
         self.pool = {}
         self.block_history = []
         self.history_loading = False
+        self.loaded_pool_id = ""
         yield
 
         # 2) URL 末尾から pool_id を取得
@@ -90,7 +104,7 @@ class PoolDetailState(rx.State):
         pool_id = parts[-1] if parts else ""
         if not pool_id:
             self.not_found = True
-            self.load = True
+            self.loaded_pool_id = pool_id
             return
 
         try:
@@ -98,7 +112,6 @@ class PoolDetailState(rx.State):
             row = get_pool(pool_id)
             if not row:
                 self.not_found = True
-                self.load = True
                 return
 
             # 飽和点（= ソフトキャップ / 500）を /totals から確定
@@ -122,8 +135,8 @@ class PoolDetailState(rx.State):
             data["active_epoch"] = str(ae) if ae is not None else ""
 
             self.pool = data
-            self.load = True            # プール本体を即表示
-            self.history_loading = True  # 履歴セクションはスピナー表示
+            self.history_loading = True   # 履歴セクションはスピナー表示
+            self.loaded_pool_id = pool_id  # ready=True: プール本体を即表示
             yield
 
             # 4) ブロック生成履歴を Koios からオンデマンド取得（重い・エポック降順）
@@ -145,7 +158,7 @@ class PoolDetailState(rx.State):
             self.error = str(e)
         finally:
             self.history_loading = False
-            self.load = True
+            self.loaded_pool_id = pool_id
 
 
 # ─── UI ────────────────────────────────────────────────────────────────────────
@@ -476,13 +489,21 @@ def _info_section() -> rx.Component:
 
 
 def _bh_row(h) -> rx.Component:
-    """ブロック生成履歴の 1 エポック行（エポック番号 + 比率バー + ブロック数）。"""
+    """ブロック生成履歴の 1 エポック行（エポック番号 + ブロック数 + 比率バー）。
+
+    数字はバーの前 (左寄り) に固定配置し、バーはボックス全幅に伸ばす。
+    """
     return rx.hstack(
         rx.text(
             "Ep " + h["epoch"],
             size="1", color="var(--gray-10)",
             width="64px", flex_shrink="0",
             style={"fontFamily": "ui-monospace, monospace"},
+        ),
+        rx.text(
+            h["block_cnt"],
+            size="1", weight="bold", color="var(--gray-12)",
+            width="44px", flex_shrink="0", text_align="right",
         ),
         rx.box(
             rx.box(
@@ -497,11 +518,6 @@ def _bh_row(h) -> rx.Component:
             background="var(--gray-4)",
             border_radius="999px",
             overflow="hidden",
-        ),
-        rx.text(
-            h["block_cnt"],
-            size="1", weight="bold", color="var(--gray-12)",
-            width="48px", flex_shrink="0", text_align="right",
         ),
         spacing="3", align="center", width="100%",
     )
@@ -538,7 +554,6 @@ def _block_history_section() -> rx.Component:
                         max_height="360px",
                         overflow_y="auto",
                         width="100%",
-                        max_width="520px",
                     ),
                     rx.text(
                         AuthState.t["pool_detail_block_history_empty"],
@@ -566,7 +581,7 @@ def _block_history_section() -> rx.Component:
 )
 def staking_pool_detail_page() -> rx.Component:
     return rx.cond(
-        PoolDetailState.load,
+        PoolDetailState.ready,
         rx.box(
             rx.html(SPO_CSS),
             # 委任確認モーダル（1 ページに 1 度だけマウント）
