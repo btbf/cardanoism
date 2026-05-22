@@ -16,7 +16,7 @@ import reflex as rx
 from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.backend.wallet_state import WalletState
-from cardanoism.backend.pool_db import get_pool, count_ticker_duplicates
+from cardanoism.backend.pool_db import get_pool
 from cardanoism.backend.koios import get_totals, get_pool_history
 from cardanoism.backend.price import format_ada
 from cardanoism.components.breadcrumb import breadcrumb
@@ -57,8 +57,8 @@ def _fetch_pool_history_cached(pool_id: str) -> list[dict]:
     return data
 
 
-def _compute_health(row: dict, data: dict, pool_id: str) -> dict[str, str]:
-    """既存 pools データ + ticker 重複クエリから健全性チェック結果を組み立てる。
+def _compute_health(row: dict, data: dict) -> dict[str, str]:
+    """既存 pools データから健全性チェック結果を組み立てる。
 
     追加のバックエンド同期は不要。meta_hash 整合性チェックは pool_sync 改修が
     必要なため Phase B-2b で別途追加する。
@@ -78,14 +78,6 @@ def _compute_health(row: dict, data: dict, pool_id: str) -> dict[str, str]:
         relay_status = "bad"
     relay_checked = row.get("relay_checked_at")
 
-    ticker = str(row.get("ticker") or "").strip()
-    if ticker:
-        dup = count_ticker_duplicates(ticker, pool_id)
-        ticker_status = "warn" if dup > 0 else "ok"
-    else:
-        dup = 0
-        ticker_status = "skip"
-
     return {
         "pledge_status": "ok" if live_pledge >= declared_pledge else "bad",
         "pledge_detail": (
@@ -96,8 +88,6 @@ def _compute_health(row: dict, data: dict, pool_id: str) -> dict[str, str]:
         "sat_detail": data.get("saturation_pct", "0") + "%",
         "relay_status": relay_status,
         "relay_detail": str(relay_checked)[:16] if relay_checked else "",
-        "ticker_status": ticker_status,
-        "ticker_dup_count": str(dup),
     }
 
 
@@ -182,7 +172,7 @@ class PoolDetailState(rx.State):
             data["about_full"] = about_full
 
             self.pool = data
-            self.health = _compute_health(row, data, pool_id)
+            self.health = _compute_health(row, data)
             self.history_loading = True   # 履歴セクションはスピナー表示
             self.loaded_pool_id = pool_id  # ready=True: プール本体を即表示
             yield
@@ -573,19 +563,6 @@ def _health_section() -> rx.Component:
                 h["relay_status"],
                 AuthState.t["pool_detail_health_relay"],
                 h["relay_detail"],
-            ),
-            rx.cond(
-                h["ticker_status"] != "skip",
-                _health_row(
-                    h["ticker_status"],
-                    AuthState.t["pool_detail_health_ticker"],
-                    rx.cond(
-                        h["ticker_status"] == "warn",
-                        h["ticker_dup_count"] + AuthState.t["pool_detail_health_ticker_suffix"],
-                        AuthState.t["pool_detail_health_ticker_ok"],
-                    ),
-                ),
-                rx.fragment(),
             ),
             spacing="4", align_items="stretch", width="100%",
         ),

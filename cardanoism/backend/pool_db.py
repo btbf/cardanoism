@@ -295,24 +295,6 @@ def get_pool(pool_id_bech32: str) -> dict | None:
         return dict(row) if row else None
 
 
-def count_ticker_duplicates(ticker: str, exclude_pool_id: str = "") -> int:
-    """同じ ticker を持つ他プールの数を返す（プール詳細の健全性チェック用）。
-
-    Cardano では ticker の一意性が保証されないため、同名 ticker のプールが
-    あると委任者が偽プールを掴むリスクになる。空 ticker は 0 を返す。
-    """
-    if not ticker:
-        return 0
-    with get_db() as (cursor, _):
-        cursor.execute(
-            "SELECT COUNT(*) AS cnt FROM pools "
-            "WHERE ticker = ? AND pool_id_bech32 <> ?",
-            (ticker, exclude_pool_id),
-        )
-        row = cursor.fetchone()
-        return int((row or {}).get("cnt", 0))
-
-
 def get_top_pools(limit: int = 20) -> list[dict]:
     """live_stake 上位プール（ダッシュボードの飽和率バー用）。"""
     return get_pools(only_active=True, sort="stake_desc", limit=limit, offset=0, random_seed=None)
