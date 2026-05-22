@@ -9,6 +9,7 @@ SPO 向け / メタデータ整合性チェックは Phase B で追加予定。
 from __future__ import annotations
 
 import logging
+import time
 
 import reflex as rx
 
@@ -16,7 +17,7 @@ from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.backend.wallet_state import WalletState
 from cardanoism.backend.pool_db import get_pool
-from cardanoism.backend.koios import get_totals
+from cardanoism.backend.koios import get_totals, get_pool_history
 from cardanoism.components.breadcrumb import breadcrumb
 from cardanoism.components.staking_nav import staking_subnav
 from cardanoism.components.delegation_dialog import delegation_dialog
@@ -34,6 +35,26 @@ from cardanoism.pages.staking_spo import (
 
 logger = logging.getLogger(__name__)
 
+# ブロック生成履歴のオンデマンド取得キャッシュ（pool_id ごと、TTL 10 分）。
+# プール詳細ページが連打されたときに毎回 Koios を叩かないための軽いメモリキャッシュ。
+_HISTORY_TTL = 600.0
+_history_cache: dict[str, tuple[float, list]] = {}
+
+
+def _fetch_pool_history_cached(pool_id: str) -> list[dict]:
+    """Koios /pool_history を全エポック取得する（TTL 付きメモリキャッシュ）。"""
+    now = time.time()
+    hit = _history_cache.get(pool_id)
+    if hit is not None and now - hit[0] < _HISTORY_TTL:
+        return hit[1]
+    try:
+        data = get_pool_history(pool_id, limit=1000, timeout=15.0)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("pool history fetch failed %s: %s", pool_id, e)
+        data = []
+    _history_cache[pool_id] = (now, data)
+    return data
+
 
 # ─── State ────────────────────────────────────────────────────────────────────
 
@@ -46,11 +67,15 @@ class PoolDetailState(rx.State):
     # pools 1 行を整形した表示用 dict（format_pool_card_data + 詳細用フィールド）
     pool: dict[str, str] = {}
 
+    # ブロック生成履歴（エポック降順）。各要素: epoch / block_cnt / bar_pct
+    block_history: list[dict[str, str]] = []
+
     def on_load(self):
         self.load = False
         self.not_found = False
         self.error = ""
         self.pool = {}
+        self.block_history = []
         try:
             # URL 末尾から pool_id を取得
             path = self.router.url.path or ""
@@ -86,6 +111,21 @@ class PoolDetailState(rx.State):
             data["active_epoch"] = str(ae) if ae is not None else ""
 
             self.pool = data
+
+            # ブロック生成履歴を Koios からオンデマンド取得（エポック降順）
+            hist = _fetch_pool_history_cached(pool_id)
+            max_blocks = max(
+                (int(h.get("block_cnt") or 0) for h in hist), default=0
+            ) or 1
+            history_out: list[dict[str, str]] = []
+            for h in hist:
+                bc = int(h.get("block_cnt") or 0)
+                history_out.append({
+                    "epoch":     str(h.get("epoch_no") or ""),
+                    "block_cnt": str(bc),
+                    "bar_pct":   f"{(bc / max_blocks * 100.0):.1f}",
+                })
+            self.block_history = history_out
         except Exception as e:  # noqa: BLE001
             logger.exception("PoolDetailState.on_load: %s", e)
             self.error = str(e)
@@ -420,6 +460,79 @@ def _info_section() -> rx.Component:
     )
 
 
+def _bh_row(h) -> rx.Component:
+    """ブロック生成履歴の 1 エポック行（エポック番号 + 比率バー + ブロック数）。"""
+    return rx.hstack(
+        rx.text(
+            "Ep " + h["epoch"],
+            size="1", color="var(--gray-10)",
+            width="64px", flex_shrink="0",
+            style={"fontFamily": "ui-monospace, monospace"},
+        ),
+        rx.box(
+            rx.box(
+                width=h["bar_pct"] + "%",
+                height="100%",
+                background="var(--amber-9)",
+                border_radius="999px",
+                transition="width 0.3s",
+            ),
+            flex="1",
+            height="10px",
+            background="var(--gray-4)",
+            border_radius="999px",
+            overflow="hidden",
+        ),
+        rx.text(
+            h["block_cnt"],
+            size="1", weight="bold", color="var(--gray-12)",
+            width="48px", flex_shrink="0", text_align="right",
+        ),
+        spacing="3", align="center", width="100%",
+    )
+
+
+def _block_history_section() -> rx.Component:
+    return rx.box(
+        rx.vstack(
+            rx.hstack(
+                rx.text(
+                    AuthState.t["pool_detail_block_history"],
+                    size="3", weight="bold", color="var(--gray-12)",
+                ),
+                rx.spacer(),
+                rx.text(
+                    AuthState.t["pool_detail_block_history_unit"],
+                    size="1", color="var(--gray-9)",
+                ),
+                align="center", width="100%",
+            ),
+            rx.cond(
+                PoolDetailState.block_history,
+                rx.box(
+                    rx.vstack(
+                        rx.foreach(PoolDetailState.block_history, _bh_row),
+                        spacing="2", width="100%",
+                    ),
+                    max_height="360px",
+                    overflow_y="auto",
+                    width="100%",
+                ),
+                rx.text(
+                    AuthState.t["pool_detail_block_history_empty"],
+                    size="2", color="var(--gray-10)",
+                ),
+            ),
+            spacing="3", align_items="stretch", width="100%",
+        ),
+        padding="20px 22px",
+        background=rx.color_mode_cond("white", "rgba(255,255,255,0.05)"),
+        border_radius="12px",
+        border=f"1px solid {rx.color('gray', 5)}",
+        width="100%",
+    )
+
+
 # ─── ページ ────────────────────────────────────────────────────────────────────
 
 
@@ -448,6 +561,7 @@ def staking_pool_detail_page() -> rx.Component:
                     rx.vstack(
                         _header(),
                         _info_section(),
+                        _block_history_section(),
                         spacing="4", width="100%",
                     ),
                 ),
