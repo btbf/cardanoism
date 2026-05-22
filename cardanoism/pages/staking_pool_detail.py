@@ -488,6 +488,24 @@ def _info_section() -> rx.Component:
     )
 
 
+def _bh_header() -> rx.Component:
+    """ブロック生成履歴の列ヘッダー（エポック / ブロック数）。"""
+    return rx.hstack(
+        rx.text(
+            AuthState.t["pool_detail_bh_epoch"],
+            size="1", color="var(--gray-9)", weight="medium",
+            width="72px", flex_shrink="0",
+        ),
+        rx.text(
+            AuthState.t["pool_detail_bh_blocks"],
+            size="1", color="var(--gray-9)", weight="medium",
+            width="64px", flex_shrink="0", text_align="right",
+        ),
+        rx.box(flex="1"),
+        spacing="3", align="center", width="100%",
+    )
+
+
 def _bh_row(h) -> rx.Component:
     """ブロック生成履歴の 1 エポック行（エポック番号 + ブロック数 + 比率バー）。
 
@@ -495,15 +513,15 @@ def _bh_row(h) -> rx.Component:
     """
     return rx.hstack(
         rx.text(
-            "Ep " + h["epoch"],
-            size="1", color="var(--gray-10)",
-            width="64px", flex_shrink="0",
+            h["epoch"],
+            size="2", color="var(--gray-12)", weight="medium",
+            width="72px", flex_shrink="0",
             style={"fontFamily": "ui-monospace, monospace"},
         ),
         rx.text(
             h["block_cnt"],
-            size="1", weight="bold", color="var(--gray-12)",
-            width="44px", flex_shrink="0", text_align="right",
+            size="2", weight="bold", color="var(--gray-12)",
+            width="64px", flex_shrink="0", text_align="right",
         ),
         rx.box(
             rx.box(
@@ -526,17 +544,9 @@ def _bh_row(h) -> rx.Component:
 def _block_history_section() -> rx.Component:
     return rx.box(
         rx.vstack(
-            rx.hstack(
-                rx.text(
-                    AuthState.t["pool_detail_block_history"],
-                    size="3", weight="bold", color="var(--gray-12)",
-                ),
-                rx.spacer(),
-                rx.text(
-                    AuthState.t["pool_detail_block_history_unit"],
-                    size="1", color="var(--gray-9)",
-                ),
-                align="center", width="100%",
+            rx.text(
+                AuthState.t["pool_detail_block_history"],
+                size="3", weight="bold", color="var(--gray-12)",
             ),
             rx.cond(
                 PoolDetailState.history_loading,
@@ -546,14 +556,18 @@ def _block_history_section() -> rx.Component:
                 ),
                 rx.cond(
                     PoolDetailState.block_history,
-                    rx.box(
-                        rx.vstack(
-                            rx.foreach(PoolDetailState.block_history, _bh_row),
-                            spacing="2", width="100%",
+                    rx.vstack(
+                        _bh_header(),
+                        rx.box(
+                            rx.vstack(
+                                rx.foreach(PoolDetailState.block_history, _bh_row),
+                                spacing="2", width="100%",
+                            ),
+                            max_height="360px",
+                            overflow_y="auto",
+                            width="100%",
                         ),
-                        max_height="360px",
-                        overflow_y="auto",
-                        width="100%",
+                        spacing="2", align_items="stretch", width="100%",
                     ),
                     rx.text(
                         AuthState.t["pool_detail_block_history_empty"],
