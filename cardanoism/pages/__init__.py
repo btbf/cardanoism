@@ -16,6 +16,7 @@ from .governance_matrix import governance_matrix_page
 from .constitution import constitution_page
 from .staking import staking_page
 from .staking_spo import staking_spo_page
+from .staking_pool_detail import staking_pool_detail_page
 from .staking_why import staking_why_page
 from .privacy import privacy_page
 from .terms import terms_page

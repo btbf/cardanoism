@@ -441,10 +441,16 @@ def _pool_card(p) -> rx.Component:
             rx.badge(p["ticker"], variant="solid", color_scheme="amber", radius="full"),
             rx.fragment(),
         ),
-        rx.cond(
-            p["pool_name"] != "",
-            rx.text(p["pool_name"], size="3", weight="bold", color="var(--gray-12)"),
-            rx.text(AuthState.t["staking_no_name"], size="3", weight="bold", color="var(--gray-10)"),
+        rx.link(
+            rx.cond(
+                p["pool_name"] != "",
+                rx.text(p["pool_name"], size="3", weight="bold", color="var(--gray-12)"),
+                rx.text(AuthState.t["staking_no_name"], size="3", weight="bold", color="var(--gray-10)"),
+            ),
+            href="/pool/" + p["pool_id"],
+            underline="none",
+            color="inherit",
+            _hover={"color": "var(--amber-11)"},
         ),
         # ホームページ + ソーシャルアイコン群（プール名の右隣に並べる）
         _social_link(
@@ -701,7 +707,11 @@ def _pool_card(p) -> rx.Component:
     header_section = rx.box(
         rx.vstack(
             rx.hstack(
-                icon_or_rank,
+                rx.link(
+                    icon_or_rank,
+                    href="/pool/" + p["pool_id"],
+                    underline="none",
+                ),
                 rx.vstack(
                     name,
                     pool_id_inline,
