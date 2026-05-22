@@ -976,12 +976,8 @@ def _process_tx(tx: dict, slot: int, current_epoch: int) -> None:
             # DRep id は Ogmios だと hex で来るが、stake_addresses.delegated_drep_id は
             # bech32 (drep1...) で記録される。フィルタを通すため bech32 に揃える。
             drep_hex = voter.get("id", "")
-            has_script = bool(
-                voter.get("isScript")
-                or voter.get("kind") == "scriptHash"
-                or voter.get("type") == "script"
-                or voter.get("from") == "scriptHash"
-            )
+            # Ogmios の CredentialOrigin enum は "verificationKey" / "script"。
+            has_script = voter.get("from") == "script"
             drep_id = encode_voter_id("DRep", drep_hex, has_script=has_script) or drep_hex
             raw_vote = (vote.get("vote") or "").lower()
             vote_str = _VOTE_NORMALIZE.get(raw_vote, raw_vote)

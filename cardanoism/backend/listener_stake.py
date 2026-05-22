@@ -67,8 +67,8 @@ def _resolve_stake_addr_from_cert(cert: dict) -> tuple[str | None, str | None]:
     if not isinstance(cred, dict):
         return None, None
     cred_hex = cred.get("id") or ""
-    type_str = (cred.get("type") or cred.get("kind") or "").lower()
-    has_script = "script" in type_str
+    # Ogmios の CredentialOrigin enum は "verificationKey" / "script"。
+    has_script = cred.get("from") == "script"
     stake_addr = _credential_to_stake_address(cred_hex, has_script)
     return stake_addr, cred_hex
 
@@ -89,7 +89,9 @@ def _resolve_drep_target(drep_obj: Any) -> str | _NoChange | None:
     if "noconfidence" in type_str or "no_confidence" in type_str:
         return None
     drep_hex = drep_obj.get("id") or ""
-    has_script = "script" in type_str
+    # 鍵/script の判別は type ではなく Ogmios の "from" フィールド
+    # (CredentialOrigin enum = "verificationKey" / "script")。
+    has_script = drep_obj.get("from") == "script"
     drep_id = encode_voter_id("DRep", drep_hex, has_script=has_script)
     if not drep_id:
         return _NO_CHANGE

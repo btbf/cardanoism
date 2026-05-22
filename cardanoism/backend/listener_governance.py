@@ -223,11 +223,10 @@ def record_vote_from_event(vote_obj: dict, slot: int) -> bool:
         return False
 
     voter_hex = voter.get("id") or ""
-    has_script = bool(
-        voter.get("isScript")
-        or voter.get("kind") == "scriptHash"
-        or voter.get("type") == "script"
-    )
+    # Ogmios は credential が鍵ベースか script ベースかを "from" フィールドで示す
+    # (CredentialOrigin enum = "verificationKey" / "script")。これを取りこぼすと
+    # script DRep を鍵ヘッダ 0x22 で誤エンコードし voter_id が変わってしまう。
+    has_script = voter.get("from") == "script"
     voter_id = encode_voter_id(role, voter_hex, has_script)
     if not voter_id:
         logger.warning("listener: voter_id 計算失敗 role=%s id=%s", role, voter_hex)
