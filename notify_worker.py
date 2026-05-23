@@ -2567,50 +2567,62 @@ def check_treasury_events():
 # GA AI 分析: 初回同期バッチ
 # ============================================================
 
-def check_ga_ai_initial_sync() -> None:
+def check_ga_ai_initial_sync(include_all: bool = False) -> None:
     """既存 GA に対して AI 分析キューを初期化するバッチ。
 
-    対象（OR 条件で union）:
+    通常対象（OR 条件で union）:
       - Active（ratified/enacted/dropped/expired すべて NULL）
       - Ratified（ratified_epoch IS NOT NULL）
       - Enacted（enacted_epoch IS NOT NULL）
       - expiration >= 現在エポック - 6（最近 Expired / Dropped した GA も含める）
 
+    include_all=True の場合:
+      - proposal_id がある GA 全件を対象（過去の Dropped / Expired も含む）
+      - DRep マッチング診断のサンプルサイズを拡大したいときに使う
+
     INSERT IGNORE で投入するため、既に行があれば何もしない（再実行安全）。
     実際の分析は ga_ai_worker.py が pending を拾って進める。
     """
-    logger.info("=== GA AI 分析 初回同期バッチ 開始 ===")
+    logger.info("=== GA AI 分析 初回同期バッチ 開始 (include_all=%s) ===", include_all)
 
-    try:
-        current_epoch = get_current_epoch()
-    except Exception as e:
-        logger.warning("現在エポック取得失敗 (continue with None): %s", e)
-        current_epoch = None
-
-    epoch_threshold: int | None = None
-    if current_epoch is not None:
-        epoch_threshold = max(0, int(current_epoch) - 6)
-
-    sql = (
-        "SELECT proposal_id FROM governance_actions "
-        "WHERE proposal_id IS NOT NULL AND proposal_id <> '' AND ("
-        "  (ratified_epoch IS NULL AND enacted_epoch IS NULL "
-        "   AND dropped_epoch IS NULL AND expired_epoch IS NULL)"
-        "  OR ratified_epoch IS NOT NULL"
-        "  OR enacted_epoch IS NOT NULL"
-    )
     params: list = []
-    if epoch_threshold is not None:
-        sql += "  OR expiration >= ?"
-        params.append(epoch_threshold)
-    sql += ")"
+    if include_all:
+        sql = (
+            "SELECT proposal_id FROM governance_actions "
+            "WHERE proposal_id IS NOT NULL AND proposal_id <> ''"
+        )
+        current_epoch = None
+        epoch_threshold = None
+    else:
+        try:
+            current_epoch = get_current_epoch()
+        except Exception as e:
+            logger.warning("現在エポック取得失敗 (continue with None): %s", e)
+            current_epoch = None
+
+        epoch_threshold = None
+        if current_epoch is not None:
+            epoch_threshold = max(0, int(current_epoch) - 6)
+
+        sql = (
+            "SELECT proposal_id FROM governance_actions "
+            "WHERE proposal_id IS NOT NULL AND proposal_id <> '' AND ("
+            "  (ratified_epoch IS NULL AND enacted_epoch IS NULL "
+            "   AND dropped_epoch IS NULL AND expired_epoch IS NULL)"
+            "  OR ratified_epoch IS NOT NULL"
+            "  OR enacted_epoch IS NOT NULL"
+        )
+        if epoch_threshold is not None:
+            sql += "  OR expiration >= ?"
+            params.append(epoch_threshold)
+        sql += ")"
 
     with get_db() as (cursor, _):
         cursor.execute(sql, params)
         rows = cursor.fetchall()
     proposal_ids = [str(r["proposal_id"]) for r in rows]
-    logger.info("対象 GA: %d 件 (current_epoch=%s, threshold=%s)",
-                len(proposal_ids), current_epoch, epoch_threshold)
+    logger.info("対象 GA: %d 件 (include_all=%s, current_epoch=%s, threshold=%s)",
+                len(proposal_ids), include_all, current_epoch, epoch_threshold)
 
     if not proposal_ids:
         logger.info("対象 GA なし。終了。")
@@ -2888,8 +2900,11 @@ def main():
     parser.add_argument(
         "--all",
         action="store_true",
-        help="ga_ai_reanalyze で Active かつ analyzed の GA 全件を再分析対象にする"
-             "（Ratified / Enacted / Dropped / Expired は対象外）",
+        help=(
+            "ga_ai_reanalyze: Active かつ analyzed の GA 全件を再分析対象にする"
+            "（Ratified / Enacted / Dropped / Expired は対象外）。"
+            "ga_ai_initial_sync: 期間制限を外し過去 Dropped / Expired も含む全 GA を投入対象にする。"
+        ),
     )
     args = parser.parse_args()
 
@@ -2939,7 +2954,7 @@ def main():
     # GA AI 初回同期は --event ga_ai_initial_sync で明示指定したときのみ実行する
     # （"all" には含めない: 通常は governance.py 側 enqueue で自動投入されるため）
     if args.event == "ga_ai_initial_sync":
-        check_ga_ai_initial_sync()
+        check_ga_ai_initial_sync(include_all=args.all)
 
     # GA AI 再分析: --event ga_ai_reanalyze で明示指定（"all" には含めない）
     if args.event == "ga_ai_reanalyze":
