@@ -157,6 +157,139 @@ class DrepState(rx.State):
         return rx.call_script("window.scrollTo(0, 0)")
 
 
+# ─── DRep マッチング診断 State ─────────────────────────────────────────────────
+
+# 質問の順番。各 index は drep_match.TOPIC_KEYS と同期した topic を表す。
+# AI 分類のキーと一致させること（一致しないと user_vector が DRep プロファイルと
+# 揃わずマッチング結果が崩れる）。
+_DREP_MATCH_TOPIC_ORDER: tuple[str, ...] = (
+    "core_dev", "research", "education", "community",
+    "defi", "enterprise", "product", "governance",
+)
+_DREP_MATCH_TOTAL = len(_DREP_MATCH_TOPIC_ORDER)
+
+
+class DrepMatchState(rx.State):
+    """マッチング診断の view 状態と回答ベクトル / 結果を保持する。"""
+    # view: "list" / "quiz" / "results"
+    view: str = "list"
+    # 現在の質問インデックス (0..N-1)
+    current_question: int = 0
+    # 各質問の回答: "yes" / "neutral" / "no" / "" (未回答)
+    answers: list[str] = ["", "", "", "", "", "", "", ""]
+    # 結果（compute_match の戻り値を str dict 化したもの。.split(",") で list 化）
+    results: list[dict[str, str]] = []
+
+    @rx.var
+    def current_topic_key(self) -> str:
+        idx = self.current_question
+        if 0 <= idx < _DREP_MATCH_TOTAL:
+            return _DREP_MATCH_TOPIC_ORDER[idx]
+        return ""
+
+    @rx.var
+    def current_question_i18n_key(self) -> str:
+        key = self.current_topic_key
+        return "drep_match_q_" + key if key else ""
+
+    @rx.var
+    def progress_current(self) -> str:
+        return str(self.current_question + 1)
+
+    @rx.var
+    def progress_total(self) -> str:
+        return str(_DREP_MATCH_TOTAL)
+
+    @rx.var
+    def is_first_question(self) -> bool:
+        return self.current_question == 0
+
+    @rx.var
+    def is_last_question(self) -> bool:
+        return self.current_question == _DREP_MATCH_TOTAL - 1
+
+    @rx.var
+    def current_answer(self) -> str:
+        idx = self.current_question
+        if 0 <= idx < len(self.answers):
+            return self.answers[idx]
+        return ""
+
+    @rx.var
+    def can_submit(self) -> bool:
+        # 最終問が回答済みであれば送信可
+        if not self.is_last_question:
+            return False
+        return self.current_answer != ""
+
+    @rx.var
+    def progress_pct(self) -> str:
+        """進行バー幅 (%、1 桁丸め)。"""
+        if _DREP_MATCH_TOTAL <= 0:
+            return "0"
+        pct = (self.current_question + 1) / _DREP_MATCH_TOTAL * 100
+        return f"{pct:.1f}"
+
+    def set_view(self, view: str):
+        if view in ("list", "quiz", "results"):
+            self.view = view
+
+    def start_quiz(self):
+        """クイズを初期化して quiz view に切り替える。"""
+        self.view = "quiz"
+        self.current_question = 0
+        self.answers = [""] * _DREP_MATCH_TOTAL
+        self.results = []
+
+    def answer(self, choice: str):
+        """現在の質問に回答し、最終問でなければ次に進む。"""
+        if choice not in ("yes", "neutral", "no"):
+            return
+        idx = self.current_question
+        if 0 <= idx < len(self.answers):
+            new = list(self.answers)
+            new[idx] = choice
+            self.answers = new
+        if not self.is_last_question:
+            self.current_question = idx + 1
+
+    def prev_question(self):
+        if self.current_question > 0:
+            self.current_question -= 1
+
+    def submit_quiz(self):
+        """回答ベクトルから drep_match.compute_match を呼び、結果 view へ。"""
+        from cardanoism.backend.drep_match import compute_match, TOPIC_KEYS
+        user_vector: dict[str, float | None] = {}
+        for i, topic in enumerate(TOPIC_KEYS):
+            ans = self.answers[i] if i < len(self.answers) else ""
+            if ans == "yes":
+                user_vector[topic] = 1.0
+            elif ans == "no":
+                user_vector[topic] = 0.0
+            else:
+                user_vector[topic] = None  # neutral / 未回答 → 比較対象外
+        try:
+            raw = compute_match(user_vector, limit=3)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("compute_match failed: %s", e)
+            raw = []
+        out: list[dict[str, str]] = []
+        for r in raw:
+            out.append({
+                "drep_id":        r["drep_id"],
+                "given_name":     r["given_name"],
+                "image_url":      r["image_url"],
+                "similarity_pct": f"{r['similarity_pct']:.1f}",
+                "match_dims":     str(r["match_dims"]),
+                "top_yes_csv":    ",".join(r["top_yes_topics"]),
+                "top_no_csv":     ",".join(r["top_no_topics"]),
+                "vote_count":     str(r["topic_vote_count"]),
+            })
+        self.results = out
+        self.view = "results"
+
+
 # ─── UI パーツ ────────────────────────────────────────────────────────────────
 
 
@@ -630,6 +763,323 @@ def _pagination() -> rx.Component:
     )
 
 
+# ─── マッチング診断 UI ────────────────────────────────────────────────────────
+
+
+def _tab_button(view_key: str, label) -> rx.Component:
+    """list / match タブ切り替えボタン。"""
+    is_active = DrepMatchState.view == view_key if view_key == "list" else (
+        (DrepMatchState.view == "quiz") | (DrepMatchState.view == "results")
+    )
+    return rx.el.button(
+        rx.text(
+            label,
+            size="2",
+            weight="bold",
+            color=rx.cond(is_active, "var(--amber-12)", "var(--gray-11)"),
+        ),
+        on_click=DrepMatchState.set_view(view_key),
+        cursor="pointer",
+        style={
+            "padding":      "7px 18px",
+            "borderRadius": "9999px",
+            "border":       rx.cond(is_active, "1px solid var(--amber-8)", "1px solid var(--gray-6)"),
+            "background":   rx.cond(is_active, "var(--amber-3)", "transparent"),
+            "whiteSpace":   "nowrap",
+            "transition":   "background 0.15s, border-color 0.15s, color 0.15s",
+        },
+        _hover=rx.cond(
+            is_active,
+            {"background": "var(--amber-4)"},
+            {"background": "var(--gray-3)", "border_color": "var(--gray-8)"},
+        ),
+    )
+
+
+def _drep_match_tabs() -> rx.Component:
+    return rx.hstack(
+        _tab_button("list", AuthState.t["drep_tab_list"]),
+        _tab_button("quiz", AuthState.t["drep_tab_match"]),
+        spacing="2", wrap="wrap", padding_y="4px",
+    )
+
+
+def _answer_button(choice: str, label, color_scheme: str) -> rx.Component:
+    """quiz の回答ボタン。現在の回答と一致したら強調表示。"""
+    is_selected = DrepMatchState.current_answer == choice
+    bg = {
+        "amber":  ("var(--amber-3)",  "var(--amber-9)"),
+        "gray":   ("var(--gray-3)",   "var(--gray-7)"),
+        "red":    ("var(--red-3)",    "var(--red-9)"),
+    }[color_scheme]
+    txt = {
+        "amber":  "var(--amber-12)",
+        "gray":   "var(--gray-12)",
+        "red":    "var(--red-12)",
+    }[color_scheme]
+    return rx.el.button(
+        rx.text(label, size="3", weight="bold", color=txt),
+        on_click=DrepMatchState.answer(choice),
+        cursor="pointer",
+        style={
+            "padding":      "14px 24px",
+            "borderRadius": "999px",
+            "background":   rx.cond(is_selected, bg[0], "transparent"),
+            "border":       rx.cond(is_selected, f"2px solid {bg[1]}", "1.5px solid var(--gray-6)"),
+            "minWidth":     "120px",
+            "transition":   "background 0.15s, border-color 0.15s",
+        },
+        _hover={"background": bg[0], "border_color": bg[1]},
+    )
+
+
+def _quiz_view() -> rx.Component:
+    """質問カード。current_question_i18n_key を AuthState.t で動的引き。"""
+    return rx.box(
+        rx.vstack(
+            rx.hstack(
+                rx.text(
+                    AuthState.t["drep_match_progress"], " ",
+                    DrepMatchState.progress_current,
+                    " ", AuthState.t["drep_match_progress_of"], " ",
+                    DrepMatchState.progress_total,
+                    size="2", color="var(--gray-11)", weight="medium",
+                ),
+                rx.spacer(),
+                # 進行バー
+                rx.box(
+                    rx.box(
+                        width=DrepMatchState.progress_pct + "%",
+                        height="100%",
+                        background="var(--amber-9)",
+                        border_radius="999px",
+                        transition="width 0.3s",
+                    ),
+                    width="120px",
+                    height="6px",
+                    background="var(--gray-4)",
+                    border_radius="999px",
+                    overflow="hidden",
+                ),
+                width="100%", align="center",
+            ),
+            rx.heading(
+                AuthState.t[DrepMatchState.current_question_i18n_key],
+                size="5", weight="bold", color="var(--gray-12)",
+                style={"lineHeight": "1.5"},
+            ),
+            # 回答ボタン群
+            rx.hstack(
+                _answer_button("yes", AuthState.t["drep_match_answer_yes"], "amber"),
+                _answer_button("neutral", AuthState.t["drep_match_answer_neutral"], "gray"),
+                _answer_button("no", AuthState.t["drep_match_answer_no"], "red"),
+                spacing="3", wrap="wrap", justify="center", padding_y="12px",
+            ),
+            # 戻る / 診断する ボタン
+            rx.hstack(
+                rx.cond(
+                    DrepMatchState.is_first_question,
+                    rx.fragment(),
+                    rx.button(
+                        rx.icon("chevron-left", size=14),
+                        rx.text(AuthState.t["drep_match_back_button"], size="2"),
+                        on_click=DrepMatchState.prev_question,
+                        variant="soft", color_scheme="gray", cursor="pointer",
+                    ),
+                ),
+                rx.spacer(),
+                rx.cond(
+                    DrepMatchState.can_submit,
+                    rx.button(
+                        rx.text(AuthState.t["drep_match_submit_button"], size="3", weight="bold"),
+                        rx.icon("arrow-right", size=14),
+                        on_click=DrepMatchState.submit_quiz,
+                        size="3", color_scheme="amber", variant="solid", cursor="pointer",
+                    ),
+                    rx.fragment(),
+                ),
+                width="100%", align="center", padding_top="8px",
+            ),
+            spacing="5", align_items="stretch", width="100%",
+        ),
+        padding="32px 28px",
+        border_radius="12px",
+        border=f"1px solid {rx.color('gray', 5)}",
+        background=rx.color_mode_cond("white", "rgba(255,255,255,0.04)"),
+        width="100%",
+        max_width="700px",
+    )
+
+
+def _topic_chip(key) -> rx.Component:
+    """トピックキーを i18n ラベルで小さなチップ表示する。"""
+    return rx.box(
+        rx.text(
+            AuthState.t["drep_topic_" + key],
+            size="1", weight="medium",
+            color="var(--gray-12)",
+            style={"whiteSpace": "nowrap"},
+        ),
+        padding="3px 9px",
+        border_radius="999px",
+        background="var(--gray-3)",
+        border="1px solid var(--gray-6)",
+        style={"display": "inline-flex"},
+    )
+
+
+def _match_result_card(r) -> rx.Component:
+    """マッチ結果 1 件の DRep カード。"""
+    avatar = rx.cond(
+        r["image_url"] != "",
+        rx.image(
+            src=r["image_url"],
+            width="56px", height="56px",
+            border_radius="50%",
+            style={"objectFit": "cover", "flexShrink": "0"},
+            custom_attrs={"referrerpolicy": "no-referrer"},
+        ),
+        rx.center(
+            rx.icon("user-round", size=28, color="var(--gray-9)"),
+            width="56px", height="56px",
+            border_radius="50%",
+            background="var(--gray-4)",
+            style={"flexShrink": "0"},
+        ),
+    )
+    name = rx.cond(
+        r["given_name"] != "",
+        rx.text(r["given_name"], size="3", weight="bold", color="var(--gray-12)"),
+        rx.text(AuthState.t["drep_no_name"], size="3", color="var(--gray-10)"),
+    )
+    return rx.link(
+        rx.box(
+            rx.hstack(
+                avatar,
+                rx.vstack(
+                    name,
+                    rx.hstack(
+                        rx.text(
+                            AuthState.t["drep_match_results_match_label"], " ",
+                            size="1", color="var(--gray-10)",
+                        ),
+                        rx.text(
+                            r["similarity_pct"], "%",
+                            size="5", weight="bold", color="var(--amber-11)",
+                        ),
+                        rx.text(
+                            " · ",
+                            AuthState.t["drep_match_results_data_count"], " ",
+                            r["vote_count"], " ",
+                            AuthState.t["drep_match_results_data_unit"],
+                            size="1", color="var(--gray-10)",
+                        ),
+                        spacing="1", align="baseline", wrap="wrap",
+                    ),
+                    spacing="1", align_items="start", flex="1", min_width="0",
+                ),
+                spacing="3", align="center", width="100%",
+            ),
+            # トピック特徴
+            rx.vstack(
+                rx.cond(
+                    r["top_yes_csv"] != "",
+                    rx.hstack(
+                        rx.text(
+                            AuthState.t["drep_match_results_active_in"],
+                            size="1", color="var(--green-11)", weight="medium",
+                            style={"flexShrink": "0"},
+                        ),
+                        rx.foreach(r["top_yes_csv"].split(","), _topic_chip),
+                        spacing="2", align="center", wrap="wrap",
+                    ),
+                    rx.fragment(),
+                ),
+                rx.cond(
+                    r["top_no_csv"] != "",
+                    rx.hstack(
+                        rx.text(
+                            AuthState.t["drep_match_results_cautious_in"],
+                            size="1", color="var(--red-11)", weight="medium",
+                            style={"flexShrink": "0"},
+                        ),
+                        rx.foreach(r["top_no_csv"].split(","), _topic_chip),
+                        spacing="2", align="center", wrap="wrap",
+                    ),
+                    rx.fragment(),
+                ),
+                spacing="2", align_items="stretch", padding_top="10px", width="100%",
+            ),
+            padding="18px 20px",
+            border_radius="12px",
+            border=f"1px solid {rx.color('gray', 5)}",
+            background=rx.color_mode_cond("white", "rgba(255,255,255,0.04)"),
+            width="100%",
+            _hover={
+                "border_color": rx.color("amber", 8),
+                "transform":    "translateY(-1px)",
+            },
+            style={"transition": "border-color 0.15s, transform 0.15s"},
+        ),
+        href="/drep/" + r["drep_id"],
+        color="inherit",
+        underline="none",
+        style={"display": "block", "width": "100%"},
+    )
+
+
+def _results_view() -> rx.Component:
+    return rx.vstack(
+        rx.hstack(
+            rx.heading(AuthState.t["drep_match_results_heading"], size="5"),
+            rx.spacer(),
+            rx.button(
+                rx.icon("rotate-cw", size=14),
+                rx.text(AuthState.t["drep_match_restart_button"], size="2"),
+                on_click=DrepMatchState.start_quiz,
+                variant="soft", color_scheme="gray", cursor="pointer",
+            ),
+            width="100%", align="center", wrap="wrap",
+        ),
+        rx.cond(
+            DrepMatchState.results,
+            rx.vstack(
+                rx.foreach(
+                    DrepMatchState.results.to(list[dict[str, str]]),
+                    _match_result_card,
+                ),
+                spacing="3", width="100%",
+            ),
+            rx.callout(
+                AuthState.t["drep_match_results_no_match"],
+                icon="info", color_scheme="gray",
+            ),
+        ),
+        spacing="4", width="100%",
+    )
+
+
+def _match_view() -> rx.Component:
+    """quiz と results を view に応じて切り替える親コンテナ。"""
+    return rx.box(
+        rx.vstack(
+            rx.heading(AuthState.t["drep_match_heading"], size="6", weight="bold"),
+            rx.text(
+                AuthState.t["drep_match_intro"],
+                size="2", color="var(--gray-10)",
+            ),
+            rx.match(
+                DrepMatchState.view,
+                ("results", _results_view()),
+                # quiz / その他は質問カード
+                rx.center(_quiz_view(), width="100%", padding_y="12px"),
+            ),
+            spacing="4", align_items="stretch", width="100%",
+        ),
+        width="100%",
+    )
+
+
 # ─── ページ ────────────────────────────────────────────────────────────────────
 
 
@@ -648,29 +1098,39 @@ def governance_drep_page() -> rx.Component:
             rx.vstack(
                 _breadcrumb(),
                 governance_subnav("drep"),
-                _filter_bar(),
-                rx.hstack(
-                    rx.text(AuthState.t["gov_search_results"], size="3"),
-                    rx.text(DrepState.total_items, size="5", weight="bold", color="var(--amber-11)"),
-                    rx.text(AuthState.t["gov_results_unit"], size="3"),
-                    rx.spacer(),
-                    rx.hstack(
-                        rx.text(AuthState.t["drep_total_delegation_label"], size="2", color="var(--gray-10)"),
-                        rx.text(DrepState.total_delegation_ada_display, size="3", weight="bold", color="var(--amber-11)"),
-                        rx.text("ADA", size="1", color="var(--gray-10)"),
-                        spacing="2", align="baseline",
-                    ),
-                    spacing="2", align="baseline", width="100%", wrap="wrap",
-                ),
-                rx.cond(
-                    DrepState.dreps,
+                _drep_match_tabs(),
+                rx.match(
+                    DrepMatchState.view,
+                    ("quiz",    _match_view()),
+                    ("results", _match_view()),
+                    # default: "list" — 既存の DRep 一覧
                     rx.vstack(
-                        rx.foreach(DrepState.dreps.to(list[dict[str, str]]), _drep_card),
-                        spacing="2", width="100%",
+                        _filter_bar(),
+                        rx.hstack(
+                            rx.text(AuthState.t["gov_search_results"], size="3"),
+                            rx.text(DrepState.total_items, size="5", weight="bold", color="var(--amber-11)"),
+                            rx.text(AuthState.t["gov_results_unit"], size="3"),
+                            rx.spacer(),
+                            rx.hstack(
+                                rx.text(AuthState.t["drep_total_delegation_label"], size="2", color="var(--gray-10)"),
+                                rx.text(DrepState.total_delegation_ada_display, size="3", weight="bold", color="var(--amber-11)"),
+                                rx.text("ADA", size="1", color="var(--gray-10)"),
+                                spacing="2", align="baseline",
+                            ),
+                            spacing="2", align="baseline", width="100%", wrap="wrap",
+                        ),
+                        rx.cond(
+                            DrepState.dreps,
+                            rx.vstack(
+                                rx.foreach(DrepState.dreps.to(list[dict[str, str]]), _drep_card),
+                                spacing="2", width="100%",
+                            ),
+                            rx.callout(AuthState.t["drep_empty"], icon="info", color_scheme="gray"),
+                        ),
+                        rx.cond(DrepState.dreps, _pagination(), rx.fragment()),
+                        spacing="4", width="100%",
                     ),
-                    rx.callout(AuthState.t["drep_empty"], icon="info", color_scheme="gray"),
                 ),
-                rx.cond(DrepState.dreps, _pagination(), rx.fragment()),
                 spacing="4",
                 width="100%",
             ),
