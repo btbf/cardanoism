@@ -881,14 +881,21 @@ _epoch_proto_cache: tuple[float, int, dict[str, dict]] | None = None
 _epoch_proto_lock = threading.Lock()
 
 
-def get_current_epoch_pool_proto_versions(current_epoch: int) -> dict[str, dict]:
+def get_current_epoch_pool_proto_versions(current_epoch: int | None = None) -> dict[str, dict]:
     """現在エポックで各プールが最後に作ったブロックの protocol version を返す。
 
     戻り値: {pool_id_bech32: {"major": int|None, "minor": int|None}}
 
     Koios /blocks?epoch_no=eq.N&order=block_time.desc を全件取得し、
     pool ごとに最初に出会ったブロック (= 時系列最新) を採用する。
+    current_epoch を渡さない場合は Koios /tip から取得する。
     """
+    if current_epoch is None:
+        current_epoch = get_current_epoch()
+        if current_epoch is None:
+            logger.warning("proto_versions: 現在エポックの取得に失敗しました")
+            return {}
+
     global _epoch_proto_cache
     with _epoch_proto_lock:
         now = time.time()
@@ -900,21 +907,24 @@ def get_current_epoch_pool_proto_versions(current_epoch: int) -> dict[str, dict]
     out: dict[str, dict] = {}
     offset = 0
     limit = 1000
+    total_blocks = 0
     while True:
         params = {
             "epoch_no": f"eq.{int(current_epoch)}",
             "order":    "block_time.desc",
             "offset":   offset,
             "limit":    limit,
-            "select":   "pool,proto_major,proto_minor",
         }
         try:
             data = _get("/blocks", params, timeout=20.0)
         except Exception as e:  # noqa: BLE001
-            logger.warning("get_current_epoch_pool_proto_versions fetch failed (offset=%d): %s", offset, e)
+            logger.warning("proto_versions fetch failed (offset=%d): %s", offset, e)
             break
         if not data or not isinstance(data, list):
+            if offset == 0:
+                logger.warning("proto_versions: Koios /blocks epoch_no=%d が空レスポンス", current_epoch)
             break
+        total_blocks += len(data)
         for b in data:
             pool = b.get("pool")
             if not pool:
@@ -928,6 +938,11 @@ def get_current_epoch_pool_proto_versions(current_epoch: int) -> dict[str, dict]
         if len(data) < limit:
             break
         offset += limit
+
+    logger.info(
+        "proto_versions: epoch=%d ブロック取得=%d 件 / 解析後プール数=%d",
+        current_epoch, total_blocks, len(out),
+    )
 
     with _epoch_proto_lock:
         _epoch_proto_cache = (time.time(), current_epoch, out)

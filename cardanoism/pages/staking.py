@@ -307,16 +307,23 @@ class StakingDashboardState(rx.State):
         現在エポックでブロック未生成=none で色分けする。
         """
         try:
-            import time as _t
-            from cardanoism.backend.koios import get_current_epoch_pool_proto_versions
-            # 現在エポック (Shelley genesis 基準で計算、staking.py 内の定数と整合)
-            SHELLEY_EPOCH = 208
-            SHELLEY_UNIX = 1_596_059_091
-            EPOCH_SECONDS = 432_000
-            current_epoch = SHELLEY_EPOCH + (int(_t.time()) - SHELLEY_UNIX) // EPOCH_SECONDS
-            self.proto_version_current_epoch = current_epoch
-
-            proto_map = get_current_epoch_pool_proto_versions(current_epoch) or {}
+            from cardanoism.backend.koios import (
+                get_current_epoch,
+                get_current_epoch_pool_proto_versions,
+            )
+            # 現在エポックは Koios /tip から取得（mainnet/preview を問わず正確）
+            current_epoch = get_current_epoch()
+            if current_epoch is None:
+                logger.warning("_fetch_proto_versions: 現在エポック取得に失敗")
+                self.proto_version_pools = []
+                self.proto_version_legend = []
+                return
+            self.proto_version_current_epoch = int(current_epoch)
+            proto_map = get_current_epoch_pool_proto_versions(int(current_epoch)) or {}
+            logger.info(
+                "_fetch_proto_versions: epoch=%s proto_map=%d heatmap_pools=%d",
+                current_epoch, len(proto_map), len(self.heatmap_pools),
+            )
         except Exception as e:  # noqa: BLE001
             logger.warning("_fetch_proto_versions failed: %s", e)
             self.proto_version_pools = []
