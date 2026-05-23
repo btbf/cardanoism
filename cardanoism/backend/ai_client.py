@@ -193,36 +193,72 @@ Use clean Japanese labels in label_ja (e.g., "引き出し額", "受取先", "�
 
 `topic_tags` is a JSON array of 1-3 topic keys describing what category this
 proposal falls into. This is a neutral categorization — NOT a judgment of
-quality or correctness.
+quality or correctness. Tags drive a DRep matching diagnostic that helps
+delegators find DReps whose voting patterns align with their priorities.
 
 Topic keys (use these EXACT strings):
-- "core_dev"   — Core protocol / node / cryptography / security audits /
-                 bug bounties / formal verification of core code
-- "research"   — Academic papers, peer-reviewed research, theoretical work
-- "education"  — Developer training, courses, learning platforms
-                 (e.g. Andamio, Aiken-related education, Gimbalabs,
-                  Emurgo Academy, bootcamps, Cardano Constitution Workshops)
-- "community"  — Conferences, meetups, ambassador programs, localization,
-                 hackathons, marketing, community-building events
-- "defi"       — DEX, stablecoin, lending, liquidity, cross-chain bridges
-- "enterprise" — Enterprise / government adoption, RealFi, industry
-                 partnerships, regulated-market initiatives
-- "product"    — Wallets, NFT, dev tools, end-user dApps and ecosystem
-                 products that don't fit into the more specific buckets
-- "governance" — Committee changes, constitution amendments, NoConfidence,
-                 Intersect / governance-infrastructure operational funding
+
+# Axis 1: Spending allocation (what the proposal funds)
+- "protocol"      — Core protocol implementation / node software / consensus /
+                    code-level security audits / bug bounties on core code.
+                    Pure engineering / implementation work. Does NOT include
+                    cryptography research, organizational operating budgets,
+                    or end-user products.
+- "ecosystem"     — DEX, stablecoin, lending, liquidity, cross-chain bridges,
+                    wallets, NFT platforms, dev tools, end-user dApps and
+                    on-chain products built on Cardano.
+- "adoption"      — Enterprise / government adoption, RealFi, industry
+                    partnerships, B2B integrations, regulated-market
+                    initiatives, real-world use-case expansion.
+- "marketing"     — Marketing, PR, advertising, conferences, meetups, events,
+                    branding, ambassador programs, community-awareness
+                    campaigns, sponsorships aimed at growing reach.
+- "dev_education" — Developer training, technical courses, learning platforms
+                    aimed at DEVELOPERS (Pioneer Programs, Aiken / Plutus
+                    learning, dev bootcamps, hackathons). Excludes general
+                    audience marketing/events (those go to "marketing").
+- "research"      — Academic research, peer-reviewed papers, formal
+                    verification, cryptography research, university
+                    collaborations, theoretical foundations.
+
+# Axis 2: Governance philosophy (used for ParameterChange / governance GAs)
+- "fiscal_discipline"     — Proposals that emphasize treasury restraint,
+                            cost reduction, small/distributed grants over
+                            large lump-sum withdrawals, or that explicitly
+                            limit treasury outflow.
+- "protocol_conservatism" — Protocol parameter changes that adjust fees,
+                            block size, k value, security parameters, or
+                            other consensus-critical knobs (use whenever
+                            ParameterChange touches non-governance params).
+- "org_funding"           — Operating budgets for established central
+                            organizations: IO (Input Output), Intersect,
+                            Cardano Foundation (CF), Emurgo. Includes
+                            Intersect Membership-Based Budget, CF Annual
+                            Operating Budget, IOG continuation budgets.
 
 Selection rules:
 - Pick 1 to 3 topics that best describe WHAT the proposal funds or governs.
-- For HardForkInitiation: typically ["core_dev"].
-- For ParameterChange: typically ["core_dev"]; use ["governance"] if it changes
-  governance parameters (dvt_*, pvt_*, committee_*, drep_*, gov_action_*).
-- For NewCommittee / NewConstitution / NoConfidence: ["governance"].
+  Tags may span both axes (e.g. ["org_funding","protocol"] for IO Plutus dev
+  funding).
+- For HardForkInitiation: typically ["protocol"].
+- For ParameterChange: use ["protocol_conservatism"]; if it changes governance
+  parameters (dvt_*, pvt_*, committee_*, drep_*, gov_action_*), use
+  ["protocol_conservatism"] only (governance org questions are separate).
+- For NewCommittee / NewConstitution / NoConfidence: leave topic_tags as
+  ["other"] (these are not budget allocation and don't map cleanly to the
+  diagnostic axes).
 - For TreasuryWithdrawals: classify by the stated spending purpose. Examples:
-  Plutus / dev SDK funding → ["product","core_dev"]; Aiken academy →
-  ["education"]; conference sponsorship → ["community"]; DEX liquidity →
-  ["defi"]; enterprise partnership → ["enterprise"]; cryptography audit →
-  ["core_dev"]; Intersect operational funding → ["governance"].
+  IO Plutus / Hydra dev → ["org_funding","protocol"]; Cardano Foundation
+  operating budget → ["org_funding"]; Intersect membership budget →
+  ["org_funding"]; Emurgo program → ["org_funding"]; Aiken academy →
+  ["dev_education"]; Pioneer Program → ["dev_education"]; Catalyst
+  conference / Cardano Summit → ["marketing"]; ambassador localization →
+  ["marketing"]; DEX liquidity grant → ["ecosystem"]; wallet team grant →
+  ["ecosystem"]; RealFi enterprise pilot → ["adoption"]; government tooling
+  → ["adoption"]; cryptography research grant → ["research"]; formal
+  verification → ["research"]; community DAO grant for general dev fund →
+  ["ecosystem"]; treasury limit / NCL reduction proposal →
+  ["fiscal_discipline"].
 - If none of the topics fit even after careful consideration, use ["other"].
   Avoid "other" if any topic plausibly applies.
 
@@ -240,7 +276,7 @@ Output ONLY this JSON object with no extra text:
      "value_ja": "stake1xxx... (Cardanoism 財団)",
      "value_en": "stake1xxx... (Cardanoism Foundation)"}
   ],
-  "topic_tags": ["education", "community"]
+  "topic_tags": ["dev_education", "marketing"]
 }
 
 ## Summary Writing Guidelines

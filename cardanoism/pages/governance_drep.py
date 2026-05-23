@@ -163,8 +163,10 @@ class DrepState(rx.State):
 # AI 分類のキーと一致させること（一致しないと user_vector が DRep プロファイルと
 # 揃わずマッチング結果が崩れる）。
 _DREP_MATCH_TOPIC_ORDER: tuple[str, ...] = (
-    "core_dev", "research", "education", "community",
-    "defi", "enterprise", "product", "governance",
+    # 軸 1: 予算配分の優先度 (6 問)
+    "protocol", "ecosystem", "adoption", "marketing", "dev_education", "research",
+    # 軸 2: ガバナンス哲学 (3 問)
+    "fiscal_discipline", "protocol_conservatism", "org_funding",
 )
 _DREP_MATCH_TOTAL = len(_DREP_MATCH_TOPIC_ORDER)
 

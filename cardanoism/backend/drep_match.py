@@ -19,8 +19,10 @@ logger = logging.getLogger(__name__)
 
 # notify_worker._DREP_TOPIC_KEYS と同期させる。"other" はマッチング対象外。
 TOPIC_KEYS: tuple[str, ...] = (
-    "core_dev", "research", "education", "community",
-    "defi", "enterprise", "product", "governance",
+    # 軸 1: 予算配分の優先度
+    "protocol", "ecosystem", "adoption", "marketing", "dev_education", "research",
+    # 軸 2: ガバナンス哲学
+    "fiscal_discipline", "protocol_conservatism", "org_funding",
 )
 
 # データ十分性のしきい値: Yes+No 票がこれ未満の DRep はマッチング対象外

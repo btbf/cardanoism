@@ -1844,8 +1844,10 @@ def check_pool_block_history(epochs: int = 5):
 # AI 分類で使うトピックキー。プロンプト (ai_client.py _SYSTEM_INSTRUCTIONS) と同期。
 # "other" は対象外（マッチング次元に含めない）。
 _DREP_TOPIC_KEYS: tuple[str, ...] = (
-    "core_dev", "research", "education", "community",
-    "defi", "enterprise", "product", "governance",
+    # 軸 1: 予算配分の優先度
+    "protocol", "ecosystem", "adoption", "marketing", "dev_education", "research",
+    # 軸 2: ガバナンス哲学
+    "fiscal_discipline", "protocol_conservatism", "org_funding",
 )
 
 
@@ -2751,12 +2753,20 @@ def _translate_constitution_text(translator, text: str, chunk_chars: int = 4000)
     return "\n\n".join(out)
 
 
-def check_ga_ai_reanalyze(proposal_id: str | None = None, all_flag: bool = False) -> None:
+def check_ga_ai_reanalyze(
+    proposal_id: str | None = None,
+    all_flag: bool = False,
+    include_old: bool = False,
+) -> None:
     """既に analyzed の GA を pending に戻して再分析対象にする。
 
     Args:
         proposal_id: 単一 GA を対象に再分析する場合に指定。
         all_flag:    True なら status='analyzed' の全行を再分析対象にする。
+        include_old: --all と組み合わせて指定すると Ratified / Enacted /
+                     Dropped / Expired も含めて再分析する（トピック分類の
+                     体系を変更したときなど、過去 GA も含めて再分類したい
+                     ケース向け）。
 
     どちらも指定しなかった / 両方指定した場合は何もしない。
     """
@@ -2778,10 +2788,16 @@ def check_ga_ai_reanalyze(proposal_id: str | None = None, all_flag: bool = False
             logger.warning("再分析対象に変更できませんでした (proposal_id 確認してください)")
         return
 
-    logger.info("=== GA AI 再分析: Active な analyzed 全件 ===")
-    n = requeue_all(only_analyzed=True, active_only=True)
-    logger.info("%d 件を pending に戻しました（Active な GA のみ対象）。"
-                " ga_ai_worker が順次再分析します。", n)
+    if include_old:
+        logger.info("=== GA AI 再分析: 全 analyzed (Ratified / Enacted / Dropped / Expired 含む) ===")
+        n = requeue_all(only_analyzed=True, active_only=False)
+        logger.info("%d 件を pending に戻しました（過去 GA 含む全件）。"
+                    " ga_ai_worker が順次再分析します。", n)
+    else:
+        logger.info("=== GA AI 再分析: Active な analyzed 全件 ===")
+        n = requeue_all(only_analyzed=True, active_only=True)
+        logger.info("%d 件を pending に戻しました（Active な GA のみ対象）。"
+                    " ga_ai_worker が順次再分析します。", n)
 
 
 # ============================================================
@@ -2906,6 +2922,15 @@ def main():
             "ga_ai_initial_sync: 期間制限を外し過去 Dropped / Expired も含む全 GA を投入対象にする。"
         ),
     )
+    parser.add_argument(
+        "--include-old",
+        action="store_true",
+        help=(
+            "ga_ai_reanalyze --all と組み合わせて、Ratified / Enacted / Dropped /"
+            " Expired も含む全 analyzed GA を再分析対象にする"
+            "（トピック分類体系の変更時など、過去 GA も再分類したいケース向け）。"
+        ),
+    )
     args = parser.parse_args()
 
     if args.epoch_schedule:
@@ -2958,7 +2983,11 @@ def main():
 
     # GA AI 再分析: --event ga_ai_reanalyze で明示指定（"all" には含めない）
     if args.event == "ga_ai_reanalyze":
-        check_ga_ai_reanalyze(proposal_id=args.proposal_id, all_flag=args.all)
+        check_ga_ai_reanalyze(
+            proposal_id=args.proposal_id,
+            all_flag=args.all,
+            include_old=args.include_old,
+        )
 
     # 憲法同期 + 翻訳: --event constitution_sync で明示指定（"all" には含めない）
     if args.event == "constitution_sync":
