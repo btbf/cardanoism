@@ -102,6 +102,15 @@ class StakingDashboardState(rx.State):
     heatmap_count_pink:   int = 0
     heatmap_count_gray:   int = 0
 
+    # プロトコルバージョン: 現在エポックで各プールが最後に作ったブロックのバージョン。
+    # Koios /blocks をオンデマンドで集計（5 分 TTL キャッシュ）。
+    # 各 entry: {pool_id, ticker, version, color}  color = "latest" / "older" / "none"
+    proto_version_pools: list[dict[str, str]] = []
+    # 凡例: {version, count} のリスト (count desc)
+    proto_version_legend: list[dict[str, str]] = []
+    proto_version_latest: str = ""    # 最新と見做したバージョン文字列
+    proto_version_current_epoch: int = 0
+
     # Mempool 状態（10秒間隔で ogmios_listener が更新、ページ側は 5秒で読みに行く）
     mempool_tx_count: int = 0
     mempool_size_kb: str = "0"
@@ -240,6 +249,8 @@ class StakingDashboardState(rx.State):
         try:
             self._fetch_live_blocks()
             self._fetch_heatmap()
+            # heatmap_pools が揃った後にプロトコルバージョンを集計する（順序依存）
+            self._fetch_proto_versions()
         except Exception as e:
             logger.exception("StakingDashboardState._fetch_blocks_data: %s", e)
 
@@ -288,6 +299,91 @@ class StakingDashboardState(rx.State):
         self.heatmap_count_yellow = cnt["yellow"]
         self.heatmap_count_pink   = cnt["pink"]
         self.heatmap_count_gray   = cnt["gray"]
+
+    def _fetch_proto_versions(self):
+        """現在エポックで各プールが最後に作ったブロックのプロトコルバージョンを集計。
+        Koios /blocks をオンデマンドで叩く（5 分 TTL キャッシュ）。
+        heatmap_pools と同じプール集合に対して、最新バージョン=latest, それ以外=older,
+        現在エポックでブロック未生成=none で色分けする。
+        """
+        try:
+            import time as _t
+            from cardanoism.backend.koios import get_current_epoch_pool_proto_versions
+            # 現在エポック (Shelley genesis 基準で計算、staking.py 内の定数と整合)
+            SHELLEY_EPOCH = 208
+            SHELLEY_UNIX = 1_596_059_091
+            EPOCH_SECONDS = 432_000
+            current_epoch = SHELLEY_EPOCH + (int(_t.time()) - SHELLEY_UNIX) // EPOCH_SECONDS
+            self.proto_version_current_epoch = current_epoch
+
+            proto_map = get_current_epoch_pool_proto_versions(current_epoch) or {}
+        except Exception as e:  # noqa: BLE001
+            logger.warning("_fetch_proto_versions failed: %s", e)
+            self.proto_version_pools = []
+            self.proto_version_legend = []
+            return
+
+        # 最新バージョン = 最大 (major, minor) を採用
+        latest_key: tuple[int, int] | None = None
+        version_counts: dict[tuple[int, int], int] = {}
+        for v in proto_map.values():
+            mj = v.get("major")
+            mn = v.get("minor")
+            if mj is None or mn is None:
+                continue
+            key = (int(mj), int(mn))
+            version_counts[key] = version_counts.get(key, 0) + 1
+            if latest_key is None or key > latest_key:
+                latest_key = key
+
+        def _ver_str(k: tuple[int, int]) -> str:
+            return f"{k[0]}.{k[1]}"
+
+        self.proto_version_latest = _ver_str(latest_key) if latest_key else ""
+
+        # heatmap_pools と同じ並びで proto_version_pools を組み立てる
+        out: list[dict[str, str]] = []
+        for p in self.heatmap_pools:
+            pool_id = p.get("pool_id") or ""
+            ticker = p.get("ticker") or ""
+            entry = proto_map.get(pool_id)
+            if entry is None:
+                version = ""
+                color = "none"
+            else:
+                mj = entry.get("major")
+                mn = entry.get("minor")
+                if mj is None or mn is None:
+                    version = ""
+                    color = "none"
+                else:
+                    k = (int(mj), int(mn))
+                    version = _ver_str(k)
+                    color = "latest" if k == latest_key else "older"
+            out.append({
+                "pool_id": pool_id,
+                "ticker":  ticker,
+                "version": version,
+                "color":   color,
+            })
+        self.proto_version_pools = out
+
+        # 凡例: バージョンごとの件数（multi-version 時は count 降順、latest を先頭）+ 未生成数
+        legend: list[dict[str, str]] = []
+        sorted_keys = sorted(
+            version_counts.keys(),
+            key=lambda k: (k != latest_key, -version_counts[k]),
+        )
+        for k in sorted_keys:
+            legend.append({
+                "version": _ver_str(k),
+                "count":   str(version_counts[k]),
+                "color":   "latest" if k == latest_key else "older",
+            })
+        none_count = sum(1 for r in out if r["color"] == "none")
+        if none_count:
+            legend.append({"version": "", "count": str(none_count), "color": "none"})
+        self.proto_version_legend = legend
 
     def _fetch_live_blocks(self):
         """recent_blocks から直近20件を取得し、新規ブロックに is_new フラグを立てる。
@@ -1406,6 +1502,122 @@ def _pool_activity_section() -> rx.Component:
     )
 
 
+def _proto_version_cell(p) -> rx.Component:
+    """プロトコルバージョン ヒートマップの 1 セル。color: latest/older/none。
+    tooltip に ticker + バージョンを出す。
+    """
+    color_class = rx.match(
+        p["color"],
+        ("latest", "cdn-heatmap-cell cdn-heatmap-cell-green"),
+        ("older",  "cdn-heatmap-cell cdn-heatmap-cell-yellow"),
+        "cdn-heatmap-cell cdn-heatmap-cell-gray",
+    )
+    return rx.box(
+        class_name=color_class,
+        custom_attrs={"title": p["ticker"] + " — v" + p["version"]},
+    )
+
+
+def _proto_legend_item(entry) -> rx.Component:
+    """proto_version_legend の 1 行: 色見本 + バージョン文字列 + プール数。"""
+    swatch_class = rx.match(
+        entry["color"],
+        ("latest", "cdn-heatmap-legend-swatch cdn-heatmap-cell-green"),
+        ("older",  "cdn-heatmap-legend-swatch cdn-heatmap-cell-yellow"),
+        "cdn-heatmap-legend-swatch cdn-heatmap-cell-gray",
+    )
+    label = rx.cond(
+        entry["version"] != "",
+        rx.text("v", entry["version"], size="1", color="var(--gray-11)", weight="medium",
+                style={"whiteSpace": "nowrap"}),
+        rx.text(AuthState.t["staking_proto_legend_none"], size="1", color="var(--gray-11)",
+                weight="medium", style={"whiteSpace": "nowrap"}),
+    )
+    return rx.hstack(
+        rx.box(class_name=swatch_class),
+        label,
+        rx.text(
+            "(", entry["count"], ")",
+            size="1", color="var(--gray-10)",
+            style={"whiteSpace": "nowrap"},
+        ),
+        spacing="2", align="center", flex_shrink="0",
+    )
+
+
+def _proto_version_section() -> rx.Component:
+    """現在エポックの各プールが最後に作ったブロックの protocol version をヒートマップ表示。
+
+    Koios /blocks をオンデマンドで集計（5 分 TTL キャッシュ）。
+    色: 最新バージョン=green / それ以外=yellow / 現在エポック未生成=gray。
+    """
+    state = StakingDashboardState
+    return rx.box(
+        rx.vstack(
+            rx.hstack(
+                rx.heading(AuthState.t["staking_proto_title"], size="5", as_="h2"),
+                rx.spacer(),
+                rx.text(
+                    AuthState.t["staking_proto_subtitle"], " ",
+                    state.proto_version_current_epoch.to_string(),
+                    size="1", color="var(--gray-10)",
+                ),
+                width="100%", align="center", wrap="wrap",
+            ),
+            rx.cond(
+                state.proto_version_latest != "",
+                rx.hstack(
+                    rx.text(
+                        AuthState.t["staking_proto_latest_label"],
+                        size="2", color="var(--gray-11)",
+                    ),
+                    rx.text(
+                        "v", state.proto_version_latest,
+                        size="4", weight="bold", color="var(--green-11)",
+                    ),
+                    spacing="2", align="baseline", wrap="wrap",
+                ),
+                rx.fragment(),
+            ),
+            # 凡例
+            rx.hstack(
+                rx.foreach(
+                    state.proto_version_legend.to(list[dict[str, str]]),
+                    _proto_legend_item,
+                ),
+                spacing="4", align="center", wrap="wrap",
+            ),
+            # ヒートマップ
+            rx.cond(
+                state.proto_version_pools,
+                rx.box(
+                    rx.foreach(
+                        state.proto_version_pools.to(list[dict[str, str]]),
+                        _proto_version_cell,
+                    ),
+                    class_name="cdn-heatmap-grid",
+                ),
+                rx.callout(AuthState.t["staking_proto_empty"], icon="info", color_scheme="gray"),
+            ),
+            rx.hstack(
+                rx.icon("info", size=14, color="var(--gray-10)", style={"flexShrink": "0"}),
+                rx.text(
+                    AuthState.t["staking_proto_explain"],
+                    size="1", color="var(--gray-10)",
+                    style={"lineHeight": "1.6"},
+                ),
+                spacing="2", align="start", width="100%",
+            ),
+            spacing="3", align_items="stretch", width="100%",
+        ),
+        padding="14px 16px",
+        border_radius="10px",
+        border=f"1px solid {rx.color('gray', 4)}",
+        background=rx.color_mode_cond("var(--gray-2)", "rgba(15,15,25,0.5)"),
+        width="100%",
+    )
+
+
 # ─── ページ ────────────────────────────────────────────────────────────────────
 
 
@@ -1580,6 +1792,7 @@ def staking_page() -> rx.Component:
                 _user_delegation_section(),
                 _live_blocks_section(),
                 _pool_activity_section(),
+                _proto_version_section(),
                 spacing="4",
                 width="100%",
             ),
