@@ -379,19 +379,27 @@ def _role_tab(role_key: str, label) -> rx.Component:
     """縦軸ロール切り替えタブの 1 ボタン。"""
     is_active = VoteMatrixState.role == role_key
     return rx.el.button(
-        rx.text(label, size="2", weight="medium"),
+        rx.text(
+            label,
+            size="2",
+            weight="bold",
+            color=rx.cond(is_active, "var(--amber-12)", "var(--gray-11)"),
+        ),
         on_click=VoteMatrixState.set_role(role_key),
         cursor="pointer",
         style={
             "padding":      "7px 18px",
             "borderRadius": "9999px",
-            "border":       "1px solid var(--gray-6)",
-            "background":   rx.cond(is_active, "var(--amber-9)", "transparent"),
-            "color":        rx.cond(is_active, "white", "var(--gray-11)"),
-            "fontWeight":   "600",
+            "border":       rx.cond(is_active, "1px solid var(--amber-8)", "1px solid var(--gray-6)"),
+            "background":   rx.cond(is_active, "var(--amber-3)", "transparent"),
             "whiteSpace":   "nowrap",
-            "transition":   "background 0.15s, color 0.15s",
+            "transition":   "background 0.15s, border-color 0.15s, color 0.15s",
         },
+        _hover=rx.cond(
+            is_active,
+            {"background": "var(--amber-4)"},
+            {"background": "var(--gray-3)", "border_color": "var(--gray-8)"},
+        ),
     )
 
 
