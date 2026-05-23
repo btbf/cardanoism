@@ -488,11 +488,20 @@ UI_JA: dict[str, str] = {
     "drep_topic_enterprise":   "エンタープライズ・採用",
     "drep_topic_product":      "プロダクト・dApp",
     "drep_topic_governance":   "ガバナンス構造・運営",
+    "drep_match_beta_label":   "Beta",
+    "drep_match_ai_disclaimer": "本診断は各ガバナンスアクションのトピック分類に AI を用いており、結果の正確性は保証されません。最終的な委任判断は DRep のプロフィール・投票履歴・理由文をご自身でご確認のうえお願いします。",
     "drep_detail_breadcrumb": "詳細",
     "drep_not_found":        "指定された DRep が見つかりません",
     "drep_vote_total_label": "投票数",
     "drep_vote_history_title": "投票履歴",
     "drep_no_votes":         "投票履歴がありません",
+    # DRep 個別ページ CIP-119 プロフィール
+    "drep_profile_section_title":  "DRep プロフィール",
+    "drep_profile_objectives":     "目的",
+    "drep_profile_motivations":    "動機",
+    "drep_profile_qualifications": "資格・実績",
+    "drep_profile_links":          "リンク",
+    "drep_profile_no_metadata":    "この DRep のメタデータ（CIP-119）は登録されていません。",
 
     # ステーキングページ
     "staking_subnav_why":          "ステーキングとは？",
@@ -2104,11 +2113,20 @@ UI_EN: dict[str, str] = {
     "drep_topic_enterprise":   "Enterprise",
     "drep_topic_product":      "Product / dApp",
     "drep_topic_governance":   "Governance",
+    "drep_match_beta_label":   "Beta",
+    "drep_match_ai_disclaimer": "This diagnostic uses AI to classify each governance action into topics, so the result is not guaranteed to be accurate. Please review each DRep's profile, voting history, and rationale before making a delegation decision.",
     "drep_detail_breadcrumb": "Detail",
     "drep_not_found":        "DRep not found",
     "drep_vote_total_label": "Votes",
     "drep_vote_history_title": "Voting History",
     "drep_no_votes":         "No voting history",
+    # DRep detail page CIP-119 profile
+    "drep_profile_section_title":  "DRep Profile",
+    "drep_profile_objectives":     "Objectives",
+    "drep_profile_motivations":    "Motivations",
+    "drep_profile_qualifications": "Qualifications",
+    "drep_profile_links":          "Links",
+    "drep_profile_no_metadata":    "No CIP-119 metadata registered for this DRep.",
 
     # Staking page
     "staking_subnav_why":          "What is staking?",

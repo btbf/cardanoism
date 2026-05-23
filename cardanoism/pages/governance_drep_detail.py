@@ -14,6 +14,7 @@ import reflex as rx
 from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.backend.drep_db import get_drep, sum_total_delegation
+from cardanoism.backend.drep_match import _format_links
 from cardanoism.backend.vote_db import get_votes_by_drep, count_votes_by_drep
 from cardanoism.backend.fiat_db import get_fiat_rate
 from cardanoism.backend.price import format_ada, format_jpy_short, format_usd_short
@@ -21,6 +22,10 @@ from cardanoism.components.breadcrumb import breadcrumb
 from cardanoism.components.governance_nav import governance_subnav
 from cardanoism.components.login_modal import login_modal
 from cardanoism.components.governance_card import _vote_badge
+from cardanoism.components.drep_delegation_dialog import (
+    drep_delegation_dialog,
+    drep_delegate_button,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +50,26 @@ class DrepDetailState(rx.State):
     amount_usd: str = ""
     share_pct: str = "0"
 
+    # CIP-119 プロフィール (全文)
+    objectives: str = ""
+    motivations: str = ""
+    qualifications: str = ""
+    links_csv: str = ""  # "icon|url,icon|url" CSV (_social_link_icon が分解)
+
     # 投票集計
     vote_total: int = 0
     vote_yes: int = 0
     vote_no: int = 0
     vote_abstain: int = 0
+
+    @rx.var
+    def has_profile_metadata(self) -> bool:
+        return bool(
+            (self.objectives or "").strip()
+            or (self.motivations or "").strip()
+            or (self.qualifications or "").strip()
+            or (self.links_csv or "").strip()
+        )
 
     # 投票履歴
     votes: List[Dict[str, Any]] = []
@@ -119,6 +139,13 @@ class DrepDetailState(rx.State):
             self.given_name = str(d.get("given_name") or "")
             self.image_url = str(d.get("image_url") or "")
             self.is_active = "1" if d.get("active") else ""
+
+            # CIP-119 プロフィール (全文表示用)
+            self.objectives = str(d.get("objectives") or "").strip()
+            self.motivations = str(d.get("motivations") or "").strip()
+            self.qualifications = str(d.get("qualifications") or "").strip()
+            links = _format_links(d.get("references_json"))
+            self.links_csv = ",".join(f"{icon}|{url}" for icon, url in links)
 
             # 委任量
             amount = int(d.get("amount") or 0)
@@ -272,7 +299,12 @@ def _profile_card() -> rx.Component:
         rx.hstack(
             avatar,
             rx.vstack(
-                rx.hstack(name_text, status_badge, spacing="3", align="center", wrap="wrap"),
+                rx.hstack(
+                    rx.hstack(name_text, status_badge, spacing="3", align="center", wrap="wrap"),
+                    rx.spacer(),
+                    drep_delegate_button(DrepDetailState.display_drep_id),
+                    spacing="3", align="center", width="100%", wrap="wrap",
+                ),
                 drep_id_block,
                 rx.hstack(
                     rx.vstack(
@@ -305,6 +337,123 @@ def _profile_card() -> rx.Component:
             align="start",
             width="100%",
             wrap="wrap",
+        ),
+        padding="20px",
+        border=f"1px solid {rx.color('gray', 4)}",
+        border_radius="12px",
+        background="var(--gray-2)",
+        width="100%",
+    )
+
+
+def _social_link_icon(item) -> rx.Component:
+    """item は 'icon|url' 形式の Var[str]。CIP-119 references_json から作る外部リンク。
+
+    Reflex の StringVar.split は maxsplit を受け付けないため単純 split を使用。
+    """
+    parts = item.split("|")
+    icon_name = parts[0]
+    url = parts[1]
+    icon_comp = rx.match(
+        icon_name,
+        ("twitter",        rx.icon("twitter",        size=16, color="#1DA1F2")),
+        ("github",         rx.icon("github",         size=16, color="var(--gray-12)")),
+        ("send",           rx.icon("send",           size=16, color="#2AABEE")),
+        ("youtube",        rx.icon("youtube",        size=16, color="#FF0000")),
+        ("message-circle", rx.icon("message-circle", size=16, color="#5865F2")),
+        ("linkedin",       rx.icon("linkedin",       size=16, color="#0A66C2")),
+        rx.icon("globe", size=16, color="var(--gray-11)"),
+    )
+    return rx.link(
+        rx.box(
+            icon_comp,
+            width="30px", height="30px",
+            display="flex",
+            align_items="center",
+            justify_content="center",
+            border_radius="999px",
+            background="var(--gray-3)",
+            style={"transition": "background 0.15s"},
+            _hover={"background": "var(--amber-4)"},
+        ),
+        href=url,
+        is_external=True,
+        underline="none",
+        custom_attrs={"title": url},
+    )
+
+
+def _profile_text_section(label_key: str, value) -> rx.Component:
+    """objectives / motivations / qualifications の 1 セクション。
+
+    値が空でない時のみブロックを描画する。
+    """
+    return rx.cond(
+        value != "",
+        rx.vstack(
+            rx.text(
+                AuthState.t[label_key],
+                size="2", weight="bold", color="var(--gray-12)",
+            ),
+            rx.text(
+                value,
+                size="2", color="var(--gray-11)",
+                style={
+                    "whiteSpace": "pre-wrap",
+                    "wordBreak": "break-word",
+                    "lineHeight": "1.7",
+                },
+            ),
+            spacing="1", align="start", width="100%",
+        ),
+        rx.fragment(),
+    )
+
+
+def _profile_metadata_card() -> rx.Component:
+    """CIP-119 メタデータ (objectives / motivations / qualifications + links) の全文表示。"""
+    return rx.box(
+        rx.vstack(
+            rx.hstack(
+                rx.icon("user", size=18, color="var(--amber-11)"),
+                rx.text(
+                    AuthState.t["drep_profile_section_title"],
+                    size="4", weight="bold", color="var(--gray-12)",
+                ),
+                spacing="2", align="center",
+            ),
+            rx.cond(
+                DrepDetailState.has_profile_metadata,
+                rx.vstack(
+                    _profile_text_section("drep_profile_objectives",     DrepDetailState.objectives),
+                    _profile_text_section("drep_profile_motivations",    DrepDetailState.motivations),
+                    _profile_text_section("drep_profile_qualifications", DrepDetailState.qualifications),
+                    rx.cond(
+                        DrepDetailState.links_csv != "",
+                        rx.vstack(
+                            rx.text(
+                                AuthState.t["drep_profile_links"],
+                                size="2", weight="bold", color="var(--gray-12)",
+                            ),
+                            rx.hstack(
+                                rx.foreach(
+                                    DrepDetailState.links_csv.split(","),
+                                    _social_link_icon,
+                                ),
+                                spacing="2", align="center", wrap="wrap",
+                            ),
+                            spacing="2", align="start", width="100%",
+                        ),
+                        rx.fragment(),
+                    ),
+                    spacing="4", align="start", width="100%",
+                ),
+                rx.text(
+                    AuthState.t["drep_profile_no_metadata"],
+                    size="2", color="var(--gray-10)",
+                ),
+            ),
+            spacing="3", align="start", width="100%",
         ),
         padding="20px",
         border=f"1px solid {rx.color('gray', 4)}",
@@ -553,6 +702,8 @@ def governance_drep_detail_page() -> rx.Component:
         DrepDetailState.load,
         rx.box(
             login_modal(),
+            # DRep 委任確認モーダル (1 ページに 1 度だけマウント)
+            drep_delegation_dialog(),
             rx.vstack(
                 _breadcrumb(),
                 governance_subnav("drep"),
@@ -565,6 +716,7 @@ def governance_drep_detail_page() -> rx.Component:
                     ),
                     rx.vstack(
                         _profile_card(),
+                        _profile_metadata_card(),
                         _vote_stats(),
                         _vote_history(),
                         spacing="4", width="100%",

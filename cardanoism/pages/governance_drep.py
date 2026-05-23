@@ -21,7 +21,7 @@ from cardanoism.backend.price import format_ada, format_jpy_short, format_usd_sh
 from cardanoism.components.governance_nav import governance_subnav
 from cardanoism.components.breadcrumb import breadcrumb
 from cardanoism.components.login_modal import login_modal
-from cardanoism.components.drep_delegation_dialog import drep_delegation_dialog
+from cardanoism.components.drep_delegation_dialog import drep_delegation_dialog, drep_delegate_button
 
 logger = logging.getLogger(__name__)
 
@@ -1034,7 +1034,11 @@ def _match_result_card(r) -> rx.Component:
     )
     return rx.box(
         rx.vstack(
-            header_link,
+            rx.hstack(
+                rx.box(header_link, flex="1", min_width="0"),
+                drep_delegate_button(r["drep_id"]),
+                spacing="3", align="center", width="100%", wrap="wrap",
+            ),
             # 自己紹介テキスト (CIP-119 objectives / motivations から)
             rx.cond(
                 r["bio"] != "",
@@ -1137,10 +1141,24 @@ def _match_view() -> rx.Component:
     """quiz と results を view に応じて切り替える親コンテナ。"""
     return rx.box(
         rx.vstack(
-            rx.heading(AuthState.t["drep_match_heading"], size="6", weight="bold"),
+            rx.hstack(
+                rx.heading(AuthState.t["drep_match_heading"], size="6", weight="bold"),
+                rx.badge(
+                    AuthState.t["drep_match_beta_label"],
+                    color_scheme="amber", variant="soft", size="2",
+                    style={"alignSelf": "center"},
+                ),
+                spacing="2", align="center", wrap="wrap",
+            ),
             rx.text(
                 AuthState.t["drep_match_intro"],
                 size="2", color="var(--gray-10)",
+            ),
+            rx.callout(
+                AuthState.t["drep_match_ai_disclaimer"],
+                icon="triangle-alert",
+                color_scheme="amber",
+                size="1",
             ),
             rx.match(
                 DrepMatchState.view,
