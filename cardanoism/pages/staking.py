@@ -113,6 +113,8 @@ class StakingDashboardState(rx.State):
     proto_version_current_epoch: int = 0
     # 1 エポックの理論最大ブロック数 (mainnet: 432000 slots × 0.05 active_slot_coeff)
     proto_version_max_blocks: int = 21_600
+    # プロトコルバージョン集計 (重い Koios フェッチ) のロード中フラグ
+    proto_version_loading: bool = False
     # 現在エポックで実際に生成されたブロック数 (version 別)
     proto_version_latest_blocks: int = 0
     proto_version_older_blocks:  int = 0
@@ -259,12 +261,13 @@ class StakingDashboardState(rx.State):
             self.error = str(e)
 
     def _fetch_blocks_data(self):
-        """ライブブロック + ヒートマップ用データを取得する（重い処理 / blocks ページ専用）。"""
+        """ライブブロック + ヒートマップ用データを取得する（重い処理 / blocks ページ専用）。
+        プロトコルバージョン (_fetch_proto_versions) は Koios /blocks への重いフェッチを
+        含むので、ここでは呼ばずに on_load_dashboard の yield 後に別途呼ぶ。
+        """
         try:
             self._fetch_live_blocks()
             self._fetch_heatmap()
-            # heatmap_pools が揃った後にプロトコルバージョンを集計する（順序依存）
-            self._fetch_proto_versions()
         except Exception as e:
             logger.exception("StakingDashboardState._fetch_blocks_data: %s", e)
 
@@ -362,16 +365,39 @@ class StakingDashboardState(rx.State):
                 latest_key = k
         self.proto_version_latest = _ver_str(latest_key) if latest_key else ""
 
-        # ── ヒートマップ行: ブロックを生成したプールのみ。abs_slot 降順
+        # ── ヒートマップ行: heatmap_pools と同じプール集合
+        # 並び順: ブロック生成済みは abs_slot 降順、未生成は末尾
         out: list[dict[str, str]] = []
         for p in self.heatmap_pools:
             pool_id = p.get("pool_id") or ""
+            ticker = p.get("ticker") or ""
             entry = proto_map.get(pool_id)
             if entry is None:
-                continue  # 現在エポックでブロック未生成のプールはヒートマップに出さない
+                out.append({
+                    "pool_id":      pool_id,
+                    "ticker":       ticker,
+                    "version":      "",
+                    "color":        "none",
+                    "slot":         "",
+                    "block_height": "",
+                    "tooltip":      ticker,
+                    "_slot_sort":   -1,
+                })
+                continue
             mj = entry.get("major")
             mn = entry.get("minor")
             if mj is None or mn is None:
+                # メタが取れない例外ケースも未生成扱いで表示
+                out.append({
+                    "pool_id":      pool_id,
+                    "ticker":       ticker,
+                    "version":      "",
+                    "color":        "none",
+                    "slot":         "",
+                    "block_height": "",
+                    "tooltip":      ticker,
+                    "_slot_sort":   -1,
+                })
                 continue
             slot_raw = entry.get("abs_slot")
             try:
@@ -384,18 +410,30 @@ class StakingDashboardState(rx.State):
             except (TypeError, ValueError):
                 block_height_str = ""
             k = (int(mj), int(mn))
+            ver = _ver_str(k)
+            slot_str = str(slot) if slot >= 0 else ""
+            tooltip = (
+                f"{ticker} — v{ver}"
+                + (f" | block#{block_height_str}" if block_height_str else "")
+                + (f" slot#{slot_str}" if slot_str else "")
+            )
             out.append({
                 "pool_id":      pool_id,
-                "ticker":       p.get("ticker") or "",
-                "version":      _ver_str(k),
+                "ticker":       ticker,
+                "version":      ver,
                 "color":        "latest" if k == latest_key else "older",
-                "slot":         str(slot) if slot >= 0 else "",
+                "slot":         slot_str,
                 "block_height": block_height_str,
+                "tooltip":      tooltip,
                 "_slot_sort":   slot,
             })
 
-        # 並び順: abs_slot 降順（直近にブロックを作ったプールが先頭）
-        out.sort(key=lambda r: (-int(r["_slot_sort"]), r["pool_id"]))
+        # 並び順: 生成済みは abs_slot 降順、未生成 (_slot_sort=-1) は末尾
+        out.sort(key=lambda r: (
+            1 if int(r["_slot_sort"]) < 0 else 0,
+            -int(r["_slot_sort"]) if int(r["_slot_sort"]) >= 0 else 0,
+            r["pool_id"],
+        ))
         # 内部ソート用キーは表示用 dict には残さない
         self.proto_version_pools = [
             {k: v for k, v in r.items() if k != "_slot_sort"} for r in out
@@ -437,7 +475,9 @@ class StakingDashboardState(rx.State):
                 "count":   str(e["count"]),
                 "color":   "latest" if k == latest_key else "older",
             })
-        # 未生成プールは proto_version_pools から除外済みなので、凡例にも出さない
+        none_count = sum(1 for r in out if r["color"] == "none")
+        if none_count:
+            legend.append({"version": "", "count": str(none_count), "color": "none"})
         self.proto_version_legend = legend
 
     def _fetch_live_blocks(self):
@@ -541,9 +581,26 @@ class StakingDashboardState(rx.State):
             self.latest_known_height = new_max
 
     async def on_load_dashboard(self):
-        """/staking 用: 集計 + 委任先プールカード + ブロック / ヒートマップ を一括取得。"""
+        """/staking 用: 集計 + 委任先プールカード + ブロック / ヒートマップ を一括取得。
+
+        プロトコルバージョン集計（Koios /blocks 全件、エポック末で 20+ リクエスト）は
+        重いので、ページ本体を描画したあとに yield → 別途フェッチでスピナーを回す。
+        """
+        # 1) 軽い処理＋ヒートマップ等を先に揃えて、ページ本体は即描画
         self.load = False
         self.error = ""
+        self.proto_version_pools = []
+        self.proto_version_legend = []
+        self.proto_version_total_blocks = 0
+        self.proto_version_latest_blocks = 0
+        self.proto_version_older_blocks = 0
+        self.proto_version_latest_pct = "0"
+        self.proto_version_older_pct = "0"
+        self.proto_version_latest_label_pct = "0.0"
+        self.proto_version_older_label_pct = "0.0"
+        self.proto_version_total_label_pct = "0.0"
+        self.proto_version_latest = ""
+        self.proto_version_loading = False
         self._fetch_summary()
         # AuthState から user_id / stake_addresses を取得して委任先プール情報を組み立て
         auth = await self.get_state(AuthState)
@@ -557,8 +614,18 @@ class StakingDashboardState(rx.State):
             self._fetch_user_delegated_pools(addresses)
         else:
             self.user_delegated_pools = []
-        self._fetch_blocks_data()
+        self._fetch_blocks_data()  # live blocks + heatmap (proto は含めない)
+
+        # 2) ページ本体を描画。プロトコルバージョン部はスピナー
         self.load = True
+        self.proto_version_loading = True
+        yield
+
+        # 3) プロトコルバージョン集計（重い Koios フェッチ）
+        try:
+            self._fetch_proto_versions()
+        finally:
+            self.proto_version_loading = False
 
     def _fetch_user_delegated_pools(self, addresses: list[dict]) -> None:
         """ユーザーの stake_addresses から委任先プールを fetch して SPO カード形式に整形する。"""
@@ -1558,8 +1625,9 @@ def _pool_activity_section() -> rx.Component:
 
 
 def _proto_version_cell(p) -> rx.Component:
-    """プロトコルバージョン ヒートマップの 1 セル。color: latest/older。
-    tooltip に ticker / バージョン / ブロック番号 / スロット番号 を出す。
+    """プロトコルバージョン ヒートマップの 1 セル。color: latest / older / none。
+    tooltip は _fetch_proto_versions で組み立て済み (生成済みは block#/slot# 含む、
+    未生成は ticker のみ)。
     """
     color_class = rx.match(
         p["color"],
@@ -1569,11 +1637,7 @@ def _proto_version_cell(p) -> rx.Component:
     )
     return rx.box(
         class_name=color_class,
-        custom_attrs={
-            "title": p["ticker"] + " — v" + p["version"]
-                     + " | block#" + p["block_height"]
-                     + " slot#" + p["slot"],
-        },
+        custom_attrs={"title": p["tooltip"]},
     )
 
 
@@ -1623,99 +1687,111 @@ def _proto_version_section() -> rx.Component:
                 ),
                 width="100%", align="center", wrap="wrap",
             ),
+            # ── データ部 (latest_label + KPI + bar + legend + heatmap)。
+            #    重い Koios フェッチ中はスピナーに切り替える。 ──
             rx.cond(
-                state.proto_version_latest != "",
-                rx.hstack(
-                    rx.text(
-                        AuthState.t["staking_proto_latest_label"],
-                        size="2", color="var(--gray-11)",
+                state.proto_version_loading,
+                rx.center(
+                    rx.spinner(size="3"),
+                    padding_y="40px", width="100%",
+                ),
+                rx.vstack(
+                    rx.cond(
+                        state.proto_version_latest != "",
+                        rx.hstack(
+                            rx.text(
+                                AuthState.t["staking_proto_latest_label"],
+                                size="2", color="var(--gray-11)",
+                            ),
+                            rx.text(
+                                "v", state.proto_version_latest,
+                                size="4", weight="bold", color="var(--green-11)",
+                            ),
+                            spacing="2", align="baseline", wrap="wrap",
+                        ),
+                        rx.fragment(),
                     ),
-                    rx.text(
-                        "v", state.proto_version_latest,
-                        size="4", weight="bold", color="var(--green-11)",
+                    # ── KPI ──
+                    rx.hstack(
+                        rx.text(
+                            AuthState.t["staking_proto_kpi_produced"],
+                            size="2", color="var(--gray-11)",
+                        ),
+                        rx.text(
+                            state.proto_version_total_blocks.to_string(),
+                            size="4", weight="bold", color="var(--gray-12)",
+                        ),
+                        rx.text("/", size="2", color="var(--gray-9)"),
+                        rx.text(
+                            state.proto_version_max_blocks.to_string(),
+                            size="2", color="var(--gray-11)",
+                        ),
+                        rx.text(
+                            "(", state.proto_version_total_label_pct, "%)",
+                            size="2", color="var(--gray-11)", weight="medium",
+                        ),
+                        rx.text("|", size="2", color="var(--gray-7)"),
+                        rx.text(
+                            AuthState.t["staking_proto_kpi_latest"],
+                            size="2", color="var(--gray-11)",
+                        ),
+                        rx.text(
+                            state.proto_version_latest_blocks.to_string(),
+                            size="4", weight="bold", color="var(--green-11)",
+                        ),
+                        rx.text(
+                            "(", state.proto_version_latest_label_pct, "%)",
+                            size="2", color="var(--green-10)", weight="medium",
+                        ),
+                        rx.text("|", size="2", color="var(--gray-7)"),
+                        rx.text(
+                            AuthState.t["staking_proto_kpi_older"],
+                            size="2", color="var(--gray-11)",
+                        ),
+                        rx.text(
+                            state.proto_version_older_blocks.to_string(),
+                            size="4", weight="bold", color="var(--yellow-11)",
+                        ),
+                        rx.text(
+                            "(", state.proto_version_older_label_pct, "%)",
+                            size="2", color="var(--yellow-10)", weight="medium",
+                        ),
+                        spacing="2", align="baseline", wrap="wrap",
                     ),
-                    spacing="2", align="baseline", wrap="wrap",
-                ),
-                rx.fragment(),
-            ),
-            # ── KPI: 「ブロック生成 X / 21,600 (Y%)  最新版 a (b%)  旧版 c (d%)」 ──
-            rx.hstack(
-                rx.text(
-                    AuthState.t["staking_proto_kpi_produced"],
-                    size="2", color="var(--gray-11)",
-                ),
-                rx.text(
-                    state.proto_version_total_blocks.to_string(),
-                    size="4", weight="bold", color="var(--gray-12)",
-                ),
-                rx.text("/", size="2", color="var(--gray-9)"),
-                rx.text(
-                    state.proto_version_max_blocks.to_string(),
-                    size="2", color="var(--gray-11)",
-                ),
-                rx.text(
-                    "(", state.proto_version_total_label_pct, "%)",
-                    size="2", color="var(--gray-11)", weight="medium",
-                ),
-                rx.text("|", size="2", color="var(--gray-7)"),
-                rx.text(
-                    AuthState.t["staking_proto_kpi_latest"],
-                    size="2", color="var(--gray-11)",
-                ),
-                rx.text(
-                    state.proto_version_latest_blocks.to_string(),
-                    size="4", weight="bold", color="var(--green-11)",
-                ),
-                rx.text(
-                    "(", state.proto_version_latest_label_pct, "%)",
-                    size="2", color="var(--green-10)", weight="medium",
-                ),
-                rx.text("|", size="2", color="var(--gray-7)"),
-                rx.text(
-                    AuthState.t["staking_proto_kpi_older"],
-                    size="2", color="var(--gray-11)",
-                ),
-                rx.text(
-                    state.proto_version_older_blocks.to_string(),
-                    size="4", weight="bold", color="var(--yellow-11)",
-                ),
-                rx.text(
-                    "(", state.proto_version_older_label_pct, "%)",
-                    size="2", color="var(--yellow-10)", weight="medium",
-                ),
-                spacing="2", align="baseline", wrap="wrap",
-            ),
-            # ── 積み上げ横棒: 生成プール内の最新 vs 旧版 比率 ──
-            rx.box(
-                rx.box(
-                    class_name="cdn-pool-activity-seg cdn-pool-activity-seg-green",
-                    style={"flexShrink": 0, "width": state.proto_version_latest_pct + "%"},
-                ),
-                rx.box(
-                    class_name="cdn-pool-activity-seg cdn-pool-activity-seg-yellow",
-                    style={"flexShrink": 0, "width": state.proto_version_older_pct + "%"},
-                ),
-                class_name="cdn-pool-activity-bar",
-            ),
-            # 凡例
-            rx.hstack(
-                rx.foreach(
-                    state.proto_version_legend.to(list[dict[str, str]]),
-                    _proto_legend_item,
-                ),
-                spacing="4", align="center", wrap="wrap",
-            ),
-            # ヒートマップ
-            rx.cond(
-                state.proto_version_pools,
-                rx.box(
-                    rx.foreach(
-                        state.proto_version_pools.to(list[dict[str, str]]),
-                        _proto_version_cell,
+                    # ── 積み上げ横棒 ──
+                    rx.box(
+                        rx.box(
+                            class_name="cdn-pool-activity-seg cdn-pool-activity-seg-green",
+                            style={"flexShrink": 0, "width": state.proto_version_latest_pct + "%"},
+                        ),
+                        rx.box(
+                            class_name="cdn-pool-activity-seg cdn-pool-activity-seg-yellow",
+                            style={"flexShrink": 0, "width": state.proto_version_older_pct + "%"},
+                        ),
+                        class_name="cdn-pool-activity-bar",
                     ),
-                    class_name="cdn-heatmap-grid",
+                    # 凡例
+                    rx.hstack(
+                        rx.foreach(
+                            state.proto_version_legend.to(list[dict[str, str]]),
+                            _proto_legend_item,
+                        ),
+                        spacing="4", align="center", wrap="wrap",
+                    ),
+                    # ヒートマップ
+                    rx.cond(
+                        state.proto_version_pools,
+                        rx.box(
+                            rx.foreach(
+                                state.proto_version_pools.to(list[dict[str, str]]),
+                                _proto_version_cell,
+                            ),
+                            class_name="cdn-heatmap-grid",
+                        ),
+                        rx.callout(AuthState.t["staking_proto_empty"], icon="info", color_scheme="gray"),
+                    ),
+                    spacing="3", align_items="stretch", width="100%",
                 ),
-                rx.callout(AuthState.t["staking_proto_empty"], icon="info", color_scheme="gray"),
             ),
             rx.hstack(
                 rx.icon("info", size=14, color="var(--gray-10)", style={"flexShrink": "0"}),
