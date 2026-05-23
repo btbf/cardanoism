@@ -270,16 +270,20 @@ class DrepMatchState(rx.State):
             else:
                 user_vector[topic] = None  # neutral / 未回答 → 比較対象外
         try:
-            raw = compute_match(user_vector, limit=3)
+            raw = compute_match(user_vector, limit=5)
         except Exception as e:  # noqa: BLE001
             logger.warning("compute_match failed: %s", e)
             raw = []
         out: list[dict[str, str]] = []
         for r in raw:
+            # 外部リンクは "icon|url,icon|url" の CSV にエンコード（UI で split + match）
+            links_csv = ",".join(f"{icon}|{url}" for icon, url in r.get("links", []))
             out.append({
                 "drep_id":        r["drep_id"],
                 "given_name":     r["given_name"],
                 "image_url":      r["image_url"],
+                "bio":            r.get("bio") or "",
+                "links_csv":      links_csv,
                 "similarity_pct": f"{r['similarity_pct']:.1f}",
                 "match_dims":     str(r["match_dims"]),
                 "top_yes_csv":    ",".join(r["top_yes_topics"]),
@@ -928,8 +932,46 @@ def _topic_chip(key) -> rx.Component:
     )
 
 
+def _social_link_icon(item) -> rx.Component:
+    """item は 'icon|url' 形式の Var[str]。CIP-119 references_json から作る外部リンク。"""
+    parts = item.split("|", 1)
+    icon_name = parts[0]
+    url = parts[1]
+    icon_comp = rx.match(
+        icon_name,
+        ("twitter",        rx.icon("twitter",        size=14, color="#1DA1F2")),
+        ("github",         rx.icon("github",         size=14, color="var(--gray-12)")),
+        ("send",           rx.icon("send",           size=14, color="#2AABEE")),
+        ("youtube",        rx.icon("youtube",        size=14, color="#FF0000")),
+        ("message-circle", rx.icon("message-circle", size=14, color="#5865F2")),
+        ("linkedin",       rx.icon("linkedin",       size=14, color="#0A66C2")),
+        rx.icon("globe", size=14, color="var(--gray-11)"),
+    )
+    return rx.link(
+        rx.box(
+            icon_comp,
+            width="26px", height="26px",
+            display="flex",
+            align_items="center",
+            justify_content="center",
+            border_radius="999px",
+            background="var(--gray-3)",
+            style={"transition": "background 0.15s"},
+            _hover={"background": "var(--amber-4)"},
+        ),
+        href=url,
+        is_external=True,
+        underline="none",
+        custom_attrs={"title": url},
+    )
+
+
 def _match_result_card(r) -> rx.Component:
-    """マッチ結果 1 件の DRep カード。"""
+    """マッチ結果 1 件の DRep カード。
+
+    ネスト link 防止のためカード本体は rx.box とし、name/avatar 行のみ
+    /drep/<id> へのリンクにする。外部 SNS リンクは別行で独立に貼る。
+    """
     avatar = rx.cond(
         r["image_url"] != "",
         rx.image(
@@ -947,84 +989,112 @@ def _match_result_card(r) -> rx.Component:
             style={"flexShrink": "0"},
         ),
     )
-    name = rx.cond(
+    name_text = rx.cond(
         r["given_name"] != "",
         rx.text(r["given_name"], size="3", weight="bold", color="var(--gray-12)"),
         rx.text(AuthState.t["drep_no_name"], size="3", color="var(--gray-10)"),
     )
-    return rx.link(
-        rx.box(
-            rx.hstack(
-                avatar,
-                rx.vstack(
-                    name,
-                    rx.hstack(
-                        rx.text(
-                            AuthState.t["drep_match_results_match_label"], " ",
-                            size="1", color="var(--gray-10)",
-                        ),
-                        rx.text(
-                            r["similarity_pct"], "%",
-                            size="5", weight="bold", color="var(--amber-11)",
-                        ),
-                        rx.text(
-                            " · ",
-                            AuthState.t["drep_match_results_data_count"], " ",
-                            r["vote_count"], " ",
-                            AuthState.t["drep_match_results_data_unit"],
-                            size="1", color="var(--gray-10)",
-                        ),
-                        spacing="1", align="baseline", wrap="wrap",
-                    ),
-                    spacing="1", align_items="start", flex="1", min_width="0",
-                ),
-                spacing="3", align="center", width="100%",
-            ),
-            # トピック特徴
+    # avatar + name + match% を 1 つの内部リンクにまとめる
+    header_link = rx.link(
+        rx.hstack(
+            avatar,
             rx.vstack(
-                rx.cond(
-                    r["top_yes_csv"] != "",
-                    rx.hstack(
-                        rx.text(
-                            AuthState.t["drep_match_results_active_in"],
-                            size="1", color="var(--green-11)", weight="medium",
-                            style={"flexShrink": "0"},
-                        ),
-                        rx.foreach(r["top_yes_csv"].split(","), _topic_chip),
-                        spacing="2", align="center", wrap="wrap",
+                name_text,
+                rx.hstack(
+                    rx.text(
+                        AuthState.t["drep_match_results_match_label"], " ",
+                        size="1", color="var(--gray-10)",
                     ),
-                    rx.fragment(),
-                ),
-                rx.cond(
-                    r["top_no_csv"] != "",
-                    rx.hstack(
-                        rx.text(
-                            AuthState.t["drep_match_results_cautious_in"],
-                            size="1", color="var(--red-11)", weight="medium",
-                            style={"flexShrink": "0"},
-                        ),
-                        rx.foreach(r["top_no_csv"].split(","), _topic_chip),
-                        spacing="2", align="center", wrap="wrap",
+                    rx.text(
+                        r["similarity_pct"], "%",
+                        size="5", weight="bold", color="var(--amber-11)",
                     ),
-                    rx.fragment(),
+                    rx.text(
+                        " · ",
+                        AuthState.t["drep_match_results_data_count"], " ",
+                        r["vote_count"], " ",
+                        AuthState.t["drep_match_results_data_unit"],
+                        size="1", color="var(--gray-10)",
+                    ),
+                    spacing="1", align="baseline", wrap="wrap",
                 ),
-                spacing="2", align_items="stretch", padding_top="10px", width="100%",
+                spacing="1", align_items="start", flex="1", min_width="0",
             ),
-            padding="18px 20px",
-            border_radius="12px",
-            border=f"1px solid {rx.color('gray', 5)}",
-            background=rx.color_mode_cond("white", "rgba(255,255,255,0.04)"),
-            width="100%",
-            _hover={
-                "border_color": rx.color("amber", 8),
-                "transform":    "translateY(-1px)",
-            },
-            style={"transition": "border-color 0.15s, transform 0.15s"},
+            spacing="3", align="center", width="100%",
         ),
         href="/drep/" + r["drep_id"],
         color="inherit",
         underline="none",
         style={"display": "block", "width": "100%"},
+        _hover={"color": "var(--amber-11)"},
+    )
+    return rx.box(
+        rx.vstack(
+            header_link,
+            # 自己紹介テキスト (CIP-119 objectives / motivations から)
+            rx.cond(
+                r["bio"] != "",
+                rx.text(
+                    r["bio"],
+                    size="1", color="var(--gray-11)", line_height="1.6",
+                    style={
+                        "display": "-webkit-box",
+                        "WebkitLineClamp": "3",
+                        "WebkitBoxOrient": "vertical",
+                        "overflow": "hidden",
+                        "whiteSpace": "pre-wrap",
+                    },
+                ),
+                rx.fragment(),
+            ),
+            # 外部 SNS / web リンク (CIP-119 references_json)
+            rx.cond(
+                r["links_csv"] != "",
+                rx.hstack(
+                    rx.foreach(r["links_csv"].split(","), _social_link_icon),
+                    spacing="2", align="center", wrap="wrap",
+                ),
+                rx.fragment(),
+            ),
+            # トピック特徴
+            rx.cond(
+                r["top_yes_csv"] != "",
+                rx.hstack(
+                    rx.text(
+                        AuthState.t["drep_match_results_active_in"],
+                        size="1", color="var(--green-11)", weight="medium",
+                        style={"flexShrink": "0"},
+                    ),
+                    rx.foreach(r["top_yes_csv"].split(","), _topic_chip),
+                    spacing="2", align="center", wrap="wrap",
+                ),
+                rx.fragment(),
+            ),
+            rx.cond(
+                r["top_no_csv"] != "",
+                rx.hstack(
+                    rx.text(
+                        AuthState.t["drep_match_results_cautious_in"],
+                        size="1", color="var(--red-11)", weight="medium",
+                        style={"flexShrink": "0"},
+                    ),
+                    rx.foreach(r["top_no_csv"].split(","), _topic_chip),
+                    spacing="2", align="center", wrap="wrap",
+                ),
+                rx.fragment(),
+            ),
+            spacing="3", align_items="stretch", width="100%",
+        ),
+        padding="18px 20px",
+        border_radius="12px",
+        border=f"1px solid {rx.color('gray', 5)}",
+        background=rx.color_mode_cond("white", "rgba(255,255,255,0.04)"),
+        width="100%",
+        _hover={
+            "border_color": rx.color("amber", 8),
+            "transform":    "translateY(-1px)",
+        },
+        style={"transition": "border-color 0.15s, transform 0.15s"},
     )
 
 
