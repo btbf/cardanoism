@@ -105,11 +105,22 @@ class StakingDashboardState(rx.State):
     # プロトコルバージョン: 現在エポックで各プールが最後に作ったブロックのバージョン。
     # Koios /blocks をオンデマンドで集計（5 分 TTL キャッシュ）。
     # 各 entry: {pool_id, ticker, version, color}  color = "latest" / "older" / "none"
+    # 並び順: version 降順（大きい順）、未生成は末尾
     proto_version_pools: list[dict[str, str]] = []
     # 凡例: {version, count} のリスト (count desc)
     proto_version_legend: list[dict[str, str]] = []
     proto_version_latest: str = ""    # 最新と見做したバージョン文字列
     proto_version_current_epoch: int = 0
+    # 生成プール (latest + older) に対する内訳
+    proto_version_latest_count:  int = 0
+    proto_version_older_count:   int = 0
+    proto_version_produced_count: int = 0
+    # 積み上げ横棒の幅 (%、生成プール内の比率)
+    proto_version_latest_pct: str = "0"
+    proto_version_older_pct:  str = "0"
+    # 凡例ラベル用の %（1 桁丸め）
+    proto_version_latest_label_pct: str = "0.0"
+    proto_version_older_label_pct:  str = "0.0"
 
     # Mempool 状態（10秒間隔で ogmios_listener が更新、ページ側は 5秒で読みに行く）
     mempool_tx_count: int = 0
@@ -373,9 +384,41 @@ class StakingDashboardState(rx.State):
                 "version": version,
                 "color":   color,
             })
+
+        # ── 並び順: version 降順 (大きい順)、未生成は末尾。同 version 内は ticker で安定化
+        def _sort_key(r: dict) -> tuple:
+            if r["version"]:
+                try:
+                    mj_s, mn_s = r["version"].split(".")
+                    return (0, -int(mj_s), -int(mn_s), r["pool_id"])
+                except ValueError:
+                    return (1, 0, 0, r["pool_id"])
+            return (2, 0, 0, r["pool_id"])
+        out.sort(key=_sort_key)
         self.proto_version_pools = out
 
-        # 凡例: バージョンごとの件数（multi-version 時は count 降順、latest を先頭）+ 未生成数
+        # ── 生成プール内 (= 1 ブロック以上生成) の最新版 vs 旧版の比率
+        latest_count = sum(1 for r in out if r["color"] == "latest")
+        older_count  = sum(1 for r in out if r["color"] == "older")
+        none_count   = sum(1 for r in out if r["color"] == "none")
+        produced = latest_count + older_count
+        self.proto_version_latest_count = latest_count
+        self.proto_version_older_count = older_count
+        self.proto_version_produced_count = produced
+        if produced > 0:
+            lp = latest_count / produced * 100
+            op = older_count / produced * 100
+            self.proto_version_latest_pct = f"{lp:.4f}"
+            self.proto_version_older_pct  = f"{op:.4f}"
+            self.proto_version_latest_label_pct = f"{lp:.1f}"
+            self.proto_version_older_label_pct  = f"{op:.1f}"
+        else:
+            self.proto_version_latest_pct = "0"
+            self.proto_version_older_pct  = "0"
+            self.proto_version_latest_label_pct = "0.0"
+            self.proto_version_older_label_pct  = "0.0"
+
+        # 凡例: バージョンごとの件数（latest を先頭、以降 count 降順）+ 未生成数
         legend: list[dict[str, str]] = []
         sorted_keys = sorted(
             version_counts.keys(),
@@ -387,7 +430,6 @@ class StakingDashboardState(rx.State):
                 "count":   str(version_counts[k]),
                 "color":   "latest" if k == latest_key else "older",
             })
-        none_count = sum(1 for r in out if r["color"] == "none")
         if none_count:
             legend.append({"version": "", "count": str(none_count), "color": "none"})
         self.proto_version_legend = legend
@@ -1585,6 +1627,60 @@ def _proto_version_section() -> rx.Component:
                     spacing="2", align="baseline", wrap="wrap",
                 ),
                 rx.fragment(),
+            ),
+            # ── KPI: 「ブロック生成 X プール / 最新版 X (X%) / 旧版 X (X%)」 ──
+            rx.hstack(
+                rx.text(
+                    AuthState.t["staking_proto_kpi_produced"],
+                    size="2", color="var(--gray-11)",
+                ),
+                rx.text(
+                    state.proto_version_produced_count.to_string(),
+                    size="4", weight="bold", color="var(--gray-12)",
+                ),
+                rx.text(
+                    AuthState.t["staking_proto_kpi_pool_unit"],
+                    size="2", color="var(--gray-11)",
+                ),
+                rx.text("/", size="2", color="var(--gray-9)"),
+                rx.text(
+                    AuthState.t["staking_proto_kpi_latest"],
+                    size="2", color="var(--gray-11)",
+                ),
+                rx.text(
+                    state.proto_version_latest_count.to_string(),
+                    size="4", weight="bold", color="var(--green-11)",
+                ),
+                rx.text(
+                    "(", state.proto_version_latest_label_pct, "%)",
+                    size="2", color="var(--green-10)", weight="medium",
+                ),
+                rx.text("/", size="2", color="var(--gray-9)"),
+                rx.text(
+                    AuthState.t["staking_proto_kpi_older"],
+                    size="2", color="var(--gray-11)",
+                ),
+                rx.text(
+                    state.proto_version_older_count.to_string(),
+                    size="4", weight="bold", color="var(--yellow-11)",
+                ),
+                rx.text(
+                    "(", state.proto_version_older_label_pct, "%)",
+                    size="2", color="var(--yellow-10)", weight="medium",
+                ),
+                spacing="2", align="baseline", wrap="wrap",
+            ),
+            # ── 積み上げ横棒: 生成プール内の最新 vs 旧版 比率 ──
+            rx.box(
+                rx.box(
+                    class_name="cdn-pool-activity-seg cdn-pool-activity-seg-green",
+                    style={"flexShrink": 0, "width": state.proto_version_latest_pct + "%"},
+                ),
+                rx.box(
+                    class_name="cdn-pool-activity-seg cdn-pool-activity-seg-yellow",
+                    style={"flexShrink": 0, "width": state.proto_version_older_pct + "%"},
+                ),
+                class_name="cdn-pool-activity-bar",
             ),
             # 凡例
             rx.hstack(
