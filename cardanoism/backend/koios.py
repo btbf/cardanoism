@@ -940,7 +940,8 @@ def get_current_epoch_block_stats(current_epoch: int | None = None) -> dict:
                 pool_latest[pool] = {
                     "major": mj,
                     "minor": mn,
-                    "abs_slot": b.get("abs_slot"),
+                    "abs_slot":    b.get("abs_slot"),
+                    "block_height": b.get("block_height"),
                 }
         if len(data) < limit:
             break

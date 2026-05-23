@@ -362,46 +362,43 @@ class StakingDashboardState(rx.State):
                 latest_key = k
         self.proto_version_latest = _ver_str(latest_key) if latest_key else ""
 
-        # ── ヒートマップ行 (heatmap_pools と同じプール集合、最新ブロックの abs_slot 降順)
+        # ── ヒートマップ行: ブロックを生成したプールのみ。abs_slot 降順
         out: list[dict[str, str]] = []
         for p in self.heatmap_pools:
             pool_id = p.get("pool_id") or ""
-            ticker = p.get("ticker") or ""
             entry = proto_map.get(pool_id)
             if entry is None:
-                version = ""
-                color = "none"
+                continue  # 現在エポックでブロック未生成のプールはヒートマップに出さない
+            mj = entry.get("major")
+            mn = entry.get("minor")
+            if mj is None or mn is None:
+                continue
+            slot_raw = entry.get("abs_slot")
+            try:
+                slot = int(slot_raw) if slot_raw is not None else -1
+            except (TypeError, ValueError):
                 slot = -1
-            else:
-                mj = entry.get("major")
-                mn = entry.get("minor")
-                slot_raw = entry.get("abs_slot")
-                try:
-                    slot = int(slot_raw) if slot_raw is not None else -1
-                except (TypeError, ValueError):
-                    slot = -1
-                if mj is None or mn is None:
-                    version = ""
-                    color = "none"
-                else:
-                    k = (int(mj), int(mn))
-                    version = _ver_str(k)
-                    color = "latest" if k == latest_key else "older"
+            bh_raw = entry.get("block_height")
+            try:
+                block_height_str = str(int(bh_raw)) if bh_raw is not None else ""
+            except (TypeError, ValueError):
+                block_height_str = ""
+            k = (int(mj), int(mn))
             out.append({
-                "pool_id":  pool_id,
-                "ticker":   ticker,
-                "version":  version,
-                "color":    color,
-                "_slot":    slot,
+                "pool_id":      pool_id,
+                "ticker":       p.get("ticker") or "",
+                "version":      _ver_str(k),
+                "color":        "latest" if k == latest_key else "older",
+                "slot":         str(slot) if slot >= 0 else "",
+                "block_height": block_height_str,
+                "_slot_sort":   slot,
             })
 
-        # 並び順: abs_slot 降順（直近にブロックを作ったプールを先頭）。未生成 (-1) は末尾。
-        out.sort(key=lambda r: (-int(r["_slot"]), r["pool_id"]))
-        # 表示用 dict には _slot を残さない（State 型整合のため）
+        # 並び順: abs_slot 降順（直近にブロックを作ったプールが先頭）
+        out.sort(key=lambda r: (-int(r["_slot_sort"]), r["pool_id"]))
+        # 内部ソート用キーは表示用 dict には残さない
         self.proto_version_pools = [
-            {"pool_id": r["pool_id"], "ticker": r["ticker"],
-             "version": r["version"], "color": r["color"]}
-            for r in out
+            {k: v for k, v in r.items() if k != "_slot_sort"} for r in out
         ]
 
         # ── ブロック数集計 (version 別) と比率 (分母 = 理論最大ブロック数 21,600)
@@ -440,9 +437,7 @@ class StakingDashboardState(rx.State):
                 "count":   str(e["count"]),
                 "color":   "latest" if k == latest_key else "older",
             })
-        none_count = sum(1 for r in out if r["color"] == "none")
-        if none_count:
-            legend.append({"version": "", "count": str(none_count), "color": "none"})
+        # 未生成プールは proto_version_pools から除外済みなので、凡例にも出さない
         self.proto_version_legend = legend
 
     def _fetch_live_blocks(self):
@@ -1563,8 +1558,8 @@ def _pool_activity_section() -> rx.Component:
 
 
 def _proto_version_cell(p) -> rx.Component:
-    """プロトコルバージョン ヒートマップの 1 セル。color: latest/older/none。
-    tooltip に ticker + バージョンを出す。
+    """プロトコルバージョン ヒートマップの 1 セル。color: latest/older。
+    tooltip に ticker / バージョン / ブロック番号 / スロット番号 を出す。
     """
     color_class = rx.match(
         p["color"],
@@ -1574,7 +1569,11 @@ def _proto_version_cell(p) -> rx.Component:
     )
     return rx.box(
         class_name=color_class,
-        custom_attrs={"title": p["ticker"] + " — v" + p["version"]},
+        custom_attrs={
+            "title": p["ticker"] + " — v" + p["version"]
+                     + " | block#" + p["block_height"]
+                     + " slot#" + p["slot"],
+        },
     )
 
 
