@@ -70,6 +70,9 @@ def _format_links(refs_json: str | None) -> list[tuple[str, str]]:
         url = str(url).strip()
         if not (url.startswith("http://") or url.startswith("https://")):
             continue
+        # 後段で "icon|url" の CSV エンコードを行うため、'|' や ',' を含む URL は除外
+        if "|" in url or "," in url:
+            continue
         if url in seen:
             continue
         seen.add(url)

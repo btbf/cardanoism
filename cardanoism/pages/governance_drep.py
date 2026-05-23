@@ -933,8 +933,12 @@ def _topic_chip(key) -> rx.Component:
 
 
 def _social_link_icon(item) -> rx.Component:
-    """item は 'icon|url' 形式の Var[str]。CIP-119 references_json から作る外部リンク。"""
-    parts = item.split("|", 1)
+    """item は 'icon|url' 形式の Var[str]。CIP-119 references_json から作る外部リンク。
+
+    Reflex の StringVar.split は maxsplit を受け付けないため単純 split を使用。
+    URL に '|' が含まれる前提はない（CSV エンコード時に Python 側で除外可能）。
+    """
+    parts = item.split("|")
     icon_name = parts[0]
     url = parts[1]
     icon_comp = rx.match(
