@@ -1,7 +1,7 @@
 """vote_matrix_db.py
-DRep × GA 投票マトリクスのデータ取得ヘルパー (読み取り専用)。
+投票マトリクス（DRep / CC / SPO × GA）のデータ取得ヘルパー (読み取り専用)。
 
-使用テーブル: governance_actions / proposal_votes / dreps
+使用テーブル: governance_actions / proposal_votes / dreps / cc_members / pools
 """
 from __future__ import annotations
 
@@ -126,37 +126,120 @@ def get_dreps_for_matrix(
 
 
 def get_votes_for_matrix(
-    drep_ids: list[str], proposal_ids: list[str]
+    voter_ids: list[str], proposal_ids: list[str], voter_role: str = "DRep"
 ) -> dict[tuple[str, str], dict[str, Any]]:
-    """指定 DRep × GA の投票レコードを取得。
+    """指定 voter × GA の投票レコードを取得。
 
-    戻り値: {(drep_id, proposal_id): {vote, rationale, rationale_ja}}
+    voter_role: "DRep" / "ConstitutionalCommittee" / "SPO"
+    戻り値: {(voter_id, proposal_id): {vote, rationale, rationale_ja}}
     投票レコードが存在しない組み合わせは含まれない。
     """
-    if not drep_ids or not proposal_ids:
+    if not voter_ids or not proposal_ids:
         return {}
-    placeholders_d = ",".join(["?"] * len(drep_ids))
+    placeholders_v = ",".join(["?"] * len(voter_ids))
     placeholders_p = ",".join(["?"] * len(proposal_ids))
     sql = f"""
-        SELECT voter_id    AS drep_id,
+        SELECT voter_id,
                proposal_id,
                vote,
                rationale,
                rationale_ja
           FROM proposal_votes
-         WHERE voter_role = 'DRep'
-           AND voter_id    IN ({placeholders_d})
+         WHERE voter_role = ?
+           AND voter_id    IN ({placeholders_v})
            AND proposal_id IN ({placeholders_p})
     """
-    params = list(drep_ids) + list(proposal_ids)
+    params = [voter_role] + list(voter_ids) + list(proposal_ids)
     out: dict[tuple[str, str], dict[str, Any]] = {}
     with get_db() as (cursor, _):
         cursor.execute(sql, tuple(params))
         for r in cursor.fetchall():
             d = dict(r)
-            out[(d["drep_id"], d["proposal_id"])] = {
+            out[(d["voter_id"], d["proposal_id"])] = {
                 "vote":         d.get("vote") or "",
                 "rationale":    d.get("rationale") or "",
                 "rationale_ja": d.get("rationale_ja") or "",
             }
     return out
+
+
+# ─── CC（憲法委員会）行 ──────────────────────────────────────────────────────
+
+def count_cc_for_matrix(*, search: str = "") -> int:
+    """マトリクス対象 CC メンバーの総数。authorized のみ。"""
+    where = "WHERE status = 'authorized'"
+    params: list = []
+    if search:
+        where += " AND display_name LIKE ?"
+        params.append(f"%{search}%")
+    sql = f"SELECT COUNT(*) AS n FROM cc_members {where}"
+    with get_db() as (cursor, _):
+        cursor.execute(sql, tuple(params))
+        row = cursor.fetchone()
+        return int(dict(row).get("n") or 0) if row else 0
+
+
+def get_cc_for_matrix(
+    *, search: str = "", limit: int = 50, offset: int = 0
+) -> list[dict[str, Any]]:
+    """マトリクスの行 (CC メンバー) を取得。authorized のみ。"""
+    where = "WHERE status = 'authorized'"
+    params: list = []
+    if search:
+        where += " AND display_name LIKE ?"
+        params.append(f"%{search}%")
+    sql = f"""
+        SELECT cc_cold_id, cc_hot_id, display_name, status
+          FROM cc_members
+          {where}
+         ORDER BY cc_cold_id
+         LIMIT ? OFFSET ?
+    """
+    params += [int(limit), int(offset)]
+    with get_db() as (cursor, _):
+        cursor.execute(sql, tuple(params))
+        return [dict(r) for r in cursor.fetchall()]
+
+
+# ─── SPO（ステークプール）行 ────────────────────────────────────────────────
+
+def _spo_where(search: str) -> tuple[str, list]:
+    where = "WHERE (pool_status IS NULL OR pool_status <> 'retired')"
+    params: list = []
+    if search:
+        if search.lower().startswith("pool1"):
+            where += " AND pool_id_bech32 LIKE ?"
+            params.append(f"%{search}%")
+        else:
+            where += " AND (ticker LIKE ? OR pool_name LIKE ?)"
+            like = f"%{search}%"
+            params += [like, like]
+    return where, params
+
+
+def count_spo_for_matrix(*, search: str = "") -> int:
+    """マトリクス対象 SPO の総数（retired 除く）。"""
+    where, params = _spo_where(search)
+    sql = f"SELECT COUNT(*) AS n FROM pools {where}"
+    with get_db() as (cursor, _):
+        cursor.execute(sql, tuple(params))
+        row = cursor.fetchone()
+        return int(dict(row).get("n") or 0) if row else 0
+
+
+def get_spo_for_matrix(
+    *, search: str = "", limit: int = 50, offset: int = 0
+) -> list[dict[str, Any]]:
+    """マトリクスの行 (SPO) を取得。retired 除く、live_stake 降順。"""
+    where, params = _spo_where(search)
+    sql = f"""
+        SELECT pool_id_bech32, ticker, pool_name, pool_icon_url
+          FROM pools
+          {where}
+         ORDER BY live_stake DESC
+         LIMIT ? OFFSET ?
+    """
+    params += [int(limit), int(offset)]
+    with get_db() as (cursor, _):
+        cursor.execute(sql, tuple(params))
+        return [dict(r) for r in cursor.fetchall()]
