@@ -1837,6 +1837,114 @@ def check_pool_block_history(epochs: int = 5):
                 inserted, len(pool_ids), apy_captured, APY_WINDOW)
 
 
+# ============================================================
+# DRep マッチング診断: トピック別 Yes 率プロフィール
+# ============================================================
+
+# AI 分類で使うトピックキー。プロンプト (ai_client.py _SYSTEM_INSTRUCTIONS) と同期。
+# "other" は対象外（マッチング次元に含めない）。
+_DREP_TOPIC_KEYS: tuple[str, ...] = (
+    "core_dev", "research", "education", "community",
+    "defi", "enterprise", "product", "governance",
+)
+
+
+def check_drep_topic_profile_sync():
+    """DRep × トピック の Yes 率を集計し dreps.topic_profile_json に保存する。
+
+    governance_ai_analysis.topic_tags_json と proposal_votes (voter_role='DRep')
+    を JOIN し、Yes / No 票のみ採用（Abstain は分母から除外）。
+    各 DRep 行に
+      - topic_profile_json: {"core_dev": 0.85, ...}（投票が 1 件以上ある topic のみ）
+      - topic_vote_count: 集計に使った Yes+No 票の総数（< 5 はデータ不足扱い）
+    を書き込む。
+    """
+    logger.info("DRep トピックプロフィール同期 開始")
+
+    rows: list[dict] = []
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT pv.voter_id, LOWER(pv.vote) AS vote,
+                   ai.topic_tags_json
+              FROM proposal_votes pv
+              JOIN governance_ai_analysis ai
+                ON ai.proposal_id = pv.proposal_id
+             WHERE pv.voter_role = 'DRep'
+               AND ai.status = 'analyzed'
+               AND ai.topic_tags_json IS NOT NULL
+               AND ai.topic_tags_json <> ''
+               AND LOWER(pv.vote) IN ('yes', 'no')
+            """
+        )
+        rows = [dict(r) for r in cursor.fetchall()]
+
+    logger.info("対象票数: %d 件 (Yes + No)", len(rows))
+
+    # 集計: {drep_id: {topic: {"yes": n, "total": n}}}
+    agg: dict[str, dict[str, dict[str, int]]] = {}
+    sample: dict[str, int] = {}  # drep_id -> total Yes+No votes (sample size)
+    valid_topics = set(_DREP_TOPIC_KEYS)
+    for r in rows:
+        drep_id = r["voter_id"]
+        is_yes = r["vote"] == "yes"
+        try:
+            tags = json.loads(r["topic_tags_json"] or "[]")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(tags, list):
+            continue
+        per = agg.setdefault(drep_id, {})
+        sample[drep_id] = sample.get(drep_id, 0) + 1
+        for t in tags:
+            t = str(t).strip().lower()
+            if t not in valid_topics:
+                continue  # "other" やタイポは無視
+            entry = per.setdefault(t, {"yes": 0, "total": 0})
+            entry["total"] += 1
+            if is_yes:
+                entry["yes"] += 1
+
+    # 全 registered DRep を取得（投票実績なしの DRep も profile=NULL で更新する）
+    with get_db() as (cursor, _):
+        cursor.execute("SELECT drep_id FROM dreps WHERE registered = 1")
+        all_dreps = [r["drep_id"] for r in cursor.fetchall()]
+    logger.info("対象 DRep: %d 件 (registered=1)", len(all_dreps))
+
+    # プロファイル JSON 作成 + UPDATE
+    updates: list[tuple[str | None, int, str]] = []
+    for drep_id in all_dreps:
+        per = agg.get(drep_id)
+        size = sample.get(drep_id, 0)
+        if not per or size <= 0:
+            updates.append((None, 0, drep_id))
+            continue
+        profile = {
+            topic: round(d["yes"] / d["total"], 4)
+            for topic, d in per.items() if d["total"] > 0
+        }
+        if not profile:
+            updates.append((None, 0, drep_id))
+            continue
+        updates.append((json.dumps(profile, ensure_ascii=False), int(size), drep_id))
+
+    written = 0
+    with get_db() as (cursor, conn):
+        for profile_json, vote_count, drep_id in updates:
+            cursor.execute(
+                "UPDATE dreps SET topic_profile_json = ?, topic_vote_count = ? "
+                "WHERE drep_id = ?",
+                (profile_json, vote_count, drep_id),
+            )
+            if cursor.rowcount:
+                written += 1
+        conn.commit()
+    logger.info(
+        "DRep トピックプロフィール同期 完了: %d 件 update (プロファイルあり %d 件)",
+        written, sum(1 for u in updates if u[0] is not None),
+    )
+
+
 def _split_pool_updates(updates: list[dict], current_epoch: int) -> tuple[dict | None, dict | None]:
     """/pool_updates の一覧から (active 更新, pending 更新) を抽出する。
 
@@ -2752,7 +2860,7 @@ def main():
     parser.add_argument(
         "--event",
         default="all",
-        choices=["all", "pool", "drep", "drep_unvoted", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync", "spo_role_initial_sync", "notify_test"],
+        choices=["all", "pool", "drep", "drep_unvoted", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync", "spo_role_initial_sync", "drep_topic_profile_sync", "notify_test"],
         help="実行するイベントグループ",
     )
     parser.add_argument(
@@ -2844,6 +2952,10 @@ def main():
     # SPO 判定 初期投入: --event spo_role_initial_sync で明示指定（"all" には含めない）
     if args.event == "spo_role_initial_sync":
         check_spo_role_initial_sync()
+
+    # DRep マッチング診断用トピックプロフィール: 明示指定 or cron 経由（"all" には含めない）
+    if args.event == "drep_topic_profile_sync":
+        check_drep_topic_profile_sync()
 
     # 管理者用 通知疎通テスト: --event notify_test で明示指定（"all" には含めない）
     if args.event == "notify_test":

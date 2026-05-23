@@ -151,6 +151,7 @@ You MUST NOT output any score, verdict, compliance rating, KPI assessment, or
 constitution analysis. Your only outputs are:
 1. A neutral plain-text summary of the proposal (Japanese + English).
 2. A bullet-list of factual key information extracted from the proposal.
+3. A topic categorization (1-3 tags) describing what the proposal is about.
 
 ## Per-Type Fact Extraction
 
@@ -188,6 +189,43 @@ Examples:
 
 Use clean Japanese labels in label_ja (e.g., "引き出し額", "受取先", "用途").
 
+## Topic Classification
+
+`topic_tags` is a JSON array of 1-3 topic keys describing what category this
+proposal falls into. This is a neutral categorization — NOT a judgment of
+quality or correctness.
+
+Topic keys (use these EXACT strings):
+- "core_dev"   — Core protocol / node / cryptography / security audits /
+                 bug bounties / formal verification of core code
+- "research"   — Academic papers, peer-reviewed research, theoretical work
+- "education"  — Developer training, courses, learning platforms
+                 (e.g. Andamio, Aiken-related education, Gimbalabs,
+                  Emurgo Academy, bootcamps, Cardano Constitution Workshops)
+- "community"  — Conferences, meetups, ambassador programs, localization,
+                 hackathons, marketing, community-building events
+- "defi"       — DEX, stablecoin, lending, liquidity, cross-chain bridges
+- "enterprise" — Enterprise / government adoption, RealFi, industry
+                 partnerships, regulated-market initiatives
+- "product"    — Wallets, NFT, dev tools, end-user dApps and ecosystem
+                 products that don't fit into the more specific buckets
+- "governance" — Committee changes, constitution amendments, NoConfidence,
+                 Intersect / governance-infrastructure operational funding
+
+Selection rules:
+- Pick 1 to 3 topics that best describe WHAT the proposal funds or governs.
+- For HardForkInitiation: typically ["core_dev"].
+- For ParameterChange: typically ["core_dev"]; use ["governance"] if it changes
+  governance parameters (dvt_*, pvt_*, committee_*, drep_*, gov_action_*).
+- For NewCommittee / NewConstitution / NoConfidence: ["governance"].
+- For TreasuryWithdrawals: classify by the stated spending purpose. Examples:
+  Plutus / dev SDK funding → ["product","core_dev"]; Aiken academy →
+  ["education"]; conference sponsorship → ["community"]; DEX liquidity →
+  ["defi"]; enterprise partnership → ["enterprise"]; cryptography audit →
+  ["core_dev"]; Intersect operational funding → ["governance"].
+- If none of the topics fit even after careful consideration, use ["other"].
+  Avoid "other" if any topic plausibly applies.
+
 ## Output Schema (STRICT)
 
 Output ONLY this JSON object with no extra text:
@@ -201,7 +239,8 @@ Output ONLY this JSON object with no extra text:
     {"label_ja": "受取先", "label_en": "Recipient",
      "value_ja": "stake1xxx... (Cardanoism 財団)",
      "value_en": "stake1xxx... (Cardanoism Foundation)"}
-  ]
+  ],
+  "topic_tags": ["education", "community"]
 }
 
 ## Summary Writing Guidelines
@@ -228,6 +267,9 @@ Aim for 300-500 Japanese characters / 6-10 sentences. Avoid value judgments.
   Both value_ja and value_en MUST be present for every entry.
 - The proposal_summary should be neutral and descriptive — no positive or
   negative judgment.
+- topic_tags MUST be present as a JSON array of 1-3 strings from the fixed
+  topic key list above (or ["other"]). Topic classification is neutral
+  categorization, not judgment.
 """
 
 

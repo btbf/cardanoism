@@ -153,6 +153,15 @@ def save_result(
     facts = payload.get("proposal_facts") or []
     articles = payload.get("articles") or []
 
+    # DRep マッチング診断 (016_drep_topic_match.sql) 用のトピック分類。
+    # 想定キー: core_dev / research / education / community / defi / enterprise
+    #          / product / governance / other （プロンプト側で固定）
+    topics_raw = payload.get("topic_tags") or []
+    if isinstance(topics_raw, list):
+        topic_tags = [str(t).strip() for t in topics_raw if str(t).strip()][:3]
+    else:
+        topic_tags = []
+
     with get_db() as (cursor, conn):
         cursor.execute(
             """
@@ -165,6 +174,7 @@ def save_result(
                 articles_json       = ?,
                 proposal_facts_json = ?,
                 rule_checks_json    = ?,
+                topic_tags_json     = ?,
                 model_id              = ?,
                 constitution_meta_url = ?,
                 tokens_input  = ?,
@@ -178,6 +188,7 @@ def save_result(
                 json.dumps(articles, ensure_ascii=False),
                 json.dumps(facts, ensure_ascii=False),
                 json.dumps(rule_checks or [], ensure_ascii=False),
+                json.dumps(topic_tags, ensure_ascii=False) if topic_tags else None,
                 str(model_id)[:64],
                 constitution_meta_url,
                 int(tokens_input),
