@@ -881,20 +881,23 @@ _epoch_proto_cache: tuple[float, int, dict[str, dict]] | None = None
 _epoch_proto_lock = threading.Lock()
 
 
-def get_current_epoch_pool_proto_versions(current_epoch: int | None = None) -> dict[str, dict]:
-    """現在エポックで各プールが最後に作ったブロックの protocol version を返す。
+def get_current_epoch_block_stats(current_epoch: int | None = None) -> dict:
+    """現在エポックの全ブロックを Koios /blocks から集計して返す。
 
-    戻り値: {pool_id_bech32: {"major": int|None, "minor": int|None}}
-
-    Koios /blocks?epoch_no=eq.N&order=block_time.desc を全件取得し、
-    pool ごとに最初に出会ったブロック (= 時系列最新) を採用する。
-    current_epoch を渡さない場合は Koios /tip から取得する。
+    戻り値:
+      {
+        "epoch":        int,                                 # 集計対象エポック
+        "total_blocks": int,                                 # 取得ブロック総数
+        "pool_latest":  {pool_id: {"major": int, "minor": int}},  # プールごとの最新ブロック
+        "version_block_counts": [{"major": int, "minor": int, "count": int}],  # version 別ブロック数 (count desc)
+      }
     """
+    empty: dict = {"epoch": 0, "total_blocks": 0, "pool_latest": {}, "version_block_counts": []}
     if current_epoch is None:
         current_epoch = get_current_epoch()
         if current_epoch is None:
-            logger.warning("proto_versions: 現在エポックの取得に失敗しました")
-            return {}
+            logger.warning("block_stats: 現在エポックの取得に失敗しました")
+            return empty
 
     global _epoch_proto_cache
     with _epoch_proto_lock:
@@ -904,10 +907,11 @@ def get_current_epoch_pool_proto_versions(current_epoch: int | None = None) -> d
             if ep == current_epoch and now - ts < _EPOCH_PROTO_TTL:
                 return data
 
-    out: dict[str, dict] = {}
+    pool_latest: dict[str, dict] = {}
+    counts: dict[tuple[int, int], int] = {}
+    total = 0
     offset = 0
     limit = 1000
-    total_blocks = 0
     while True:
         params = {
             "epoch_no": f"eq.{int(current_epoch)}",
@@ -918,35 +922,49 @@ def get_current_epoch_pool_proto_versions(current_epoch: int | None = None) -> d
         try:
             data = _get("/blocks", params, timeout=20.0)
         except Exception as e:  # noqa: BLE001
-            logger.warning("proto_versions fetch failed (offset=%d): %s", offset, e)
+            logger.warning("block_stats fetch failed (offset=%d): %s", offset, e)
             break
         if not data or not isinstance(data, list):
             if offset == 0:
-                logger.warning("proto_versions: Koios /blocks epoch_no=%d が空レスポンス", current_epoch)
+                logger.warning("block_stats: Koios /blocks epoch_no=%d が空レスポンス", current_epoch)
             break
-        total_blocks += len(data)
+        total += len(data)
         for b in data:
+            mj = b.get("proto_major")
+            mn = b.get("proto_minor")
+            if mj is not None and mn is not None:
+                k = (int(mj), int(mn))
+                counts[k] = counts.get(k, 0) + 1
             pool = b.get("pool")
-            if not pool:
-                continue
-            # block_time DESC 順なので最初に出会ったレコードがプールの最新ブロック
-            if pool not in out:
-                out[pool] = {
-                    "major": b.get("proto_major"),
-                    "minor": b.get("proto_minor"),
+            if pool and pool not in pool_latest:
+                pool_latest[pool] = {
+                    "major": mj,
+                    "minor": mn,
+                    "abs_slot": b.get("abs_slot"),
                 }
         if len(data) < limit:
             break
         offset += limit
 
+    vbc = sorted(
+        [{"major": k[0], "minor": k[1], "count": v} for k, v in counts.items()],
+        key=lambda d: -d["count"],
+    )
+    stats = {
+        "epoch":                int(current_epoch),
+        "total_blocks":         total,
+        "pool_latest":          pool_latest,
+        "version_block_counts": vbc,
+    }
+
     logger.info(
-        "proto_versions: epoch=%d ブロック取得=%d 件 / 解析後プール数=%d",
-        current_epoch, total_blocks, len(out),
+        "block_stats: epoch=%d total_blocks=%d pools=%d versions=%d",
+        current_epoch, total, len(pool_latest), len(vbc),
     )
 
     with _epoch_proto_lock:
-        _epoch_proto_cache = (time.time(), current_epoch, out)
-    return out
+        _epoch_proto_cache = (time.time(), current_epoch, stats)
+    return stats
 
 
 def get_pool_history(pool_id_bech32: str, limit: int = 5, timeout: float = 10.0) -> list[dict]:

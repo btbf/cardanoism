@@ -105,22 +105,25 @@ class StakingDashboardState(rx.State):
     # プロトコルバージョン: 現在エポックで各プールが最後に作ったブロックのバージョン。
     # Koios /blocks をオンデマンドで集計（5 分 TTL キャッシュ）。
     # 各 entry: {pool_id, ticker, version, color}  color = "latest" / "older" / "none"
-    # 並び順: version 降順（大きい順）、未生成は末尾
+    # 並び順: 最新ブロックの abs_slot 降順 (最近作ったプールが先頭)、未生成は末尾
     proto_version_pools: list[dict[str, str]] = []
-    # 凡例: {version, count} のリスト (count desc)
+    # 凡例: {version, count, color} のリスト (count = version 別のブロック数, count desc)
     proto_version_legend: list[dict[str, str]] = []
     proto_version_latest: str = ""    # 最新と見做したバージョン文字列
     proto_version_current_epoch: int = 0
-    # 生成プール (latest + older) に対する内訳
-    proto_version_latest_count:  int = 0
-    proto_version_older_count:   int = 0
-    proto_version_produced_count: int = 0
-    # 積み上げ横棒の幅 (%、生成プール内の比率)
+    # 1 エポックの理論最大ブロック数 (mainnet: 432000 slots × 0.05 active_slot_coeff)
+    proto_version_max_blocks: int = 21_600
+    # 現在エポックで実際に生成されたブロック数 (version 別)
+    proto_version_latest_blocks: int = 0
+    proto_version_older_blocks:  int = 0
+    proto_version_total_blocks:  int = 0
+    # 積み上げ横棒の幅 (%、分母 = 理論最大ブロック数)
     proto_version_latest_pct: str = "0"
     proto_version_older_pct:  str = "0"
-    # 凡例ラベル用の %（1 桁丸め）
+    # 凡例 / KPI 用の %（1 桁丸め、分母 = 理論最大ブロック数）
     proto_version_latest_label_pct: str = "0.0"
     proto_version_older_label_pct:  str = "0.0"
+    proto_version_total_label_pct:  str = "0.0"  # latest + older / max
 
     # Mempool 状態（10秒間隔で ogmios_listener が更新、ページ側は 5秒で読みに行く）
     mempool_tx_count: int = 0
@@ -316,13 +319,14 @@ class StakingDashboardState(rx.State):
         Koios /blocks をオンデマンドで叩く（5 分 TTL キャッシュ）。
         heatmap_pools と同じプール集合に対して、最新バージョン=latest, それ以外=older,
         現在エポックでブロック未生成=none で色分けする。
+        並び順は最新ブロックの abs_slot 降順（最近作ったプール先頭）。
+        積み上げ横棒は version 別ブロック数 / 1 エポック理論最大ブロック数 (=21,600)。
         """
         try:
             from cardanoism.backend.koios import (
                 get_current_epoch,
-                get_current_epoch_pool_proto_versions,
+                get_current_epoch_block_stats,
             )
-            # 現在エポックは Koios /tip から取得（mainnet/preview を問わず正確）
             current_epoch = get_current_epoch()
             if current_epoch is None:
                 logger.warning("_fetch_proto_versions: 現在エポック取得に失敗")
@@ -330,10 +334,12 @@ class StakingDashboardState(rx.State):
                 self.proto_version_legend = []
                 return
             self.proto_version_current_epoch = int(current_epoch)
-            proto_map = get_current_epoch_pool_proto_versions(int(current_epoch)) or {}
+            stats = get_current_epoch_block_stats(int(current_epoch)) or {}
+            proto_map = stats.get("pool_latest") or {}
+            vbc = stats.get("version_block_counts") or []
             logger.info(
-                "_fetch_proto_versions: epoch=%s proto_map=%d heatmap_pools=%d",
-                current_epoch, len(proto_map), len(self.heatmap_pools),
+                "_fetch_proto_versions: epoch=%s proto_map=%d heatmap_pools=%d versions=%d",
+                current_epoch, len(proto_map), len(self.heatmap_pools), len(vbc),
             )
         except Exception as e:  # noqa: BLE001
             logger.warning("_fetch_proto_versions failed: %s", e)
@@ -341,25 +347,22 @@ class StakingDashboardState(rx.State):
             self.proto_version_legend = []
             return
 
-        # 最新バージョン = 最大 (major, minor) を採用
-        latest_key: tuple[int, int] | None = None
-        version_counts: dict[tuple[int, int], int] = {}
-        for v in proto_map.values():
-            mj = v.get("major")
-            mn = v.get("minor")
-            if mj is None or mn is None:
-                continue
-            key = (int(mj), int(mn))
-            version_counts[key] = version_counts.get(key, 0) + 1
-            if latest_key is None or key > latest_key:
-                latest_key = key
-
         def _ver_str(k: tuple[int, int]) -> str:
             return f"{k[0]}.{k[1]}"
 
+        # ── 最新バージョン = vbc 内の最大 (major, minor)
+        latest_key: tuple[int, int] | None = None
+        for entry in vbc:
+            mj = entry.get("major")
+            mn = entry.get("minor")
+            if mj is None or mn is None:
+                continue
+            k = (int(mj), int(mn))
+            if latest_key is None or k > latest_key:
+                latest_key = k
         self.proto_version_latest = _ver_str(latest_key) if latest_key else ""
 
-        # heatmap_pools と同じ並びで proto_version_pools を組み立てる
+        # ── ヒートマップ行 (heatmap_pools と同じプール集合、最新ブロックの abs_slot 降順)
         out: list[dict[str, str]] = []
         for p in self.heatmap_pools:
             pool_id = p.get("pool_id") or ""
@@ -368,9 +371,15 @@ class StakingDashboardState(rx.State):
             if entry is None:
                 version = ""
                 color = "none"
+                slot = -1
             else:
                 mj = entry.get("major")
                 mn = entry.get("minor")
+                slot_raw = entry.get("abs_slot")
+                try:
+                    slot = int(slot_raw) if slot_raw is not None else -1
+                except (TypeError, ValueError):
+                    slot = -1
                 if mj is None or mn is None:
                     version = ""
                     color = "none"
@@ -379,57 +388,59 @@ class StakingDashboardState(rx.State):
                     version = _ver_str(k)
                     color = "latest" if k == latest_key else "older"
             out.append({
-                "pool_id": pool_id,
-                "ticker":  ticker,
-                "version": version,
-                "color":   color,
+                "pool_id":  pool_id,
+                "ticker":   ticker,
+                "version":  version,
+                "color":    color,
+                "_slot":    slot,
             })
 
-        # ── 並び順: version 降順 (大きい順)、未生成は末尾。同 version 内は ticker で安定化
-        def _sort_key(r: dict) -> tuple:
-            if r["version"]:
-                try:
-                    mj_s, mn_s = r["version"].split(".")
-                    return (0, -int(mj_s), -int(mn_s), r["pool_id"])
-                except ValueError:
-                    return (1, 0, 0, r["pool_id"])
-            return (2, 0, 0, r["pool_id"])
-        out.sort(key=_sort_key)
-        self.proto_version_pools = out
+        # 並び順: abs_slot 降順（直近にブロックを作ったプールを先頭）。未生成 (-1) は末尾。
+        out.sort(key=lambda r: (-int(r["_slot"]), r["pool_id"]))
+        # 表示用 dict には _slot を残さない（State 型整合のため）
+        self.proto_version_pools = [
+            {"pool_id": r["pool_id"], "ticker": r["ticker"],
+             "version": r["version"], "color": r["color"]}
+            for r in out
+        ]
 
-        # ── 生成プール内 (= 1 ブロック以上生成) の最新版 vs 旧版の比率
-        latest_count = sum(1 for r in out if r["color"] == "latest")
-        older_count  = sum(1 for r in out if r["color"] == "older")
-        none_count   = sum(1 for r in out if r["color"] == "none")
-        produced = latest_count + older_count
-        self.proto_version_latest_count = latest_count
-        self.proto_version_older_count = older_count
-        self.proto_version_produced_count = produced
-        if produced > 0:
-            lp = latest_count / produced * 100
-            op = older_count / produced * 100
+        # ── ブロック数集計 (version 別) と比率 (分母 = 理論最大ブロック数 21,600)
+        latest_blocks = sum(
+            e["count"] for e in vbc
+            if latest_key and (int(e["major"]), int(e["minor"])) == latest_key
+        )
+        older_blocks = sum(
+            e["count"] for e in vbc
+            if not (latest_key and (int(e["major"]), int(e["minor"])) == latest_key)
+        )
+        total_blocks = latest_blocks + older_blocks
+        max_blocks = self.proto_version_max_blocks
+        self.proto_version_latest_blocks = latest_blocks
+        self.proto_version_older_blocks  = older_blocks
+        self.proto_version_total_blocks  = total_blocks
+        if max_blocks > 0:
+            lp = latest_blocks / max_blocks * 100
+            op = older_blocks / max_blocks * 100
+            tp = total_blocks  / max_blocks * 100
             self.proto_version_latest_pct = f"{lp:.4f}"
             self.proto_version_older_pct  = f"{op:.4f}"
             self.proto_version_latest_label_pct = f"{lp:.1f}"
             self.proto_version_older_label_pct  = f"{op:.1f}"
-        else:
-            self.proto_version_latest_pct = "0"
-            self.proto_version_older_pct  = "0"
-            self.proto_version_latest_label_pct = "0.0"
-            self.proto_version_older_label_pct  = "0.0"
+            self.proto_version_total_label_pct  = f"{tp:.1f}"
 
-        # 凡例: バージョンごとの件数（latest を先頭、以降 count 降順）+ 未生成数
+        # ── 凡例: version 別ブロック数 (latest を先頭、以降 count 降順) + 未生成プール数
         legend: list[dict[str, str]] = []
-        sorted_keys = sorted(
-            version_counts.keys(),
-            key=lambda k: (k != latest_key, -version_counts[k]),
-        )
-        for k in sorted_keys:
+        for e in sorted(
+            vbc,
+            key=lambda d: ((int(d["major"]), int(d["minor"])) != (latest_key or (-1, -1)), -d["count"]),
+        ):
+            k = (int(e["major"]), int(e["minor"]))
             legend.append({
                 "version": _ver_str(k),
-                "count":   str(version_counts[k]),
+                "count":   str(e["count"]),
                 "color":   "latest" if k == latest_key else "older",
             })
+        none_count = sum(1 for r in out if r["color"] == "none")
         if none_count:
             legend.append({"version": "", "count": str(none_count), "color": "none"})
         self.proto_version_legend = legend
@@ -1628,40 +1639,45 @@ def _proto_version_section() -> rx.Component:
                 ),
                 rx.fragment(),
             ),
-            # ── KPI: 「ブロック生成 X プール / 最新版 X (X%) / 旧版 X (X%)」 ──
+            # ── KPI: 「ブロック生成 X / 21,600 (Y%)  最新版 a (b%)  旧版 c (d%)」 ──
             rx.hstack(
                 rx.text(
                     AuthState.t["staking_proto_kpi_produced"],
                     size="2", color="var(--gray-11)",
                 ),
                 rx.text(
-                    state.proto_version_produced_count.to_string(),
+                    state.proto_version_total_blocks.to_string(),
                     size="4", weight="bold", color="var(--gray-12)",
                 ),
+                rx.text("/", size="2", color="var(--gray-9)"),
                 rx.text(
-                    AuthState.t["staking_proto_kpi_pool_unit"],
+                    state.proto_version_max_blocks.to_string(),
                     size="2", color="var(--gray-11)",
                 ),
-                rx.text("/", size="2", color="var(--gray-9)"),
+                rx.text(
+                    "(", state.proto_version_total_label_pct, "%)",
+                    size="2", color="var(--gray-11)", weight="medium",
+                ),
+                rx.text("|", size="2", color="var(--gray-7)"),
                 rx.text(
                     AuthState.t["staking_proto_kpi_latest"],
                     size="2", color="var(--gray-11)",
                 ),
                 rx.text(
-                    state.proto_version_latest_count.to_string(),
+                    state.proto_version_latest_blocks.to_string(),
                     size="4", weight="bold", color="var(--green-11)",
                 ),
                 rx.text(
                     "(", state.proto_version_latest_label_pct, "%)",
                     size="2", color="var(--green-10)", weight="medium",
                 ),
-                rx.text("/", size="2", color="var(--gray-9)"),
+                rx.text("|", size="2", color="var(--gray-7)"),
                 rx.text(
                     AuthState.t["staking_proto_kpi_older"],
                     size="2", color="var(--gray-11)",
                 ),
                 rx.text(
-                    state.proto_version_older_count.to_string(),
+                    state.proto_version_older_blocks.to_string(),
                     size="4", weight="bold", color="var(--yellow-11)",
                 ),
                 rx.text(
