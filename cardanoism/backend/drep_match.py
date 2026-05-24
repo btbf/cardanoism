@@ -47,8 +47,13 @@ _BIO_MAX_CHARS = 160
 # CIP-119 references_json から表示する外部リンク最大件数
 _LINKS_MAX = 6
 
-# 派閥スコア絶対値がこれ以上のとき、結果カードに派閥バッジを出す
-_FACTION_DISPLAY_THRESHOLD = 0.3
+# 投票傾向バッジを表示する最小絶対値。これ未満は「ほぼ中立」と判断し非表示。
+# 上位マッチ DRep ほど軸スコアが中庸になりがちなので、低めに設定。
+_FACTION_DISPLAY_MIN_ABS = 0.05
+
+# 強度ラベル境界。色濃度に反映 (strong > mid > weak)
+_STRENGTH_STRONG = 0.6
+_STRENGTH_MID    = 0.3
 
 
 def _classify_url(url: str) -> str:
@@ -112,7 +117,7 @@ def _format_bio(objectives: str | None, motivations: str | None) -> str:
 
 
 def _faction_label_for(axis_key: str, score: float) -> tuple[str, str]:
-    """軸スコアから (派閥ラベルキー, 強度カテゴリ "strong"/"mid") を返す。
+    """軸スコアから (派閥ラベルキー, 強度カテゴリ "strong"/"mid"/"weak") を返す。
 
     返すラベルキーは i18n の `drep_match_faction_<axis>_<pos|neg>` 形式。
     呼び出し側で AuthState.t[key] と組み合わせて表示する。
@@ -120,7 +125,13 @@ def _faction_label_for(axis_key: str, score: float) -> tuple[str, str]:
     pos, neg = AXIS_DIRECTIONS[axis_key]
     direction = "pos" if score >= 0 else "neg"
     label_key = f"drep_match_faction_{axis_key}_{direction}"
-    strength = "strong" if abs(score) >= 0.6 else "mid"
+    abs_s = abs(score)
+    if abs_s >= _STRENGTH_STRONG:
+        strength = "strong"
+    elif abs_s >= _STRENGTH_MID:
+        strength = "mid"
+    else:
+        strength = "weak"
     return label_key, strength
 
 
@@ -195,14 +206,15 @@ def compute_match(
         mean_diff = sum(diffs) / len(diffs)
         similarity = 1.0 - mean_diff
 
-        # 派閥バッジ: |score| >= threshold の軸を強度降順で最大 5 件
+        # 投票傾向バッジ: |score| > 中立しきい値 の軸を絶対値降順で最大 5 件
+        # 強度は strong / mid / weak の 3 段階。色濃度に反映される。
         faction_chips: list[tuple[str, str, str]] = []
         for axis_key, score_v in profile.items():
             try:
                 s = float(score_v)
             except (TypeError, ValueError):
                 continue
-            if abs(s) < _FACTION_DISPLAY_THRESHOLD:
+            if abs(s) < _FACTION_DISPLAY_MIN_ABS:
                 continue
             if axis_key not in AXIS_DIRECTIONS:
                 continue

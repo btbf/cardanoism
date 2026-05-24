@@ -968,21 +968,33 @@ def _faction_chip(item) -> rx.Component:
     """item は 'labelKey|score|strength' 形式の Var[str]。
 
     labelKey: i18n キー (例: drep_match_faction_axis_treasury_pos)
-    score:    "+0.75" / "-0.50" (将来のホバー表示用に残置、バッジには出さない)
-    strength: "strong" (|s|>=0.6) / "mid" — 色濃度に反映
+    score:    "+0.75" / "-0.50" (ホバー表示用、バッジ本体には出さない)
+    strength: "strong" (|s|>=0.6) / "mid" (|s|>=0.3) / "weak" (それ以下)
+              色濃度に反映され、軸スコアの強さを視覚的に示す。
     """
     parts = item.split("|")
     label_key = parts[0]
     score = parts[1]
     strength = parts[2]
-    # strong: 濃い amber / mid: 薄い amber で強度を視覚化
-    bg = rx.cond(strength == "strong", "var(--amber-4)", "var(--amber-2)")
-    border = rx.cond(
-        strength == "strong",
-        "1px solid var(--amber-9)",
-        "1px solid var(--amber-7)",
+    # 3 段階の色濃度: strong=amber-4 / mid=amber-2 / weak=amber-1
+    bg = rx.match(
+        strength,
+        ("strong", "var(--amber-4)"),
+        ("mid",    "var(--amber-2)"),
+        "var(--amber-1)",
     )
-    text_color = rx.cond(strength == "strong", "var(--amber-12)", "var(--amber-11)")
+    border = rx.match(
+        strength,
+        ("strong", "1px solid var(--amber-9)"),
+        ("mid",    "1px solid var(--amber-7)"),
+        "1px solid var(--amber-5)",
+    )
+    text_color = rx.match(
+        strength,
+        ("strong", "var(--amber-12)"),
+        ("mid",    "var(--amber-11)"),
+        "var(--amber-11)",
+    )
     return rx.box(
         rx.text(
             AuthState.t[label_key],
@@ -994,7 +1006,7 @@ def _faction_chip(item) -> rx.Component:
         background=bg,
         border=border,
         style={"display": "inline-flex"},
-        # スコア生値はホバーで参照可 (例: "+0.75")
+        # スコア生値はホバー (title 属性) で参照可
         custom_attrs={"title": score},
     )
 
