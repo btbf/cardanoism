@@ -320,8 +320,26 @@ class DrepMatchState(rx.State):
         except Exception as e:  # noqa: BLE001
             logger.warning("compute_match failed: %s", e)
             raw_results = []
+
+        # 委任量・シェア・fiat 表示の準備 (_drep_card と同じ計算)
+        rate = get_fiat_rate() or {}
+        ada_jpy = float(rate.get("ada_jpy") or 0)
+        ada_usd = float(rate.get("ada_usd") or 0)
+        total_lovelace = sum_total_delegation(only_registered=True)
+
         out: list[dict[str, str]] = []
         for r in raw_results:
+            amount = int(r.get("amount") or 0)
+            ada = amount / 1_000_000
+            jpy_d = format_jpy_short(ada * ada_jpy) if ada_jpy else ""
+            usd_d = format_usd_short(ada * ada_usd) if ada_usd else ""
+            share_pct = (amount / total_lovelace * 100.0) if total_lovelace > 0 else 0.0
+            if share_pct >= 1.0:
+                share_display = f"{share_pct:.2f}"
+            elif share_pct > 0:
+                share_display = f"{share_pct:.3f}"
+            else:
+                share_display = "0"
             # 外部リンクは "icon|url,icon|url" の CSV にエンコード
             links_csv = ",".join(f"{icon}|{url}" for icon, url in r.get("links", []))
             # 派閥バッジは "labelKey|score|strength,labelKey|score|strength" CSV
@@ -338,6 +356,10 @@ class DrepMatchState(rx.State):
                 "match_dims":     str(r["match_dims"]),
                 "faction_csv":    faction_csv,
                 "vote_count":     str(r["axis_vote_count"]),
+                "amount_ada":     format_ada(amount, integer=True) if amount else "0",
+                "amount_jpy":     jpy_d,
+                "amount_usd":     usd_d,
+                "share_pct":      share_display,
             })
         self.results = out
         self.view = "results"
@@ -1111,6 +1133,42 @@ def _match_result_card(r) -> rx.Component:
         style={"display": "block", "width": "100%"},
         _hover={"color": "var(--amber-11)"},
     )
+    # 現時点の委任量と全体シェア%（_drep_card と同じ）
+    fiat_text = rx.cond(
+        AuthState.language == "en",
+        rx.cond(
+            r["amount_usd"] != "",
+            rx.text("(≈ ", r["amount_usd"], ")", size="1", color="var(--gray-10)"),
+            rx.fragment(),
+        ),
+        rx.cond(
+            r["amount_jpy"] != "",
+            rx.text("(≈ ", r["amount_jpy"], ")", size="1", color="var(--gray-10)"),
+            rx.fragment(),
+        ),
+    )
+    delegation_row = rx.hstack(
+        rx.vstack(
+            rx.text(AuthState.t["drep_delegated_label"], size="1", color="var(--gray-10)"),
+            rx.hstack(
+                rx.text(r["amount_ada"], size="4", weight="bold", color="var(--amber-11)"),
+                rx.text("ADA", size="1", color="var(--gray-11)"),
+                spacing="1", align="baseline",
+            ),
+            fiat_text,
+            spacing="0", align="start",
+        ),
+        rx.vstack(
+            rx.text(AuthState.t["drep_influence_label"], size="1", color="var(--gray-10)"),
+            rx.hstack(
+                rx.text(r["share_pct"], size="4", weight="bold", color="var(--blue-11)"),
+                rx.text("%", size="1", color="var(--blue-10)"),
+                spacing="0", align="baseline",
+            ),
+            spacing="0", align="start",
+        ),
+        spacing="6", align="start", wrap="wrap",
+    )
     return rx.box(
         rx.vstack(
             rx.hstack(
@@ -1118,6 +1176,7 @@ def _match_result_card(r) -> rx.Component:
                 drep_delegate_button(r["drep_id"]),
                 spacing="3", align="center", width="100%", wrap="wrap",
             ),
+            delegation_row,
             # 自己紹介テキスト (CIP-119 objectives / motivations から)
             rx.cond(
                 r["bio"] != "",
