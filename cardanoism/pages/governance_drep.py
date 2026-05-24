@@ -985,7 +985,8 @@ def _quiz_context_panel() -> rx.Component:
 def _quiz_pros_cons_grid() -> rx.Component:
     """支持する根拠 / 慎重な根拠 を 2 列横並び (回答候補の下に置く)。
 
-    PC では 2 列、スマホでは wrap で縦並び (min_width=320px)。
+    CSS grid を直接指定し、子要素の縦幅を CSS grid の auto stretch で揃える。
+    PC では 2 列、スマホでは auto-fit + minmax で 1 列に自動フォールバック。
     """
     pros = _quiz_explanation_panel(
         "circle-check",
@@ -1003,10 +1004,15 @@ def _quiz_pros_cons_grid() -> rx.Component:
         bg="var(--amber-2)",
         border=f"1px solid {rx.color('amber', 5)}",
     )
-    return rx.hstack(
-        rx.box(pros, flex="1 1 0", min_width="320px"),
-        rx.box(cons, flex="1 1 0", min_width="320px"),
-        spacing="3", align="stretch", width="100%", wrap="wrap",
+    return rx.box(
+        pros, cons,
+        style={
+            "display": "grid",
+            "gridTemplateColumns": "repeat(auto-fit, minmax(320px, 1fr))",
+            "gridAutoRows": "1fr",  # 行内の子要素を同じ縦幅に揃える
+            "gap": "12px",
+        },
+        width="100%",
     )
 
 
@@ -1099,13 +1105,13 @@ def _quiz_view() -> rx.Component:
             ),
             # 論点の背景 — 設問直後 (全幅)
             _quiz_context_panel(),
-            # 5 段階回答 (1=全く〜5=強く)
+            # 5 段階回答 (左から: 5=強くそう思う … 1=全くそう思わない)
             rx.hstack(
-                _likert_button(1),
-                _likert_button(2),
-                _likert_button(3),
-                _likert_button(4),
                 _likert_button(5),
+                _likert_button(4),
+                _likert_button(3),
+                _likert_button(2),
+                _likert_button(1),
                 spacing="2", wrap="wrap", width="100%", padding_y="6px",
             ),
             # 重要視 toggle
