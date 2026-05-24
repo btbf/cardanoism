@@ -205,6 +205,27 @@ class DrepMatchState(rx.State):
         return ""
 
     @rx.var
+    def current_context_i18n_key(self) -> str:
+        idx = self.current_question
+        if 0 <= idx < _COMPASS_QUESTION_TOTAL:
+            return _COMPASS_QUESTIONS[idx].context_i18n_key
+        return ""
+
+    @rx.var
+    def current_pros_i18n_key(self) -> str:
+        idx = self.current_question
+        if 0 <= idx < _COMPASS_QUESTION_TOTAL:
+            return _COMPASS_QUESTIONS[idx].pros_i18n_key
+        return ""
+
+    @rx.var
+    def current_cons_i18n_key(self) -> str:
+        idx = self.current_question
+        if 0 <= idx < _COMPASS_QUESTION_TOTAL:
+            return _COMPASS_QUESTIONS[idx].cons_i18n_key
+        return ""
+
+    @rx.var
     def current_question_is_important(self) -> bool:
         return self.current_question_id in self.importance
 
@@ -911,6 +932,59 @@ def _drep_match_tabs() -> rx.Component:
     )
 
 
+def _quiz_explanation_section() -> rx.Component:
+    """質問の論点解説 (背景 / 支持する根拠 / 慎重な根拠) を常時表示する。
+
+    背景は短文、pros / cons は改行区切り bullet を pre-wrap で描画。
+    """
+    def _section(icon: str, label_key: str, body_key, color: str) -> rx.Component:
+        return rx.box(
+            rx.hstack(
+                rx.icon(icon, size=14, color=color),
+                rx.text(
+                    AuthState.t[label_key],
+                    size="2", weight="bold", color=color,
+                ),
+                spacing="2", align="center",
+            ),
+            rx.text(
+                AuthState.t[body_key],
+                size="2", color="var(--gray-12)",
+                style={
+                    "whiteSpace": "pre-wrap",
+                    "lineHeight": "1.7",
+                    "marginTop": "6px",
+                },
+            ),
+            width="100%",
+        )
+    return rx.box(
+        rx.vstack(
+            _section(
+                "book-open", "drep_match_q_context_label",
+                DrepMatchState.current_context_i18n_key,
+                "var(--gray-11)",
+            ),
+            _section(
+                "circle-check", "drep_match_q_pros_label",
+                DrepMatchState.current_pros_i18n_key,
+                "var(--green-11)",
+            ),
+            _section(
+                "triangle-alert", "drep_match_q_cons_label",
+                DrepMatchState.current_cons_i18n_key,
+                "var(--amber-11)",
+            ),
+            spacing="4", width="100%",
+        ),
+        padding="16px 18px",
+        border_radius="10px",
+        border=f"1px solid {rx.color('gray', 4)}",
+        background="var(--gray-2)",
+        width="100%",
+    )
+
+
 def _likert_button(level: int) -> rx.Component:
     """5 段階 Likert 回答ボタン (1〜5)。選択中はハイライト。"""
     is_selected = DrepMatchState.current_answer == level
@@ -997,6 +1071,8 @@ def _quiz_view() -> rx.Component:
                 size="5", weight="bold", color="var(--gray-12)",
                 style={"lineHeight": "1.5"},
             ),
+            # 論点解説 (常時表示)
+            _quiz_explanation_section(),
             # 5 段階回答 (1=全く〜5=強く)
             rx.hstack(
                 _likert_button(1),

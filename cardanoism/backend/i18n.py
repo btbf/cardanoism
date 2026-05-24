@@ -477,18 +477,193 @@ UI_JA: dict[str, str] = {
     "drep_match_importance_select": "重要視する",
     "drep_match_importance_selected": "重視中",
     # 10 問 (spec 第 5 節と一致)
-    "drep_match_q_treasury_kpi":               "Treasury 支出は、明確な KPI・マイルストーン・成果検証がない限り支持すべきではない",
+    "drep_match_q_treasury_kpi":               "トレジャリー支出は、明確な KPI・マイルストーン・成果検証がない限り支持すべきではない",
     "drep_match_q_growth_investment":          "Cardano の成長に大きく貢献するなら、大型予算も積極的に活用すべきだ",
-    "drep_match_q_technical_priority":         "Treasury はまず、Cardano 本体の開発・研究・セキュリティ・インフラ維持を優先すべきだ",
-    "drep_match_q_ecosystem_expansion":        "dApp、DeFi、ウォレット、ユーザー獲得など実利用拡大にも Treasury を積極的に使うべきだ",
+    "drep_match_q_technical_priority":         "トレジャリーはまず、Cardano 本体の開発・研究・セキュリティ・インフラ維持を優先すべきだ",
+    "drep_match_q_ecosystem_expansion":        "dApp、DeFi、ウォレット、ユーザー獲得など実利用拡大にもトレジャリーを積極的に使うべきだ",
     "drep_match_q_marketing_support":          "マーケティング・PR・イベント予算は Cardano の成長に必要だ",
     "drep_match_q_institutional_continuity":   "IO、Intersect、Cardano Foundation、Emurgo など既存組織への継続予算は、役割と責任範囲が明確なら支持できる",
-    "drep_match_q_decentralized_allocation":   "Treasury は新興チーム・地域コミュニティ・個人開発者にも広く配分されるべきだ",
-    "drep_match_q_protocol_conservatism":      "Parameter Change や Hard Fork は、安定性を優先して慎重に進めるべきだ",
-    "drep_match_q_protocol_innovation":        "性能改善や新機能追加のためには、一定のリスクを取ってでも Protocol 変更を進めるべきだ",
+    "drep_match_q_decentralized_allocation":   "トレジャリーは新興チーム・地域コミュニティ・個人開発者にも広く配分されるべきだ",
+    "drep_match_q_protocol_conservatism":      "パラメータ変更やハードフォークは、安定性を優先して慎重に進めるべきだ",
+    "drep_match_q_protocol_innovation":        "性能改善や新機能追加のためには、一定のリスクを取ってでもプロトコル変更を進めるべきだ",
     "drep_match_q_reasoning_disclosure":       "DRep を選ぶうえで、投票理由を公開していることを重視する",
+    # 各問の論点解説 (背景 / 支持する根拠 / 慎重な根拠)
+    "drep_match_q_treasury_kpi_context": (
+        "Cardano のトレジャリーは ADA 保有者の共有資源で、Conway era 以降は "
+        "DRep の投票によって支出が決まります。各提案に「KPI (定量目標)」"
+        "「マイルストーン」「成果検証」をどこまで厳格に要求するかは、"
+        "トレジャリーの使い方を巡る代表的な論点です。"
+    ),
+    "drep_match_q_treasury_kpi_pros": (
+        "・公金として支出されるため、説明責任の担保が必要\n"
+        "・後追いの監査・成果評価ができ、コミュニティに対する透明性が高まる\n"
+        "・評価軸が明確であれば、提案者側も中間進捗を可視化しやすい\n"
+        "・DRep が投票判断する際の比較軸が明確になり、議論が建設的になる"
+    ),
+    "drep_match_q_treasury_kpi_cons": (
+        "・初期段階のリサーチや実験的プロジェクトは、性質上 KPI を事前に立てづらい\n"
+        "・申請コストが増し、リソースの小さい新興チームや個人開発者が提案しにくくなる\n"
+        "・「成果」の定義は分野によって大きく異なり、画一的な KPI 化はかえって弊害がある\n"
+        "・セキュリティ対応や緊急性の高い領域では、KPI 整備の時間が足枷になる"
+    ),
+    "drep_match_q_growth_investment_context": (
+        "Conway era 以降、トレジャリーからの大型支出 (数百万 ADA 以上) を伴う提案が "
+        "可能になり、規模の大きい予算をどう扱うかが論点になっています。"
+        "「成長加速のための投資」と「リスク管理」のバランスが問われます。"
+    ),
+    "drep_match_q_growth_investment_pros": (
+        "・インフラ整備や大規模採用案件は、まとまった予算がないと成立しにくい\n"
+        "・小規模分散だけでは、ボトルネック解消や戦略的プロジェクトに手が届かない\n"
+        "・投資的支出が成功すれば Cardano 全体の価値とエコシステムが拡大する\n"
+        "・国際的な競合チェーンとの競争上、一定の規模感は必要"
+    ),
+    "drep_match_q_growth_investment_cons": (
+        "・大型予算は失敗時の損失も大きく、トレジャリー残高への影響が深刻\n"
+        "・大口受領者に偏ると、エコシステムの多様性が損なわれる\n"
+        "・大規模プロジェクトほど成果検証が遅れやすい\n"
+        "・規模拡大は運営・監査・コミュニケーション等の管理コストも増える"
+    ),
+    "drep_match_q_technical_priority_context": (
+        "プロトコル開発・暗号研究・セキュリティ監査・ノードインフラなど"
+        "「基盤系」と、dApp・マーケティング・教育など「上位系」のどちらを"
+        "優先するかは古くからの論点です。"
+    ),
+    "drep_match_q_technical_priority_pros": (
+        "・プロトコルやインフラが脆弱だと、その上の dApp やユーザー獲得も成立しない\n"
+        "・技術基盤は他者が代替しづらく、Cardano 独自の競争力に直結する\n"
+        "・セキュリティへの後追い投資は損失が大きく、事前の継続投資が合理的\n"
+        "・基盤研究は短期成果が出にくいため、トレジャリーのような長期財源が向いている"
+    ),
+    "drep_match_q_technical_priority_cons": (
+        "・技術が優れていても、使われなければ Cardano の社会的価値は限定的\n"
+        "・基盤系に偏ると、エコシステム拡大やユーザー獲得が後手に回る\n"
+        "・「基盤」の定義は曖昧で、優先扱いが既存組織への偏った配分に繋がりやすい\n"
+        "・採用・教育・コミュニティも Cardano の成長に必要"
+    ),
+    "drep_match_q_ecosystem_expansion_context": (
+        "Cardano は技術中心の歴史を持ちますが、近年は実利用 (dApp・DeFi・"
+        "ウォレット UX) をトレジャリーから後押しすべきかどうかが論点に "
+        "なっています。"
+    ),
+    "drep_match_q_ecosystem_expansion_pros": (
+        "・技術があっても利用が広がらないと、手数料収入もトレジャリー積み増しも増えない\n"
+        "・競合チェーンとの差は dApp 数・ユーザー数で測られる場面が多い\n"
+        "・ユーザー体感価値は上位アプリケーション層から生まれる\n"
+        "・実利用が増えれば、結果的に基盤投資の原資 (手数料収入) も増える"
+    ),
+    "drep_match_q_ecosystem_expansion_cons": (
+        "・実利用は本来、市場とビジネスサイドが投資すべき領域とも言える\n"
+        "・短期的なユーザー獲得策はインセンティブが切れると剥落しやすい\n"
+        "・トレジャリーから商業プロジェクトを支援することは、公平性の議論を呼ぶ\n"
+        "・基盤が固まる前に上位を急ぐと、プロトコル課題が顕在化したときの戻り工数が大きい"
+    ),
+    "drep_match_q_marketing_support_context": (
+        "「技術志向で派手な広告をしない」文化と「認知拡大は不可欠」という意見が"
+        "せめぎ合っています。マーケ・PR・カンファレンス・イベント支出への"
+        "トレジャリー配分は、特に意見が分かれます。"
+    ),
+    "drep_match_q_marketing_support_pros": (
+        "・技術が優れていても、知られなければ採用は進まない\n"
+        "・カンファレンス・イベントはコミュニティ形成・人材確保にもつながる\n"
+        "・開発者・企業向けの認知向上は、長期的なエコシステム成長に寄与する\n"
+        "・競合チェーンの多くが大規模なマーケ投資を行っており、相対的に不利になりやすい"
+    ),
+    "drep_match_q_marketing_support_cons": (
+        "・マーケ支出は成果が測りづらく、KPI 設計が難しい\n"
+        "・短期キャンペーンはトレンド依存で、持続成長に直結しないことも\n"
+        "・既存コミュニティがオーガニックな広報を担っている部分がある\n"
+        "・限られたトレジャリーを「製品」より「広告」に回すことへの抵抗感"
+    ),
+    "drep_match_q_institutional_continuity_context": (
+        "既存組織 (IO・Intersect・Cardano Foundation・Emurgo 等) への継続予算 "
+        "(Operating Budget / Membership-based Budget 等) をトレジャリーから "
+        "拠出するかは、Conway era で大きな論点になっています。"
+    ),
+    "drep_match_q_institutional_continuity_pros": (
+        "・実績ある組織は専門人材・運営ノウハウを持っており、安定運営に寄与する\n"
+        "・役割と責任範囲が明確であれば、成果検証や統制も比較的容易\n"
+        "・一からの組織立ち上げにはコストがかかるため、既存リソースを活かす方が合理的\n"
+        "・国際標準化対応・規制対応など、組織体制が必要な領域もある"
+    ),
+    "drep_match_q_institutional_continuity_cons": (
+        "・継続予算は組織への依存を強め、エコシステムの分散性を損なう可能性\n"
+        "・既存組織への支出は、新規・小規模チームの予算機会を圧迫しやすい\n"
+        "・「役割と責任の明確さ」は形式的に整っても、実態評価は難しい\n"
+        "・大型継続予算は監視・統制コストも比例して大きくなる"
+    ),
+    "drep_match_q_decentralized_allocation_context": (
+        "トレジャリー配分の「集中 vs 分散」は、ガバナンス全般の重要論点。"
+        "新興チーム・地域コミュニティ・個人開発者への分散配分にどこまで"
+        "重みを置くかが問われます。"
+    ),
+    "drep_match_q_decentralized_allocation_pros": (
+        "・多様な担い手がエコシステムに参加することで、創造性とイノベーションが促進される\n"
+        "・地域コミュニティへの分散は、Cardano の世界的な普及に寄与する\n"
+        "・大組織に依存しすぎないことで、ガバナンスの分散性が保たれる\n"
+        "・新興チーム・個人開発者のチャレンジが、次世代プロジェクトを生む"
+    ),
+    "drep_match_q_decentralized_allocation_cons": (
+        "・多数の小規模配分は、運営・審査・モニタリングのコストが大きい\n"
+        "・新興・個人は実績が少なく、成果検証や信頼性評価が難しい\n"
+        "・大型投資が必要な領域 (インフラ・セキュリティ) は分散だけではカバーしきれない\n"
+        "・配分先が増えすぎると、エコシステム全体の整合性 (重複・競合) が課題になる"
+    ),
+    "drep_match_q_protocol_conservatism_context": (
+        "プロトコルパラメータ (手数料・ブロックサイズ・k 値など) や"
+        "ハードフォークはネットワーク全体に影響する重要な変更です。"
+        "安定性重視と革新重視のバランスが論点になります。"
+    ),
+    "drep_match_q_protocol_conservatism_pros": (
+        "・パラメータ変更は副作用が予測しきれない場合があり、安定性への影響が大きい\n"
+        "・投資家・dApp 運営・ノードオペレーターは安定したルール下で活動を計画する\n"
+        "・ハードフォークは実装ミスや互換性問題が起きると影響範囲が広い\n"
+        "・拙速な変更は信用低下を招き、長期的な普及にマイナス"
+    ),
+    "drep_match_q_protocol_conservatism_cons": (
+        "・安定重視が過ぎると、必要な改善や機能拡張が滞り、競合に後れを取る\n"
+        "・既知のボトルネック (スループット・手数料) を放置することは利用者の不利益\n"
+        "・慎重さは時に「現状追認」と区別が付きにくい\n"
+        "・段階的・実験的な調整は十分にテスト可能で、過度な恐れは不要"
+    ),
+    "drep_match_q_protocol_innovation_context": (
+        "プロトコル安定性 (Q8) と表裏一体の論点で、こちらは「革新を進めるべき」"
+        "立場の問い。性能・新機能のためのリスクをどこまで許容するかが問われます。"
+    ),
+    "drep_match_q_protocol_innovation_pros": (
+        "・スケーラビリティや新機能なしには、利用拡大の足枷になる\n"
+        "・競合チェーンは継続的に改善を進めており、立ち止まると相対的に不利\n"
+        "・実装と検証の体制が整っていれば、リスクは管理可能\n"
+        "・Cardano の長期ビジョンは継続的な進化を前提とする"
+    ),
+    "drep_match_q_protocol_innovation_cons": (
+        "・性能改善のための変更が、セキュリティや互換性に副作用を起こす可能性\n"
+        "・リスク許容度を上げると、十分な議論やテストの時間が圧縮されがち\n"
+        "・「革新」という旗印で本質的に不要な変更まで進んでしまう懸念\n"
+        "・利用者 (dApp 運営・ウォレット開発) のキャッチアップ負担が増える"
+    ),
+    "drep_match_q_reasoning_disclosure_context": (
+        "Conway era では DRep が CIP-100 / CIP-108 メタデータで投票理由を"
+        "公開できますが、必須ではありません。理由公開の有無を DRep 選びの"
+        "要素とするかが論点です。"
+    ),
+    "drep_match_q_reasoning_disclosure_pros": (
+        "・理由公開は説明責任を果たす最も基本的な手段\n"
+        "・委任者は理由から DRep の思考過程を理解し、自分との一致度を判断できる\n"
+        "・継続的な公開は、DRep の判断ぶれや時系列変化を可視化する\n"
+        "・公開を前提とすると、DRep 側にもより慎重な検討が促される"
+    ),
+    "drep_match_q_reasoning_disclosure_cons": (
+        "・理由公開には時間・労力がかかり、活動できる DRep の数を絞ってしまう可能性\n"
+        "・理由文があっても、内容の質や正確性は別問題\n"
+        "・言語・表現力の壁があり、内容が薄い場合は逆に誤った印象を与えうる\n"
+        "・公開しないが投票実績は十分に評価できる DRep を排除する根拠にはならない"
+    ),
+    # 解説セクションの見出し
+    "drep_match_q_context_label": "論点の背景",
+    "drep_match_q_pros_label":    "支持する根拠",
+    "drep_match_q_cons_label":    "慎重な根拠",
     # 11 axis のラベル (結果表示用)
-    "drep_match_axis_treasury_discipline":      "Treasury 規律",
+    "drep_match_axis_treasury_discipline":      "トレジャリー規律",
     "drep_match_axis_growth_investment":        "成長投資",
     "drep_match_axis_technical_foundation":     "技術基盤重視",
     "drep_match_axis_ecosystem_expansion":      "エコシステム拡大",
@@ -2141,6 +2316,183 @@ UI_EN: dict[str, str] = {
     "drep_match_q_protocol_conservatism":      "Parameter Changes and Hard Forks should be progressed conservatively, prioritizing stability",
     "drep_match_q_protocol_innovation":        "For performance and new features, protocol changes should be progressed even at some risk",
     "drep_match_q_reasoning_disclosure":       "I value DReps who publicly disclose their voting rationale when choosing one to delegate to",
+    # Per-question explanation (context / pros / cons)
+    "drep_match_q_treasury_kpi_context": (
+        "Cardano's treasury is a shared resource for ADA holders. Since the "
+        "Conway era, spending is decided by DRep voting. How strictly each "
+        "proposal must define KPIs, milestones, and outcome verification is "
+        "a core debate about treasury usage."
+    ),
+    "drep_match_q_treasury_kpi_pros": (
+        "- Public funds require strong accountability\n"
+        "- Enables post-hoc auditing and transparency for the community\n"
+        "- Clear metrics make it easier for proposers to track progress\n"
+        "- Gives DReps consistent criteria for voting decisions"
+    ),
+    "drep_match_q_treasury_kpi_cons": (
+        "- Early-stage research and experimental work are hard to fit to ex-ante KPIs\n"
+        "- Application overhead shuts out small teams and individual developers\n"
+        "- A single KPI template fits poorly across very different fields\n"
+        "- Security or urgent work suffers when KPI definition takes too long"
+    ),
+    "drep_match_q_growth_investment_context": (
+        "Since the Conway era, treasury proposals at the multi-million ADA "
+        "scale have become possible. How to handle large budgets is a "
+        "central debate, balancing growth-acceleration against risk."
+    ),
+    "drep_match_q_growth_investment_pros": (
+        "- Infrastructure and major adoption work often need concentrated funding\n"
+        "- Small distributed grants alone cannot remove key bottlenecks\n"
+        "- Successful large investment expands Cardano's value and ecosystem\n"
+        "- Competing chains operate at scale; some scale is needed to keep up"
+    ),
+    "drep_match_q_growth_investment_cons": (
+        "- Large budgets carry large downside risk for the treasury\n"
+        "- Concentration in few recipients erodes ecosystem diversity\n"
+        "- Outcome verification gets harder as project scale grows\n"
+        "- Larger programs increase operational and audit overhead"
+    ),
+    "drep_match_q_technical_priority_context": (
+        "Whether to prioritize 'foundation' areas (protocol R&D, cryptography, "
+        "security audits, node infrastructure) over 'application' areas "
+        "(dApps, marketing, education) is a longstanding debate."
+    ),
+    "drep_match_q_technical_priority_pros": (
+        "- Weak protocol/infrastructure undermines anything built on top\n"
+        "- Technical foundations are harder for others to replicate\n"
+        "- Reactive security spend is costly; proactive investment is rational\n"
+        "- Long-term research suits a long-horizon funding source like the treasury"
+    ),
+    "drep_match_q_technical_priority_cons": (
+        "- Excellent technology with no adoption has limited social value\n"
+        "- Foundation-only focus leaves ecosystem expansion behind\n"
+        "- 'Foundation' is ambiguous and tends to bias funding toward incumbents\n"
+        "- Adoption, education and community work also drive growth"
+    ),
+    "drep_match_q_ecosystem_expansion_context": (
+        "Cardano has historically been technology-centric, but the question of "
+        "whether the treasury should back real-world adoption (dApps, DeFi, "
+        "wallet UX) more aggressively has come to the fore."
+    ),
+    "drep_match_q_ecosystem_expansion_pros": (
+        "- Without adoption, fee revenue and treasury inflow stay flat\n"
+        "- Comparisons with rival chains are often made on dApp count / user count\n"
+        "- User-perceived value is created at the application layer\n"
+        "- More usage eventually funds more foundation work via fees"
+    ),
+    "drep_match_q_ecosystem_expansion_cons": (
+        "- Real-world adoption is arguably for markets and businesses to fund\n"
+        "- Short-term user-acquisition tactics often fade once incentives stop\n"
+        "- Funding commercial projects from a public treasury raises fairness questions\n"
+        "- Rushing the upper layers while foundations are unstable creates rework"
+    ),
+    "drep_match_q_marketing_support_context": (
+        "Cardano's 'technology-first, low-marketing' culture coexists with the "
+        "view that visibility is essential. Treasury funding for marketing, "
+        "PR, conferences and events is especially contested."
+    ),
+    "drep_match_q_marketing_support_pros": (
+        "- Even great technology needs visibility to drive adoption\n"
+        "- Conferences and events help community formation and recruiting\n"
+        "- Awareness among developers and enterprises feeds long-term growth\n"
+        "- Many competing chains invest heavily in marketing, putting Cardano at a relative disadvantage"
+    ),
+    "drep_match_q_marketing_support_cons": (
+        "- Marketing outcomes are hard to measure and KPIs are difficult to design\n"
+        "- Short campaigns depend on trends and don't always drive lasting growth\n"
+        "- The community itself already does much organic outreach\n"
+        "- Spending limited treasury on 'ads' rather than 'product' draws resistance"
+    ),
+    "drep_match_q_institutional_continuity_context": (
+        "Whether to fund ongoing operating budgets (CF Annual Budget, "
+        "Intersect Membership-Based Budget, IOG continuation funding, etc.) "
+        "for established orgs from the treasury is a major Conway-era debate."
+    ),
+    "drep_match_q_institutional_continuity_pros": (
+        "- Established orgs already have skilled staff and operational know-how\n"
+        "- Clearly defined scope makes outcome verification more tractable\n"
+        "- Standing up new orgs is costly; reusing existing capacity is rational\n"
+        "- Some areas (standards, regulatory work) need formal organizational backing"
+    ),
+    "drep_match_q_institutional_continuity_cons": (
+        "- Recurring funding deepens dependence on a small set of orgs\n"
+        "- Incumbent funding squeezes the budget available to new / small teams\n"
+        "- 'Clear scope and accountability' looks easy on paper, hard in practice\n"
+        "- Large recurring budgets carry proportionally large oversight costs"
+    ),
+    "drep_match_q_decentralized_allocation_context": (
+        "'Concentration vs. distribution' of treasury allocation is a "
+        "fundamental governance question. How much weight to give distributed "
+        "funding for emerging teams, regional communities and individual "
+        "developers is at the heart of this debate."
+    ),
+    "drep_match_q_decentralized_allocation_pros": (
+        "- A diverse set of recipients fuels creativity and innovation\n"
+        "- Regional distribution supports Cardano's global reach\n"
+        "- Avoiding over-reliance on big orgs preserves governance decentralization\n"
+        "- Early-stage teams and individuals seed next-generation projects"
+    ),
+    "drep_match_q_decentralized_allocation_cons": (
+        "- Many small grants drive up administrative, review and monitoring costs\n"
+        "- Newer / individual recipients have less track record, complicating evaluation\n"
+        "- Areas needing large capital (infrastructure, security) can't be covered by distribution alone\n"
+        "- Too many recipients makes ecosystem coherence (overlap / conflict) harder"
+    ),
+    "drep_match_q_protocol_conservatism_context": (
+        "Changes to protocol parameters (fees, block size, k, etc.) and hard "
+        "forks affect the entire network. The balance between stability and "
+        "innovation is the core debate here."
+    ),
+    "drep_match_q_protocol_conservatism_pros": (
+        "- Parameter changes can have hard-to-predict side effects\n"
+        "- Investors, dApp operators and node ops rely on stable rules\n"
+        "- Hard forks with implementation or compatibility issues have broad impact\n"
+        "- Reckless changes erode trust and harm long-term adoption"
+    ),
+    "drep_match_q_protocol_conservatism_cons": (
+        "- Overemphasizing stability blocks needed improvements and lets competitors catch up\n"
+        "- Leaving known bottlenecks (throughput, fees) unaddressed hurts users\n"
+        "- Caution can drift into 'status-quo bias' that's hard to distinguish\n"
+        "- Gradual, experimental tuning is testable; excessive fear is unwarranted"
+    ),
+    "drep_match_q_protocol_innovation_context": (
+        "The mirror image of the protocol-stability question (Q8) — this asks "
+        "how much risk is acceptable in exchange for performance and new "
+        "features."
+    ),
+    "drep_match_q_protocol_innovation_pros": (
+        "- Without scalability and new features, adoption hits a ceiling\n"
+        "- Rival chains improve continuously; standing still is a relative loss\n"
+        "- With strong implementation and verification practices, risk is manageable\n"
+        "- Cardano's long-term vision assumes continuous evolution"
+    ),
+    "drep_match_q_protocol_innovation_cons": (
+        "- Performance changes can have unintended security / compatibility effects\n"
+        "- Raising risk tolerance compresses discussion and testing time\n"
+        "- The 'innovation' banner can pull through changes that aren't truly necessary\n"
+        "- Users (dApps, wallets) bear higher catch-up burden"
+    ),
+    "drep_match_q_reasoning_disclosure_context": (
+        "In the Conway era DReps can publish voting rationales via CIP-100 / "
+        "CIP-108 metadata, but it isn't required. Whether disclosure should "
+        "be a major criterion for choosing a DRep is the debate here."
+    ),
+    "drep_match_q_reasoning_disclosure_pros": (
+        "- Rationale disclosure is the most basic accountability mechanism\n"
+        "- Delegators can understand the DRep's reasoning and judge alignment with their values\n"
+        "- Continuous disclosure surfaces shifts and inconsistencies over time\n"
+        "- Required-by-norm disclosure pushes DReps to think more carefully"
+    ),
+    "drep_match_q_reasoning_disclosure_cons": (
+        "- Disclosure takes time and effort, potentially shrinking the active DRep pool\n"
+        "- Disclosing a rationale doesn't guarantee its quality or accuracy\n"
+        "- Language / writing-skill barriers can produce misleading impressions\n"
+        "- A DRep without disclosure can still be evaluated by their voting record"
+    ),
+    # Explanation section headings
+    "drep_match_q_context_label": "Why this matters",
+    "drep_match_q_pros_label":    "Reasons to support",
+    "drep_match_q_cons_label":    "Reasons to be cautious",
     # 11 axis labels (used in results)
     "drep_match_axis_treasury_discipline":      "Treasury discipline",
     "drep_match_axis_growth_investment":        "Growth investment",
