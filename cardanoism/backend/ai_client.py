@@ -363,3 +363,199 @@ def analyze_proposal(
         cost_usd=cost,
         raw_text=raw,
     )
+
+
+# ─── DRep委任コンパス用: GA タグ分類 ──────────────────────────────────────────
+
+_COMPASS_TAG_SYSTEM = """\
+You are a classification assistant for Cardano governance proposals.
+
+Your job is to assign Cardanoism's proprietary tags to a single Governance
+Action (GA) based on its type, title, abstract, motivation and rationale.
+
+Tags are grouped into three families. Pick ONLY from the lists below — do
+NOT invent new tags. Multiple tags may apply.
+
+## category (broad topic — what the proposal is about)
+- treasury, protocol, governance, constitution, core_development,
+  infrastructure, ecosystem, marketing, community, education, event,
+  dapp, wallet, defi, other
+
+## attribute (the proposal's properties — scale, target, type of work)
+- large_budget, recurring_budget, operational_budget,
+  existing_entity, new_team, individual_contributor,
+  regional_focus, global_focus, open_source, closed_source,
+  public_goods, commercial_product,
+  developer_experience, user_adoption, awareness,
+  long_term_research, security_related,
+  parameter_change, hard_fork, urgent, high_risk
+
+## quality (proposal quality / governance hygiene)
+- kpi_defined, kpi_unclear,
+  milestone_based, milestone_unclear,
+  budget_reasonable, budget_unclear, budget_excessive,
+  track_record_strong, track_record_unknown,
+  transparency_high, transparency_low,
+  accountability_defined, accountability_unclear,
+  conflict_of_interest_possible
+
+## Selection rules
+- Always include at least one category tag. Use "other" only if no
+  category truly applies.
+- For TreasuryWithdrawals: always include "treasury". Pick the most
+  specific category (marketing / event / education / defi / wallet /
+  dapp / infrastructure / community / core_development / ecosystem etc.)
+  based on the stated spending purpose.
+- For ParameterChange: include "protocol" + "parameter_change".
+- For HardForkInitiation: include "protocol" + "hard_fork".
+- For NewConstitution / ConstitutionUpdate: include "governance" +
+  "constitution".
+- For InfoAction / NewCommittee / NoConfidence: include "governance".
+- attribute tags: add ones whose conditions are clearly evidenced in the
+  text. Skip ambiguous ones. (For example, "open_source" only if a
+  GitHub / GitLab / "open source" reference exists.)
+- quality tags: pair up — if KPI is clearly defined add "kpi_defined",
+  if KPI is mentioned but not actually measurable add "kpi_unclear".
+  Likewise for milestone / accountability / transparency / budget.
+- Do NOT add value-judgmental tags. The taxonomy explicitly forbids
+  labels like "bad_proposal" / "wasteful" / "centralized_bad".
+
+## Output format (STRICT JSON)
+Return ONLY this object:
+
+{
+  "tags": [
+    {"tag": "<one of the lists above>",
+     "confidence": 0.0..1.0,
+     "rationale": "<short reason in English, ≤120 chars>"},
+    ...
+  ]
+}
+
+- Up to 8 tags total.
+- confidence is YOUR own probability of correctness (0.5 = uncertain,
+  0.9 = clear evidence in text, 1.0 = derived directly from
+  proposal_type).
+- Output English-only rationale; no Markdown, no extra prose.
+"""
+
+
+def _build_compass_user_text(proposal: dict[str, Any], max_chars: int = 8000) -> str:
+    """compass tag 分類用の user message を組み立てる。"""
+    parts: list[str] = []
+
+    title = proposal.get("title") or proposal.get("title_ja") or ""
+    parts.append(f"# Title\n{title}")
+
+    ptype = proposal.get("proposal_type", "")
+    parts.append(f"# Type\n{ptype}")
+
+    abstract = proposal.get("abstract") or proposal.get("abstract_ja") or ""
+    if abstract:
+        parts.append(f"# Abstract\n{abstract}")
+
+    motivation = proposal.get("motivation") or proposal.get("motivation_ja") or ""
+    if motivation:
+        parts.append(f"# Motivation\n{motivation}")
+
+    rationale = proposal.get("rationale") or proposal.get("rationale_ja") or ""
+    if rationale:
+        parts.append(f"# Rationale\n{rationale}")
+
+    if proposal.get("withdrawal_total_lovelace"):
+        ada = int(proposal["withdrawal_total_lovelace"]) // 1_000_000
+        parts.append(f"# Withdrawal\n{ada:,} ADA")
+
+    text = "\n\n".join(parts)
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n\n... [truncated for length]"
+    return text
+
+
+@dataclass
+class CompassTagResult:
+    """classify_proposal_tags の戻り値。"""
+    tags: list[dict[str, Any]]    # [{tag, confidence, rationale}]
+    model_id: str
+    tokens_input: int
+    tokens_cached_input: int
+    tokens_output: int
+    cost_usd: float
+    raw_text: str = field(repr=False)
+
+
+def classify_proposal_tags(
+    proposal: dict[str, Any],
+    *,
+    model: str = DEFAULT_MODEL,
+    max_output_tokens: int = 800,
+) -> CompassTagResult:
+    """1 つの GA に対する Cardanoism独自タグ群を OpenAI で生成する。
+
+    決定性向上のため:
+      - response_format=json_object で構造化出力を強制
+      - system プロンプトは固定 → OpenAI 自動キャッシュに乗る
+
+    Args:
+      proposal: governance_actions row (proposal_type / title / abstract /
+                motivation / rationale / withdrawal_total_lovelace を含む dict)
+
+    Returns:
+      CompassTagResult。tags は [{tag, confidence, rationale}] の list。
+      呼び出し側で taxonomy.is_valid_tag() による検証必須。
+    """
+    client = _get_client()
+    user_text = _build_compass_user_text(proposal)
+
+    response = _send_with_retry(
+        client,
+        model=model,
+        system_text=_COMPASS_TAG_SYSTEM,
+        user_text=user_text,
+        max_tokens=max_output_tokens,
+    )
+    raw = response.choices[0].message.content or ""
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"compass classify: failed to parse JSON: {e}") from e
+
+    tags_raw = payload.get("tags") or []
+    if not isinstance(tags_raw, list):
+        tags_raw = []
+
+    # tag フィールドだけは必ず正規化 (空白・小文字)。validation は呼び出し側。
+    tags: list[dict[str, Any]] = []
+    for t in tags_raw:
+        if not isinstance(t, dict):
+            continue
+        tag = str(t.get("tag") or "").strip().lower()
+        if not tag:
+            continue
+        try:
+            conf = float(t.get("confidence") or 0.0)
+        except (TypeError, ValueError):
+            conf = 0.0
+        conf = max(0.0, min(1.0, conf))
+        rationale = str(t.get("rationale") or "").strip()
+        tags.append({"tag": tag, "confidence": conf, "rationale": rationale})
+
+    usage = response.usage
+    tokens_input = getattr(usage, "prompt_tokens", 0) or 0
+    tokens_output = getattr(usage, "completion_tokens", 0) or 0
+    details = getattr(usage, "prompt_tokens_details", None)
+    tokens_cached_input = 0
+    if details is not None:
+        tokens_cached_input = getattr(details, "cached_tokens", 0) or 0
+    cost = _compute_cost(tokens_input, tokens_cached_input, tokens_output)
+
+    return CompassTagResult(
+        tags=tags,
+        model_id=model,
+        tokens_input=tokens_input,
+        tokens_cached_input=tokens_cached_input,
+        tokens_output=tokens_output,
+        cost_usd=cost,
+        raw_text=raw,
+    )

@@ -16,7 +16,6 @@ from cardanoism.backend.db_connect import get_db
 from cardanoism.backend.drep_compass import config
 from cardanoism.backend.drep_compass.classifier import (
     classify_governance_action as _classify_ga,
-    classify_governance_action_ai_stub as _classify_ga_ai,
 )
 from cardanoism.backend.drep_compass.match import (
     calculate_drep_match as _calc_match,
@@ -97,10 +96,11 @@ def _delete_tags_by_source(gov_action_id: str, source: str) -> int:
 
 
 def classify_governance_action(gov_action_id: str) -> int:
-    """1 GA をルールベースで分類し gov_action_tags へ INSERT IGNORE する。
+    """1 GA を OpenAI で分類し gov_action_tags へ INSERT IGNORE する。
 
-    既存のルールタグが残っている場合はスキップ (重複は UNIQUE で弾く)。
-    完全に再生成したい場合は reclassify_governance_action() を使うこと。
+    既存の AI タグ (source='ai') がある場合はスキップ — 再分類したい場合は
+    reclassify_governance_action() を使うこと。
+    manual で人が付けたタグ (source='manual') は temizurn (= 触らない)。
 
     Returns:
       新規 INSERT された tag 件数。
@@ -109,20 +109,34 @@ def classify_governance_action(gov_action_id: str) -> int:
     if not ga:
         logger.warning("classify_governance_action: GA not found: %s", gov_action_id)
         return 0
+    # 既に AI タグが付いていれば skip (コスト節約)
+    with get_db() as (cursor, _):
+        cursor.execute(
+            "SELECT COUNT(*) AS n FROM gov_action_tags "
+            "WHERE gov_action_id = ? AND source = 'ai'",
+            (str(gov_action_id),),
+        )
+        ai_count = int(cursor.fetchone()["n"])
+    if ai_count > 0:
+        logger.debug(
+            "classify_governance_action: %s already has %d AI tags, skip",
+            gov_action_id, ai_count,
+        )
+        return 0
+
     tags = _classify_ga(ga)
     inserted = _insert_tags(gov_action_id, tags)
     logger.info(
-        "classify_governance_action: %s → %d 件 INSERT (total candidates=%d)",
+        "classify_governance_action: %s → %d 件 INSERT (AI candidates=%d)",
         gov_action_id, inserted, len(tags),
     )
     return inserted
 
 
-def reclassify_governance_action(gov_action_id: str, *, ai: bool = False) -> int:
-    """1 GA のルールタグを全削除してから再分類する。
+def reclassify_governance_action(gov_action_id: str) -> int:
+    """1 GA の AI タグを全削除してから AI に再分類させる。
 
-    Args:
-      ai: True にすると AI 分類器の stub も呼ぶ (現状 no-op)。
+    manual タグ (source='manual') は保持する。
 
     Returns:
       新規 INSERT された tag 件数。
@@ -131,15 +145,12 @@ def reclassify_governance_action(gov_action_id: str, *, ai: bool = False) -> int
     if not ga:
         logger.warning("reclassify_governance_action: GA not found: %s", gov_action_id)
         return 0
-    _delete_tags_by_source(gov_action_id, "rule")
-    if ai:
-        _delete_tags_by_source(gov_action_id, "ai")
-    rule_tags = _classify_ga(ga)
-    ai_tags = _classify_ga_ai(ga) if ai else []
-    inserted = _insert_tags(gov_action_id, list(rule_tags) + list(ai_tags))
+    _delete_tags_by_source(gov_action_id, "ai")
+    tags = _classify_ga(ga)
+    inserted = _insert_tags(gov_action_id, tags)
     logger.info(
-        "reclassify_governance_action: %s → %d 件 INSERT (rule=%d, ai=%d)",
-        gov_action_id, inserted, len(rule_tags), len(ai_tags),
+        "reclassify_governance_action: %s → %d 件 INSERT (AI)",
+        gov_action_id, inserted,
     )
     return inserted
 
