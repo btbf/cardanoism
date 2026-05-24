@@ -918,7 +918,7 @@ def _quiz_view() -> rx.Component:
                     DrepMatchState.progress_current,
                     " ", AuthState.t["drep_match_progress_of"], " ",
                     DrepMatchState.progress_total,
-                    size="2", color="var(--gray-11)", weight="medium",
+                    size="3", color="var(--gray-11)", weight="medium",
                 ),
                 rx.spacer(),
                 # 進行バー
@@ -1020,10 +1020,10 @@ def _faction_chip(item) -> rx.Component:
     return rx.box(
         rx.text(
             AuthState.t[label_key],
-            size="1", weight="bold", color=text_color,
+            size="2", weight="bold", color=text_color,
             style={"whiteSpace": "nowrap"},
         ),
-        padding="3px 10px",
+        padding="6px 14px",
         border_radius="999px",
         background=bg,
         border=border,
@@ -1209,7 +1209,7 @@ def _match_result_card(r) -> rx.Component:
                     rx.hstack(
                         rx.text(
                             AuthState.t["drep_match_results_factions_label"],
-                            size="1", color="var(--gray-11)", weight="medium",
+                            size="2", color="var(--gray-11)", weight="medium",
                             style={"flexShrink": "0"},
                         ),
                         rx.foreach(r["faction_csv"].split(","), _faction_chip),
@@ -1217,8 +1217,8 @@ def _match_result_card(r) -> rx.Component:
                     ),
                     rx.text(
                         AuthState.t["drep_match_results_factions_help"],
-                        size="1", color="var(--gray-10)",
-                        style={"fontSize": "11px", "lineHeight": "1.4"},
+                        size="2", color="var(--gray-10)",
+                        style={"lineHeight": "1.6"},
                     ),
                     spacing="1", align="start", width="100%",
                 ),
@@ -1285,13 +1285,14 @@ def _match_view() -> rx.Component:
             ),
             rx.text(
                 AuthState.t["drep_match_intro"],
-                size="2", color="var(--gray-10)",
+                size="3", color="var(--gray-11)",
+                style={"lineHeight": "1.7"},
             ),
             rx.callout(
                 AuthState.t["drep_match_ai_disclaimer"],
                 icon="triangle-alert",
                 color_scheme="amber",
-                size="1",
+                size="2",
             ),
             rx.match(
                 DrepMatchState.view,
