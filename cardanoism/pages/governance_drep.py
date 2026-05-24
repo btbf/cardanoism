@@ -159,16 +159,32 @@ class DrepState(rx.State):
 
 # ─── DRep マッチング診断 State ─────────────────────────────────────────────────
 
-# 質問の順番。各 index は drep_match.TOPIC_KEYS と同期した topic を表す。
-# AI 分類のキーと一致させること（一致しないと user_vector が DRep プロファイルと
-# 揃わずマッチング結果が崩れる）。
-_DREP_MATCH_TOPIC_ORDER: tuple[str, ...] = (
-    # 軸 1: 予算配分の優先度 (6 問)
-    "protocol", "ecosystem", "adoption", "marketing", "dev_education", "research",
-    # 軸 2: ガバナンス哲学 (3 問)
-    "fiscal_discipline", "protocol_conservatism", "org_funding",
+# 質問の順番。各タプルは (i18n_key, axis_key, is_reverse) で、
+# - i18n_key:   drep_match_q_* の suffix (i18n.py に対応キー必須)
+# - axis_key:   drep_match.AXIS_KEYS のいずれか (どの軸のスコアに寄与するか)
+# - is_reverse: True なら回答スコアを反転 (yes = 負派閥支持、no = 正派閥支持)
+#               False なら正方向 (yes = 正派閥支持)
+# 正派閥 = AXIS_DIRECTIONS[axis_key][0] = discipline / conservative / centralized /
+#         technical / promotion
+# 5 軸 × 各 2 問 = 10 問
+_DREP_MATCH_QUESTIONS: tuple[tuple[str, str, bool], ...] = (
+    # A. axis_treasury (discipline ⟷ investment)
+    ("treasury_discipline",   "axis_treasury",  False),  # Q1: 規律派
+    ("treasury_investment",   "axis_treasury",  True),   # Q2: 投資派 (逆問)
+    # B. axis_protocol (conservative ⟷ progressive)
+    ("protocol_conservative", "axis_protocol",  False),  # Q3: 保守派
+    ("protocol_progressive",  "axis_protocol",  True),   # Q4: 革新派 (逆問)
+    # C. axis_org (centralized ⟷ decentralized)
+    ("org_centralized",       "axis_org",       False),  # Q5: 既存信頼派
+    ("org_decentralized",     "axis_org",       True),   # Q6: 分散派 (逆問)
+    # D. axis_ecosystem (technical ⟷ expansion)
+    ("ecosystem_technical",   "axis_ecosystem", False),  # Q7: 技術深化派
+    ("ecosystem_expansion",   "axis_ecosystem", True),   # Q8: 拡大派 (逆問)
+    # E. axis_marketing (promotion ⟷ restraint)
+    ("marketing_promotion",   "axis_marketing", False),  # Q9: 推進派
+    ("marketing_restraint",   "axis_marketing", True),   # Q10: 慎重派 (逆問)
 )
-_DREP_MATCH_TOTAL = len(_DREP_MATCH_TOPIC_ORDER)
+_DREP_MATCH_TOTAL = len(_DREP_MATCH_QUESTIONS)
 
 
 class DrepMatchState(rx.State):
@@ -178,21 +194,16 @@ class DrepMatchState(rx.State):
     # 現在の質問インデックス (0..N-1)
     current_question: int = 0
     # 各質問の回答: "yes" / "neutral" / "no" / "" (未回答)
-    answers: list[str] = ["", "", "", "", "", "", "", ""]
+    answers: list[str] = [""] * _DREP_MATCH_TOTAL
     # 結果（compute_match の戻り値を str dict 化したもの。.split(",") で list 化）
     results: list[dict[str, str]] = []
 
     @rx.var
-    def current_topic_key(self) -> str:
+    def current_question_i18n_key(self) -> str:
         idx = self.current_question
         if 0 <= idx < _DREP_MATCH_TOTAL:
-            return _DREP_MATCH_TOPIC_ORDER[idx]
+            return "drep_match_q_" + _DREP_MATCH_QUESTIONS[idx][0]
         return ""
-
-    @rx.var
-    def current_question_i18n_key(self) -> str:
-        key = self.current_topic_key
-        return "drep_match_q_" + key if key else ""
 
     @rx.var
     def progress_current(self) -> str:
@@ -248,10 +259,16 @@ class DrepMatchState(rx.State):
         if choice not in ("yes", "neutral", "no"):
             return
         idx = self.current_question
-        if 0 <= idx < len(self.answers):
-            new = list(self.answers)
-            new[idx] = choice
-            self.answers = new
+        if not (0 <= idx < _DREP_MATCH_TOTAL):
+            return
+        # セッション再利用や設問変更で answers の長さが足りない場合に補正
+        new = list(self.answers)
+        if len(new) < _DREP_MATCH_TOTAL:
+            new.extend([""] * (_DREP_MATCH_TOTAL - len(new)))
+        elif len(new) > _DREP_MATCH_TOTAL:
+            new = new[:_DREP_MATCH_TOTAL]
+        new[idx] = choice
+        self.answers = new
         if not self.is_last_question:
             self.current_question = idx + 1
 
@@ -260,26 +277,57 @@ class DrepMatchState(rx.State):
             self.current_question -= 1
 
     def submit_quiz(self):
-        """回答ベクトルから drep_match.compute_match を呼び、結果 view へ。"""
-        from cardanoism.backend.drep_match import compute_match, TOPIC_KEYS
-        user_vector: dict[str, float | None] = {}
-        for i, topic in enumerate(TOPIC_KEYS):
+        """回答を軸スコアに集約し drep_match.compute_match を呼ぶ。
+
+        各軸の 2 問 (正方向 + 逆問) から軸スコア [-1.0, +1.0] を生成:
+          - yes = +1, no = -1, neutral/未回答 = 0
+          - 逆問はスコアを反転して合算
+          - 平均 (絶対値最大 1) を軸スコアとする
+          - 両方が neutral/未回答 の場合は None (該当軸を比較から外す)
+        """
+        from cardanoism.backend.drep_match import compute_match
+        # 軸ごとに raw スコアと有効回答数を集計
+        axis_acc: dict[str, dict[str, float]] = {}
+        for i, (_, axis_key, is_reverse) in enumerate(_DREP_MATCH_QUESTIONS):
             ans = self.answers[i] if i < len(self.answers) else ""
             if ans == "yes":
-                user_vector[topic] = 1.0
+                raw = 1.0
             elif ans == "no":
-                user_vector[topic] = 0.0
+                raw = -1.0
             else:
-                user_vector[topic] = None  # neutral / 未回答 → 比較対象外
+                # neutral / 未回答 はその問を集計対象外
+                continue
+            if is_reverse:
+                raw = -raw
+            entry = axis_acc.setdefault(axis_key, {"sum": 0.0, "n": 0.0})
+            entry["sum"] += raw
+            entry["n"] += 1.0
+
+        user_vector: dict[str, float | None] = {}
+        from cardanoism.backend.drep_match import AXIS_KEYS
+        for axis in AXIS_KEYS:
+            entry = axis_acc.get(axis)
+            if not entry or entry["n"] <= 0:
+                user_vector[axis] = None
+                continue
+            score = entry["sum"] / entry["n"]
+            # 数値レンジ [-1.0, +1.0] にクランプ
+            score = max(-1.0, min(1.0, score))
+            user_vector[axis] = score
+
         try:
-            raw = compute_match(user_vector, limit=5)
+            raw_results = compute_match(user_vector, limit=5)
         except Exception as e:  # noqa: BLE001
             logger.warning("compute_match failed: %s", e)
-            raw = []
+            raw_results = []
         out: list[dict[str, str]] = []
-        for r in raw:
-            # 外部リンクは "icon|url,icon|url" の CSV にエンコード（UI で split + match）
+        for r in raw_results:
+            # 外部リンクは "icon|url,icon|url" の CSV にエンコード
             links_csv = ",".join(f"{icon}|{url}" for icon, url in r.get("links", []))
+            # 派閥バッジは "labelKey|score|strength,labelKey|score|strength" CSV
+            faction_csv = ",".join(
+                f"{lk}|{sc}|{st}" for (lk, sc, st) in r.get("faction_chips", [])
+            )
             out.append({
                 "drep_id":        r["drep_id"],
                 "given_name":     r["given_name"],
@@ -288,9 +336,8 @@ class DrepMatchState(rx.State):
                 "links_csv":      links_csv,
                 "similarity_pct": f"{r['similarity_pct']:.1f}",
                 "match_dims":     str(r["match_dims"]),
-                "top_yes_csv":    ",".join(r["top_yes_topics"]),
-                "top_no_csv":     ",".join(r["top_no_topics"]),
-                "vote_count":     str(r["topic_vote_count"]),
+                "faction_csv":    faction_csv,
+                "vote_count":     str(r["axis_vote_count"]),
             })
         self.results = out
         self.view = "results"
@@ -917,19 +964,45 @@ def _quiz_view() -> rx.Component:
     )
 
 
-def _topic_chip(key) -> rx.Component:
-    """トピックキーを i18n ラベルで小さなチップ表示する。"""
+def _faction_chip(item) -> rx.Component:
+    """item は 'labelKey|score|strength' 形式の Var[str]。
+
+    labelKey: i18n キー (例: drep_match_faction_axis_treasury_pos)
+    score:    "+0.75" / "-0.50" 等の文字列 (バッジ右側に小さく表示)
+    strength: "strong" (|s|>=0.6) / "mid" — 色濃度に反映
+    """
+    parts = item.split("|")
+    label_key = parts[0]
+    score = parts[1]
+    strength = parts[2]
+    # strong: amber-4 / mid: amber-2 + やや細い border
+    bg = rx.cond(strength == "strong", "var(--amber-4)", "var(--amber-2)")
+    border = rx.cond(
+        strength == "strong",
+        "1px solid var(--amber-9)",
+        "1px solid var(--amber-7)",
+    )
     return rx.box(
-        rx.text(
-            AuthState.t["drep_topic_" + key],
-            size="1", weight="medium",
-            color="var(--gray-12)",
-            style={"whiteSpace": "nowrap"},
+        rx.hstack(
+            rx.text(
+                AuthState.t[label_key],
+                size="1", weight="bold", color="var(--amber-12)",
+                style={"whiteSpace": "nowrap"},
+            ),
+            rx.text(
+                score,
+                size="1", color="var(--amber-11)",
+                style={
+                    "fontFamily": "var(--code-font-family, ui-monospace, monospace)",
+                    "whiteSpace": "nowrap",
+                },
+            ),
+            spacing="1", align="baseline",
         ),
         padding="3px 9px",
         border_radius="999px",
-        background="var(--gray-3)",
-        border="1px solid var(--gray-6)",
+        background=bg,
+        border=border,
         style={"display": "inline-flex"},
     )
 
@@ -1066,29 +1139,16 @@ def _match_result_card(r) -> rx.Component:
                 ),
                 rx.fragment(),
             ),
-            # トピック特徴
+            # 派閥バッジ (5 軸 × score)
             rx.cond(
-                r["top_yes_csv"] != "",
+                r["faction_csv"] != "",
                 rx.hstack(
                     rx.text(
-                        AuthState.t["drep_match_results_active_in"],
-                        size="1", color="var(--green-11)", weight="medium",
+                        AuthState.t["drep_match_results_factions_label"],
+                        size="1", color="var(--gray-11)", weight="medium",
                         style={"flexShrink": "0"},
                     ),
-                    rx.foreach(r["top_yes_csv"].split(","), _topic_chip),
-                    spacing="2", align="center", wrap="wrap",
-                ),
-                rx.fragment(),
-            ),
-            rx.cond(
-                r["top_no_csv"] != "",
-                rx.hstack(
-                    rx.text(
-                        AuthState.t["drep_match_results_cautious_in"],
-                        size="1", color="var(--red-11)", weight="medium",
-                        style={"flexShrink": "0"},
-                    ),
-                    rx.foreach(r["top_no_csv"].split(","), _topic_chip),
+                    rx.foreach(r["faction_csv"].split(","), _faction_chip),
                     spacing="2", align="center", wrap="wrap",
                 ),
                 rx.fragment(),

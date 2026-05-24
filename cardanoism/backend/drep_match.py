@@ -1,11 +1,20 @@
 """drep_match.py
 DRep マッチング診断 (/governance/drep の「マッチング診断」タブ) のバックエンド。
 
-dreps.topic_profile_json (notify_worker --event drep_topic_profile_sync が
-書き込む) と user の回答ベクトルから類似度を計算し TOP N の DRep を返す。
+5 軸派閥モデル:
+  A. axis_treasury  : "discipline" (+) ⟷ "investment" (-)
+  B. axis_protocol  : "conservative" (+) ⟷ "progressive" (-)
+  C. axis_org       : "centralized" (+) ⟷ "decentralized" (-)
+  D. axis_ecosystem : "technical" (+) ⟷ "expansion" (-)
+  E. axis_marketing : "promotion" (+) ⟷ "restraint" (-)
 
-類似度: dimension ごとの絶対値差分の平均を 1 から引いた値（0〜1）。
-        skip された dim (user 中立 / DRep データ無し) は計算対象から除外。
+dreps.axis_profile_json (notify_worker --event drep_axis_profile_sync が
+書き込む) と user の軸スコアベクトル (-1.0 〜 +1.0) から類似度を計算し
+TOP N の DRep を返す。
+
+類似度: axis ごとの絶対値差分 |user - drep| を 0〜2 から 0〜1 に正規化した
+        平均を 1 から引いた値 (0〜1)。skip された軸 (user None / DRep データ無し)
+        は計算対象から除外。
 """
 from __future__ import annotations
 
@@ -17,15 +26,19 @@ from cardanoism.backend.db_connect import get_db
 
 logger = logging.getLogger(__name__)
 
-# notify_worker._DREP_TOPIC_KEYS と同期させる。"other" はマッチング対象外。
-TOPIC_KEYS: tuple[str, ...] = (
-    # 軸 1: 予算配分の優先度
-    "protocol", "ecosystem", "adoption", "marketing", "dev_education", "research",
-    # 軸 2: ガバナンス哲学
-    "fiscal_discipline", "protocol_conservatism", "org_funding",
-)
+# notify_worker._DREP_AXIS_DIRECTIONS と同期させる。
+# (positive_faction, negative_faction) — +1.0 / -1.0 方向に対応。
+AXIS_DIRECTIONS: dict[str, tuple[str, str]] = {
+    "axis_treasury":  ("discipline", "investment"),
+    "axis_protocol":  ("conservative", "progressive"),
+    "axis_org":       ("centralized", "decentralized"),
+    "axis_ecosystem": ("technical", "expansion"),
+    "axis_marketing": ("promotion", "restraint"),
+}
+AXIS_KEYS: tuple[str, ...] = tuple(AXIS_DIRECTIONS.keys())
 
-# データ十分性のしきい値: Yes+No 票がこれ未満の DRep はマッチング対象外
+# データ十分性のしきい値: 軸タグ付き GA への Yes+No 票がこれ未満の DRep は
+# マッチング対象外
 MIN_VOTE_COUNT = 5
 
 # bio として表示する最大文字数
@@ -33,6 +46,9 @@ _BIO_MAX_CHARS = 160
 
 # CIP-119 references_json から表示する外部リンク最大件数
 _LINKS_MAX = 6
+
+# 派閥スコア絶対値がこれ以上のとき、結果カードに派閥バッジを出す
+_FACTION_DISPLAY_THRESHOLD = 0.3
 
 
 def _classify_url(url: str) -> str:
@@ -95,66 +111,83 @@ def _format_bio(objectives: str | None, motivations: str | None) -> str:
     return flat[:_BIO_MAX_CHARS].rstrip() + "…"
 
 
+def _faction_label_for(axis_key: str, score: float) -> tuple[str, str]:
+    """軸スコアから (派閥ラベルキー, 強度カテゴリ "strong"/"mid") を返す。
+
+    返すラベルキーは i18n の `drep_match_faction_<axis>_<pos|neg>` 形式。
+    呼び出し側で AuthState.t[key] と組み合わせて表示する。
+    """
+    pos, neg = AXIS_DIRECTIONS[axis_key]
+    direction = "pos" if score >= 0 else "neg"
+    label_key = f"drep_match_faction_{axis_key}_{direction}"
+    strength = "strong" if abs(score) >= 0.6 else "mid"
+    return label_key, strength
+
+
 def compute_match(
     user_vector: dict[str, float | None],
     *,
-    limit: int = 3,
+    limit: int = 5,
 ) -> list[dict[str, Any]]:
     """user_vector に基づいて TOP N の DRep を返す。
 
     user_vector:
-      {topic: 1.0 (積極的) | 0.0 (慎重) | None (中立 = 計算対象外)}
+      {axis_key: score in [-1.0, +1.0] | None (未回答 / 中立 → 計算対象外)}
+      例: {"axis_treasury": 0.5, "axis_org": -1.0, "axis_marketing": None}
 
     戻り値（各 entry）:
       {
         drep_id, given_name, image_url, drep_status, registered, amount,
         similarity_pct: float (0〜100),
-        match_dims: int,           # 比較に使った dimension 数
-        top_yes_topics: [str],     # 0.7 以上の topic key (Yes 傾向)
-        top_no_topics:  [str],     # 0.3 以下の topic key (No 傾向)
-        topic_vote_count: int,     # この DRep の Yes+No 投票総数
+        match_dims: int,                    # 比較に使った軸数
+        faction_chips: list[(label_key, score_str, strength)],
+                                            # 結果カードに出す派閥バッジ
+        axis_vote_count: int,               # DRep の axis 関連 Yes+No 投票数
+        bio, links,
       }
     """
-    eval_dims = [t for t in TOPIC_KEYS if user_vector.get(t) is not None]
-    if not eval_dims:
+    eval_axes = [a for a in AXIS_KEYS if user_vector.get(a) is not None]
+    if not eval_axes:
         return []
 
     with get_db() as (cursor, _):
         cursor.execute(
             """
             SELECT drep_id, given_name, image_url, drep_status, registered,
-                   amount, topic_profile_json, topic_vote_count,
+                   amount, axis_profile_json, axis_vote_count,
                    objectives, motivations, references_json
               FROM dreps
              WHERE registered = 1
-               AND topic_vote_count >= ?
-               AND topic_profile_json IS NOT NULL
-               AND topic_profile_json <> ''
+               AND axis_vote_count >= ?
+               AND axis_profile_json IS NOT NULL
+               AND axis_profile_json <> ''
             """,
             (int(MIN_VOTE_COUNT),),
         )
         rows = [dict(r) for r in cursor.fetchall()]
-    logger.info("compute_match: 候補 DRep %d 件 (eval_dims=%d)", len(rows), len(eval_dims))
+    logger.info("compute_match: 候補 DRep %d 件 (eval_axes=%d)", len(rows), len(eval_axes))
 
     scored: list[dict[str, Any]] = []
     for r in rows:
         try:
-            profile = json.loads(r.get("topic_profile_json") or "{}")
+            profile = json.loads(r.get("axis_profile_json") or "{}")
         except (TypeError, ValueError, json.JSONDecodeError):
             continue
         if not isinstance(profile, dict):
             continue
 
+        # 軸ごとに |user - drep| を 0〜2 から 0〜1 に正規化
         diffs: list[float] = []
-        for t in eval_dims:
-            if t not in profile:
+        for axis in eval_axes:
+            if axis not in profile:
                 continue
             try:
-                drep_v = float(profile[t])
+                drep_v = float(profile[axis])
             except (TypeError, ValueError):
                 continue
-            user_v = float(user_vector[t])
-            diffs.append(abs(user_v - drep_v))
+            user_v = float(user_vector[axis])
+            diff = abs(user_v - drep_v) / 2.0  # 範囲 [-1,+1] の差は最大 2 → /2 で正規化
+            diffs.append(min(1.0, diff))
 
         if not diffs:
             continue
@@ -162,18 +195,22 @@ def compute_match(
         mean_diff = sum(diffs) / len(diffs)
         similarity = 1.0 - mean_diff
 
-        top_yes = sorted(
-            [t for t in TOPIC_KEYS
-             if t in profile and isinstance(profile[t], (int, float))
-             and float(profile[t]) >= 0.7],
-            key=lambda t: -float(profile[t]),
-        )[:3]
-        top_no = sorted(
-            [t for t in TOPIC_KEYS
-             if t in profile and isinstance(profile[t], (int, float))
-             and float(profile[t]) <= 0.3],
-            key=lambda t: float(profile[t]),
-        )[:3]
+        # 派閥バッジ: |score| >= threshold の軸を強度降順で最大 5 件
+        faction_chips: list[tuple[str, str, str]] = []
+        for axis_key, score_v in profile.items():
+            try:
+                s = float(score_v)
+            except (TypeError, ValueError):
+                continue
+            if abs(s) < _FACTION_DISPLAY_THRESHOLD:
+                continue
+            if axis_key not in AXIS_DIRECTIONS:
+                continue
+            label_key, strength = _faction_label_for(axis_key, s)
+            sign = "+" if s >= 0 else ""
+            faction_chips.append((label_key, f"{sign}{s:.2f}", strength))
+        faction_chips.sort(key=lambda t: -abs(float(t[1])))
+        faction_chips = faction_chips[:5]
 
         scored.append({
             "drep_id":          r["drep_id"],
@@ -184,13 +221,12 @@ def compute_match(
             "amount":           int(r.get("amount") or 0),
             "similarity_pct":   round(similarity * 100.0, 1),
             "match_dims":       len(diffs),
-            "top_yes_topics":   top_yes,
-            "top_no_topics":    top_no,
-            "topic_vote_count": int(r.get("topic_vote_count") or 0),
+            "faction_chips":    faction_chips,
+            "axis_vote_count":  int(r.get("axis_vote_count") or 0),
             "bio":              _format_bio(r.get("objectives"), r.get("motivations")),
             "links":            _format_links(r.get("references_json")),
         })
 
-    # 類似度降順 → 比較 dim 多 → 委任量降順 で安定ソート
+    # 類似度降順 → 比較 axis 多 → 委任量降順 で安定ソート
     scored.sort(key=lambda d: (-d["similarity_pct"], -d["match_dims"], -d["amount"]))
     return scored[:max(1, int(limit))]

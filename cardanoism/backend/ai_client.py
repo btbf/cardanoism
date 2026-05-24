@@ -151,7 +151,10 @@ You MUST NOT output any score, verdict, compliance rating, KPI assessment, or
 constitution analysis. Your only outputs are:
 1. A neutral plain-text summary of the proposal (Japanese + English).
 2. A bullet-list of factual key information extracted from the proposal.
-3. A topic categorization (1-3 tags) describing what the proposal is about.
+3. A topic categorization (1-3 tags) describing what the proposal is about
+   (kept for backward compatibility; see Topic Classification section).
+4. An axis classification mapping the proposal onto 0-5 governance axes
+   (see Axis Classification section). This drives DRep matching.
 
 ## Per-Type Fact Extraction
 
@@ -262,6 +265,79 @@ Selection rules:
 - If none of the topics fit even after careful consideration, use ["other"].
   Avoid "other" if any topic plausibly applies.
 
+## Axis Classification
+
+`axis_tags` is a JSON OBJECT mapping the proposal onto 0-5 governance axes.
+Each axis represents a faction spectrum, and you tag the proposal with the
+faction it embodies (NOT which faction the voter should pick). Use ONLY the
+direction that the proposal itself represents — if a proposal asks for a
+LARGE treasury withdrawal, tag axis_treasury as "investment" (it embodies
+the investment faction). DReps who vote YES on it are evidence of being
+investment-leaning; DReps voting NO are evidence of being discipline-leaning.
+
+The 5 axes and allowed values:
+
+- "axis_treasury": "discipline" | "investment"
+  - "discipline" = proposal that limits, reduces, or carefully gates
+    treasury outflow (NCL reduction, small targeted grants, strict
+    milestones, treasury caps)
+  - "investment" = proposal that requests substantial treasury spending,
+    large lump-sum grants, ambitious budgets, expansion-driven funding
+  - Use for almost all TreasuryWithdrawals. Use "discipline" for proposals
+    that EXPLICITLY constrain treasury (cap, NCL change downward, refund).
+
+- "axis_protocol": "conservative" | "progressive"
+  - "conservative" = preserves current behavior, opposes parameter
+    increases, postpones hard forks, hardens consensus security
+  - "progressive" = changes protocol parameters (fees / blockSize / k /
+    drep_*/dvt_*/pvt_*), initiates HardFork with new features, expands
+    capabilities
+  - Use for ParameterChange and HardForkInitiation. Most ParameterChange
+    proposals embody "progressive" (they propose a change). Use
+    "conservative" only if the proposal explicitly rolls back a value or
+    reduces a limit for security.
+
+- "axis_org": "centralized" | "decentralized"
+  - "centralized" = funding or empowering established central organizations
+    (IO/IOG/Input Output, Intersect, Cardano Foundation/CF, Emurgo)
+  - "decentralized" = funding community DAOs, independent teams, new
+    grassroots organizations, individual developers, multi-client
+    implementations (Amaru, Dolos), explicitly diluting central authority
+  - Apply liberally: any TreasuryWithdrawals to IO/Intersect/CF/Emurgo gets
+    "centralized"; any grant to community DAO / independent dev / Catalyst-
+    style distribution gets "decentralized".
+
+- "axis_ecosystem": "technical" | "expansion"
+  - "technical" = funds core protocol R&D, formal verification, cryptography
+    research, developer tooling foundations, dev_education (Pioneer/Aiken/
+    Plutus training), academic research
+  - "expansion" = funds end-user dApps, DeFi, wallets, NFT platforms,
+    stablecoins, enterprise adoption, RealFi, real-world integrations
+  - Use for TreasuryWithdrawals where the spending purpose is clearly
+    technical-foundation vs user/market-facing.
+
+- "axis_marketing": "promotion" | "restraint"
+  - "promotion" = funds marketing, PR, advertising, conferences, summits,
+    branding campaigns, ambassador programs, awareness-driving events
+  - "restraint" = explicitly deprioritizes or limits marketing spending in
+    favor of product / dev work; or proposals that cut a marketing budget
+  - Most proposals will NOT have this axis at all (omit if not applicable).
+    Only use "promotion" for proposals whose primary purpose is reach /
+    awareness. Only use "restraint" for proposals that explicitly limit
+    marketing.
+
+Axis tagging rules:
+- Tag ONLY axes that genuinely apply. It is normal for a proposal to have
+  0-2 axes tagged (e.g., a CF operating budget is
+  {"axis_treasury":"investment","axis_org":"centralized"}; a parameter
+  change to lower minFeeA is
+  {"axis_protocol":"conservative"}).
+- An empty object {} is valid (e.g., for NoConfidence, NewCommittee,
+  NewConstitution, or InfoAction proposals that don't clearly map).
+- Do NOT invent additional axes or values outside the allowed list.
+- Do NOT tag both directions of the same axis (e.g., never both
+  "discipline" and "investment" for axis_treasury).
+
 ## Output Schema (STRICT)
 
 Output ONLY this JSON object with no extra text:
@@ -276,7 +352,12 @@ Output ONLY this JSON object with no extra text:
      "value_ja": "stake1xxx... (Cardanoism 財団)",
      "value_en": "stake1xxx... (Cardanoism Foundation)"}
   ],
-  "topic_tags": ["dev_education", "marketing"]
+  "topic_tags": ["dev_education", "marketing"],
+  "axis_tags": {
+    "axis_treasury": "investment",
+    "axis_org": "centralized",
+    "axis_marketing": "promotion"
+  }
 }
 
 ## Summary Writing Guidelines
@@ -306,6 +387,10 @@ Aim for 300-500 Japanese characters / 6-10 sentences. Avoid value judgments.
 - topic_tags MUST be present as a JSON array of 1-3 strings from the fixed
   topic key list above (or ["other"]). Topic classification is neutral
   categorization, not judgment.
+- axis_tags MUST be present as a JSON OBJECT (possibly empty {}). Keys are
+  axis names from the fixed list (axis_treasury / axis_protocol / axis_org
+  / axis_ecosystem / axis_marketing). Values are the allowed direction
+  strings for that axis. Never tag both directions of the same axis.
 """
 
 
