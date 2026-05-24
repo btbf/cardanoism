@@ -1295,32 +1295,49 @@ def _intro_view() -> rx.Component:
     """マッチング診断タブを押した直後に表示するスタート画面。
 
     intro テキスト + AI 免責 callout + 「診断スタート」ボタン。
-    ユーザーが意図せずクイズに突入しないよう、ボタンで明示的に開始する。
+    _quiz_view と同じカード型レイアウトで揃える。
     """
-    return rx.vstack(
-        rx.text(
-            AuthState.t["drep_match_intro"],
-            size="3", color="var(--gray-11)",
-            style={"lineHeight": "1.7"},
-        ),
-        rx.callout(
-            AuthState.t["drep_match_ai_disclaimer"],
-            icon="triangle-alert",
-            color_scheme="amber",
-            size="2",
-        ),
-        rx.center(
-            rx.button(
-                rx.icon("play", size=18),
-                rx.text(AuthState.t["drep_match_start_button"], size="3", weight="bold"),
-                on_click=DrepMatchState.start_quiz,
-                size="3", color_scheme="amber", variant="solid", cursor="pointer",
-                style={"padding": "12px 32px"},
+    card = rx.box(
+        rx.vstack(
+            rx.hstack(
+                rx.icon("clipboard-list", size=28, color="var(--amber-11)"),
+                rx.heading(
+                    AuthState.t["drep_match_heading"],
+                    size="5", weight="bold", color="var(--gray-12)",
+                ),
+                spacing="3", align="center", width="100%",
             ),
-            width="100%", padding_y="16px",
+            rx.text(
+                AuthState.t["drep_match_intro"],
+                size="3", color="var(--gray-11)",
+                style={"lineHeight": "1.7"},
+            ),
+            rx.callout(
+                AuthState.t["drep_match_ai_disclaimer"],
+                icon="triangle-alert",
+                color_scheme="amber",
+                size="2",
+            ),
+            rx.center(
+                rx.button(
+                    rx.icon("play", size=18),
+                    rx.text(AuthState.t["drep_match_start_button"], size="3", weight="bold"),
+                    on_click=DrepMatchState.start_quiz,
+                    size="3", color_scheme="amber", variant="solid", cursor="pointer",
+                    style={"padding": "12px 32px"},
+                ),
+                width="100%", padding_y="8px",
+            ),
+            spacing="5", align_items="stretch", width="100%",
         ),
-        spacing="4", align_items="stretch", width="100%",
+        padding="32px 28px",
+        border_radius="12px",
+        border=f"1px solid {rx.color('gray', 5)}",
+        background=rx.color_mode_cond("white", "rgba(255,255,255,0.04)"),
+        width="100%",
+        max_width="700px",
     )
+    return rx.center(card, width="100%", padding_y="12px")
 
 
 def _match_view() -> rx.Component:
