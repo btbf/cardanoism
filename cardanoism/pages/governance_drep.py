@@ -968,42 +968,34 @@ def _faction_chip(item) -> rx.Component:
     """item は 'labelKey|score|strength' 形式の Var[str]。
 
     labelKey: i18n キー (例: drep_match_faction_axis_treasury_pos)
-    score:    "+0.75" / "-0.50" 等の文字列 (バッジ右側に小さく表示)
+    score:    "+0.75" / "-0.50" (将来のホバー表示用に残置、バッジには出さない)
     strength: "strong" (|s|>=0.6) / "mid" — 色濃度に反映
     """
     parts = item.split("|")
     label_key = parts[0]
     score = parts[1]
     strength = parts[2]
-    # strong: amber-4 / mid: amber-2 + やや細い border
+    # strong: 濃い amber / mid: 薄い amber で強度を視覚化
     bg = rx.cond(strength == "strong", "var(--amber-4)", "var(--amber-2)")
     border = rx.cond(
         strength == "strong",
         "1px solid var(--amber-9)",
         "1px solid var(--amber-7)",
     )
+    text_color = rx.cond(strength == "strong", "var(--amber-12)", "var(--amber-11)")
     return rx.box(
-        rx.hstack(
-            rx.text(
-                AuthState.t[label_key],
-                size="1", weight="bold", color="var(--amber-12)",
-                style={"whiteSpace": "nowrap"},
-            ),
-            rx.text(
-                score,
-                size="1", color="var(--amber-11)",
-                style={
-                    "fontFamily": "var(--code-font-family, ui-monospace, monospace)",
-                    "whiteSpace": "nowrap",
-                },
-            ),
-            spacing="1", align="baseline",
+        rx.text(
+            AuthState.t[label_key],
+            size="1", weight="bold", color=text_color,
+            style={"whiteSpace": "nowrap"},
         ),
-        padding="3px 9px",
+        padding="3px 10px",
         border_radius="999px",
         background=bg,
         border=border,
         style={"display": "inline-flex"},
+        # スコア生値はホバーで参照可 (例: "+0.75")
+        custom_attrs={"title": score},
     )
 
 
@@ -1139,17 +1131,25 @@ def _match_result_card(r) -> rx.Component:
                 ),
                 rx.fragment(),
             ),
-            # 派閥バッジ (5 軸 × score)
+            # 投票傾向バッジ (5 軸 × 色濃度で強度を表現)
             rx.cond(
                 r["faction_csv"] != "",
-                rx.hstack(
-                    rx.text(
-                        AuthState.t["drep_match_results_factions_label"],
-                        size="1", color="var(--gray-11)", weight="medium",
-                        style={"flexShrink": "0"},
+                rx.vstack(
+                    rx.hstack(
+                        rx.text(
+                            AuthState.t["drep_match_results_factions_label"],
+                            size="1", color="var(--gray-11)", weight="medium",
+                            style={"flexShrink": "0"},
+                        ),
+                        rx.foreach(r["faction_csv"].split(","), _faction_chip),
+                        spacing="2", align="center", wrap="wrap",
                     ),
-                    rx.foreach(r["faction_csv"].split(","), _faction_chip),
-                    spacing="2", align="center", wrap="wrap",
+                    rx.text(
+                        AuthState.t["drep_match_results_factions_help"],
+                        size="1", color="var(--gray-10)",
+                        style={"fontSize": "11px", "lineHeight": "1.4"},
+                    ),
+                    spacing="1", align="start", width="100%",
                 ),
                 rx.fragment(),
             ),
