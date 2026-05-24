@@ -50,4 +50,6 @@ MAX_IMPORTANT_AXES = 3
 DEFAULT_MATCH_LIMIT = 5
 
 # DRep をマッチング対象に残す最低 analyzed_vote_count
-MIN_ANALYZED_VOTE_COUNT = 5
+# Cardano governance は GA 数が少ないため、当面は緩く 3 に設定。
+# 投票実績が増えてきたら 5 に戻す。
+MIN_ANALYZED_VOTE_COUNT = 3

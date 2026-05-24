@@ -415,6 +415,32 @@ def calculate_drep_match(
     }
 
 
+def list_drep_matches_for_vector(
+    user_vector: dict[str, float],
+    axis_weights: dict[str, float],
+    *,
+    limit: int = config.DEFAULT_MATCH_LIMIT,
+) -> list[dict]:
+    """user_vector / weights を直接受け取り TOP N マッチを返す。
+
+    UI から submit 時にメモリ内で計算する用 (DB 保存と独立)。
+    """
+    results = _list_matches(user_vector, axis_weights, limit=limit)
+    return [
+        {
+            "drep_id":                   r.drep_id,
+            "total_score":               r.total_score,
+            "matched_axes":              r.matched_axes,
+            "mismatched_axes":           r.mismatched_axes,
+            "low_confidence_axes":       r.low_confidence_axes,
+            "participation_rate":        r.participation_rate,
+            "reasoning_disclosure_rate": r.reasoning_disclosure_rate,
+            "analyzed_vote_count":       r.analyzed_vote_count,
+        }
+        for r in results
+    ]
+
+
 def list_drep_matches(
     *,
     user_id: int | None,

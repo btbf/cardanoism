@@ -160,13 +160,14 @@ class DrepState(rx.State):
 # ─── DRep マッチング診断 (委任コンパス MVP) State ──────────────────────────────
 
 from cardanoism.backend.drep_compass.api import (
-    list_drep_matches as _list_drep_matches,
+    list_drep_matches_for_vector as _list_matches_for_vector,
     save_drep_compass_answers as _save_compass_answers,
 )
 from cardanoism.backend.drep_compass.questionnaire import (
     QUESTIONS as _COMPASS_QUESTIONS,
     QUESTION_BY_ID as _COMPASS_QUESTION_BY_ID,
     QUESTION_TOTAL as _COMPASS_QUESTION_TOTAL,
+    build_user_vector as _build_user_vector,
 )
 from cardanoism.backend.drep_compass import config as _COMPASS_CONFIG
 from cardanoism.backend.drep_db import get_drep as _get_drep
@@ -297,49 +298,50 @@ class DrepMatchState(rx.State):
             self.current_question -= 1
 
     def submit_quiz(self):
-        """回答を保存して compass.api 経由で TOP N マッチを取得。"""
-        # session_id を State から取り出す。Reflex の AuthState ではログイン
-        # 中なら user_id、未ログインなら router.session.client_token あたりを
-        # 使うのが筋だが MVP では answers をログイン不要保存にする (server
-        # 側で随時計算)。
-        user_id: int | None = None
-        try:
-            # AuthState.user_id があるなら使う
-            from cardanoism.backend.auth_state import AuthState as _Auth
-            uid_attr = getattr(_Auth, "user_id", None)
-            if uid_attr is not None:
-                try:
-                    user_id = int(uid_attr)
-                except (TypeError, ValueError):
-                    user_id = None
-        except Exception:  # noqa: BLE001
-            user_id = None
+        """回答からメモリ上で user_vector を計算し、TOP N マッチを取得して
+        results を更新する。
 
-        session_id = None
+        DB 保存 (user_drep_compass_answers) は best-effort で並走させる。
+        保存に失敗してもマッチ結果は出るようにする。
+        """
+        # 1. メモリ内で user_vector / weights を生成 (DB 経由しない)
         try:
-            session_id = self.router.session.client_token  # type: ignore[attr-defined]
-        except Exception:  # noqa: BLE001
-            session_id = None
+            user_vector, weights = _build_user_vector(
+                dict(self.answers), list(self.importance),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("build_user_vector failed: %s", e)
+            user_vector, weights = {}, {}
 
+        # 2. 直接 compass.api でマッチング (DB 保存と独立)
         try:
+            raw = _list_matches_for_vector(
+                user_vector, weights,
+                limit=_COMPASS_CONFIG.DEFAULT_MATCH_LIMIT,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("list_drep_matches_for_vector failed: %s", e)
+            raw = []
+        logger.info(
+            "submit_quiz: user_vector=%d axes, results=%d",
+            len(user_vector), len(raw),
+        )
+
+        # 3. アンケート回答を best-effort で保存 (分析用、UI 結果には不要)
+        try:
+            sid = None
+            try:
+                sid = getattr(self.router.session, "client_token", None)
+            except Exception:  # noqa: BLE001
+                sid = None
             _save_compass_answers(
-                user_id=user_id,
-                session_id=session_id,
+                user_id=None,
+                session_id=str(sid) if sid else None,
                 answers=dict(self.answers),
                 importance=list(self.importance),
             )
         except Exception as e:  # noqa: BLE001
-            logger.warning("save_drep_compass_answers failed: %s", e)
-
-        try:
-            raw = _list_drep_matches(
-                user_id=user_id,
-                session_id=session_id,
-                limit=_COMPASS_CONFIG.DEFAULT_MATCH_LIMIT,
-            )
-        except Exception as e:  # noqa: BLE001
-            logger.warning("list_drep_matches failed: %s", e)
-            raw = []
+            logger.debug("save_drep_compass_answers (best-effort) failed: %s", e)
 
         # 委任量 / fiat 表示の準備 (DRep カードと同じ計算)
         rate = get_fiat_rate() or {}
