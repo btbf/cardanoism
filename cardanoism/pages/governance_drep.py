@@ -932,18 +932,18 @@ def _drep_match_tabs() -> rx.Component:
     )
 
 
-def _quiz_explanation_section() -> rx.Component:
-    """質問の論点解説 (背景 / 支持する根拠 / 慎重な根拠) を常時表示する。
-
-    背景は短文、pros / cons は改行区切り bullet を pre-wrap で描画。
-    """
-    def _section(icon: str, label_key: str, body_key, color: str) -> rx.Component:
-        return rx.box(
+def _quiz_explanation_panel(
+    icon: str, label_key: str, body_key,
+    accent_color: str, bg: str, border: str,
+) -> rx.Component:
+    """論点解説の 1 パネル (背景 / 支持 / 慎重 のいずれか)。色付きのカード。"""
+    return rx.box(
+        rx.vstack(
             rx.hstack(
-                rx.icon(icon, size=14, color=color),
+                rx.icon(icon, size=16, color=accent_color),
                 rx.text(
                     AuthState.t[label_key],
-                    size="2", weight="bold", color=color,
+                    size="2", weight="bold", color=accent_color,
                 ),
                 spacing="2", align="center",
             ),
@@ -952,36 +952,68 @@ def _quiz_explanation_section() -> rx.Component:
                 size="2", color="var(--gray-12)",
                 style={
                     "whiteSpace": "pre-wrap",
-                    "lineHeight": "1.7",
-                    "marginTop": "6px",
+                    "lineHeight": "1.8",
                 },
             ),
-            width="100%",
-        )
-    return rx.box(
-        rx.vstack(
-            _section(
-                "book-open", "drep_match_q_context_label",
-                DrepMatchState.current_context_i18n_key,
-                "var(--gray-11)",
-            ),
-            _section(
-                "circle-check", "drep_match_q_pros_label",
-                DrepMatchState.current_pros_i18n_key,
-                "var(--green-11)",
-            ),
-            _section(
-                "triangle-alert", "drep_match_q_cons_label",
-                DrepMatchState.current_cons_i18n_key,
-                "var(--amber-11)",
-            ),
-            spacing="4", width="100%",
+            spacing="2", align="start", width="100%", height="100%",
         ),
         padding="16px 18px",
         border_radius="10px",
-        border=f"1px solid {rx.color('gray', 4)}",
-        background="var(--gray-2)",
+        border=border,
+        background=bg,
         width="100%",
+        style={
+            "display": "flex",
+            "flexDirection": "column",
+            "boxSizing": "border-box",
+        },
+    )
+
+
+def _quiz_explanation_section() -> rx.Component:
+    """論点解説エリア。
+
+    レイアウト:
+      ┌────────────────────────────────────────────────┐
+      │ 📖 論点の背景 (全幅)                          │
+      ├────────────────────────────────────────────────┤
+      │ ✅ 支持する根拠     │  ⚠️ 慎重な根拠          │
+      │ (左半分)            │  (右半分)               │
+      └────────────────────────────────────────────────┘
+    PC では 2 列、スマホでは wrap で縦並びにフォールバック。
+    """
+    bg_section = _quiz_explanation_panel(
+        "book-open",
+        "drep_match_q_context_label",
+        DrepMatchState.current_context_i18n_key,
+        accent_color="var(--gray-11)",
+        bg="var(--gray-2)",
+        border=f"1px solid {rx.color('gray', 4)}",
+    )
+    pros_section = _quiz_explanation_panel(
+        "circle-check",
+        "drep_match_q_pros_label",
+        DrepMatchState.current_pros_i18n_key,
+        accent_color="var(--green-11)",
+        bg="var(--green-2)",
+        border=f"1px solid {rx.color('green', 5)}",
+    )
+    cons_section = _quiz_explanation_panel(
+        "triangle-alert",
+        "drep_match_q_cons_label",
+        DrepMatchState.current_cons_i18n_key,
+        accent_color="var(--amber-11)",
+        bg="var(--amber-2)",
+        border=f"1px solid {rx.color('amber', 5)}",
+    )
+    return rx.vstack(
+        bg_section,
+        rx.hstack(
+            rx.box(pros_section, flex="1 1 0", min_width="280px"),
+            rx.box(cons_section, flex="1 1 0", min_width="280px"),
+            spacing="3", align="stretch", width="100%", wrap="wrap",
+        ),
+        spacing="3", align_items="stretch", width="100%",
     )
 
 
@@ -1071,9 +1103,7 @@ def _quiz_view() -> rx.Component:
                 size="5", weight="bold", color="var(--gray-12)",
                 style={"lineHeight": "1.5"},
             ),
-            # 論点解説 (常時表示)
-            _quiz_explanation_section(),
-            # 5 段階回答 (1=全く〜5=強く)
+            # 5 段階回答 (1=全く〜5=強く) — 質問直後に出す
             rx.hstack(
                 _likert_button(1),
                 _likert_button(2),
@@ -1091,6 +1121,8 @@ def _quiz_view() -> rx.Component:
                 ),
                 spacing="3", align="center", wrap="wrap",
             ),
+            # 論点解説 (背景 + 支持する根拠 / 慎重な根拠 2 列) — 回答の下に常時表示
+            _quiz_explanation_section(),
             # 戻る / 診断する
             rx.hstack(
                 rx.cond(
@@ -1123,7 +1155,6 @@ def _quiz_view() -> rx.Component:
         border=f"1px solid {rx.color('gray', 5)}",
         background=rx.color_mode_cond("white", "rgba(255,255,255,0.04)"),
         width="100%",
-        max_width="760px",
     )
 
 
@@ -1455,9 +1486,8 @@ def _intro_view() -> rx.Component:
         border=f"1px solid {rx.color('gray', 5)}",
         background=rx.color_mode_cond("white", "rgba(255,255,255,0.04)"),
         width="100%",
-        max_width="760px",
     )
-    return rx.center(card, width="100%", padding_y="12px")
+    return rx.box(card, width="100%", padding_y="12px")
 
 
 def _match_view() -> rx.Component:
@@ -1477,7 +1507,7 @@ def _match_view() -> rx.Component:
                 DrepMatchState.view,
                 ("intro",   _intro_view()),
                 ("results", _results_view()),
-                rx.center(_quiz_view(), width="100%", padding_y="12px"),
+                rx.box(_quiz_view(), width="100%", padding_y="12px"),
             ),
             spacing="4", align_items="stretch", width="100%",
         ),
