@@ -157,53 +157,59 @@ class DrepState(rx.State):
         return rx.call_script("window.scrollTo(0, 0)")
 
 
-# ─── DRep マッチング診断 State ─────────────────────────────────────────────────
+# ─── DRep マッチング診断 (委任コンパス MVP) State ──────────────────────────────
 
-# 質問の順番。各タプルは (i18n_key, axis_key, is_reverse) で、
-# - i18n_key:   drep_match_q_* の suffix (i18n.py に対応キー必須)
-# - axis_key:   drep_match.AXIS_KEYS のいずれか (どの軸のスコアに寄与するか)
-# - is_reverse: True なら回答スコアを反転 (yes = 負派閥支持、no = 正派閥支持)
-#               False なら正方向 (yes = 正派閥支持)
-# 正派閥 = AXIS_DIRECTIONS[axis_key][0] = discipline / conservative / centralized /
-#         technical / promotion
-# 5 軸 × 各 2 問 = 10 問
-_DREP_MATCH_QUESTIONS: tuple[tuple[str, str, bool], ...] = (
-    # A. axis_treasury (discipline ⟷ investment)
-    ("treasury_discipline",   "axis_treasury",  False),  # Q1: 規律派
-    ("treasury_investment",   "axis_treasury",  True),   # Q2: 投資派 (逆問)
-    # B. axis_protocol (conservative ⟷ progressive)
-    ("protocol_conservative", "axis_protocol",  False),  # Q3: 保守派
-    ("protocol_progressive",  "axis_protocol",  True),   # Q4: 革新派 (逆問)
-    # C. axis_org (centralized ⟷ decentralized)
-    ("org_centralized",       "axis_org",       False),  # Q5: 既存信頼派
-    ("org_decentralized",     "axis_org",       True),   # Q6: 分散派 (逆問)
-    # D. axis_ecosystem (technical ⟷ expansion)
-    ("ecosystem_technical",   "axis_ecosystem", False),  # Q7: 技術深化派
-    ("ecosystem_expansion",   "axis_ecosystem", True),   # Q8: 拡大派 (逆問)
-    # E. axis_marketing (promotion ⟷ restraint)
-    ("marketing_promotion",   "axis_marketing", False),  # Q9: 推進派
-    ("marketing_restraint",   "axis_marketing", True),   # Q10: 慎重派 (逆問)
+from cardanoism.backend.drep_compass.api import (
+    list_drep_matches as _list_drep_matches,
+    save_drep_compass_answers as _save_compass_answers,
 )
-_DREP_MATCH_TOTAL = len(_DREP_MATCH_QUESTIONS)
+from cardanoism.backend.drep_compass.questionnaire import (
+    QUESTIONS as _COMPASS_QUESTIONS,
+    QUESTION_BY_ID as _COMPASS_QUESTION_BY_ID,
+    QUESTION_TOTAL as _COMPASS_QUESTION_TOTAL,
+)
+from cardanoism.backend.drep_compass import config as _COMPASS_CONFIG
+from cardanoism.backend.drep_db import get_drep as _get_drep
 
 
 class DrepMatchState(rx.State):
-    """マッチング診断の view 状態と回答ベクトル / 結果を保持する。"""
-    # view: "list" / "quiz" / "results"
+    """委任コンパス (11 axis) のマッチング診断 State。
+
+    view: "list" / "intro" / "quiz" / "results"
+    answers: { q_id: 1〜5 } (5 段階 Likert)
+    importance: q_id のリスト (重要視する問、最大 3 つ)
+    results: 結果カード描画用 dict のリスト
+    """
     view: str = "list"
-    # 現在の質問インデックス (0..N-1)
     current_question: int = 0
-    # 各質問の回答: "yes" / "neutral" / "no" / "" (未回答)
-    answers: list[str] = [""] * _DREP_MATCH_TOTAL
-    # 結果（compute_match の戻り値を str dict 化したもの。.split(",") で list 化）
+    # q_id → 1〜5 の整数。Reflex State は dict[str, int] を許容するためそのまま保持。
+    answers: dict[str, int] = {}
+    # ユーザーが「重視する」とマークした q_id (最大 3)
+    importance: list[str] = []
     results: list[dict[str, str]] = []
 
+    # 質問順序の表示用
     @rx.var
     def current_question_i18n_key(self) -> str:
         idx = self.current_question
-        if 0 <= idx < _DREP_MATCH_TOTAL:
-            return "drep_match_q_" + _DREP_MATCH_QUESTIONS[idx][0]
+        if 0 <= idx < _COMPASS_QUESTION_TOTAL:
+            return _COMPASS_QUESTIONS[idx].i18n_key
         return ""
+
+    @rx.var
+    def current_question_id(self) -> str:
+        idx = self.current_question
+        if 0 <= idx < _COMPASS_QUESTION_TOTAL:
+            return _COMPASS_QUESTIONS[idx].q_id
+        return ""
+
+    @rx.var
+    def current_question_is_important(self) -> bool:
+        return self.current_question_id in self.importance
+
+    @rx.var
+    def importance_full(self) -> bool:
+        return len(self.importance) >= _COMPASS_CONFIG.MAX_IMPORTANT_AXES
 
     @rx.var
     def progress_current(self) -> str:
@@ -211,7 +217,7 @@ class DrepMatchState(rx.State):
 
     @rx.var
     def progress_total(self) -> str:
-        return str(_DREP_MATCH_TOTAL)
+        return str(_COMPASS_QUESTION_TOTAL)
 
     @rx.var
     def is_first_question(self) -> bool:
@@ -219,28 +225,23 @@ class DrepMatchState(rx.State):
 
     @rx.var
     def is_last_question(self) -> bool:
-        return self.current_question == _DREP_MATCH_TOTAL - 1
+        return self.current_question == _COMPASS_QUESTION_TOTAL - 1
 
     @rx.var
-    def current_answer(self) -> str:
-        idx = self.current_question
-        if 0 <= idx < len(self.answers):
-            return self.answers[idx]
-        return ""
+    def current_answer(self) -> int:
+        return int(self.answers.get(self.current_question_id, 0))
 
     @rx.var
     def can_submit(self) -> bool:
-        # 最終問が回答済みであれば送信可
         if not self.is_last_question:
             return False
-        return self.current_answer != ""
+        return self.current_answer >= 1
 
     @rx.var
     def progress_pct(self) -> str:
-        """進行バー幅 (%、1 桁丸め)。"""
-        if _DREP_MATCH_TOTAL <= 0:
+        if _COMPASS_QUESTION_TOTAL <= 0:
             return "0"
-        pct = (self.current_question + 1) / _DREP_MATCH_TOTAL * 100
+        pct = (self.current_question + 1) / _COMPASS_QUESTION_TOTAL * 100
         return f"{pct:.1f}"
 
     def set_view(self, view: str):
@@ -248,13 +249,7 @@ class DrepMatchState(rx.State):
             self.view = view
 
     def enter_match_tab(self):
-        """「マッチング診断」タブを押した時の遷移。
-
-        既存の結果がある場合はそれを温存して "results" に戻る。
-        無ければ intro (注意書き + スタートボタン) を出す。
-        ここでは answers / results はリセットしない (タブ切り替えで結果が
-        消えないようにするため)。
-        """
+        """「マッチング診断」タブを押した時の遷移。"""
         if self.results:
             self.view = "results"
         else:
@@ -264,85 +259,99 @@ class DrepMatchState(rx.State):
         """クイズを初期化して quiz view に切り替える。"""
         self.view = "quiz"
         self.current_question = 0
-        self.answers = [""] * _DREP_MATCH_TOTAL
+        self.answers = {}
+        self.importance = []
         self.results = []
 
-    def answer(self, choice: str):
-        """現在の質問に回答し、最終問でなければ次に進む。"""
-        if choice not in ("yes", "neutral", "no"):
+    def set_answer(self, level: int):
+        """現在の質問に 1〜5 で回答。最終問でなければ次に進む。"""
+        try:
+            v = int(level)
+        except (TypeError, ValueError):
             return
-        idx = self.current_question
-        if not (0 <= idx < _DREP_MATCH_TOTAL):
+        if v < 1 or v > 5:
             return
-        # セッション再利用や設問変更で answers の長さが足りない場合に補正
-        new = list(self.answers)
-        if len(new) < _DREP_MATCH_TOTAL:
-            new.extend([""] * (_DREP_MATCH_TOTAL - len(new)))
-        elif len(new) > _DREP_MATCH_TOTAL:
-            new = new[:_DREP_MATCH_TOTAL]
-        new[idx] = choice
-        self.answers = new
+        qid = self.current_question_id
+        if not qid:
+            return
+        new_answers = dict(self.answers)
+        new_answers[qid] = v
+        self.answers = new_answers
         if not self.is_last_question:
-            self.current_question = idx + 1
+            self.current_question += 1
+
+    def toggle_importance(self):
+        """現在の質問を「重視する」リストに追加 / 削除する。最大 3 個まで。"""
+        qid = self.current_question_id
+        if not qid:
+            return
+        if qid in self.importance:
+            self.importance = [q for q in self.importance if q != qid]
+            return
+        if len(self.importance) >= _COMPASS_CONFIG.MAX_IMPORTANT_AXES:
+            return  # 上限到達は無視
+        self.importance = list(self.importance) + [qid]
 
     def prev_question(self):
         if self.current_question > 0:
             self.current_question -= 1
 
     def submit_quiz(self):
-        """回答を軸スコアに集約し drep_match.compute_match を呼ぶ。
+        """回答を保存して compass.api 経由で TOP N マッチを取得。"""
+        # session_id を State から取り出す。Reflex の AuthState ではログイン
+        # 中なら user_id、未ログインなら router.session.client_token あたりを
+        # 使うのが筋だが MVP では answers をログイン不要保存にする (server
+        # 側で随時計算)。
+        user_id: int | None = None
+        try:
+            # AuthState.user_id があるなら使う
+            from cardanoism.backend.auth_state import AuthState as _Auth
+            uid_attr = getattr(_Auth, "user_id", None)
+            if uid_attr is not None:
+                try:
+                    user_id = int(uid_attr)
+                except (TypeError, ValueError):
+                    user_id = None
+        except Exception:  # noqa: BLE001
+            user_id = None
 
-        各軸の 2 問 (正方向 + 逆問) から軸スコア [-1.0, +1.0] を生成:
-          - yes = +1, no = -1, neutral/未回答 = 0
-          - 逆問はスコアを反転して合算
-          - 平均 (絶対値最大 1) を軸スコアとする
-          - 両方が neutral/未回答 の場合は None (該当軸を比較から外す)
-        """
-        from cardanoism.backend.drep_match import compute_match
-        # 軸ごとに raw スコアと有効回答数を集計
-        axis_acc: dict[str, dict[str, float]] = {}
-        for i, (_, axis_key, is_reverse) in enumerate(_DREP_MATCH_QUESTIONS):
-            ans = self.answers[i] if i < len(self.answers) else ""
-            if ans == "yes":
-                raw = 1.0
-            elif ans == "no":
-                raw = -1.0
-            else:
-                # neutral / 未回答 はその問を集計対象外
-                continue
-            if is_reverse:
-                raw = -raw
-            entry = axis_acc.setdefault(axis_key, {"sum": 0.0, "n": 0.0})
-            entry["sum"] += raw
-            entry["n"] += 1.0
-
-        user_vector: dict[str, float | None] = {}
-        from cardanoism.backend.drep_match import AXIS_KEYS
-        for axis in AXIS_KEYS:
-            entry = axis_acc.get(axis)
-            if not entry or entry["n"] <= 0:
-                user_vector[axis] = None
-                continue
-            score = entry["sum"] / entry["n"]
-            # 数値レンジ [-1.0, +1.0] にクランプ
-            score = max(-1.0, min(1.0, score))
-            user_vector[axis] = score
+        session_id = None
+        try:
+            session_id = self.router.session.client_token  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            session_id = None
 
         try:
-            raw_results = compute_match(user_vector, limit=5)
+            _save_compass_answers(
+                user_id=user_id,
+                session_id=session_id,
+                answers=dict(self.answers),
+                importance=list(self.importance),
+            )
         except Exception as e:  # noqa: BLE001
-            logger.warning("compute_match failed: %s", e)
-            raw_results = []
+            logger.warning("save_drep_compass_answers failed: %s", e)
 
-        # 委任量・シェア・fiat 表示の準備 (_drep_card と同じ計算)
+        try:
+            raw = _list_drep_matches(
+                user_id=user_id,
+                session_id=session_id,
+                limit=_COMPASS_CONFIG.DEFAULT_MATCH_LIMIT,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("list_drep_matches failed: %s", e)
+            raw = []
+
+        # 委任量 / fiat 表示の準備 (DRep カードと同じ計算)
         rate = get_fiat_rate() or {}
         ada_jpy = float(rate.get("ada_jpy") or 0)
         ada_usd = float(rate.get("ada_usd") or 0)
         total_lovelace = sum_total_delegation(only_registered=True)
 
         out: list[dict[str, str]] = []
-        for r in raw_results:
-            amount = int(r.get("amount") or 0)
+        for r in raw:
+            drep_id = str(r.get("drep_id") or "")
+            d = _get_drep(drep_id) or {}
+            amount = int(d.get("amount") or 0)
             ada = amount / 1_000_000
             jpy_d = format_jpy_short(ada * ada_jpy) if ada_jpy else ""
             usd_d = format_usd_short(ada * ada_usd) if ada_usd else ""
@@ -353,26 +362,26 @@ class DrepMatchState(rx.State):
                 share_display = f"{share_pct:.3f}"
             else:
                 share_display = "0"
-            # 外部リンクは "icon|url,icon|url" の CSV にエンコード
-            links_csv = ",".join(f"{icon}|{url}" for icon, url in r.get("links", []))
-            # 派閥バッジは "labelKey|score|strength,labelKey|score|strength" CSV
-            faction_csv = ",".join(
-                f"{lk}|{sc}|{st}" for (lk, sc, st) in r.get("faction_chips", [])
-            )
+
+            matched_csv = ",".join(r.get("matched_axes") or [])
+            mismatched_csv = ",".join(r.get("mismatched_axes") or [])
+            lowconf_csv = ",".join(r.get("low_confidence_axes") or [])
+
             out.append({
-                "drep_id":        r["drep_id"],
-                "given_name":     r["given_name"],
-                "image_url":      r["image_url"],
-                "bio":            r.get("bio") or "",
-                "links_csv":      links_csv,
-                "similarity_pct": f"{r['similarity_pct']:.1f}",
-                "match_dims":     str(r["match_dims"]),
-                "faction_csv":    faction_csv,
-                "vote_count":     str(r["axis_vote_count"]),
-                "amount_ada":     format_ada(amount, integer=True) if amount else "0",
-                "amount_jpy":     jpy_d,
-                "amount_usd":     usd_d,
-                "share_pct":      share_display,
+                "drep_id":              drep_id,
+                "given_name":           str(d.get("given_name") or ""),
+                "image_url":            str(d.get("image_url") or ""),
+                "total_score":          f"{float(r.get('total_score') or 0):.1f}",
+                "participation_pct":    f"{float(r.get('participation_rate') or 0) * 100:.1f}",
+                "reasoning_pct":        f"{float(r.get('reasoning_disclosure_rate') or 0) * 100:.1f}",
+                "analyzed_votes":       str(r.get("analyzed_vote_count") or 0),
+                "matched_axes_csv":     matched_csv,
+                "mismatched_axes_csv":  mismatched_csv,
+                "low_conf_axes_csv":    lowconf_csv,
+                "amount_ada":           format_ada(amount, integer=True) if amount else "0",
+                "amount_jpy":           jpy_d,
+                "amount_usd":           usd_d,
+                "share_pct":            share_display,
             })
         self.results = out
         self.view = "results"
@@ -900,37 +909,61 @@ def _drep_match_tabs() -> rx.Component:
     )
 
 
-def _answer_button(choice: str, label, color_scheme: str) -> rx.Component:
-    """quiz の回答ボタン。現在の回答と一致したら強調表示。"""
-    is_selected = DrepMatchState.current_answer == choice
-    bg = {
-        "amber":  ("var(--amber-3)",  "var(--amber-9)"),
-        "gray":   ("var(--gray-3)",   "var(--gray-7)"),
-        "red":    ("var(--red-3)",    "var(--red-9)"),
-    }[color_scheme]
-    txt = {
-        "amber":  "var(--amber-12)",
-        "gray":   "var(--gray-12)",
-        "red":    "var(--red-12)",
-    }[color_scheme]
+def _likert_button(level: int) -> rx.Component:
+    """5 段階 Likert 回答ボタン (1〜5)。選択中はハイライト。"""
+    is_selected = DrepMatchState.current_answer == level
+    label_key = f"drep_match_answer_{level}"
     return rx.el.button(
-        rx.text(label, size="3", weight="bold", color=txt),
-        on_click=DrepMatchState.answer(choice),
+        rx.vstack(
+            rx.text(str(level), size="5", weight="bold",
+                    color=rx.cond(is_selected, "var(--amber-12)", "var(--gray-12)")),
+            rx.text(AuthState.t[label_key], size="1",
+                    color=rx.cond(is_selected, "var(--amber-11)", "var(--gray-10)"),
+                    style={"whiteSpace": "normal", "textAlign": "center"}),
+            spacing="1", align="center",
+        ),
+        on_click=DrepMatchState.set_answer(level),
         cursor="pointer",
         style={
-            "padding":      "14px 24px",
-            "borderRadius": "999px",
-            "background":   rx.cond(is_selected, bg[0], "transparent"),
-            "border":       rx.cond(is_selected, f"2px solid {bg[1]}", "1.5px solid var(--gray-6)"),
-            "minWidth":     "120px",
+            "padding":      "14px 10px",
+            "borderRadius": "12px",
+            "background":   rx.cond(is_selected, "var(--amber-3)", "transparent"),
+            "border":       rx.cond(is_selected, "2px solid var(--amber-9)",
+                                    "1.5px solid var(--gray-6)"),
+            "minWidth":     "92px",
+            "flex":         "1 1 0",
             "transition":   "background 0.15s, border-color 0.15s",
         },
-        _hover={"background": bg[0], "border_color": bg[1]},
+        _hover={"background": "var(--amber-2)", "border_color": "var(--amber-8)"},
     )
 
 
 def _quiz_view() -> rx.Component:
-    """質問カード。current_question_i18n_key を AuthState.t で動的引き。"""
+    """質問カード (5 段階 Likert + 重要視 toggle)。"""
+    importance_btn_disabled = (
+        DrepMatchState.importance_full
+        & ~DrepMatchState.current_question_is_important
+    )
+    importance_btn = rx.button(
+        rx.cond(
+            DrepMatchState.current_question_is_important,
+            rx.hstack(
+                rx.icon("star", size=14, color="var(--amber-11)"),
+                rx.text(AuthState.t["drep_match_importance_selected"], size="1"),
+                spacing="1", align="center",
+            ),
+            rx.hstack(
+                rx.icon("star", size=14),
+                rx.text(AuthState.t["drep_match_importance_select"], size="1"),
+                spacing="1", align="center",
+            ),
+        ),
+        on_click=DrepMatchState.toggle_importance,
+        variant=rx.cond(DrepMatchState.current_question_is_important, "solid", "soft"),
+        color_scheme="amber",
+        disabled=importance_btn_disabled,
+        cursor=rx.cond(importance_btn_disabled, "not-allowed", "pointer"),
+    )
     return rx.box(
         rx.vstack(
             rx.hstack(
@@ -942,7 +975,6 @@ def _quiz_view() -> rx.Component:
                     size="3", color="var(--gray-11)", weight="medium",
                 ),
                 rx.spacer(),
-                # 進行バー
                 rx.box(
                     rx.box(
                         width=DrepMatchState.progress_pct + "%",
@@ -951,8 +983,7 @@ def _quiz_view() -> rx.Component:
                         border_radius="999px",
                         transition="width 0.3s",
                     ),
-                    width="120px",
-                    height="6px",
+                    width="120px", height="6px",
                     background="var(--gray-4)",
                     border_radius="999px",
                     overflow="hidden",
@@ -964,14 +995,25 @@ def _quiz_view() -> rx.Component:
                 size="5", weight="bold", color="var(--gray-12)",
                 style={"lineHeight": "1.5"},
             ),
-            # 回答ボタン群
+            # 5 段階回答 (1=全く〜5=強く)
             rx.hstack(
-                _answer_button("yes", AuthState.t["drep_match_answer_yes"], "amber"),
-                _answer_button("neutral", AuthState.t["drep_match_answer_neutral"], "gray"),
-                _answer_button("no", AuthState.t["drep_match_answer_no"], "red"),
-                spacing="3", wrap="wrap", justify="center", padding_y="12px",
+                _likert_button(1),
+                _likert_button(2),
+                _likert_button(3),
+                _likert_button(4),
+                _likert_button(5),
+                spacing="2", wrap="wrap", width="100%", padding_y="6px",
             ),
-            # 戻る / 診断する ボタン
+            # 重要視 toggle
+            rx.hstack(
+                importance_btn,
+                rx.text(
+                    AuthState.t["drep_match_importance_hint"],
+                    size="1", color="var(--gray-10)",
+                ),
+                spacing="3", align="center", wrap="wrap",
+            ),
+            # 戻る / 診断する
             rx.hstack(
                 rx.cond(
                     DrepMatchState.is_first_question,
@@ -1003,63 +1045,12 @@ def _quiz_view() -> rx.Component:
         border=f"1px solid {rx.color('gray', 5)}",
         background=rx.color_mode_cond("white", "rgba(255,255,255,0.04)"),
         width="100%",
-        max_width="700px",
-    )
-
-
-def _faction_chip(item) -> rx.Component:
-    """item は 'labelKey|score|strength' 形式の Var[str]。
-
-    labelKey: i18n キー (例: drep_match_faction_axis_treasury_pos)
-    score:    "+0.75" / "-0.50" (ホバー表示用、バッジ本体には出さない)
-    strength: "strong" (|s|>=0.6) / "mid" (|s|>=0.3) / "weak" (それ以下)
-              色濃度に反映され、軸スコアの強さを視覚的に示す。
-    """
-    parts = item.split("|")
-    label_key = parts[0]
-    score = parts[1]
-    strength = parts[2]
-    # 3 段階の色濃度: strong=amber-4 / mid=amber-2 / weak=amber-1
-    bg = rx.match(
-        strength,
-        ("strong", "var(--amber-4)"),
-        ("mid",    "var(--amber-2)"),
-        "var(--amber-1)",
-    )
-    border = rx.match(
-        strength,
-        ("strong", "1px solid var(--amber-9)"),
-        ("mid",    "1px solid var(--amber-7)"),
-        "1px solid var(--amber-5)",
-    )
-    text_color = rx.match(
-        strength,
-        ("strong", "var(--amber-12)"),
-        ("mid",    "var(--amber-11)"),
-        "var(--amber-11)",
-    )
-    return rx.box(
-        rx.text(
-            AuthState.t[label_key],
-            size="2", weight="bold", color=text_color,
-            style={"whiteSpace": "nowrap"},
-        ),
-        padding="6px 14px",
-        border_radius="999px",
-        background=bg,
-        border=border,
-        style={"display": "inline-flex"},
-        # スコア生値はホバー (title 属性) で参照可
-        custom_attrs={"title": score},
+        max_width="760px",
     )
 
 
 def _social_link_icon(item) -> rx.Component:
-    """item は 'icon|url' 形式の Var[str]。CIP-119 references_json から作る外部リンク。
-
-    Reflex の StringVar.split は maxsplit を受け付けないため単純 split を使用。
-    URL に '|' が含まれる前提はない（CSV エンコード時に Python 側で除外可能）。
-    """
+    """item は 'icon|url' 形式の Var[str] (CIP-119 references_json)。"""
     parts = item.split("|")
     icon_name = parts[0]
     url = parts[1]
@@ -1077,27 +1068,57 @@ def _social_link_icon(item) -> rx.Component:
         rx.box(
             icon_comp,
             width="26px", height="26px",
-            display="flex",
-            align_items="center",
-            justify_content="center",
+            display="flex", align_items="center", justify_content="center",
             border_radius="999px",
             background="var(--gray-3)",
             style={"transition": "background 0.15s"},
             _hover={"background": "var(--amber-4)"},
         ),
-        href=url,
-        is_external=True,
-        underline="none",
+        href=url, is_external=True, underline="none",
         custom_attrs={"title": url},
     )
 
 
-def _match_result_card(r) -> rx.Component:
-    """マッチ結果 1 件の DRep カード。
+def _axis_chip(axis_key, scheme: str) -> rx.Component:
+    """軸スコアチップ (一致点 / 相違点 / 低信頼)。
 
-    ネスト link 防止のためカード本体は rx.box とし、name/avatar 行のみ
-    /drep/<id> へのリンクにする。外部 SNS リンクは別行で独立に貼る。
+    scheme:
+      "match"    → green
+      "mismatch" → tomato
+      "lowconf"  → gray
     """
+    label = AuthState.t["drep_match_axis_" + axis_key]
+    if scheme == "match":
+        bg = "var(--green-3)"; border = "1px solid var(--green-7)"; color = "var(--green-12)"
+    elif scheme == "mismatch":
+        bg = "var(--tomato-3)"; border = "1px solid var(--tomato-7)"; color = "var(--tomato-12)"
+    else:
+        bg = "var(--gray-3)"; border = "1px solid var(--gray-7)"; color = "var(--gray-12)"
+    return rx.box(
+        rx.text(label, size="2", weight="medium", color=color,
+                style={"whiteSpace": "nowrap"}),
+        padding="4px 12px",
+        border_radius="999px",
+        background=bg,
+        border=border,
+        style={"display": "inline-flex"},
+    )
+
+
+def _match_axis_chip(axis_key) -> rx.Component:
+    return _axis_chip(axis_key, "match")
+
+
+def _mismatch_axis_chip(axis_key) -> rx.Component:
+    return _axis_chip(axis_key, "mismatch")
+
+
+def _lowconf_axis_chip(axis_key) -> rx.Component:
+    return _axis_chip(axis_key, "lowconf")
+
+
+def _match_result_card(r) -> rx.Component:
+    """マッチ結果 1 件の DRep カード (委任コンパス用)。"""
     avatar = rx.cond(
         r["image_url"] != "",
         rx.image(
@@ -1120,26 +1141,20 @@ def _match_result_card(r) -> rx.Component:
         rx.text(r["given_name"], size="3", weight="bold", color="var(--gray-12)"),
         rx.text(AuthState.t["drep_no_name"], size="3", color="var(--gray-10)"),
     )
-    # avatar + name + match% を 1 つの内部リンクにまとめる
     header_link = rx.link(
         rx.hstack(
             avatar,
             rx.vstack(
                 name_text,
                 rx.hstack(
-                    rx.text(
-                        AuthState.t["drep_match_results_match_label"], " ",
-                        size="1", color="var(--gray-10)",
-                    ),
-                    rx.text(
-                        r["similarity_pct"], "%",
-                        size="5", weight="bold", color="var(--amber-11)",
-                    ),
+                    rx.text(AuthState.t["drep_match_results_match_label"], " ",
+                            size="1", color="var(--gray-10)"),
+                    rx.text(r["total_score"], "%",
+                            size="5", weight="bold", color="var(--amber-11)"),
                     rx.text(
                         " · ",
-                        AuthState.t["drep_match_results_data_count"], " ",
-                        r["vote_count"], " ",
-                        AuthState.t["drep_match_results_data_unit"],
+                        AuthState.t["drep_match_results_analyzed_votes"], " ",
+                        r["analyzed_votes"],
                         size="1", color="var(--gray-10)",
                     ),
                     spacing="1", align="baseline", wrap="wrap",
@@ -1149,12 +1164,10 @@ def _match_result_card(r) -> rx.Component:
             spacing="3", align="center", width="100%",
         ),
         href="/drep/" + r["drep_id"],
-        color="inherit",
-        underline="none",
+        color="inherit", underline="none",
         style={"display": "block", "width": "100%"},
         _hover={"color": "var(--amber-11)"},
     )
-    # 現時点の委任量と全体シェア%（_drep_card と同じ）
     fiat_text = rx.cond(
         AuthState.language == "en",
         rx.cond(
@@ -1188,6 +1201,26 @@ def _match_result_card(r) -> rx.Component:
             ),
             spacing="0", align="start",
         ),
+        rx.vstack(
+            rx.text(AuthState.t["drep_match_results_participation"],
+                    size="1", color="var(--gray-10)"),
+            rx.hstack(
+                rx.text(r["participation_pct"], size="4", weight="bold", color="var(--gray-12)"),
+                rx.text("%", size="1", color="var(--gray-11)"),
+                spacing="0", align="baseline",
+            ),
+            spacing="0", align="start",
+        ),
+        rx.vstack(
+            rx.text(AuthState.t["drep_match_results_reasoning_rate"],
+                    size="1", color="var(--gray-10)"),
+            rx.hstack(
+                rx.text(r["reasoning_pct"], size="4", weight="bold", color="var(--gray-12)"),
+                rx.text("%", size="1", color="var(--gray-11)"),
+                spacing="0", align="baseline",
+            ),
+            spacing="0", align="start",
+        ),
         spacing="6", align="start", wrap="wrap",
     )
     return rx.box(
@@ -1198,52 +1231,60 @@ def _match_result_card(r) -> rx.Component:
                 spacing="3", align="center", width="100%", wrap="wrap",
             ),
             delegation_row,
-            # 自己紹介テキスト (CIP-119 objectives / motivations から)
+            # 一致点
             rx.cond(
-                r["bio"] != "",
-                rx.text(
-                    r["bio"],
-                    size="1", color="var(--gray-11)", line_height="1.6",
-                    style={
-                        "display": "-webkit-box",
-                        "WebkitLineClamp": "3",
-                        "WebkitBoxOrient": "vertical",
-                        "overflow": "hidden",
-                        "whiteSpace": "pre-wrap",
-                    },
-                ),
-                rx.fragment(),
-            ),
-            # 外部 SNS / web リンク (CIP-119 references_json)
-            rx.cond(
-                r["links_csv"] != "",
+                r["matched_axes_csv"] != "",
                 rx.hstack(
-                    rx.foreach(r["links_csv"].split(","), _social_link_icon),
+                    rx.text(
+                        AuthState.t["drep_match_results_matched_label"],
+                        size="2", color="var(--green-11)", weight="medium",
+                        style={"flexShrink": "0"},
+                    ),
+                    rx.foreach(r["matched_axes_csv"].split(","), _match_axis_chip),
                     spacing="2", align="center", wrap="wrap",
                 ),
                 rx.fragment(),
             ),
-            # 投票傾向バッジ (5 軸 × 色濃度で強度を表現)
+            # 相違点
             rx.cond(
-                r["faction_csv"] != "",
+                r["mismatched_axes_csv"] != "",
+                rx.hstack(
+                    rx.text(
+                        AuthState.t["drep_match_results_mismatched_label"],
+                        size="2", color="var(--tomato-11)", weight="medium",
+                        style={"flexShrink": "0"},
+                    ),
+                    rx.foreach(r["mismatched_axes_csv"].split(","), _mismatch_axis_chip),
+                    spacing="2", align="center", wrap="wrap",
+                ),
+                rx.fragment(),
+            ),
+            # 低信頼軸
+            rx.cond(
+                r["low_conf_axes_csv"] != "",
                 rx.vstack(
                     rx.hstack(
                         rx.text(
-                            AuthState.t["drep_match_results_factions_label"],
+                            AuthState.t["drep_match_results_low_conf_label"],
                             size="2", color="var(--gray-11)", weight="medium",
                             style={"flexShrink": "0"},
                         ),
-                        rx.foreach(r["faction_csv"].split(","), _faction_chip),
+                        rx.foreach(r["low_conf_axes_csv"].split(","), _lowconf_axis_chip),
                         spacing="2", align="center", wrap="wrap",
                     ),
                     rx.text(
-                        AuthState.t["drep_match_results_factions_help"],
-                        size="2", color="var(--gray-10)",
-                        style={"lineHeight": "1.6"},
+                        AuthState.t["drep_match_results_low_conf_note"],
+                        size="1", color="var(--gray-10)",
                     ),
                     spacing="1", align="start", width="100%",
                 ),
                 rx.fragment(),
+            ),
+            # 独自分類の注記
+            rx.text(
+                AuthState.t["drep_match_results_classification_note"],
+                size="1", color="var(--gray-10)",
+                style={"fontStyle": "italic"},
             ),
             spacing="3", align_items="stretch", width="100%",
         ),
@@ -1292,15 +1333,11 @@ def _results_view() -> rx.Component:
 
 
 def _intro_view() -> rx.Component:
-    """マッチング診断タブを押した直後に表示するスタート画面。
-
-    intro テキスト + AI 免責 callout + 「診断スタート」ボタン。
-    _quiz_view と同じカード型レイアウトで揃える。
-    """
+    """マッチング診断タブを押した直後に表示するスタート画面。"""
     card = rx.box(
         rx.vstack(
             rx.hstack(
-                rx.icon("clipboard-list", size=28, color="var(--amber-11)"),
+                rx.icon("compass", size=28, color="var(--amber-11)"),
                 rx.heading(
                     AuthState.t["drep_match_heading"],
                     size="5", weight="bold", color="var(--gray-12)",
@@ -1311,6 +1348,11 @@ def _intro_view() -> rx.Component:
                 AuthState.t["drep_match_intro"],
                 size="3", color="var(--gray-11)",
                 style={"lineHeight": "1.7"},
+            ),
+            rx.text(
+                AuthState.t["drep_match_intro_note"],
+                size="2", color="var(--gray-10)",
+                style={"lineHeight": "1.6"},
             ),
             rx.callout(
                 AuthState.t["drep_match_ai_disclaimer"],
@@ -1335,7 +1377,7 @@ def _intro_view() -> rx.Component:
         border=f"1px solid {rx.color('gray', 5)}",
         background=rx.color_mode_cond("white", "rgba(255,255,255,0.04)"),
         width="100%",
-        max_width="700px",
+        max_width="760px",
     )
     return rx.center(card, width="100%", padding_y="12px")
 
@@ -1357,7 +1399,6 @@ def _match_view() -> rx.Component:
                 DrepMatchState.view,
                 ("intro",   _intro_view()),
                 ("results", _results_view()),
-                # quiz / その他は質問カード
                 rx.center(_quiz_view(), width="100%", padding_y="12px"),
             ),
             spacing="4", align_items="stretch", width="100%",

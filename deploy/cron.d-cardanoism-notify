@@ -77,8 +77,8 @@ LOG=/home/btism/cardanoism_log
 0    5 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event pool_sync               >> $LOG/notify-pool_sync.log 2>&1
 30   5 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event pool_block_history_sync >> $LOG/notify-pool_block_history_sync.log 2>&1
 0    6 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event vote_sync               >> $LOG/notify-vote_sync.log 2>&1
-# DRep マッチング診断: トピック別 Yes 率プロフィール（旧 9 トピックモデル、後方互換用）
-30   6 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event drep_topic_profile_sync >> $LOG/notify-drep_topic_profile_sync.log 2>&1
-# DRep マッチング診断: 5 軸派閥モデル（新マッチング診断はこちらを参照）
-45   6 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event drep_axis_profile_sync  >> $LOG/notify-drep_axis_profile_sync.log 2>&1
+# DRep委任コンパス: GA を rule-based 分類して gov_action_tags に書き込む
+30   6 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event compass_classify_all >> $LOG/notify-compass_classify_all.log 2>&1
+# DRep委任コンパス: 全 registered DRep の 11 axis プロファイル再計算
+45   6 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event compass_profile_all  >> $LOG/notify-compass_profile_all.log 2>&1
 0    7 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event constitution_sync       >> $LOG/notify-constitution_sync.log 2>&1

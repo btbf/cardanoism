@@ -1838,252 +1838,49 @@ def check_pool_block_history(epochs: int = 5):
 
 
 # ============================================================
-# DRep マッチング診断: トピック別 Yes 率プロフィール
+# DRep マッチング診断 (委任コンパス MVP)
 # ============================================================
+# 旧 5 軸派閥モデル (axis_*) と旧 9 トピックモデル (topic_*) は削除済み。
+# 新しい 11 axis 価値観モデルは cardanoism.backend.drep_compass パッケージ
+# に集約され、本ワーカーからは下記 2 つの CLI イベントで起動する:
+#
+#   --event compass_classify_all : 全 GA を rule-based 分類して
+#                                  gov_action_tags に書き込む
+#   --event compass_profile_all  : 全 registered DRep の axis profile を
+#                                  計算して drep_profiles に書き込む
 
-# AI 分類で使うトピックキー。プロンプト (ai_client.py _SYSTEM_INSTRUCTIONS) と同期。
-# "other" は対象外（マッチング次元に含めない）。
-_DREP_TOPIC_KEYS: tuple[str, ...] = (
-    # 軸 1: 予算配分の優先度
-    "protocol", "ecosystem", "adoption", "marketing", "dev_education", "research",
-    # 軸 2: ガバナンス哲学
-    "fiscal_discipline", "protocol_conservatism", "org_funding",
-)
+def check_drep_compass_classify_all() -> int:
+    """全 governance_actions を rule-based 分類して gov_action_tags へ反映する。
 
-
-def check_drep_topic_profile_sync():
-    """DRep × トピック の Yes 率を集計し dreps.topic_profile_json に保存する。
-
-    governance_ai_analysis.topic_tags_json と proposal_votes (voter_role='DRep')
-    を JOIN し、Yes / No 票のみ採用（Abstain は分母から除外）。
-    各 DRep 行に
-      - topic_profile_json: {"core_dev": 0.85, ...}（投票が 1 件以上ある topic のみ）
-      - topic_vote_count: 集計に使った Yes+No 票の総数（< 5 はデータ不足扱い）
-    を書き込む。
+    既存タグ (source='rule') は preserve しつつ INSERT IGNORE で新規分だけ追加。
+    完全再生成したい場合は reclassify_governance_action() を 1 件ずつ呼ぶ。
     """
-    logger.info("DRep トピックプロフィール同期 開始")
-
-    rows: list[dict] = []
+    from cardanoism.backend.drep_compass.api import classify_governance_action
+    logger.info("=== Compass GA 分類: 全件 開始 ===")
     with get_db() as (cursor, _):
         cursor.execute(
-            """
-            SELECT pv.voter_id, LOWER(pv.vote) AS vote,
-                   ai.topic_tags_json
-              FROM proposal_votes pv
-              JOIN governance_ai_analysis ai
-                ON ai.proposal_id = pv.proposal_id
-             WHERE pv.voter_role = 'DRep'
-               AND ai.status = 'analyzed'
-               AND ai.topic_tags_json IS NOT NULL
-               AND ai.topic_tags_json <> ''
-               AND LOWER(pv.vote) IN ('yes', 'no')
-            """
+            "SELECT proposal_id FROM governance_actions "
+            "WHERE proposal_id IS NOT NULL AND proposal_id <> ''"
         )
-        rows = [dict(r) for r in cursor.fetchall()]
-
-    logger.info("対象票数: %d 件 (Yes + No)", len(rows))
-
-    # 集計: {drep_id: {topic: {"yes": n, "total": n}}}
-    agg: dict[str, dict[str, dict[str, int]]] = {}
-    sample: dict[str, int] = {}  # drep_id -> total Yes+No votes (sample size)
-    valid_topics = set(_DREP_TOPIC_KEYS)
-    for r in rows:
-        drep_id = r["voter_id"]
-        is_yes = r["vote"] == "yes"
+        ids = [r["proposal_id"] for r in cursor.fetchall()]
+    logger.info("対象 GA: %d 件", len(ids))
+    total_inserted = 0
+    for pid in ids:
         try:
-            tags = json.loads(r["topic_tags_json"] or "[]")
-        except (TypeError, ValueError, json.JSONDecodeError):
-            continue
-        if not isinstance(tags, list):
-            continue
-        per = agg.setdefault(drep_id, {})
-        sample[drep_id] = sample.get(drep_id, 0) + 1
-        for t in tags:
-            t = str(t).strip().lower()
-            if t not in valid_topics:
-                continue  # "other" やタイポは無視
-            entry = per.setdefault(t, {"yes": 0, "total": 0})
-            entry["total"] += 1
-            if is_yes:
-                entry["yes"] += 1
-
-    # 全 registered DRep を取得（投票実績なしの DRep も profile=NULL で更新する）
-    with get_db() as (cursor, _):
-        cursor.execute("SELECT drep_id FROM dreps WHERE registered = 1")
-        all_dreps = [r["drep_id"] for r in cursor.fetchall()]
-    logger.info("対象 DRep: %d 件 (registered=1)", len(all_dreps))
-
-    # プロファイル JSON 作成 + UPDATE
-    updates: list[tuple[str | None, int, str]] = []
-    for drep_id in all_dreps:
-        per = agg.get(drep_id)
-        size = sample.get(drep_id, 0)
-        if not per or size <= 0:
-            updates.append((None, 0, drep_id))
-            continue
-        profile = {
-            topic: round(d["yes"] / d["total"], 4)
-            for topic, d in per.items() if d["total"] > 0
-        }
-        if not profile:
-            updates.append((None, 0, drep_id))
-            continue
-        updates.append((json.dumps(profile, ensure_ascii=False), int(size), drep_id))
-
-    written = 0
-    with get_db() as (cursor, conn):
-        for profile_json, vote_count, drep_id in updates:
-            cursor.execute(
-                "UPDATE dreps SET topic_profile_json = ?, topic_vote_count = ? "
-                "WHERE drep_id = ?",
-                (profile_json, vote_count, drep_id),
-            )
-            if cursor.rowcount:
-                written += 1
-        conn.commit()
-    logger.info(
-        "DRep トピックプロフィール同期 完了: %d 件 update (プロファイルあり %d 件)",
-        written, sum(1 for u in updates if u[0] is not None),
-    )
+            total_inserted += classify_governance_action(str(pid))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("classify failed for %s: %s", pid, e)
+    logger.info("=== Compass GA 分類: 完了 (%d tags inserted) ===", total_inserted)
+    return total_inserted
 
 
-# DRep 軸プロファイル: drep_match (派閥モデル) の集計対象軸とその両端派閥。
-# 値は (positive 派閥, negative 派閥) で、DRep スコアの +1.0 / -1.0 方向に対応。
-_DREP_AXIS_DIRECTIONS: dict[str, tuple[str, str]] = {
-    "axis_treasury":  ("discipline", "investment"),
-    "axis_protocol":  ("conservative", "progressive"),
-    "axis_org":       ("centralized", "decentralized"),
-    "axis_ecosystem": ("technical", "expansion"),
-    "axis_marketing": ("promotion", "restraint"),
-}
-
-
-def check_drep_axis_profile_sync():
-    """DRep × 軸 の派閥スコアを集計し dreps.axis_profile_json に保存する。
-
-    governance_ai_analysis.axis_tags_json (017_drep_axis_match.sql で AI が
-    出力する {axis_name: direction}) と proposal_votes (voter_role='DRep') を
-    JOIN し、Yes / No 票のみ採用 (Abstain は除外)。
-
-    各 DRep × 軸 について、その軸のタグが付いた GA に投じた票から派閥スコアを算出:
-
-      score = ( (positive 派閥 GA の Yes 数 - positive 派閥 GA の No 数)
-              - (negative 派閥 GA の Yes 数 - negative 派閥 GA の No 数) )
-              / 関連票数
-
-    +1.0 = 完全に positive 派閥 (例: 規律 / 保守 / 既存信頼 / 技術深化 / 推進)
-    -1.0 = 完全に negative 派閥 (例: 投資 / 革新 / 分散 / 拡大 / 慎重)
-
-    各 DRep 行に
-      - axis_profile_json: {"axis_treasury": 0.7, "axis_protocol": -0.3, ...}
-        スコアを持たない軸は欠落 (該当 GA への投票が無い)
-      - axis_vote_count: 集計に使った Yes+No 票総数 (axis タグ付き GA への投票数)
-                         < 5 はマッチング対象外
-    を書き込む。
-    """
-    logger.info("DRep 軸プロファイル同期 開始")
-
-    rows: list[dict] = []
-    with get_db() as (cursor, _):
-        cursor.execute(
-            """
-            SELECT pv.voter_id, LOWER(pv.vote) AS vote,
-                   ai.axis_tags_json
-              FROM proposal_votes pv
-              JOIN governance_ai_analysis ai
-                ON ai.proposal_id = pv.proposal_id
-             WHERE pv.voter_role = 'DRep'
-               AND ai.status = 'analyzed'
-               AND ai.axis_tags_json IS NOT NULL
-               AND ai.axis_tags_json <> ''
-               AND LOWER(pv.vote) IN ('yes', 'no')
-            """
-        )
-        rows = [dict(r) for r in cursor.fetchall()]
-
-    logger.info("対象票数: %d 件 (Yes + No、axis タグ付き GA)", len(rows))
-
-    # 集計: {drep_id: {axis: {"pos_yes":0,"pos_no":0,"neg_yes":0,"neg_no":0}}}
-    agg: dict[str, dict[str, dict[str, int]]] = {}
-    # DRep ごとのユニーク票数 (1 票 = 1 GA への投票、同じ票で複数軸タグが付いていても 1 とカウント)
-    sample: dict[str, int] = {}
-    for r in rows:
-        drep_id = r["voter_id"]
-        is_yes = r["vote"] == "yes"
-        try:
-            tags = json.loads(r["axis_tags_json"] or "{}")
-        except (TypeError, ValueError, json.JSONDecodeError):
-            continue
-        if not isinstance(tags, dict):
-            continue
-        # この票が軸関連だったかチェック (どれか 1 軸でも有効ラベルが付いていれば +1)
-        per = agg.setdefault(drep_id, {})
-        matched_any = False
-        for axis_key, (pos, neg) in _DREP_AXIS_DIRECTIONS.items():
-            direction = tags.get(axis_key)
-            if not isinstance(direction, str):
-                continue
-            direction = direction.strip()
-            if direction not in (pos, neg):
-                continue
-            matched_any = True
-            entry = per.setdefault(
-                axis_key, {"pos_yes": 0, "pos_no": 0, "neg_yes": 0, "neg_no": 0},
-            )
-            if direction == pos:
-                entry["pos_yes" if is_yes else "pos_no"] += 1
-            else:
-                entry["neg_yes" if is_yes else "neg_no"] += 1
-        if matched_any:
-            sample[drep_id] = sample.get(drep_id, 0) + 1
-
-    # 全 registered DRep を取得 (投票実績なしの DRep も profile=NULL で更新)
-    with get_db() as (cursor, _):
-        cursor.execute("SELECT drep_id FROM dreps WHERE registered = 1")
-        all_dreps = [r["drep_id"] for r in cursor.fetchall()]
-    logger.info("対象 DRep: %d 件 (registered=1)", len(all_dreps))
-
-    updates: list[tuple[str | None, int, str]] = []
-    for drep_id in all_dreps:
-        per = agg.get(drep_id)
-        size = sample.get(drep_id, 0)
-        if not per or size <= 0:
-            updates.append((None, 0, drep_id))
-            continue
-        profile: dict[str, float] = {}
-        for axis_key, counts in per.items():
-            total = (
-                counts["pos_yes"] + counts["pos_no"]
-                + counts["neg_yes"] + counts["neg_no"]
-            )
-            if total <= 0:
-                continue
-            pos_net = counts["pos_yes"] - counts["pos_no"]
-            neg_net = counts["neg_yes"] - counts["neg_no"]
-            score = (pos_net - neg_net) / total
-            # 数値レンジ [-1.0, +1.0] にクランプ (浮動小数誤差対策)
-            score = max(-1.0, min(1.0, score))
-            profile[axis_key] = round(score, 4)
-        if not profile:
-            updates.append((None, 0, drep_id))
-            continue
-        updates.append((json.dumps(profile, ensure_ascii=False), int(size), drep_id))
-
-    written = 0
-    with get_db() as (cursor, conn):
-        for profile_json, vote_count, drep_id in updates:
-            cursor.execute(
-                "UPDATE dreps SET axis_profile_json = ?, axis_vote_count = ? "
-                "WHERE drep_id = ?",
-                (profile_json, vote_count, drep_id),
-            )
-            if cursor.rowcount:
-                written += 1
-        conn.commit()
-    logger.info(
-        "DRep 軸プロファイル同期 完了: %d 件 update (プロファイルあり %d 件)",
-        written, sum(1 for u in updates if u[0] is not None),
-    )
+def check_drep_compass_profile_all() -> int:
+    """全 registered DRep の compass プロファイルを再計算する。"""
+    from cardanoism.backend.drep_compass.api import recalculate_all_drep_profiles
+    logger.info("=== Compass DRep プロファイル: 全件 開始 ===")
+    n = recalculate_all_drep_profiles()
+    logger.info("=== Compass DRep プロファイル: 完了 (%d DReps) ===", n)
+    return n
 
 
 def _split_pool_updates(updates: list[dict], current_epoch: int) -> tuple[dict | None, dict | None]:
@@ -3027,7 +2824,7 @@ def main():
     parser.add_argument(
         "--event",
         default="all",
-        choices=["all", "pool", "drep", "drep_unvoted", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync", "spo_role_initial_sync", "drep_topic_profile_sync", "drep_axis_profile_sync", "notify_test"],
+        choices=["all", "pool", "drep", "drep_unvoted", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync", "spo_role_initial_sync", "compass_classify_all", "compass_profile_all", "notify_test"],
         help="実行するイベントグループ",
     )
     parser.add_argument(
@@ -3137,11 +2934,11 @@ def main():
         check_spo_role_initial_sync()
 
     # DRep マッチング診断用トピックプロフィール: 明示指定 or cron 経由（"all" には含めない）
-    if args.event == "drep_topic_profile_sync":
-        check_drep_topic_profile_sync()
-
-    if args.event == "drep_axis_profile_sync":
-        check_drep_axis_profile_sync()
+    # DRep委任コンパス (11 axis MVP): rule-based GA 分類 / DRep プロファイル再計算
+    if args.event == "compass_classify_all":
+        check_drep_compass_classify_all()
+    if args.event == "compass_profile_all":
+        check_drep_compass_profile_all()
 
     # 管理者用 通知疎通テスト: --event notify_test で明示指定（"all" には含めない）
     if args.event == "notify_test":
