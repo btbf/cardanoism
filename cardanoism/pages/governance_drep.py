@@ -1495,10 +1495,10 @@ def _intro_feature_card(icon: str, title_key: str, desc_key: str) -> rx.Componen
 
 def _intro_view() -> rx.Component:
     """マッチング診断タブを押した直後に表示するスタート画面 (ヒーロー型)。"""
-    # ヒーロー (大型 compass アイコン + 見出し + リード文)
+    # ヒーロー (大型 握手アイコン + 見出し + リード文)
     hero = rx.vstack(
         rx.center(
-            rx.icon("compass", size=56, color="var(--amber-11)"),
+            rx.icon("handshake", size=56, color="var(--amber-11)"),
             width="120px", height="120px",
             border_radius="999px",
             background=rx.color_mode_cond("var(--amber-2)", "var(--amber-3)"),
