@@ -244,8 +244,21 @@ class DrepMatchState(rx.State):
         return f"{pct:.1f}"
 
     def set_view(self, view: str):
-        if view in ("list", "quiz", "results"):
+        if view in ("list", "intro", "quiz", "results"):
             self.view = view
+
+    def enter_match_tab(self):
+        """「マッチング診断」タブを押した時の遷移。
+
+        既存の結果がある場合はそれを温存して "results" に戻る。
+        無ければ intro (注意書き + スタートボタン) を出す。
+        ここでは answers / results はリセットしない (タブ切り替えで結果が
+        消えないようにするため)。
+        """
+        if self.results:
+            self.view = "results"
+        else:
+            self.view = "intro"
 
     def start_quiz(self):
         """クイズを初期化して quiz view に切り替える。"""
@@ -841,10 +854,16 @@ def _pagination() -> rx.Component:
 # ─── マッチング診断 UI ────────────────────────────────────────────────────────
 
 
-def _tab_button(view_key: str, label) -> rx.Component:
+def _tab_button(view_key: str, label, on_click) -> rx.Component:
     """list / match タブ切り替えボタン。"""
-    is_active = DrepMatchState.view == view_key if view_key == "list" else (
-        (DrepMatchState.view == "quiz") | (DrepMatchState.view == "results")
+    # "list" タブ: view == "list" の時 active
+    # "match" タブ: view が "intro" / "quiz" / "results" の時 active
+    is_active = rx.cond(
+        view_key == "list",
+        DrepMatchState.view == "list",
+        (DrepMatchState.view == "intro")
+        | (DrepMatchState.view == "quiz")
+        | (DrepMatchState.view == "results"),
     )
     return rx.el.button(
         rx.text(
@@ -853,7 +872,7 @@ def _tab_button(view_key: str, label) -> rx.Component:
             weight="bold",
             color=rx.cond(is_active, "var(--amber-12)", "var(--gray-11)"),
         ),
-        on_click=DrepMatchState.set_view(view_key),
+        on_click=on_click,
         cursor="pointer",
         style={
             "padding":      "7px 18px",
@@ -873,8 +892,10 @@ def _tab_button(view_key: str, label) -> rx.Component:
 
 def _drep_match_tabs() -> rx.Component:
     return rx.hstack(
-        _tab_button("list", AuthState.t["drep_tab_list"]),
-        _tab_button("quiz", AuthState.t["drep_tab_match"]),
+        _tab_button("list",  AuthState.t["drep_tab_list"],  DrepMatchState.set_view("list")),
+        # マッチング診断タブ: クリックすると intro (注意書き + スタートボタン) を表示
+        # 既に診断結果があればそれを温存して results に戻る
+        _tab_button("match", AuthState.t["drep_tab_match"], DrepMatchState.enter_match_tab),
         spacing="2", wrap="wrap", padding_y="4px",
     )
 
@@ -1270,8 +1291,40 @@ def _results_view() -> rx.Component:
     )
 
 
+def _intro_view() -> rx.Component:
+    """マッチング診断タブを押した直後に表示するスタート画面。
+
+    intro テキスト + AI 免責 callout + 「診断スタート」ボタン。
+    ユーザーが意図せずクイズに突入しないよう、ボタンで明示的に開始する。
+    """
+    return rx.vstack(
+        rx.text(
+            AuthState.t["drep_match_intro"],
+            size="3", color="var(--gray-11)",
+            style={"lineHeight": "1.7"},
+        ),
+        rx.callout(
+            AuthState.t["drep_match_ai_disclaimer"],
+            icon="triangle-alert",
+            color_scheme="amber",
+            size="2",
+        ),
+        rx.center(
+            rx.button(
+                rx.icon("play", size=18),
+                rx.text(AuthState.t["drep_match_start_button"], size="3", weight="bold"),
+                on_click=DrepMatchState.start_quiz,
+                size="3", color_scheme="amber", variant="solid", cursor="pointer",
+                style={"padding": "12px 32px"},
+            ),
+            width="100%", padding_y="16px",
+        ),
+        spacing="4", align_items="stretch", width="100%",
+    )
+
+
 def _match_view() -> rx.Component:
-    """quiz と results を view に応じて切り替える親コンテナ。"""
+    """intro / quiz / results を view に応じて切り替える親コンテナ。"""
     return rx.box(
         rx.vstack(
             rx.hstack(
@@ -1283,19 +1336,9 @@ def _match_view() -> rx.Component:
                 ),
                 spacing="2", align="center", wrap="wrap",
             ),
-            rx.text(
-                AuthState.t["drep_match_intro"],
-                size="3", color="var(--gray-11)",
-                style={"lineHeight": "1.7"},
-            ),
-            rx.callout(
-                AuthState.t["drep_match_ai_disclaimer"],
-                icon="triangle-alert",
-                color_scheme="amber",
-                size="2",
-            ),
             rx.match(
                 DrepMatchState.view,
+                ("intro",   _intro_view()),
                 ("results", _results_view()),
                 # quiz / その他は質問カード
                 rx.center(_quiz_view(), width="100%", padding_y="12px"),
@@ -1327,6 +1370,7 @@ def governance_drep_page() -> rx.Component:
                 _drep_match_tabs(),
                 rx.match(
                     DrepMatchState.view,
+                    ("intro",   _match_view()),
                     ("quiz",    _match_view()),
                     ("results", _match_view()),
                     # default: "list" — 既存の DRep 一覧
