@@ -936,28 +936,28 @@ def _quiz_explanation_panel(
     icon: str, label_key: str, body_key,
     accent_color: str, bg: str, border: str,
 ) -> rx.Component:
-    """論点解説の 1 パネル (背景 / 支持 / 慎重 のいずれか)。色付きのカード。"""
+    """論点解説の 1 パネル (背景 / 支持 / 慎重 のいずれか)。色付きカード。"""
     return rx.box(
         rx.vstack(
             rx.hstack(
-                rx.icon(icon, size=16, color=accent_color),
+                rx.icon(icon, size=20, color=accent_color),
                 rx.text(
                     AuthState.t[label_key],
-                    size="2", weight="bold", color=accent_color,
+                    size="4", weight="bold", color=accent_color,
                 ),
                 spacing="2", align="center",
             ),
             rx.text(
                 AuthState.t[body_key],
-                size="2", color="var(--gray-12)",
+                size="3", color="var(--gray-12)",
                 style={
                     "whiteSpace": "pre-wrap",
-                    "lineHeight": "1.8",
+                    "lineHeight": "1.9",
                 },
             ),
             spacing="2", align="start", width="100%", height="100%",
         ),
-        padding="16px 18px",
+        padding="20px 22px",
         border_radius="10px",
         border=border,
         background=bg,
@@ -970,19 +970,9 @@ def _quiz_explanation_panel(
     )
 
 
-def _quiz_explanation_section() -> rx.Component:
-    """論点解説エリア。
-
-    レイアウト:
-      ┌────────────────────────────────────────────────┐
-      │ 📖 論点の背景 (全幅)                          │
-      ├────────────────────────────────────────────────┤
-      │ ✅ 支持する根拠     │  ⚠️ 慎重な根拠          │
-      │ (左半分)            │  (右半分)               │
-      └────────────────────────────────────────────────┘
-    PC では 2 列、スマホでは wrap で縦並びにフォールバック。
-    """
-    bg_section = _quiz_explanation_panel(
+def _quiz_context_panel() -> rx.Component:
+    """論点の背景 (全幅・設問直下に置く)。"""
+    return _quiz_explanation_panel(
         "book-open",
         "drep_match_q_context_label",
         DrepMatchState.current_context_i18n_key,
@@ -990,7 +980,14 @@ def _quiz_explanation_section() -> rx.Component:
         bg="var(--gray-2)",
         border=f"1px solid {rx.color('gray', 4)}",
     )
-    pros_section = _quiz_explanation_panel(
+
+
+def _quiz_pros_cons_grid() -> rx.Component:
+    """支持する根拠 / 慎重な根拠 を 2 列横並び (回答候補の下に置く)。
+
+    PC では 2 列、スマホでは wrap で縦並び (min_width=320px)。
+    """
+    pros = _quiz_explanation_panel(
         "circle-check",
         "drep_match_q_pros_label",
         DrepMatchState.current_pros_i18n_key,
@@ -998,7 +995,7 @@ def _quiz_explanation_section() -> rx.Component:
         bg="var(--green-2)",
         border=f"1px solid {rx.color('green', 5)}",
     )
-    cons_section = _quiz_explanation_panel(
+    cons = _quiz_explanation_panel(
         "triangle-alert",
         "drep_match_q_cons_label",
         DrepMatchState.current_cons_i18n_key,
@@ -1006,14 +1003,10 @@ def _quiz_explanation_section() -> rx.Component:
         bg="var(--amber-2)",
         border=f"1px solid {rx.color('amber', 5)}",
     )
-    return rx.vstack(
-        bg_section,
-        rx.hstack(
-            rx.box(pros_section, flex="1 1 0", min_width="280px"),
-            rx.box(cons_section, flex="1 1 0", min_width="280px"),
-            spacing="3", align="stretch", width="100%", wrap="wrap",
-        ),
-        spacing="3", align_items="stretch", width="100%",
+    return rx.hstack(
+        rx.box(pros, flex="1 1 0", min_width="320px"),
+        rx.box(cons, flex="1 1 0", min_width="320px"),
+        spacing="3", align="stretch", width="100%", wrap="wrap",
     )
 
 
@@ -1023,22 +1016,22 @@ def _likert_button(level: int) -> rx.Component:
     label_key = f"drep_match_answer_{level}"
     return rx.el.button(
         rx.vstack(
-            rx.text(str(level), size="5", weight="bold",
+            rx.text(str(level), size="6", weight="bold",
                     color=rx.cond(is_selected, "var(--amber-12)", "var(--gray-12)")),
-            rx.text(AuthState.t[label_key], size="1",
+            rx.text(AuthState.t[label_key], size="2",
                     color=rx.cond(is_selected, "var(--amber-11)", "var(--gray-10)"),
                     style={"whiteSpace": "normal", "textAlign": "center"}),
-            spacing="1", align="center",
+            spacing="2", align="center",
         ),
         on_click=DrepMatchState.set_answer(level),
         cursor="pointer",
         style={
-            "padding":      "14px 10px",
+            "padding":      "18px 12px",
             "borderRadius": "12px",
             "background":   rx.cond(is_selected, "var(--amber-3)", "transparent"),
             "border":       rx.cond(is_selected, "2px solid var(--amber-9)",
                                     "1.5px solid var(--gray-6)"),
-            "minWidth":     "92px",
+            "minWidth":     "110px",
             "flex":         "1 1 0",
             "transition":   "background 0.15s, border-color 0.15s",
         },
@@ -1056,19 +1049,20 @@ def _quiz_view() -> rx.Component:
         rx.cond(
             DrepMatchState.current_question_is_important,
             rx.hstack(
-                rx.icon("star", size=14, color="var(--amber-11)"),
-                rx.text(AuthState.t["drep_match_importance_selected"], size="1"),
-                spacing="1", align="center",
+                rx.icon("star", size=16, color="var(--amber-11)"),
+                rx.text(AuthState.t["drep_match_importance_selected"], size="2"),
+                spacing="2", align="center",
             ),
             rx.hstack(
-                rx.icon("star", size=14),
-                rx.text(AuthState.t["drep_match_importance_select"], size="1"),
-                spacing="1", align="center",
+                rx.icon("star", size=16),
+                rx.text(AuthState.t["drep_match_importance_select"], size="2"),
+                spacing="2", align="center",
             ),
         ),
         on_click=DrepMatchState.toggle_importance,
         variant=rx.cond(DrepMatchState.current_question_is_important, "solid", "soft"),
         color_scheme="amber",
+        size="2",
         disabled=importance_btn_disabled,
         cursor=rx.cond(importance_btn_disabled, "not-allowed", "pointer"),
     )
@@ -1100,10 +1094,12 @@ def _quiz_view() -> rx.Component:
             ),
             rx.heading(
                 AuthState.t[DrepMatchState.current_question_i18n_key],
-                size="5", weight="bold", color="var(--gray-12)",
+                size="6", weight="bold", color="var(--gray-12)",
                 style={"lineHeight": "1.5"},
             ),
-            # 5 段階回答 (1=全く〜5=強く) — 質問直後に出す
+            # 論点の背景 — 設問直後 (全幅)
+            _quiz_context_panel(),
+            # 5 段階回答 (1=全く〜5=強く)
             rx.hstack(
                 _likert_button(1),
                 _likert_button(2),
@@ -1117,12 +1113,12 @@ def _quiz_view() -> rx.Component:
                 importance_btn,
                 rx.text(
                     AuthState.t["drep_match_importance_hint"],
-                    size="1", color="var(--gray-10)",
+                    size="2", color="var(--gray-10)",
                 ),
                 spacing="3", align="center", wrap="wrap",
             ),
-            # 論点解説 (背景 + 支持する根拠 / 慎重な根拠 2 列) — 回答の下に常時表示
-            _quiz_explanation_section(),
+            # 支持する根拠 / 慎重な根拠 (2 列横並び) — 回答の下に常時表示
+            _quiz_pros_cons_grid(),
             # 戻る / 診断する
             rx.hstack(
                 rx.cond(
