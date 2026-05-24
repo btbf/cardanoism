@@ -1125,30 +1125,54 @@ def _quiz_view() -> rx.Component:
             ),
             # 支持する根拠 / 慎重な根拠 (2 列横並び) — 回答の下に常時表示
             _quiz_pros_cons_grid(),
-            # 戻る / 診断する
+            # 戻るボタン (左寄せ、控えめ)
             rx.hstack(
                 rx.cond(
                     DrepMatchState.is_first_question,
                     rx.fragment(),
                     rx.button(
-                        rx.icon("chevron-left", size=14),
+                        rx.icon("chevron-left", size=16),
                         rx.text(AuthState.t["drep_match_back_button"], size="2"),
                         on_click=DrepMatchState.prev_question,
                         variant="soft", color_scheme="gray", cursor="pointer",
                     ),
                 ),
                 rx.spacer(),
-                rx.cond(
-                    DrepMatchState.can_submit,
-                    rx.button(
-                        rx.text(AuthState.t["drep_match_submit_button"], size="3", weight="bold"),
-                        rx.icon("arrow-right", size=14),
-                        on_click=DrepMatchState.submit_quiz,
-                        size="3", color_scheme="amber", variant="solid", cursor="pointer",
-                    ),
-                    rx.fragment(),
-                ),
                 width="100%", align="center", padding_top="8px",
+            ),
+            # 診断する (最終問のみ表示。下部中央に大型で出す)
+            rx.cond(
+                DrepMatchState.can_submit,
+                rx.center(
+                    rx.el.button(
+                        rx.hstack(
+                            rx.text(
+                                AuthState.t["drep_match_submit_button"],
+                                size="5", weight="bold", color="white",
+                            ),
+                            rx.icon("arrow-right", size=24, color="white"),
+                            spacing="3", align="center",
+                        ),
+                        on_click=DrepMatchState.submit_quiz,
+                        cursor="pointer",
+                        style={
+                            "padding":      "20px 64px",
+                            "borderRadius": "999px",
+                            "background":   "var(--amber-9)",
+                            "border":       "none",
+                            "minWidth":     "320px",
+                            "boxShadow":    "0 4px 16px -4px rgba(245,158,11,0.45)",
+                            "transition":   "background 0.15s, transform 0.15s, box-shadow 0.15s",
+                        },
+                        _hover={
+                            "background": "var(--amber-10)",
+                            "transform":  "translateY(-1px)",
+                            "box_shadow": "0 6px 20px -4px rgba(245,158,11,0.55)",
+                        },
+                    ),
+                    width="100%", padding_y="20px",
+                ),
+                rx.fragment(),
             ),
             spacing="5", align_items="stretch", width="100%",
         ),
