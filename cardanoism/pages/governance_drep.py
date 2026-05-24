@@ -1145,24 +1145,25 @@ def _quiz_view() -> rx.Component:
                 DrepMatchState.can_submit,
                 rx.center(
                     rx.el.button(
-                        rx.hstack(
-                            rx.text(
-                                AuthState.t["drep_match_submit_button"],
-                                size="5", weight="bold", color="white",
-                            ),
-                            rx.icon("arrow-right", size=24, color="white"),
-                            spacing="3", align="center",
+                        rx.text(
+                            AuthState.t["drep_match_submit_button"],
+                            size="5", weight="bold", color="var(--amber-12)",
                         ),
+                        rx.icon("arrow-right", size=24, color="var(--amber-12)"),
                         on_click=DrepMatchState.submit_quiz,
                         cursor="pointer",
                         style={
-                            "padding":      "20px 64px",
-                            "borderRadius": "999px",
-                            "background":   "var(--amber-9)",
-                            "border":       "none",
-                            "minWidth":     "320px",
-                            "boxShadow":    "0 4px 16px -4px rgba(245,158,11,0.45)",
-                            "transition":   "background 0.15s, transform 0.15s, box-shadow 0.15s",
+                            "display":        "inline-flex",
+                            "alignItems":     "center",
+                            "justifyContent": "center",
+                            "gap":            "12px",
+                            "padding":        "20px 64px",
+                            "borderRadius":   "999px",
+                            "background":     "var(--amber-9)",
+                            "border":         "none",
+                            "minWidth":       "320px",
+                            "boxShadow":      "0 4px 16px -4px rgba(245,158,11,0.45)",
+                            "transition":     "background 0.15s, transform 0.15s, box-shadow 0.15s",
                         },
                         _hover={
                             "background": "var(--amber-10)",
