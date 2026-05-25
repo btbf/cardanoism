@@ -161,39 +161,32 @@ class DrepState(rx.State):
 
 from cardanoism.backend.drep_compass.api import (
     list_drep_matches_for_vector as _list_matches_for_vector,
-    save_drep_compass_answers as _save_compass_answers,
+    save_drep_match_answers as _save_compass_answers,
 )
 from cardanoism.backend.drep_compass.questionnaire import (
     QUESTIONS as _COMPASS_QUESTIONS,
-    QUESTION_BY_ID as _COMPASS_QUESTION_BY_ID,
     QUESTION_TOTAL as _COMPASS_QUESTION_TOTAL,
     build_user_vector as _build_user_vector,
 )
 from cardanoism.backend.drep_compass import config as _COMPASS_CONFIG
-from cardanoism.backend.drep_compass.taxonomy import (
-    AXIS_TO_BALANCE_KEY as _COMPASS_AXIS_TO_BALANCE,
-    BALANCE_BY_KEY as _COMPASS_BALANCE_BY_KEY,
-)
+from cardanoism.backend.drep_compass.taxonomy import AXES as _COMPASS_AXES
 from cardanoism.backend.drep_db import get_drep as _get_drep
 
 
 class DrepMatchState(rx.State):
-    """委任コンパス (11 axis) のマッチング診断 State。
+    """DRepマッチング診断 v2 (7 axis / 10 問 二者択一+迷う) の State。
 
     view: "list" / "intro" / "quiz" / "results"
-    answers: { q_id: 1〜5 } (5 段階 Likert)
-    importance: q_id のリスト (重要視する問、最大 3 つ)
+    answers: { q_id: 1 (左) / 2 (迷う) / 3 (右) }
+    importance: 重要マーク済み q_id のリスト (最大 3)
     results: 結果カード描画用 dict のリスト
     """
     view: str = "list"
     current_question: int = 0
-    # q_id → 1〜5 の整数。Reflex State は dict[str, int] を許容するためそのまま保持。
     answers: dict[str, int] = {}
-    # ユーザーが「重視する」とマークした q_id (最大 3)
     importance: list[str] = []
     results: list[dict[str, str]] = []
 
-    # 質問順序の表示用
     @rx.var
     def current_question_i18n_key(self) -> str:
         idx = self.current_question
@@ -202,31 +195,24 @@ class DrepMatchState(rx.State):
         return ""
 
     @rx.var
+    def current_left_i18n_key(self) -> str:
+        idx = self.current_question
+        if 0 <= idx < _COMPASS_QUESTION_TOTAL:
+            return _COMPASS_QUESTIONS[idx].left_i18n_key
+        return ""
+
+    @rx.var
+    def current_right_i18n_key(self) -> str:
+        idx = self.current_question
+        if 0 <= idx < _COMPASS_QUESTION_TOTAL:
+            return _COMPASS_QUESTIONS[idx].right_i18n_key
+        return ""
+
+    @rx.var
     def current_question_id(self) -> str:
         idx = self.current_question
         if 0 <= idx < _COMPASS_QUESTION_TOTAL:
             return _COMPASS_QUESTIONS[idx].q_id
-        return ""
-
-    @rx.var
-    def current_context_i18n_key(self) -> str:
-        idx = self.current_question
-        if 0 <= idx < _COMPASS_QUESTION_TOTAL:
-            return _COMPASS_QUESTIONS[idx].context_i18n_key
-        return ""
-
-    @rx.var
-    def current_pros_i18n_key(self) -> str:
-        idx = self.current_question
-        if 0 <= idx < _COMPASS_QUESTION_TOTAL:
-            return _COMPASS_QUESTIONS[idx].pros_i18n_key
-        return ""
-
-    @rx.var
-    def current_cons_i18n_key(self) -> str:
-        idx = self.current_question
-        if 0 <= idx < _COMPASS_QUESTION_TOTAL:
-            return _COMPASS_QUESTIONS[idx].cons_i18n_key
         return ""
 
     @rx.var
@@ -275,14 +261,12 @@ class DrepMatchState(rx.State):
             self.view = view
 
     def enter_match_tab(self):
-        """「マッチング診断」タブを押した時の遷移。"""
         if self.results:
             self.view = "results"
         else:
             self.view = "intro"
 
     def start_quiz(self):
-        """クイズを初期化して quiz view に切り替える。"""
         self.view = "quiz"
         self.current_question = 0
         self.answers = {}
@@ -290,12 +274,12 @@ class DrepMatchState(rx.State):
         self.results = []
 
     def set_answer(self, level: int):
-        """現在の質問に 1〜5 で回答。最終問でなければ次に進む。"""
+        """1 (左) / 2 (迷う) / 3 (右) で回答。最終問以外は次に進む。"""
         try:
             v = int(level)
         except (TypeError, ValueError):
             return
-        if v < 1 or v > 5:
+        if v < 1 or v > 3:
             return
         qid = self.current_question_id
         if not qid:
@@ -307,7 +291,6 @@ class DrepMatchState(rx.State):
             self.current_question += 1
 
     def toggle_importance(self):
-        """現在の質問を「重視する」リストに追加 / 削除する。最大 3 個まで。"""
         qid = self.current_question_id
         if not qid:
             return
@@ -315,7 +298,7 @@ class DrepMatchState(rx.State):
             self.importance = [q for q in self.importance if q != qid]
             return
         if len(self.importance) >= _COMPASS_CONFIG.MAX_IMPORTANT_AXES:
-            return  # 上限到達は無視
+            return
         self.importance = list(self.importance) + [qid]
 
     def prev_question(self):
@@ -323,13 +306,7 @@ class DrepMatchState(rx.State):
             self.current_question -= 1
 
     def submit_quiz(self):
-        """回答からメモリ上で user_vector を計算し、TOP N マッチを取得して
-        results を更新する。
-
-        DB 保存 (user_drep_compass_answers) は best-effort で並走させる。
-        保存に失敗してもマッチ結果は出るようにする。
-        """
-        # 1. メモリ内で user_vector / weights を生成 (DB 経由しない)
+        """回答から user_vector を計算し、TOP N マッチを取得。"""
         try:
             user_vector, weights = _build_user_vector(
                 dict(self.answers), list(self.importance),
@@ -337,8 +314,6 @@ class DrepMatchState(rx.State):
         except Exception as e:  # noqa: BLE001
             logger.warning("build_user_vector failed: %s", e)
             user_vector, weights = {}, {}
-
-        # 2. 直接 compass.api でマッチング (DB 保存と独立)
         try:
             raw = _list_matches_for_vector(
                 user_vector, weights,
@@ -347,12 +322,10 @@ class DrepMatchState(rx.State):
         except Exception as e:  # noqa: BLE001
             logger.warning("list_drep_matches_for_vector failed: %s", e)
             raw = []
-        logger.info(
-            "submit_quiz: user_vector=%d axes, results=%d",
-            len(user_vector), len(raw),
-        )
+        logger.info("submit_quiz: user_vector=%d axes, results=%d",
+                    len(user_vector), len(raw))
 
-        # 3. アンケート回答を best-effort で保存 (分析用、UI 結果には不要)
+        # アンケート回答を best-effort で保存
         try:
             sid = None
             try:
@@ -366,9 +339,9 @@ class DrepMatchState(rx.State):
                 importance=list(self.importance),
             )
         except Exception as e:  # noqa: BLE001
-            logger.debug("save_drep_compass_answers (best-effort) failed: %s", e)
+            logger.debug("save_drep_match_answers (best-effort) failed: %s", e)
 
-        # 委任量 / fiat 表示の準備 (DRep カードと同じ計算)
+        # 委任量 / fiat 表示
         rate = get_fiat_rate() or {}
         ada_jpy = float(rate.get("ada_jpy") or 0)
         ada_usd = float(rate.get("ada_usd") or 0)
@@ -390,39 +363,21 @@ class DrepMatchState(rx.State):
             else:
                 share_display = "0"
 
-            # 11 axis を「対立軸 4 + 独立軸 3」モデルにマージしてラベル化。
-            # 対立ペアの両方が一致リストに入っていても重複させない。
-            def _axes_to_labels(axes: list[str]) -> list[str]:
-                seen_balance: set[str] = set()
-                labels: list[str] = []
-                for ax in axes:
-                    if not ax:
-                        continue
-                    balance_key = _COMPASS_AXIS_TO_BALANCE.get(ax)
-                    if balance_key:
-                        if balance_key in seen_balance:
-                            continue
-                        seen_balance.add(balance_key)
-                        labels.append(f"drep_match_balance_{balance_key}_label")
-                    else:
-                        labels.append(f"drep_match_axis_{ax}")
-                return labels
-
-            matched_csv = ",".join(_axes_to_labels(r.get("matched_axes") or []))
-            mismatched_csv = ",".join(_axes_to_labels(r.get("mismatched_axes") or []))
-            lowconf_csv = ",".join(_axes_to_labels(r.get("low_confidence_axes") or []))
+            # 7 axis の matched/mismatched を「drep_match_axis_<axis>」i18n キーに変換
+            def _to_label(axes: list[str]) -> str:
+                return ",".join(f"drep_match_axis_{a}" for a in (axes or []) if a)
 
             out.append({
                 "drep_id":              drep_id,
                 "given_name":           str(d.get("given_name") or ""),
                 "image_url":            str(d.get("image_url") or ""),
                 "total_score":          f"{float(r.get('total_score') or 0):.1f}",
-                "participation_pct":    f"{float(r.get('participation_rate') or 0) * 100:.1f}",
+                "summary":              str(r.get("summary") or ""),
                 "reasoning_pct":        f"{float(r.get('reasoning_disclosure_rate') or 0) * 100:.1f}",
                 "analyzed_votes":       str(r.get("analyzed_vote_count") or 0),
-                "matched_axes_csv":     matched_csv,
-                "mismatched_axes_csv":  mismatched_csv,
-                "low_conf_axes_csv":    lowconf_csv,
+                "matched_axes_csv":     _to_label(r.get("matched_axes")),
+                "mismatched_axes_csv":  _to_label(r.get("mismatched_axes")),
+                "low_conf_axes_csv":    _to_label(r.get("low_confidence_axes")),
                 "amount_ada":           format_ada(amount, integer=True) if amount else "0",
                 "amount_jpy":           jpy_d,
                 "amount_usd":           usd_d,
@@ -954,121 +909,45 @@ def _drep_match_tabs() -> rx.Component:
     )
 
 
-def _quiz_explanation_panel(
-    icon: str, label_key: str, body_key,
-    accent_color: str, bg: str, border: str,
-) -> rx.Component:
-    """論点解説の 1 パネル (背景 / 支持 / 慎重 のいずれか)。色付きカード。"""
-    return rx.box(
-        rx.vstack(
-            rx.hstack(
-                rx.icon(icon, size=20, color=accent_color),
-                rx.text(
-                    AuthState.t[label_key],
-                    size="4", weight="bold", color=accent_color,
-                ),
-                spacing="2", align="center",
-            ),
-            rx.text(
-                AuthState.t[body_key],
-                size="3", color="var(--gray-12)",
-                style={
-                    "whiteSpace": "pre-wrap",
-                    "lineHeight": "1.9",
-                },
-            ),
-            spacing="2", align="start", width="100%", height="100%",
-        ),
-        padding="20px 22px",
-        border_radius="10px",
-        border=border,
-        background=bg,
-        width="100%",
-        style={
-            "display": "flex",
-            "flexDirection": "column",
-            "boxSizing": "border-box",
-        },
-    )
+# 旧 _quiz_explanation_panel / _quiz_context_panel / _quiz_pros_cons_grid は
+# 新設計で不要になったため撤去 (i18n キー drep_match_q_*_context / _pros / _cons
+# を参照していた)。
 
 
-def _quiz_context_panel() -> rx.Component:
-    """論点の背景 (全幅・設問直下に置く)。"""
-    return _quiz_explanation_panel(
-        "book-open",
-        "drep_match_q_context_label",
-        DrepMatchState.current_context_i18n_key,
-        accent_color="var(--gray-11)",
-        bg="var(--gray-2)",
-        border=f"1px solid {rx.color('gray', 4)}",
-    )
-
-
-def _quiz_pros_cons_grid() -> rx.Component:
-    """支持する根拠 / 慎重な根拠 を 2 列横並び (回答候補の下に置く)。
-
-    CSS grid を直接指定し、子要素の縦幅を CSS grid の auto stretch で揃える。
-    PC では 2 列、スマホでは auto-fit + minmax で 1 列に自動フォールバック。
-    """
-    pros = _quiz_explanation_panel(
-        "circle-check",
-        "drep_match_q_pros_label",
-        DrepMatchState.current_pros_i18n_key,
-        accent_color="var(--green-11)",
-        bg="var(--green-2)",
-        border=f"1px solid {rx.color('green', 5)}",
-    )
-    cons = _quiz_explanation_panel(
-        "triangle-alert",
-        "drep_match_q_cons_label",
-        DrepMatchState.current_cons_i18n_key,
-        accent_color="var(--amber-11)",
-        bg="var(--amber-2)",
-        border=f"1px solid {rx.color('amber', 5)}",
-    )
-    return rx.box(
-        pros, cons,
-        style={
-            "display": "grid",
-            "gridTemplateColumns": "repeat(auto-fit, minmax(320px, 1fr))",
-            "gridAutoRows": "1fr",  # 行内の子要素を同じ縦幅に揃える
-            "gap": "12px",
-        },
-        width="100%",
-    )
-
-
-def _likert_button(level: int) -> rx.Component:
-    """5 段階 Likert 回答ボタン (1〜5)。選択中はハイライト。"""
+def _choice_button(level: int, label, scheme: str = "amber") -> rx.Component:
+    """3 択 (左 / 迷う / 右) の大型回答ボタン。"""
     is_selected = DrepMatchState.current_answer == level
-    label_key = f"drep_match_answer_{level}"
+    if scheme == "gray":
+        sel_bg, sel_border = "var(--gray-3)", "var(--gray-9)"
+        sel_text = "var(--gray-12)"
+    else:
+        sel_bg, sel_border = "var(--amber-3)", "var(--amber-9)"
+        sel_text = "var(--amber-12)"
     return rx.el.button(
-        rx.vstack(
-            rx.text(str(level), size="6", weight="bold",
-                    color=rx.cond(is_selected, "var(--amber-12)", "var(--gray-12)")),
-            rx.text(AuthState.t[label_key], size="2",
-                    color=rx.cond(is_selected, "var(--amber-11)", "var(--gray-10)"),
-                    style={"whiteSpace": "normal", "textAlign": "center"}),
-            spacing="2", align="center",
-        ),
+        rx.text(label, size="4", weight="bold",
+                color=rx.cond(is_selected, sel_text, "var(--gray-12)"),
+                style={"whiteSpace": "normal", "textAlign": "center",
+                       "lineHeight": "1.4"}),
         on_click=DrepMatchState.set_answer(level),
         cursor="pointer",
         style={
-            "padding":      "18px 12px",
-            "borderRadius": "12px",
-            "background":   rx.cond(is_selected, "var(--amber-3)", "transparent"),
-            "border":       rx.cond(is_selected, "2px solid var(--amber-9)",
+            "padding":      "24px 18px",
+            "borderRadius": "14px",
+            "background":   rx.cond(is_selected, sel_bg, "transparent"),
+            "border":       rx.cond(is_selected, f"2px solid {sel_border}",
                                     "1.5px solid var(--gray-6)"),
-            "minWidth":     "110px",
-            "flex":         "1 1 0",
-            "transition":   "background 0.15s, border-color 0.15s",
+            "minWidth":     "200px",
+            "minHeight":    "100px",
+            "flex":         "1 1 220px",
+            "transition":   "background 0.15s, border-color 0.15s, transform 0.15s",
         },
-        _hover={"background": "var(--amber-2)", "border_color": "var(--amber-8)"},
+        _hover={"background": "var(--amber-2)", "border_color": "var(--amber-8)",
+                "transform": "translateY(-1px)"},
     )
 
 
 def _quiz_view() -> rx.Component:
-    """質問カード (5 段階 Likert + 重要視 toggle)。"""
+    """質問カード (二者択一+迷う + 重要マーク toggle)。"""
     importance_btn_disabled = (
         DrepMatchState.importance_full
         & ~DrepMatchState.current_question_is_important
@@ -1123,18 +1002,14 @@ def _quiz_view() -> rx.Component:
             rx.heading(
                 AuthState.t[DrepMatchState.current_question_i18n_key],
                 size="6", weight="bold", color="var(--gray-12)",
-                style={"lineHeight": "1.5"},
+                style={"lineHeight": "1.5", "textAlign": "center"},
             ),
-            # 論点の背景 — 設問直後 (全幅)
-            _quiz_context_panel(),
-            # 5 段階回答 (左から: 5=強くそう思う … 1=全くそう思わない)
+            # 二者択一 + 迷う (大きな 3 ボタン)
             rx.hstack(
-                _likert_button(5),
-                _likert_button(4),
-                _likert_button(3),
-                _likert_button(2),
-                _likert_button(1),
-                spacing="2", wrap="wrap", width="100%", padding_y="6px",
+                _choice_button(1, AuthState.t[DrepMatchState.current_left_i18n_key], "amber"),
+                _choice_button(2, AuthState.t["drep_match_answer_unsure"], "gray"),
+                _choice_button(3, AuthState.t[DrepMatchState.current_right_i18n_key], "amber"),
+                spacing="3", wrap="wrap", justify="center", width="100%", padding_y="6px",
             ),
             # 重要視 toggle
             rx.hstack(
@@ -1145,8 +1020,6 @@ def _quiz_view() -> rx.Component:
                 ),
                 spacing="3", align="center", wrap="wrap",
             ),
-            # 支持する根拠 / 慎重な根拠 (2 列横並び) — 回答の下に常時表示
-            _quiz_pros_cons_grid(),
             # 戻るボタン (左寄せ、控えめ)
             rx.hstack(
                 rx.cond(
@@ -1387,6 +1260,32 @@ def _match_result_card(r) -> rx.Component:
                 spacing="3", align="center", width="100%", wrap="wrap",
             ),
             delegation_row,
+            # AI が見たこの DRep のサマリ (1 行、なければ非表示)
+            rx.cond(
+                r["summary"] != "",
+                rx.box(
+                    rx.hstack(
+                        rx.icon("sparkles", size=14, color="var(--amber-11)"),
+                        rx.text(
+                            AuthState.t["drep_match_summary_label"],
+                            size="1", weight="bold", color="var(--amber-11)",
+                            style={"whiteSpace": "nowrap"},
+                        ),
+                        spacing="2", align="center",
+                    ),
+                    rx.text(
+                        r["summary"],
+                        size="2", color="var(--gray-12)",
+                        style={"lineHeight": "1.6", "marginTop": "4px"},
+                    ),
+                    padding="12px 14px",
+                    border_radius="8px",
+                    background="var(--amber-2)",
+                    border="1px solid var(--amber-5)",
+                    width="100%",
+                ),
+                rx.fragment(),
+            ),
             # 一致点
             rx.cond(
                 r["matched_axes_csv"] != "",

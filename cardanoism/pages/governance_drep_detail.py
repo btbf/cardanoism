@@ -16,10 +16,7 @@ from cardanoism.backend.auth_state import AuthState
 from cardanoism.backend.drep_db import get_drep, sum_total_delegation
 from cardanoism.backend.drep_meta import format_links as _format_links
 from cardanoism.backend.drep_compass.api import get_drep_profile as _get_compass_profile
-from cardanoism.backend.drep_compass.taxonomy import (
-    BALANCE_AXES as _COMPASS_BALANCE_AXES,
-    SINGLE_AXES as _COMPASS_SINGLE_AXES,
-)
+from cardanoism.backend.drep_compass.taxonomy import AXES as _COMPASS_AXES
 from cardanoism.backend.vote_db import get_votes_by_drep, count_votes_by_drep
 from cardanoism.backend.fiat_db import get_fiat_rate
 from cardanoism.backend.price import format_ada, format_jpy_short, format_usd_short
@@ -224,67 +221,28 @@ class DrepDetailState(rx.State):
                     return "mid"
                 return "low"
 
-            # 対立軸 4 行: pos 側 score を採用 (0=完全 neg, 0.5 中立, 1=完全 pos)
+            # 7 axis 全てを 1 つのスライダー型行で表示 (v2 設計、対立軸/独立軸の区別なし)
             balance_rows: list[dict[str, str]] = []
-            for key, pos_axis, neg_axis in _COMPASS_BALANCE_AXES:
-                pos_score = _score(pos_axis)
-                # 中央 50% からの振れ幅
-                offset = pos_score - 0.5     # -0.5〜+0.5
-                magnitude = abs(offset) * 2  # 0〜1
-                if offset > 0.02:
-                    side = "pos"
-                    side_label_key = f"drep_match_balance_{key}_pos"
-                    side_desc_key = f"drep_match_balance_{key}_pos_desc"
-                elif offset < -0.02:
-                    side = "neg"
-                    side_label_key = f"drep_match_balance_{key}_neg"
-                    side_desc_key = f"drep_match_balance_{key}_neg_desc"
-                else:
-                    side = "center"
-                    side_label_key = ""
-                    side_desc_key = ""
-                conf_val = max(_conf(pos_axis), _conf(neg_axis))
-                balance_rows.append({
-                    "kind":             "balance",
-                    "key":              key,
-                    "label_key":        f"drep_match_balance_{key}_label",
-                    "left_label_key":   f"drep_match_balance_{key}_neg",  # 左端 = neg
-                    "right_label_key":  f"drep_match_balance_{key}_pos",  # 右端 = pos
-                    "side":             side,
-                    "side_label_key":   side_label_key,
-                    "side_desc_key":    side_desc_key,
-                    "magnitude_pct":    f"{magnitude * 100:.0f}",
-                    # ドット位置 = pos_score * 100% (左端=0% / 中央=50% / 右端=100%)
-                    "dot_pos_pct":      f"{pos_score * 100:.0f}",
-                    "conf_class":       _conf_class(conf_val),
-                })
-            self.compass_balance_rows = balance_rows
-
-            # 独立軸 3 行: 対立軸と同じ slider 構造で 0〜100% スライダー化
-            #   左端 = low ラベル (慎重 / 寛容 / 非公開)
-            #   右端 = high ラベル (推進 / 厳格 / 公開)
-            #   ドット位置 = score * 100%
             single_rows: list[dict[str, str]] = []
-            for axis in _COMPASS_SINGLE_AXES:
+            for axis in _COMPASS_AXES:
                 score = _score(axis)
                 conf_val = _conf(axis)
-                # 中央 0.5 からの偏りで「どっち寄りか」判定
                 offset = score - 0.5
                 if offset > 0.02:
                     side = "pos"
-                    side_label_key = f"drep_match_axis_{axis}_high"
+                    side_label_key = f"drep_match_axis_{axis}_right"
                 elif offset < -0.02:
                     side = "neg"
-                    side_label_key = f"drep_match_axis_{axis}_low"
+                    side_label_key = f"drep_match_axis_{axis}_left"
                 else:
                     side = "center"
                     side_label_key = ""
-                single_rows.append({
+                balance_rows.append({
                     "kind":             "balance",
                     "key":              axis,
                     "label_key":        f"drep_match_axis_{axis}",
-                    "left_label_key":   f"drep_match_axis_{axis}_low",
-                    "right_label_key":  f"drep_match_axis_{axis}_high",
+                    "left_label_key":   f"drep_match_axis_{axis}_left",
+                    "right_label_key":  f"drep_match_axis_{axis}_right",
                     "side":             side,
                     "side_label_key":   side_label_key,
                     "side_desc_key":    f"drep_match_axis_{axis}_desc",
@@ -292,7 +250,8 @@ class DrepDetailState(rx.State):
                     "dot_pos_pct":      f"{score * 100:.0f}",
                     "conf_class":       _conf_class(conf_val),
                 })
-            self.compass_single_rows = single_rows
+            self.compass_balance_rows = balance_rows
+            self.compass_single_rows = single_rows  # 後方互換のため空のまま
 
             # 投票履歴（未投票 GA も含む）
             raw = get_votes_by_drep(drep_id, limit=500)
