@@ -693,6 +693,13 @@ UI_JA: dict[str, str] = {
     "drep_match_axis_protocol_innovation_desc":      "新機能 / 性能改善のための変更に Yes",
     "drep_match_axis_transparency_focus_desc":       "KPI・マイルストーン・成果検証が無い提案に No",
     "drep_match_axis_reasoning_disclosure_desc":     "DRep 自身がどれだけ投票理由を公開しているか",
+    # 独立軸 3 つのスライダー両端ラベル
+    "drep_match_axis_marketing_support_low":     "慎重",
+    "drep_match_axis_marketing_support_high":    "推進",
+    "drep_match_axis_transparency_focus_low":    "寛容",
+    "drep_match_axis_transparency_focus_high":   "厳格",
+    "drep_match_axis_reasoning_disclosure_low":  "非公開",
+    "drep_match_axis_reasoning_disclosure_high": "公開",
     # 対立軸 4 セット (中央バーで左右に振れる表示用)
     # treasury (規律 vs 投資)
     "drep_match_balance_treasury_label":     "予算姿勢",
@@ -2571,6 +2578,13 @@ UI_EN: dict[str, str] = {
     "drep_match_axis_protocol_innovation_desc":      "Votes Yes on protocol changes for new features / performance",
     "drep_match_axis_transparency_focus_desc":       "Votes No when KPI / milestones / outcome verification are missing",
     "drep_match_axis_reasoning_disclosure_desc":     "How much this DRep publicly discloses their voting rationale",
+    # Slider end labels for the 3 independent axes
+    "drep_match_axis_marketing_support_low":     "Cautious",
+    "drep_match_axis_marketing_support_high":    "Pro",
+    "drep_match_axis_transparency_focus_low":    "Lenient",
+    "drep_match_axis_transparency_focus_high":   "Strict",
+    "drep_match_axis_reasoning_disclosure_low":  "Not disclosed",
+    "drep_match_axis_reasoning_disclosure_high": "Disclosed",
     # 4 opposing-pair balance axes (center bar swinging left/right)
     "drep_match_balance_treasury_label":     "Treasury stance",
     "drep_match_balance_treasury_pos":       "Discipline-leaning",

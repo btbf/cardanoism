@@ -260,17 +260,37 @@ class DrepDetailState(rx.State):
                 })
             self.compass_balance_rows = balance_rows
 
-            # 独立軸 3 行: そのまま 0〜100% バー
+            # 独立軸 3 行: 対立軸と同じ slider 構造で 0〜100% スライダー化
+            #   左端 = low ラベル (慎重 / 寛容 / 非公開)
+            #   右端 = high ラベル (推進 / 厳格 / 公開)
+            #   ドット位置 = score * 100%
             single_rows: list[dict[str, str]] = []
             for axis in _COMPASS_SINGLE_AXES:
                 score = _score(axis)
                 conf_val = _conf(axis)
+                # 中央 0.5 からの偏りで「どっち寄りか」判定
+                offset = score - 0.5
+                if offset > 0.02:
+                    side = "pos"
+                    side_label_key = f"drep_match_axis_{axis}_high"
+                elif offset < -0.02:
+                    side = "neg"
+                    side_label_key = f"drep_match_axis_{axis}_low"
+                else:
+                    side = "center"
+                    side_label_key = ""
                 single_rows.append({
-                    "kind":       "single",
-                    "label_key":  f"drep_match_axis_{axis}",
-                    "desc_key":   f"drep_match_axis_{axis}_desc",
-                    "score_pct":  f"{score * 100:.0f}",
-                    "conf_class": _conf_class(conf_val),
+                    "kind":             "balance",
+                    "key":              axis,
+                    "label_key":        f"drep_match_axis_{axis}",
+                    "left_label_key":   f"drep_match_axis_{axis}_low",
+                    "right_label_key":  f"drep_match_axis_{axis}_high",
+                    "side":             side,
+                    "side_label_key":   side_label_key,
+                    "side_desc_key":    f"drep_match_axis_{axis}_desc",
+                    "magnitude_pct":    f"{abs(offset) * 200:.0f}",
+                    "dot_pos_pct":      f"{score * 100:.0f}",
+                    "conf_class":       _conf_class(conf_val),
                 })
             self.compass_single_rows = single_rows
 
@@ -676,14 +696,14 @@ def _compass_balance_row(item) -> rx.Component:
             ),
             spacing="3", align="center", width="100%",
         ),
-        # サブ説明文 (どちら寄りかの具体的中身)
+        # サブ説明文 (どちら寄りかの具体的中身) — 中央揃え
         rx.cond(
             item["side"] != "center",
             rx.text(
                 AuthState.t[item["side_desc_key"]],
                 size="1", color="var(--gray-10)",
-                style={"lineHeight": "1.5",
-                       "paddingLeft": "152px"},
+                style={"lineHeight": "1.5", "textAlign": "center"},
+                width="100%",
             ),
             rx.fragment(),
         ),
@@ -691,48 +711,7 @@ def _compass_balance_row(item) -> rx.Component:
     )
 
 
-def _compass_single_row(item) -> rx.Component:
-    """独立軸 1 行 (0〜100% バー)。"""
-    color = _bar_color(item["conf_class"])
-    score_color = rx.cond(
-        item["conf_class"] == "low", "var(--gray-10)", "var(--gray-12)",
-    )
-    return rx.vstack(
-        rx.hstack(
-            rx.text(
-                AuthState.t[item["label_key"]],
-                size="2", weight="bold", color="var(--gray-12)",
-                style={"width": "140px", "flexShrink": "0"},
-            ),
-            rx.box(
-                rx.box(
-                    width=item["score_pct"] + "%",
-                    height="100%",
-                    background=color,
-                    border_radius="999px",
-                    transition="width 0.3s",
-                ),
-                flex="1", height="10px",
-                background="var(--gray-3)",
-                border_radius="999px",
-                overflow="hidden",
-                min_width="200px",
-            ),
-            rx.text(
-                item["score_pct"], "%",
-                size="2", weight="bold", color=score_color,
-                style={"width": "160px", "textAlign": "right", "flexShrink": "0",
-                       "fontFamily": "var(--code-font-family, ui-monospace, monospace)"},
-            ),
-            spacing="3", align="center", width="100%",
-        ),
-        rx.text(
-            AuthState.t[item["desc_key"]],
-            size="1", color="var(--gray-10)",
-            style={"lineHeight": "1.5", "paddingLeft": "152px"},
-        ),
-        spacing="1", align="stretch", width="100%",
-    )
+# 旧 _compass_single_row は撤去。独立軸も _compass_balance_row で統一描画。
 
 
 def _compass_profile_section() -> rx.Component:
@@ -792,7 +771,7 @@ def _compass_profile_section() -> rx.Component:
             rx.vstack(
                 rx.foreach(
                     DrepDetailState.compass_single_rows.to(list[dict[str, str]]),
-                    _compass_single_row,
+                    _compass_balance_row,
                 ),
                 spacing="4", align="stretch", width="100%",
             ),
