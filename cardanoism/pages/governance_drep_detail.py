@@ -15,6 +15,8 @@ from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.backend.drep_db import get_drep, sum_total_delegation
 from cardanoism.backend.drep_meta import format_links as _format_links
+from cardanoism.backend.drep_compass.api import get_drep_profile as _get_compass_profile
+from cardanoism.backend.drep_compass.taxonomy import AXES as _COMPASS_AXES
 from cardanoism.backend.vote_db import get_votes_by_drep, count_votes_by_drep
 from cardanoism.backend.fiat_db import get_fiat_rate
 from cardanoism.backend.price import format_ada, format_jpy_short, format_usd_short
@@ -61,6 +63,15 @@ class DrepDetailState(rx.State):
     vote_yes: int = 0
     vote_no: int = 0
     vote_abstain: int = 0
+
+    # DRep委任コンパス プロファイル
+    compass_has_profile: bool = False
+    compass_analyzed_votes: str = "0"
+    compass_reasoning_pct: str = "0"
+    # 各 axis を foreach で描画するためのフラット dict 配列
+    # {axis_key, label_key, score_pct, conf_pct, conf_class}
+    #   conf_class: "high" / "mid" / "low" (UI で色濃度を切り替える)
+    compass_axis_bars: list[dict[str, str]] = []
 
     @rx.var
     def has_profile_metadata(self) -> bool:
@@ -173,6 +184,44 @@ class DrepDetailState(rx.State):
             self.vote_yes = counts["yes"]
             self.vote_no = counts["no"]
             self.vote_abstain = counts["abstain"]
+
+            # DRep委任コンパス プロファイル
+            try:
+                cp = _get_compass_profile(drep_id) or {}
+            except Exception as e:  # noqa: BLE001
+                logger.warning("get_drep_profile failed for %s: %s", drep_id, e)
+                cp = {}
+            profile = cp.get("profile_json") or {}
+            confidence = cp.get("confidence_json") or {}
+            self.compass_has_profile = bool(profile)
+            analyzed = int(cp.get("analyzed_vote_count") or 0)
+            disclosure = float(cp.get("reasoning_disclosure_rate") or 0)
+            self.compass_analyzed_votes = str(analyzed)
+            self.compass_reasoning_pct = f"{disclosure * 100:.0f}"
+            bars: list[dict[str, str]] = []
+            for axis in _COMPASS_AXES:
+                try:
+                    score = float(profile.get(axis, 0.5))
+                except (TypeError, ValueError):
+                    score = 0.5
+                try:
+                    conf = float(confidence.get(axis, 0.0))
+                except (TypeError, ValueError):
+                    conf = 0.0
+                if conf >= 0.6:
+                    conf_class = "high"
+                elif conf >= 0.3:
+                    conf_class = "mid"
+                else:
+                    conf_class = "low"
+                bars.append({
+                    "axis_key":  axis,
+                    "label_key": f"drep_match_axis_{axis}",
+                    "score_pct": f"{score * 100:.0f}",
+                    "conf_pct":  f"{conf * 100:.0f}",
+                    "conf_class": conf_class,
+                })
+            self.compass_axis_bars = bars
 
             # 投票履歴（未投票 GA も含む）
             raw = get_votes_by_drep(drep_id, limit=500)
@@ -463,6 +512,151 @@ def _profile_metadata_card() -> rx.Component:
     )
 
 
+def _compass_axis_row(item) -> rx.Component:
+    """1 axis のバー表示 (ラベル + バー + スコア %)。conf に応じて色濃度を変える。"""
+    # confidence クラスによる色設定 (low は中立に近いほぼ無色)
+    bar_color = rx.match(
+        item["conf_class"],
+        ("high", "var(--amber-9)"),
+        ("mid",  "var(--amber-7)"),
+        "var(--gray-7)",
+    )
+    score_color = rx.match(
+        item["conf_class"],
+        ("high", "var(--gray-12)"),
+        ("mid",  "var(--gray-12)"),
+        "var(--gray-10)",
+    )
+    return rx.hstack(
+        # 左: axis ラベル (固定幅)
+        rx.text(
+            AuthState.t[item["label_key"]],
+            size="2", color="var(--gray-12)",
+            style={"width": "180px", "flexShrink": "0"},
+        ),
+        # 中央: 横バー (0〜100% を amber-9 / gray-3 の比で表現)
+        rx.box(
+            rx.box(
+                width=item["score_pct"] + "%",
+                height="100%",
+                background=bar_color,
+                border_radius="999px",
+                transition="width 0.3s",
+            ),
+            flex="1",
+            height="10px",
+            background="var(--gray-3)",
+            border_radius="999px",
+            overflow="hidden",
+            min_width="120px",
+        ),
+        # 右: スコア %
+        rx.text(
+            item["score_pct"], "%",
+            size="2", weight="bold", color=score_color,
+            style={"width": "56px", "textAlign": "right", "flexShrink": "0",
+                   "fontFamily": "var(--code-font-family, ui-monospace, monospace)"},
+        ),
+        # 信頼度の補助表示 (low のときだけ「信頼度低」と添える)
+        rx.cond(
+            item["conf_class"] == "low",
+            rx.text(
+                AuthState.t["drep_match_results_low_conf_label"],
+                size="1", color="var(--gray-10)",
+                style={"width": "100px", "flexShrink": "0",
+                       "fontStyle": "italic"},
+            ),
+            rx.box(style={"width": "100px", "flexShrink": "0"}),
+        ),
+        spacing="3", align="center", width="100%",
+    )
+
+
+def _compass_profile_section() -> rx.Component:
+    """DRep委任コンパス プロファイル (11 axis バー + 投票実績 + 理由公開率)。
+
+    プロファイル未生成の場合は「未生成」案内を表示。
+    """
+    body = rx.cond(
+        DrepDetailState.compass_has_profile,
+        rx.vstack(
+            # 投票実績 + 理由公開率
+            rx.hstack(
+                rx.vstack(
+                    rx.text(
+                        AuthState.t["drep_match_results_analyzed_votes"],
+                        size="1", color="var(--gray-10)",
+                    ),
+                    rx.hstack(
+                        rx.text(
+                            DrepDetailState.compass_analyzed_votes,
+                            size="5", weight="bold", color="var(--amber-11)",
+                        ),
+                        rx.text(AuthState.t["gov_results_unit"], size="2",
+                                color="var(--gray-11)"),
+                        spacing="1", align="baseline",
+                    ),
+                    spacing="0", align="start",
+                ),
+                rx.vstack(
+                    rx.text(
+                        AuthState.t["drep_match_results_reasoning_rate"],
+                        size="1", color="var(--gray-10)",
+                    ),
+                    rx.hstack(
+                        rx.text(
+                            DrepDetailState.compass_reasoning_pct,
+                            size="5", weight="bold", color="var(--gray-12)",
+                        ),
+                        rx.text("%", size="2", color="var(--gray-11)"),
+                        spacing="0", align="baseline",
+                    ),
+                    spacing="0", align="start",
+                ),
+                spacing="7", wrap="wrap",
+            ),
+            # 11 axis バー
+            rx.vstack(
+                rx.foreach(
+                    DrepDetailState.compass_axis_bars.to(list[dict[str, str]]),
+                    _compass_axis_row,
+                ),
+                spacing="2", align="stretch", width="100%",
+                padding_top="8px",
+            ),
+            spacing="4", align="start", width="100%",
+        ),
+        rx.callout(
+            AuthState.t["drep_match_section_no_profile"],
+            icon="info", color_scheme="gray",
+        ),
+    )
+    return rx.box(
+        rx.vstack(
+            rx.hstack(
+                rx.icon("radar", size=18, color="var(--amber-11)"),
+                rx.text(
+                    AuthState.t["drep_match_section_profile_heading"],
+                    size="4", weight="bold", color="var(--gray-12)",
+                ),
+                spacing="2", align="center",
+            ),
+            body,
+            rx.text(
+                AuthState.t["drep_match_results_classification_note"],
+                size="1", color="var(--gray-10)",
+                style={"fontStyle": "italic"},
+            ),
+            spacing="3", align="start", width="100%",
+        ),
+        padding="20px",
+        border=f"1px solid {rx.color('gray', 4)}",
+        border_radius="12px",
+        background="var(--gray-2)",
+        width="100%",
+    )
+
+
 def _vote_stats() -> rx.Component:
     return rx.hstack(
         rx.vstack(
@@ -717,6 +911,7 @@ def governance_drep_detail_page() -> rx.Component:
                     rx.vstack(
                         _profile_card(),
                         _profile_metadata_card(),
+                        _compass_profile_section(),
                         _vote_stats(),
                         _vote_history(),
                         spacing="4", width="100%",

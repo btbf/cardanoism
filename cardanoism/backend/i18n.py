@@ -697,6 +697,9 @@ UI_JA: dict[str, str] = {
     "drep_match_results_low_conf_label":   "判断材料が少ない項目",
     "drep_match_results_low_conf_note":    "投票実績が少ないため、上記の傾向は変動する可能性があります。",
     "drep_match_results_classification_note": "本ページのタグ・スコアは Cardanoism が独自に付与・算出した参考情報です。",
+    # DRep 詳細ページのコンパスプロファイルセクション
+    "drep_match_section_profile_heading": "投票傾向 (Cardanoism独自分析)",
+    "drep_match_section_no_profile":      "この DRep のマッチング診断プロファイルはまだ生成されていません。",
     "drep_match_results_evidence_label":   "判断の根拠 (タグ別投票)",
     "drep_match_results_evidence_voted_yes": "Yes",
     "drep_match_results_evidence_voted_no":  "No",
@@ -2535,6 +2538,9 @@ UI_EN: dict[str, str] = {
     "drep_match_results_low_conf_label":   "Insufficient data",
     "drep_match_results_low_conf_note":    "Few votes recorded for these axes — the tendency above may shift as more data accrues.",
     "drep_match_results_classification_note": "Tags and scores on this page are Cardanoism's own classification — reference information only.",
+    # DRep detail page: compass profile section
+    "drep_match_section_profile_heading": "Voting tendency (Cardanoism analysis)",
+    "drep_match_section_no_profile":      "Compass profile not yet generated for this DRep.",
     "drep_match_results_evidence_label":   "Evidence (votes by tag)",
     "drep_match_results_evidence_voted_yes": "Yes",
     "drep_match_results_evidence_voted_no":  "No",
