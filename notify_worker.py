@@ -1838,87 +1838,30 @@ def check_pool_block_history(epochs: int = 5):
 
 
 # ============================================================
-# DRep マッチング診断 (委任コンパス MVP)
+# DRep マッチング診断 (v2: 7 axis AI 主導)
 # ============================================================
-# 旧 5 軸派閥モデル (axis_*) と旧 9 トピックモデル (topic_*) は削除済み。
-# 新しい 11 axis 価値観モデルは cardanoism.backend.drep_compass パッケージ
-# に集約され、本ワーカーからは下記 2 つの CLI イベントで起動する:
+# 旧 v1 (gov_action_tags ベース) は廃止。DRep プロファイルは AI が
+# rationale を直接読んで 7 axis スコア + サマリ文を生成する。
 #
-#   --event compass_classify_all : 全 GA を rule-based 分類して
-#                                  gov_action_tags に書き込む
-#   --event compass_profile_all  : 全 registered DRep の axis profile を
-#                                  計算して drep_profiles に書き込む
-
-def check_drep_compass_classify_all() -> int:
-    """全 governance_actions を rule-based 分類して gov_action_tags へ反映する。
-
-    既存タグ (source='rule') は preserve しつつ INSERT IGNORE で新規分だけ追加。
-    完全再生成したい場合は reclassify_governance_action() を 1 件ずつ呼ぶ。
-    """
-    from cardanoism.backend.drep_compass.api import classify_governance_action
-    logger.info("=== Compass GA 分類: 全件 開始 ===")
-    with get_db() as (cursor, _):
-        cursor.execute(
-            "SELECT proposal_id FROM governance_actions "
-            "WHERE proposal_id IS NOT NULL AND proposal_id <> ''"
-        )
-        ids = [r["proposal_id"] for r in cursor.fetchall()]
-    logger.info("対象 GA: %d 件", len(ids))
-    total_inserted = 0
-    for pid in ids:
-        try:
-            total_inserted += classify_governance_action(str(pid))
-        except Exception as e:  # noqa: BLE001
-            logger.warning("classify failed for %s: %s", pid, e)
-    logger.info("=== Compass GA 分類: 完了 (%d tags inserted) ===", total_inserted)
-    return total_inserted
-
+# CLI:
+#   --event compass_profile_all : 全 active DRep を AI で再分析
+#   --event compass_status      : drep_profiles テーブルの診断
 
 def check_drep_compass_profile_all() -> int:
-    """全 registered DRep の compass プロファイルを再計算する。"""
+    """全 active DRep を AI で再分析して drep_profiles に書き込む。"""
     from cardanoism.backend.drep_compass.api import recalculate_all_drep_profiles
-    logger.info("=== Compass DRep プロファイル: 全件 開始 ===")
-    n = recalculate_all_drep_profiles()
-    logger.info("=== Compass DRep プロファイル: 完了 (%d DReps) ===", n)
+    logger.info("=== Match DRep プロファイル: 全件 開始 (AI 主導) ===")
+    n = recalculate_all_drep_profiles(only_active=True)
+    logger.info("=== Match DRep プロファイル: 完了 (%d DReps) ===", n)
     return n
 
 
 def check_drep_compass_status() -> None:
-    """委任コンパスのデータ状況を診断 (件数 + 分布)。
-
-    マッチング候補が出ないときの切り分け用。
-      - governance_actions / gov_action_tags / drep_profiles の件数
-      - source 別 tag 件数 (rule / ai / manual)
-      - tag_type 別 tag 件数
-      - analyzed_vote_count 分布 (>=3, >=5, >=10)
-      - 上位 5 DRep の analyzed_vote_count
-    """
-    logger.info("=== Compass Status 診断 開始 ===")
+    """drep_profiles テーブルの診断 (件数 + 分布 + 上位 DRep)。"""
+    logger.info("=== Match Status 診断 開始 ===")
     with get_db() as (cursor, _):
-        cursor.execute("SELECT COUNT(*) AS n FROM governance_actions")
-        ga_count = int(cursor.fetchone()["n"])
-        cursor.execute("SELECT COUNT(*) AS n FROM gov_action_tags")
-        tag_count = int(cursor.fetchone()["n"])
         cursor.execute("SELECT COUNT(*) AS n FROM drep_profiles")
         profile_count = int(cursor.fetchone()["n"])
-
-        cursor.execute(
-            "SELECT source, COUNT(*) AS n FROM gov_action_tags GROUP BY source"
-        )
-        by_source = {r["source"]: int(r["n"]) for r in cursor.fetchall()}
-
-        cursor.execute(
-            "SELECT tag_type, COUNT(*) AS n FROM gov_action_tags GROUP BY tag_type"
-        )
-        by_type = {r["tag_type"]: int(r["n"]) for r in cursor.fetchall()}
-
-        cursor.execute(
-            "SELECT tag, COUNT(*) AS n FROM gov_action_tags "
-            "GROUP BY tag ORDER BY n DESC LIMIT 20"
-        )
-        top_tags = [(r["tag"], int(r["n"])) for r in cursor.fetchall()]
-
-        # analyzed_vote_count 分布
         cursor.execute(
             "SELECT COUNT(*) AS n FROM drep_profiles WHERE analyzed_vote_count >= 1"
         )
@@ -1928,75 +1871,44 @@ def check_drep_compass_status() -> None:
         )
         gte_3 = int(cursor.fetchone()["n"])
         cursor.execute(
-            "SELECT COUNT(*) AS n FROM drep_profiles WHERE analyzed_vote_count >= 5"
-        )
-        gte_5 = int(cursor.fetchone()["n"])
-        cursor.execute(
             "SELECT COUNT(*) AS n FROM drep_profiles WHERE analyzed_vote_count >= 10"
         )
         gte_10 = int(cursor.fetchone()["n"])
-
-        # マッチング候補に残る DRep 数 (registered=1 と JOIN)
         cursor.execute(
             "SELECT COUNT(*) AS n FROM drep_profiles dp "
             "JOIN dreps d ON d.drep_id = dp.drep_id "
-            "WHERE d.registered = 1 AND dp.analyzed_vote_count >= 3"
+            "WHERE d.registered = 1 AND d.drep_status = 'active' "
+            "  AND dp.analyzed_vote_count >= 3"
         )
         candidates = int(cursor.fetchone()["n"])
-
-        # 上位 5 DRep
         cursor.execute(
-            "SELECT drep_id, analyzed_vote_count, eligible_action_count, "
-            "       participation_rate, reasoning_disclosure_rate "
-            "FROM drep_profiles "
-            "ORDER BY analyzed_vote_count DESC LIMIT 5"
+            "SELECT drep_id, analyzed_vote_count, "
+            "       reasoning_disclosure_rate, summary "
+            "FROM drep_profiles ORDER BY analyzed_vote_count DESC LIMIT 5"
         )
         top_dreps = [dict(r) for r in cursor.fetchall()]
-
-    logger.info("─── テーブル件数 ───")
-    logger.info("  governance_actions: %d 件", ga_count)
-    logger.info("  gov_action_tags:    %d 件", tag_count)
-    logger.info("  drep_profiles:      %d 件", profile_count)
-    logger.info("─── gov_action_tags source 別 ───")
-    for s in ("rule", "ai", "manual"):
-        logger.info("  %-7s: %d 件", s, by_source.get(s, 0))
-    logger.info("─── gov_action_tags tag_type 別 ───")
-    for t in ("category", "attribute", "quality"):
-        logger.info("  %-10s: %d 件", t, by_type.get(t, 0))
-    logger.info("─── 上位 20 タグ ───")
-    for tag, n in top_tags:
-        logger.info("  %-25s: %d 件", tag, n)
-    logger.info("─── drep_profiles 分布 ───")
+    logger.info("─── drep_profiles ───")
+    logger.info("  total                    : %d 件", profile_count)
     logger.info("  analyzed_vote_count >= 1 : %d 件", gte_1)
     logger.info("  analyzed_vote_count >= 3 : %d 件", gte_3)
-    logger.info("  analyzed_vote_count >= 5 : %d 件", gte_5)
     logger.info("  analyzed_vote_count >= 10: %d 件", gte_10)
-    logger.info("─── マッチング候補数 (registered=1 AND analyzed>=3) ───")
+    logger.info("─── マッチング候補数 (active + analyzed>=3) ───")
     logger.info("  %d 件", candidates)
     if candidates == 0:
-        logger.warning("⚠ マッチング候補が 0 件です。以下を確認してください:")
-        if tag_count == 0:
-            logger.warning("  - gov_action_tags が空: compass_classify_all を実行")
-        elif profile_count == 0:
-            logger.warning("  - drep_profiles が空: compass_profile_all を実行")
-        elif gte_3 == 0:
-            logger.warning("  - analyzed_vote_count >= 3 が 0: "
-                           "DRep の Yes/No 投票が gov_action_tags 付き GA に "
-                           "まだ届いていない可能性。タグ分布を確認")
-        else:
-            logger.warning("  - registered=1 と JOIN すると 0: dreps テーブルの "
-                           "registered フラグを確認")
+        logger.warning("⚠ マッチング候補が 0 件です。compass_profile_all を実行してください。")
     logger.info("─── 上位 5 DRep ───")
     for d in top_dreps:
+        did = d["drep_id"]
+        if len(did) > 32:
+            did = did[:32] + "..."
         logger.info(
-            "  %s : analyzed=%d eligible=%d participation=%.2f rationale=%.2f",
-            d["drep_id"][:32] + "..." if len(d["drep_id"]) > 32 else d["drep_id"],
+            "  %s : votes=%d rationale=%.2f summary=%s",
+            did,
             int(d["analyzed_vote_count"] or 0),
-            int(d["eligible_action_count"] or 0),
-            float(d["participation_rate"] or 0),
             float(d["reasoning_disclosure_rate"] or 0),
+            (d.get("summary") or "")[:60],
         )
-    logger.info("=== Compass Status 診断 完了 ===")
+    logger.info("=== Match Status 診断 完了 ===")
 
 
 def _split_pool_updates(updates: list[dict], current_epoch: int) -> tuple[dict | None, dict | None]:
@@ -2940,7 +2852,7 @@ def main():
     parser.add_argument(
         "--event",
         default="all",
-        choices=["all", "pool", "drep", "drep_unvoted", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync", "spo_role_initial_sync", "compass_classify_all", "compass_profile_all", "compass_status", "notify_test"],
+        choices=["all", "pool", "drep", "drep_unvoted", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync", "spo_role_initial_sync", "compass_profile_all", "compass_status", "notify_test"],
         help="実行するイベントグループ",
     )
     parser.add_argument(
@@ -3051,8 +2963,6 @@ def main():
 
     # DRep マッチング診断用トピックプロフィール: 明示指定 or cron 経由（"all" には含めない）
     # DRep委任コンパス (11 axis MVP): rule-based GA 分類 / DRep プロファイル再計算
-    if args.event == "compass_classify_all":
-        check_drep_compass_classify_all()
     if args.event == "compass_profile_all":
         check_drep_compass_profile_all()
     if args.event == "compass_status":

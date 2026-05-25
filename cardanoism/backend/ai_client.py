@@ -562,46 +562,71 @@ def classify_proposal_tags(
 
 
 _DREP_PROFILE_SYSTEM = """\
-You analyze a Cardano DRep's voting behavior for Cardanoism's DRep delegation
-compass.
+You analyze a Cardano DRep's voting behavior for Cardanoism's "DRep Matching
+Diagnostic". You receive the DRep's past votes (Yes/No/Abstain), the
+corresponding Governance Action title and abstract, and any voter rationale
+the DRep published (CIP-100/108 metadata).
 
-Use the DRep's past votes, vote rationales, Governance Action summaries, and
-Cardanoism proprietary tags to infer the DRep's tendencies. Do NOT treat DReps
-as factions. Avoid labels such as anti-IO, centralized, wasteful, or giveaway.
-Use neutral tendency language only.
+Your job: infer the DRep's tendencies along 7 axes, each scored 0.0..1.0,
+and write a neutral one-line summary for delegators.
 
-Axes, each 0.0..1.0:
-- treasury_discipline
-- growth_investment
-- technical_foundation
-- ecosystem_expansion
-- institutional_continuity
-- decentralized_allocation
-- marketing_support
-- protocol_conservatism
-- protocol_innovation
-- transparency_focus
-- reasoning_disclosure
+Do NOT use faction labels (anti-IO, centralized, wasteful, giveaway, etc.).
+Use neutral "tends to..." tendency language only.
 
-Scoring guidance:
-- 0.5 means neutral, mixed, or insufficient evidence.
-- Abstain is participation but should not strongly move issue axes.
-- Missing vote / no vote is non-participation or missing data, not Abstain.
-- For No votes, infer what the No is about. A No on marketing with weak KPI
-  may indicate treasury discipline / transparency focus rather than opposition
-  to marketing itself.
-- confidence is per-axis 0.0..1.0 and should reflect evidence volume and
-  clarity. Keep confidence low when evidence is sparse or ambiguous.
+# 7 axes (all 0.0..1.0, 0.5 = neutral / mixed / no evidence)
 
-Return STRICT JSON only:
+- treasury     (0=Aggressive Treasury use / 1=Cautious Treasury use)
+  Higher when the DRep votes No on large lump-sum proposals and prefers
+  small targeted grants. Lower when they support large bold investments.
+
+- priority     (0=Technical foundation / 1=Real-world usage)
+  Lower when DRep supports protocol R&D, security, infrastructure,
+  developer tooling. Higher when they support dApps, DeFi, wallets,
+  user-adoption and commercial product growth.
+
+- org          (0=Established orgs / 1=Distributed allocation)
+  Lower when DRep supports continuing budgets for IO / CF / Intersect /
+  Emurgo. Higher when they prefer funding new teams, regions, individual
+  contributors and community DAOs.
+
+- protocol     (0=Progressive protocol change / 1=Conservative stability)
+  Lower when DRep supports hard forks and parameter changes for new
+  features. Higher when they vote No on consensus-affecting changes
+  for stability.
+
+- transparency (0=Lenient on disclosure / 1=Strict on disclosure)
+  Higher when DRep votes No on proposals lacking KPIs, milestones,
+  budget transparency or accountability. Lower when they accept
+  proposals based on trust without strict reporting.
+
+- risk         (0=Aggressive risk taking / 1=Cautious risk management)
+  Lower when DRep supports experimental, unproven or high-risk
+  proposals. Higher when they vote No on speculative or unclear-ROI
+  proposals.
+
+- marketing    (0=Pro marketing / 1=Marketing-cautious)
+  Lower when DRep supports PR, events, awareness, conferences.
+  Higher when they prefer product/dev funding over marketing spend.
+
+# Scoring rules
+- 0.5 means neutral, mixed evidence, or no relevant votes.
+- Abstain is participation but a weak signal. Move axes only slightly.
+- A No vote may signal multiple axes. Use the GA content and rationale
+  text to infer which axis the No is really about.
+- confidence is per-axis 0.0..1.0. Low confidence when evidence is sparse
+  or ambiguous, high confidence when many clear votes + rationale text.
+
+# Output (STRICT JSON only)
 {
-  "profile": {"axis": 0.0},
-  "confidence": {"axis": 0.0},
-  "rationale": {"axis": "short neutral explanation"},
-  "evidence": {"axis": [{"proposal_id": "...", "vote": "Yes|No|Abstain", "reason": "..."}]}
+  "profile":    {"<axis>": 0.0..1.0, ...},   // all 7 axes required
+  "confidence": {"<axis>": 0.0..1.0, ...},   // all 7 axes required
+  "summary":    "neutral one-line description of this DRep's tendencies",
+  "evidence":   {"<axis>": [{"proposal_id": "...", "vote": "Yes|No|Abstain",
+                              "reason": "..."}], ...}   // optional, may be empty
 }
 
-Every axis must appear in profile and confidence. Evidence may be empty.
+The summary should be a single sentence, neutral, in Japanese (e.g.,
+"新興プロジェクトを積極支援し、KPI を厳しく問う傾向").
 """
 
 
@@ -616,7 +641,8 @@ def _build_drep_profile_user_text(payload: dict[str, Any], max_chars: int = 1800
 class DrepCompassProfileResult:
     profile: dict[str, float]
     confidence: dict[str, float]
-    rationale: dict[str, str]
+    summary: str                            # 1-line neutral description
+    rationale: dict[str, str]               # 旧 11 axis 用、後方互換のため残置
     evidence: dict[str, list[dict[str, Any]]]
     model_id: str
     tokens_input: int
@@ -662,6 +688,7 @@ def analyze_drep_compass_profile(
 
     profile = clamp_map(parsed.get("profile"))
     confidence = clamp_map(parsed.get("confidence"))
+    summary = str(parsed.get("summary") or "")[:500]
     rationale_raw = parsed.get("rationale") if isinstance(parsed.get("rationale"), dict) else {}
     rationale = {str(k): str(v or "")[:1000] for k, v in rationale_raw.items()}
     evidence_raw = parsed.get("evidence") if isinstance(parsed.get("evidence"), dict) else {}
@@ -690,6 +717,7 @@ def analyze_drep_compass_profile(
     return DrepCompassProfileResult(
         profile=profile,
         confidence=confidence,
+        summary=summary,
         rationale=rationale,
         evidence=evidence,
         model_id=model,

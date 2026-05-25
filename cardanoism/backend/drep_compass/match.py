@@ -1,7 +1,10 @@
 """drep_compass.match
 ユーザー価値観ベクトルと DRep プロファイルの相性スコアを計算する。
 
-spec 第 6 節「マッチング計算」を厳守。
+新設計: 7 軸ベース、シンプルな重み付き平均。
+  similarity[axis] = 1 - |user[axis] - drep[axis]|
+  total = Σ(similarity × weight × confidence) / Σ(weight × confidence)
+  confidence < LOW_CONFIDENCE_THRESHOLD の axis は除外。
 """
 from __future__ import annotations
 
@@ -16,86 +19,73 @@ from cardanoism.backend.drep_compass.taxonomy import AXES
 
 logger = logging.getLogger(__name__)
 
+# confidence がこれ未満の axis はマッチ計算から除外
+_LOW_CONFIDENCE = 0.2
+
 
 @dataclass
 class AxisDetail:
     axis: str
-    user_value: float       # 0.0〜1.0
-    drep_value: float       # 0.0〜1.0
-    similarity: float       # 0.0〜1.0
-    confidence: float       # 0.0〜1.0
-    weight: float           # 1.0 or 1.5
-    weighted_contribution: float  # similarity * weight * confidence
-    excluded: bool = False  # confidence < LOW_CONFIDENCE_THRESHOLD で除外
+    user_value: float
+    drep_value: float
+    similarity: float
+    confidence: float
+    weight: float
+    excluded: bool = False
 
 
 @dataclass
 class MatchResult:
     drep_id: str
-    total_score: float                       # 0.0〜100.0
+    total_score: float                       # 0〜100
+    summary: str = ""                        # AI 生成サマリ
     axis_details: list[AxisDetail] = field(default_factory=list)
-    matched_axes: list[str] = field(default_factory=list)
-    mismatched_axes: list[str] = field(default_factory=list)
+    matched_axes: list[str] = field(default_factory=list)      # similarity >= 0.75
+    mismatched_axes: list[str] = field(default_factory=list)   # similarity <= 0.30
     low_confidence_axes: list[str] = field(default_factory=list)
-    participation_rate: float = 0.0
     reasoning_disclosure_rate: float = 0.0
     analyzed_vote_count: int = 0
-    evidence_summary: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
 
-def _axis_similarity(user_value: float, drep_value: float) -> float:
-    """1 - abs(user - drep) を 0.0〜1.0 にクランプして返す。"""
-    return max(0.0, min(1.0, 1.0 - abs(user_value - drep_value)))
+def _axis_similarity(uv: float, dv: float) -> float:
+    return max(0.0, min(1.0, 1.0 - abs(uv - dv)))
 
 
 def calculate_drep_match(
     user_vector: dict[str, float],
     axis_weights: dict[str, float],
-    drep_profile: dict[str, Any],
+    drep_row: dict[str, Any],
 ) -> MatchResult:
-    """1 DRep に対する match を計算。
+    """1 DRep に対するマッチを計算する。
 
-    Args:
-      user_vector:   axis -> 0.0〜1.0 (questionnaire.build_user_vector の出力)
-      axis_weights:  axis -> 1.0 or 1.5
-      drep_profile:  drep_profiles row を dict 化したもの
-                     (profile_json / confidence_json / participation_rate / ...)
-
-    Returns:
-      MatchResult (total_score は 0〜100)
+    drep_row: drep_profiles の 1 行 dict (profile_json / confidence_json / ...)
     """
-    drep_id = str(drep_profile.get("drep_id") or "")
-
+    drep_id = str(drep_row.get("drep_id") or "")
+    summary = str(drep_row.get("summary") or "")
     try:
-        profile = json.loads(drep_profile.get("profile_json") or "{}")
+        profile = json.loads(drep_row.get("profile_json") or "{}")
     except (TypeError, ValueError, json.JSONDecodeError):
         profile = {}
     try:
-        confidence = json.loads(drep_profile.get("confidence_json") or "{}")
+        confidence = json.loads(drep_row.get("confidence_json") or "{}")
     except (TypeError, ValueError, json.JSONDecodeError):
         confidence = {}
-    try:
-        evidence = json.loads(drep_profile.get("evidence_json") or "{}")
-    except (TypeError, ValueError, json.JSONDecodeError):
-        evidence = {}
 
     details: list[AxisDetail] = []
     sum_weighted_sim = 0.0
     sum_weight_conf = 0.0
-
     matched: list[str] = []
     mismatched: list[str] = []
     low_conf: list[str] = []
 
     for axis in AXES:
         if axis not in user_vector:
-            # ユーザーが回答してない axis はスキップ
             continue
         uv = float(user_vector[axis])
         try:
-            dv = float(profile.get(axis, config.NEUTRAL_MIDPOINT))
+            dv = float(profile.get(axis, 0.5))
         except (TypeError, ValueError):
-            dv = config.NEUTRAL_MIDPOINT
+            dv = 0.5
         try:
             conf = float(confidence.get(axis, 0.0))
         except (TypeError, ValueError):
@@ -103,13 +93,10 @@ def calculate_drep_match(
         weight = float(axis_weights.get(axis, config.WEIGHT_NORMAL))
 
         sim = _axis_similarity(uv, dv)
-        excluded = conf < config.LOW_CONFIDENCE_THRESHOLD
-        contribution = sim * weight * conf if not excluded else 0.0
-        denom = weight * conf if not excluded else 0.0
-
+        excluded = conf < _LOW_CONFIDENCE
         if not excluded:
-            sum_weighted_sim += contribution
-            sum_weight_conf += denom
+            sum_weighted_sim += sim * weight * conf
+            sum_weight_conf += weight * conf
 
         details.append(AxisDetail(
             axis=axis,
@@ -118,7 +105,6 @@ def calculate_drep_match(
             similarity=round(sim, 4),
             confidence=round(conf, 4),
             weight=round(weight, 4),
-            weighted_contribution=round(contribution, 4),
             excluded=excluded,
         ))
 
@@ -129,22 +115,18 @@ def calculate_drep_match(
         elif sim <= 0.30:
             mismatched.append(axis)
 
-    if sum_weight_conf > 0:
-        total = (sum_weighted_sim / sum_weight_conf) * 100.0
-    else:
-        total = 0.0
+    total = (sum_weighted_sim / sum_weight_conf * 100.0) if sum_weight_conf > 0 else 0.0
 
     return MatchResult(
         drep_id=drep_id,
         total_score=round(total, 1),
+        summary=summary,
         axis_details=details,
         matched_axes=matched,
         mismatched_axes=mismatched,
         low_confidence_axes=low_conf,
-        participation_rate=float(drep_profile.get("participation_rate") or 0.0),
-        reasoning_disclosure_rate=float(drep_profile.get("reasoning_disclosure_rate") or 0.0),
-        analyzed_vote_count=int(drep_profile.get("analyzed_vote_count") or 0),
-        evidence_summary=evidence,
+        reasoning_disclosure_rate=float(drep_row.get("reasoning_disclosure_rate") or 0.0),
+        analyzed_vote_count=int(drep_row.get("analyzed_vote_count") or 0),
     )
 
 
@@ -153,26 +135,25 @@ def list_matches(
     axis_weights: dict[str, float],
     *,
     limit: int = config.DEFAULT_MATCH_LIMIT,
-    only_registered: bool = True,
+    only_active: bool = True,
 ) -> list[MatchResult]:
     """全 DRep プロファイルを取得し、相性スコアを TOP N 返す。
 
-    フィルタ: drep_profiles.analyzed_vote_count >= MIN_ANALYZED_VOTE_COUNT。
-    only_registered=True なら dreps.registered=1 のみ。
+    only_active=True なら drep_status='active' のみ。
     """
     sql = """
         SELECT dp.drep_id, dp.profile_json, dp.confidence_json,
-               dp.evidence_json,
-               dp.participation_rate, dp.reasoning_disclosure_rate,
-               dp.analyzed_vote_count,
+               dp.evidence_json, dp.summary,
+               dp.reasoning_disclosure_rate, dp.analyzed_vote_count,
                d.given_name, d.image_url, d.drep_status, d.registered, d.amount
           FROM drep_profiles dp
           JOIN dreps d ON d.drep_id = dp.drep_id
          WHERE dp.analyzed_vote_count >= ?
+           AND d.registered = 1
     """
     params: list[Any] = [int(config.MIN_ANALYZED_VOTE_COUNT)]
-    if only_registered:
-        sql += " AND d.registered = 1"
+    if only_active:
+        sql += " AND d.drep_status = 'active'"
 
     with get_db() as (cursor, _):
         cursor.execute(sql, params)
@@ -188,6 +169,6 @@ def list_matches(
             continue
         out.append((r, row))
 
-    # 総合スコア降順 → 委任量降順 で安定ソート
+    # 総合スコア降順 → 委任量降順
     out.sort(key=lambda t: (-t[0].total_score, -int(t[1].get("amount") or 0)))
     return [r for r, _ in out[:max(1, int(limit))]]

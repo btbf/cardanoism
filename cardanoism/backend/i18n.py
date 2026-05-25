@@ -493,6 +493,8 @@ UI_JA: dict[str, str] = {
     "drep_match_q_decentralized_allocation":   "トレジャリーは新興チーム・地域コミュニティ・個人開発者にも広く配分されるべきだ",
     "drep_match_q_protocol_conservatism":      "パラメータ変更やハードフォークは、安定性を優先して慎重に進めるべきだ",
     "drep_match_q_protocol_innovation":        "性能改善や新機能追加のためには、一定のリスクを取ってでもプロトコル変更を進めるべきだ",
+    "drep_match_q_delivery_accountability":    "Treasury提案は、実行体制・過去実績・マイルストーン・納品後の報告責任が明確なものを優先すべきだ",
+    "drep_match_q_risk_management":            "新しい試みや実験的プロジェクトでも、Cardanoの将来価値が大きいなら一定のTreasuryリスクは許容できる",
     "drep_match_q_reasoning_disclosure":       "DRep を選ぶうえで、投票理由を公開していることを重視する",
     # 各問の論点解説 (背景 / 支持する根拠 / 慎重な根拠)
     "drep_match_q_treasury_kpi_context": (
@@ -648,6 +650,34 @@ UI_JA: dict[str, str] = {
         "・「革新」という旗印で本質的に不要な変更まで進んでしまう懸念\n"
         "・利用者 (dApp 運営・ウォレット開発) のキャッチアップ負担が増える"
     ),
+    "drep_match_q_delivery_accountability_context": (
+        "Treasury支出では、提案内容だけでなく、実行するチームが本当に納品できるか、進捗をどう報告するか、"
+        "支出後に成果をどう検証するかが重要になります。"
+    ),
+    "drep_match_q_delivery_accountability_pros": (
+        "・実行体制と責任範囲が明確な提案は、支出後の検証がしやすい\n"
+        "・過去実績やマイルストーンがあると、DRepが賛否を判断しやすい\n"
+        "・報告責任を求めることで、Treasury支出への信頼を保ちやすい"
+    ),
+    "drep_match_q_delivery_accountability_cons": (
+        "・新興チームや実験的提案は、過去実績だけでは評価しにくい\n"
+        "・厳格すぎる要件は、小規模チームや個人貢献者の参入障壁になる\n"
+        "・成果が長期に出る研究や公共財では、短期納品だけでは測れない"
+    ),
+    "drep_match_q_risk_management_context": (
+        "Treasuryは公共資金である一方、Cardanoの将来を広げるための投資原資でもあります。"
+        "不確実性のある提案にどこまで予算を使うかは、DRepの判断傾向が分かれやすい論点です。"
+    ),
+    "drep_match_q_risk_management_pros": (
+        "・新しい取り組みには一定の失敗リスクがあり、成功時の波及効果も大きい\n"
+        "・実験的投資が将来の採用・開発者増加・新市場につながる可能性がある\n"
+        "・過度に慎重だと、Treasuryが守りの支出だけに偏る"
+    ),
+    "drep_match_q_risk_management_cons": (
+        "・リスクの高い提案は、失敗時にTreasury残高と信頼を損なう\n"
+        "・期待値が大きくても、検証計画や撤退基準がないと判断が難しい\n"
+        "・不確実性を許容しすぎると、説明責任が弱い支出が増えやすい"
+    ),
     "drep_match_q_reasoning_disclosure_context": (
         "Conway era では DRep が CIP-100 / CIP-108 メタデータで投票理由を"
         "公開できますが、必須ではありません。理由公開の有無を DRep 選びの"
@@ -679,6 +709,8 @@ UI_JA: dict[str, str] = {
     "drep_match_axis_marketing_support":        "マーケティング推進",
     "drep_match_axis_protocol_conservatism":    "プロトコル変更に慎重",
     "drep_match_axis_protocol_innovation":      "プロトコル変更に積極的",
+    "drep_match_axis_delivery_accountability":  "実行責任を重視",
+    "drep_match_axis_risk_management":          "リスク許容度",
     "drep_match_axis_transparency_focus":       "説明責任を重視",
     "drep_match_axis_reasoning_disclosure":     "投票理由の公開度",
     # 11 axis の補足説明 (1 行、何を見ている指標か)
@@ -691,11 +723,17 @@ UI_JA: dict[str, str] = {
     "drep_match_axis_marketing_support_desc":        "PR / イベント / 認知拡大予算に賛成",
     "drep_match_axis_protocol_conservatism_desc":    "パラメータ変更・ハードフォークに No",
     "drep_match_axis_protocol_innovation_desc":      "新機能 / 性能改善のための変更に Yes",
+    "drep_match_axis_delivery_accountability_desc":  "実行体制・実績・納品後報告が弱い提案に慎重",
+    "drep_match_axis_risk_management_desc":          "不確実性があっても将来価値が大きい提案を許容",
     "drep_match_axis_transparency_focus_desc":       "KPI・マイルストーン・成果検証が無い提案に No",
     "drep_match_axis_reasoning_disclosure_desc":     "DRep 自身がどれだけ投票理由を公開しているか",
     # 独立軸 3 つのスライダー両端ラベル
     "drep_match_axis_marketing_support_low":     "慎重",
     "drep_match_axis_marketing_support_high":    "推進",
+    "drep_match_axis_delivery_accountability_low":  "柔軟",
+    "drep_match_axis_delivery_accountability_high": "厳格",
+    "drep_match_axis_risk_management_low":          "慎重",
+    "drep_match_axis_risk_management_high":         "許容",
     "drep_match_axis_transparency_focus_low":    "寛容",
     "drep_match_axis_transparency_focus_high":   "厳格",
     "drep_match_axis_reasoning_disclosure_low":  "非公開",
@@ -2376,6 +2414,8 @@ UI_EN: dict[str, str] = {
     "drep_match_q_decentralized_allocation":   "Treasury should also be broadly distributed to emerging teams, regional communities, and individual developers",
     "drep_match_q_protocol_conservatism":      "Parameter Changes and Hard Forks should be progressed conservatively, prioritizing stability",
     "drep_match_q_protocol_innovation":        "For performance and new features, protocol changes should be progressed even at some risk",
+    "drep_match_q_delivery_accountability":    "Treasury proposals should be prioritized when delivery capacity, track record, milestones, and post-funding reporting are clear",
+    "drep_match_q_risk_management":            "Even experimental or new initiatives can justify Treasury risk when the potential long-term value for Cardano is high",
     "drep_match_q_reasoning_disclosure":       "I value DReps who publicly disclose their voting rationale when choosing one to delegate to",
     # Per-question explanation (context / pros / cons)
     "drep_match_q_treasury_kpi_context": (
@@ -2533,6 +2573,34 @@ UI_EN: dict[str, str] = {
         "- The 'innovation' banner can pull through changes that aren't truly necessary\n"
         "- Users (dApps, wallets) bear higher catch-up burden"
     ),
+    "drep_match_q_delivery_accountability_context": (
+        "Treasury spending depends not only on what is proposed, but on whether the team can deliver, "
+        "how progress will be reported, and how outcomes will be verified after funding."
+    ),
+    "drep_match_q_delivery_accountability_pros": (
+        "- Clear delivery capacity and responsibility make post-funding review easier\n"
+        "- Track record and milestones help DReps make comparable voting decisions\n"
+        "- Reporting obligations help preserve trust in Treasury spending"
+    ),
+    "drep_match_q_delivery_accountability_cons": (
+        "- New teams and experimental proposals may be hard to judge by track record alone\n"
+        "- Overly strict requirements can raise barriers for small teams and individual contributors\n"
+        "- Long-term research and public goods may not fit short delivery cycles"
+    ),
+    "drep_match_q_risk_management_context": (
+        "Treasury is public funding, but also a source of investment for Cardano's future. "
+        "How much budget should go to uncertain but potentially high-upside work is a core DRep judgment."
+    ),
+    "drep_match_q_risk_management_pros": (
+        "- New initiatives naturally carry failure risk, but can create large ecosystem upside\n"
+        "- Experimental funding may unlock adoption, developers, or new markets\n"
+        "- Excessive caution can make Treasury spending too defensive"
+    ),
+    "drep_match_q_risk_management_cons": (
+        "- High-risk proposals can damage Treasury reserves and public trust if they fail\n"
+        "- Even high-upside work needs validation plans and stop conditions\n"
+        "- Too much risk tolerance can increase weakly accountable spending"
+    ),
     "drep_match_q_reasoning_disclosure_context": (
         "In the Conway era DReps can publish voting rationales via CIP-100 / "
         "CIP-108 metadata, but it isn't required. Whether disclosure should "
@@ -2564,6 +2632,8 @@ UI_EN: dict[str, str] = {
     "drep_match_axis_marketing_support":        "Pro marketing & outreach",
     "drep_match_axis_protocol_conservatism":    "Cautious on protocol changes",
     "drep_match_axis_protocol_innovation":      "Active on protocol changes",
+    "drep_match_axis_delivery_accountability":  "Delivery accountability",
+    "drep_match_axis_risk_management":          "Risk tolerance",
     "drep_match_axis_transparency_focus":       "Demands accountability",
     "drep_match_axis_reasoning_disclosure":     "Rationale disclosure",
     # 11 axis short descriptions (1 line each)
@@ -2576,11 +2646,17 @@ UI_EN: dict[str, str] = {
     "drep_match_axis_marketing_support_desc":        "Supports PR / event / awareness funding",
     "drep_match_axis_protocol_conservatism_desc":    "Votes No on parameter changes / hard forks",
     "drep_match_axis_protocol_innovation_desc":      "Votes Yes on protocol changes for new features / performance",
+    "drep_match_axis_delivery_accountability_desc":  "Cautious when delivery capacity, track record, or reporting is weak",
+    "drep_match_axis_risk_management_desc":          "Accepts uncertainty when expected long-term value is high",
     "drep_match_axis_transparency_focus_desc":       "Votes No when KPI / milestones / outcome verification are missing",
     "drep_match_axis_reasoning_disclosure_desc":     "How much this DRep publicly discloses their voting rationale",
     # Slider end labels for the 3 independent axes
     "drep_match_axis_marketing_support_low":     "Cautious",
     "drep_match_axis_marketing_support_high":    "Pro",
+    "drep_match_axis_delivery_accountability_low":  "Flexible",
+    "drep_match_axis_delivery_accountability_high": "Strict",
+    "drep_match_axis_risk_management_low":          "Cautious",
+    "drep_match_axis_risk_management_high":         "Tolerant",
     "drep_match_axis_transparency_focus_low":    "Lenient",
     "drep_match_axis_transparency_focus_high":   "Strict",
     "drep_match_axis_reasoning_disclosure_low":  "Not disclosed",
