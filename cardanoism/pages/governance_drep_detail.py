@@ -568,16 +568,16 @@ def _bar_color(conf_class) -> rx.Var:
 
 
 def _compass_balance_row(item) -> rx.Component:
-    """対立軸 1 行 (中央バーから左右に振れる)。
+    """対立軸 1 行 (中央起点で左右に振れる)。
 
     レイアウト:
-      [ 軸名 ] [ 左ラベル ━━━●━━━━ 右ラベル ] [ 立場 (pos/neg/center) + 強度% ]
+      [ 軸名 ] [ neg                          pos ]   [ 立場 + 強度% ]
+                    ━━━●━━━━━━━━┃━━━━━━━●━━━
+                                 ↑
+                          中央仕切り (50% absolute)
+              neg 側塗り = 中央 → 左 (right:50%)
+              pos 側塗り = 中央 → 右 (left:50%)
     """
-    # 左半分: side == "neg" のとき左から内側へ伸びる
-    left_width = rx.cond(item["side"] == "neg", item["magnitude_pct"] + "%", "0%")
-    # 右半分: side == "pos" のとき右から内側へ伸びる (実際は中央起点 → 右へ伸ばす)
-    right_width = rx.cond(item["side"] == "pos", item["magnitude_pct"] + "%", "0%")
-
     color = _bar_color(item["conf_class"])
 
     side_label = rx.match(
@@ -600,45 +600,63 @@ def _compass_balance_row(item) -> rx.Component:
                 size="2", weight="bold", color="var(--gray-12)",
                 style={"width": "140px", "flexShrink": "0"},
             ),
-            # 中央: 左右に伸びる中央バー
+            # 中央: 中央仕切り + 左右に振れる絶対配置バー
             rx.box(
-                # 左半分 (neg 側に伸びる)
-                rx.box(
+                # pos 側塗り (中央から右)
+                rx.cond(
+                    item["side"] == "pos",
                     rx.box(
-                        width=left_width,
-                        height="100%",
-                        background=color,
-                        border_radius="999px 0 0 999px",
-                        margin_left="auto",
-                        transition="width 0.3s",
-                    ),
-                    flex="1", height="100%", overflow="hidden",
-                ),
-                # 中央仕切り
-                rx.box(
-                    width="2px", height="14px",
-                    background="var(--gray-9)",
-                    style={"flexShrink": "0"},
-                ),
-                # 右半分 (pos 側に伸びる)
-                rx.box(
-                    rx.box(
-                        width=right_width,
+                        width=item["magnitude_pct"] + "%",
                         height="100%",
                         background=color,
                         border_radius="0 999px 999px 0",
-                        transition="width 0.3s",
+                        style={
+                            "position": "absolute",
+                            "left": "50%",
+                            "top": "0",
+                            "transition": "width 0.3s",
+                        },
                     ),
-                    flex="1", height="100%", overflow="hidden",
+                    rx.fragment(),
                 ),
-                # 全体: 2 つの flex 内 box が中央仕切りを挟む形
-                style={"display": "flex", "alignItems": "center"},
+                # neg 側塗り (中央から左)
+                rx.cond(
+                    item["side"] == "neg",
+                    rx.box(
+                        width=item["magnitude_pct"] + "%",
+                        height="100%",
+                        background=color,
+                        border_radius="999px 0 0 999px",
+                        style={
+                            "position": "absolute",
+                            "right": "50%",
+                            "top": "0",
+                            "transition": "width 0.3s",
+                        },
+                    ),
+                    rx.fragment(),
+                ),
+                # 中央仕切り (50% 位置に absolute、外側に少しはみ出る高さ)
+                rx.box(
+                    style={
+                        "position": "absolute",
+                        "left": "50%",
+                        "top": "50%",
+                        "transform": "translate(-50%, -50%)",
+                        "width": "2px",
+                        "height": "16px",
+                        "background": "var(--gray-9)",
+                        "borderRadius": "999px",
+                        "zIndex": "2",
+                    },
+                ),
+                # 外枠 (背景 gray-3 のレール)
                 flex="1",
                 height="10px",
                 background="var(--gray-3)",
                 border_radius="999px",
-                overflow="hidden",
-                min_width="200px",
+                min_width="240px",
+                style={"position": "relative", "overflow": "hidden"},
             ),
             # 右: 立場ラベル + 強度
             rx.hstack(
