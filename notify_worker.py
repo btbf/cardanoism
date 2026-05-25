@@ -1857,9 +1857,51 @@ def check_drep_compass_profile_all() -> int:
 
 
 def check_drep_compass_status() -> None:
-    """drep_profiles テーブルの診断 (件数 + 分布 + 上位 DRep)。"""
+    """drep_profiles + dreps + proposal_votes の診断 (原因切り分け用)。"""
     logger.info("=== Match Status 診断 開始 ===")
     with get_db() as (cursor, _):
+        # ── 1. dreps テーブル ──
+        cursor.execute("SELECT COUNT(*) AS n FROM dreps")
+        d_total = int(cursor.fetchone()["n"])
+        cursor.execute("SELECT COUNT(*) AS n FROM dreps WHERE registered = 1")
+        d_reg = int(cursor.fetchone()["n"])
+        cursor.execute(
+            "SELECT COUNT(*) AS n FROM dreps WHERE drep_status = 'active'"
+        )
+        d_active = int(cursor.fetchone()["n"])
+        cursor.execute(
+            "SELECT COUNT(*) AS n FROM dreps "
+            "WHERE registered = 1 AND drep_status = 'active'"
+        )
+        d_reg_active = int(cursor.fetchone()["n"])
+        cursor.execute(
+            "SELECT drep_id FROM dreps "
+            "WHERE registered = 1 AND drep_status = 'active' LIMIT 3"
+        )
+        drep_id_samples = [r["drep_id"] for r in cursor.fetchall()]
+
+        # ── 2. proposal_votes (DRep 限定) ──
+        cursor.execute(
+            "SELECT COUNT(*) AS n FROM proposal_votes WHERE voter_role = 'DRep'"
+        )
+        pv_drep = int(cursor.fetchone()["n"])
+        cursor.execute(
+            "SELECT DISTINCT voter_id FROM proposal_votes "
+            "WHERE voter_role = 'DRep' LIMIT 3"
+        )
+        voter_id_samples = [r["voter_id"] for r in cursor.fetchall()]
+
+        # ── 3. dreps.drep_id ↔ proposal_votes.voter_id の一致 ──
+        cursor.execute(
+            "SELECT COUNT(DISTINCT d.drep_id) AS n "
+            "FROM dreps d "
+            "JOIN proposal_votes pv "
+            "  ON pv.voter_id = d.drep_id AND pv.voter_role = 'DRep' "
+            "WHERE d.registered = 1 AND d.drep_status = 'active'"
+        )
+        joined = int(cursor.fetchone()["n"])
+
+        # ── 4. drep_profiles ──
         cursor.execute("SELECT COUNT(*) AS n FROM drep_profiles")
         profile_count = int(cursor.fetchone()["n"])
         cursor.execute(
@@ -1870,10 +1912,6 @@ def check_drep_compass_status() -> None:
             "SELECT COUNT(*) AS n FROM drep_profiles WHERE analyzed_vote_count >= 3"
         )
         gte_3 = int(cursor.fetchone()["n"])
-        cursor.execute(
-            "SELECT COUNT(*) AS n FROM drep_profiles WHERE analyzed_vote_count >= 10"
-        )
-        gte_10 = int(cursor.fetchone()["n"])
         cursor.execute(
             "SELECT COUNT(*) AS n FROM drep_profiles dp "
             "JOIN dreps d ON d.drep_id = dp.drep_id "
@@ -1887,20 +1925,48 @@ def check_drep_compass_status() -> None:
             "FROM drep_profiles ORDER BY analyzed_vote_count DESC LIMIT 5"
         )
         top_dreps = [dict(r) for r in cursor.fetchall()]
+
+    logger.info("─── dreps テーブル ───")
+    logger.info("  total                          : %d 件", d_total)
+    logger.info("  registered = 1                 : %d 件", d_reg)
+    logger.info("  drep_status = 'active'         : %d 件", d_active)
+    logger.info("  registered=1 AND active        : %d 件 ← AI 分析対象", d_reg_active)
+    if drep_id_samples:
+        logger.info("  drep_id サンプル (3 件):")
+        for did in drep_id_samples:
+            logger.info("    %s", did)
+    logger.info("─── proposal_votes (DRep 限定) ───")
+    logger.info("  voter_role='DRep' 投票数       : %d 件", pv_drep)
+    if voter_id_samples:
+        logger.info("  voter_id サンプル (3 件):")
+        for vid in voter_id_samples:
+            logger.info("    %s", vid)
+    logger.info("─── dreps.drep_id == proposal_votes.voter_id (active 限定) ───")
+    logger.info("  JOIN 一致 DRep 数              : %d 件", joined)
+    if joined == 0 and d_reg_active > 0 and pv_drep > 0:
+        logger.warning("⚠ active DRep と DRep 投票がそれぞれ存在するが、JOIN 一致が 0。")
+        logger.warning("  → drep_id と voter_id の表記揺れ (CIP-129 vs hex 等) を疑う。")
     logger.info("─── drep_profiles ───")
     logger.info("  total                    : %d 件", profile_count)
     logger.info("  analyzed_vote_count >= 1 : %d 件", gte_1)
     logger.info("  analyzed_vote_count >= 3 : %d 件", gte_3)
-    logger.info("  analyzed_vote_count >= 10: %d 件", gte_10)
     logger.info("─── マッチング候補数 (active + analyzed>=3) ───")
     logger.info("  %d 件", candidates)
     if candidates == 0:
-        logger.warning("⚠ マッチング候補が 0 件です。compass_profile_all を実行してください。")
-    logger.info("─── 上位 5 DRep ───")
+        logger.warning("⚠ マッチング候補が 0 件です。")
+        if d_reg_active == 0:
+            logger.warning("  原因: active DRep が 1 つもない。drep_sync を実行")
+        elif pv_drep == 0:
+            logger.warning("  原因: proposal_votes に DRep 投票が 1 件もない。vote_sync を実行")
+        elif joined == 0:
+            logger.warning("  原因: drep_id / voter_id が一致しない (表記揺れ)。要 schema 確認")
+        elif gte_3 == 0:
+            logger.warning("  原因: AI 分析は走ったが投票実績 3 件以上の DRep がいない")
+    logger.info("─── 上位 5 DRep (profile 順) ───")
     for d in top_dreps:
         did = d["drep_id"]
-        if len(did) > 32:
-            did = did[:32] + "..."
+        if len(did) > 40:
+            did = did[:40] + "..."
         logger.info(
             "  %s : votes=%d rationale=%.2f summary=%s",
             did,
