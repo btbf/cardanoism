@@ -25,6 +25,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
+from cardanoism.backend.ai_client import analyze_drep_compass_profile
 from cardanoism.backend.db_connect import get_db
 from cardanoism.backend.drep_compass import config
 from cardanoism.backend.drep_compass.taxonomy import AXES, AXES_SET
@@ -279,6 +280,7 @@ def compute_profile_from_rows(
     acc: dict[str, _AxisAcc] = {}
     total_actual_votes = 0
     rationale_count = 0
+    eligible_action_count = len(vote_rows)
 
     for vrow in vote_rows:
         pid = str(vrow.get("proposal_id") or "")
@@ -349,15 +351,19 @@ def compute_profile_from_rows(
     # DB スキーマ互換性のため列は残置し、固定値を書き込む:
     #   participation_rate = 1.0 (vote_rows は実投票のみなので)
     #   eligible_action_count = 分析対象投票数と同じ
+    participation_rate = (
+        total_actual_votes / eligible_action_count
+        if eligible_action_count > 0 else 0.0
+    )
     return DrepProfileResult(
         drep_id=drep_id,
         final_score=final_score,
         raw_score=raw_score,
         confidence=confidence,
-        participation_rate=1.0 if total_actual_votes > 0 else 0.0,
+        participation_rate=round(participation_rate, 4),
         reasoning_disclosure_rate=round(reasoning_disclosure_rate, 4),
         analyzed_vote_count=total_actual_votes,
-        eligible_action_count=total_actual_votes,
+        eligible_action_count=eligible_action_count,
         evidence=evidence,
     )
 
@@ -377,16 +383,29 @@ def _fetch_vote_and_tag_rows(drep_id: str) -> tuple[list[dict], list[dict]]:
     with get_db() as (cursor, _):
         cursor.execute(
             """
-            SELECT pv.proposal_id,
+            SELECT ga.proposal_id,
+                   ga.proposal_type,
+                   ga.title,
+                   ga.title_ja,
+                   ga.abstract,
+                   ga.abstract_ja,
+                   ga.withdrawal_total_lovelace,
                    pv.vote,
+                   pv.rationale,
+                   pv.rationale_ja,
+                   pv.meta_url,
                    CASE
                      WHEN (pv.rationale IS NOT NULL AND pv.rationale <> '')
                        OR (pv.meta_url IS NOT NULL AND pv.meta_url <> '')
                      THEN 1 ELSE 0
                    END AS has_rationale
-              FROM proposal_votes pv
-             WHERE pv.voter_role = 'DRep'
+              FROM governance_actions ga
+              LEFT JOIN proposal_votes pv
+                ON pv.proposal_id = ga.proposal_id
+               AND pv.voter_role = 'DRep'
                AND pv.voter_id   = ?
+             ORDER BY ga.block_time DESC
+             LIMIT 500
             """,
             (str(drep_id),),
         )
@@ -445,5 +464,120 @@ def calculate_and_save(drep_id: str) -> DrepProfileResult:
     """1 DRep のプロファイルを計算して DB UPSERT する高レベル関数。"""
     vote_rows, tag_rows = _fetch_vote_and_tag_rows(drep_id)
     result = compute_profile_from_rows(drep_id, vote_rows, tag_rows)
+    upsert_drep_profile(result)
+    return result
+
+
+# AI-first override. The rule-based calculate_and_save above is kept as the
+# deterministic fallback path for tests and environments without OpenAI access.
+def _build_ai_profile_payload(
+    drep_id: str,
+    vote_rows: list[dict[str, Any]],
+    tag_rows: list[dict[str, Any]],
+    base: DrepProfileResult,
+) -> dict[str, Any]:
+    tags_by_pid: dict[str, list[str]] = defaultdict(list)
+    for row in tag_rows:
+        pid = str(row.get("proposal_id") or "")
+        tag = str(row.get("tag") or "")
+        if pid and tag:
+            tags_by_pid[pid].append(tag)
+
+    votes: list[dict[str, Any]] = []
+    for row in vote_rows:
+        pid = str(row.get("proposal_id") or "")
+        if not pid:
+            continue
+        rationale = (
+            str(row.get("rationale_ja") or "").strip()
+            or str(row.get("rationale") or "").strip()
+        )
+        votes.append({
+            "proposal_id": pid,
+            "proposal_type": str(row.get("proposal_type") or ""),
+            "title": str(row.get("title_ja") or row.get("title") or "")[:300],
+            "abstract": str(row.get("abstract_ja") or row.get("abstract") or "")[:900],
+            "withdrawal_total_lovelace": row.get("withdrawal_total_lovelace"),
+            "cardanoism_tags": sorted(tags_by_pid.get(pid, [])),
+            "vote": str(row.get("vote") or "NoVote"),
+            "rationale": rationale[:1200],
+        })
+
+    return {
+        "drep_id": drep_id,
+        "analysis_version": config.ANALYSIS_VERSION,
+        "participation_rate": base.participation_rate,
+        "reasoning_disclosure_rate": base.reasoning_disclosure_rate,
+        "analyzed_vote_count": base.analyzed_vote_count,
+        "eligible_action_count": base.eligible_action_count,
+        "fallback_rule_profile": base.final_score,
+        "fallback_rule_confidence": base.confidence,
+        "votes": votes,
+    }
+
+
+def _ai_profile_result(
+    drep_id: str,
+    vote_rows: list[dict[str, Any]],
+    tag_rows: list[dict[str, Any]],
+    base: DrepProfileResult,
+) -> DrepProfileResult | None:
+    if base.eligible_action_count <= 0:
+        return None
+    try:
+        ai = analyze_drep_compass_profile(
+            _build_ai_profile_payload(drep_id, vote_rows, tag_rows, base)
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("AI DRep profile failed for %s, using rule fallback: %s", drep_id, e)
+        return None
+
+    final_score: dict[str, float] = {}
+    confidence: dict[str, float] = {}
+    raw_score: dict[str, float] = {}
+    evidence: dict[str, list[dict[str, Any]]] = {}
+
+    for axis in AXES:
+        score = ai.profile.get(axis, base.final_score.get(axis, config.NEUTRAL_MIDPOINT))
+        conf = ai.confidence.get(axis, base.confidence.get(axis, 0.0))
+        score = max(0.0, min(1.0, float(score)))
+        conf = max(0.0, min(1.0, float(conf)))
+        final_score[axis] = round(score, 4)
+        confidence[axis] = round(conf, 4)
+        raw_score[axis] = round(score * 2.0 - 1.0, 4)
+
+        items = list(ai.evidence.get(axis) or [])
+        rationale = str(ai.rationale.get(axis) or "").strip()
+        if rationale:
+            items.insert(0, {
+                "proposal_id": "",
+                "vote": "",
+                "reason": rationale[:500],
+                "source": "ai_summary",
+            })
+        evidence[axis] = items[:20]
+
+    final_score["reasoning_disclosure"] = base.final_score["reasoning_disclosure"]
+    confidence["reasoning_disclosure"] = base.confidence["reasoning_disclosure"]
+    raw_score["reasoning_disclosure"] = base.raw_score["reasoning_disclosure"]
+
+    return DrepProfileResult(
+        drep_id=drep_id,
+        final_score=final_score,
+        raw_score=raw_score,
+        confidence=confidence,
+        participation_rate=base.participation_rate,
+        reasoning_disclosure_rate=base.reasoning_disclosure_rate,
+        analyzed_vote_count=base.analyzed_vote_count,
+        eligible_action_count=base.eligible_action_count,
+        evidence=evidence,
+    )
+
+
+def calculate_and_save(drep_id: str) -> DrepProfileResult:
+    """Calculate and persist one DRep profile. AI is primary; rules are fallback."""
+    vote_rows, tag_rows = _fetch_vote_and_tag_rows(drep_id)
+    fallback = compute_profile_from_rows(drep_id, vote_rows, tag_rows)
+    result = _ai_profile_result(drep_id, vote_rows, tag_rows, fallback) or fallback
     upsert_drep_profile(result)
     return result

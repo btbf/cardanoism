@@ -44,7 +44,8 @@ def _fetch_ga(gov_action_id: str) -> dict | None:
         cursor.execute(
             """
             SELECT proposal_id, proposal_type, title, abstract,
-                   title_ja, abstract_ja, withdrawal_total_lovelace
+                   title_ja, abstract_ja, motivation, motivation_ja,
+                   rationale, rationale_ja, withdrawal_total_lovelace
               FROM governance_actions
              WHERE proposal_id = ?
             """,
@@ -146,6 +147,7 @@ def reclassify_governance_action(gov_action_id: str) -> int:
         logger.warning("reclassify_governance_action: GA not found: %s", gov_action_id)
         return 0
     _delete_tags_by_source(gov_action_id, "ai")
+    _delete_tags_by_source(gov_action_id, "rule")
     tags = _classify_ga(ga)
     inserted = _insert_tags(gov_action_id, tags)
     logger.info(

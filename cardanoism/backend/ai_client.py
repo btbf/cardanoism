@@ -559,3 +559,143 @@ def classify_proposal_tags(
         cost_usd=cost,
         raw_text=raw,
     )
+
+
+_DREP_PROFILE_SYSTEM = """\
+You analyze a Cardano DRep's voting behavior for Cardanoism's DRep delegation
+compass.
+
+Use the DRep's past votes, vote rationales, Governance Action summaries, and
+Cardanoism proprietary tags to infer the DRep's tendencies. Do NOT treat DReps
+as factions. Avoid labels such as anti-IO, centralized, wasteful, or giveaway.
+Use neutral tendency language only.
+
+Axes, each 0.0..1.0:
+- treasury_discipline
+- growth_investment
+- technical_foundation
+- ecosystem_expansion
+- institutional_continuity
+- decentralized_allocation
+- marketing_support
+- protocol_conservatism
+- protocol_innovation
+- transparency_focus
+- reasoning_disclosure
+
+Scoring guidance:
+- 0.5 means neutral, mixed, or insufficient evidence.
+- Abstain is participation but should not strongly move issue axes.
+- Missing vote / no vote is non-participation or missing data, not Abstain.
+- For No votes, infer what the No is about. A No on marketing with weak KPI
+  may indicate treasury discipline / transparency focus rather than opposition
+  to marketing itself.
+- confidence is per-axis 0.0..1.0 and should reflect evidence volume and
+  clarity. Keep confidence low when evidence is sparse or ambiguous.
+
+Return STRICT JSON only:
+{
+  "profile": {"axis": 0.0},
+  "confidence": {"axis": 0.0},
+  "rationale": {"axis": "short neutral explanation"},
+  "evidence": {"axis": [{"proposal_id": "...", "vote": "Yes|No|Abstain", "reason": "..."}]}
+}
+
+Every axis must appear in profile and confidence. Evidence may be empty.
+"""
+
+
+def _build_drep_profile_user_text(payload: dict[str, Any], max_chars: int = 18000) -> str:
+    text = json.dumps(payload, ensure_ascii=False, default=str)
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n... [truncated for length]"
+    return text
+
+
+@dataclass
+class DrepCompassProfileResult:
+    profile: dict[str, float]
+    confidence: dict[str, float]
+    rationale: dict[str, str]
+    evidence: dict[str, list[dict[str, Any]]]
+    model_id: str
+    tokens_input: int
+    tokens_cached_input: int
+    tokens_output: int
+    cost_usd: float
+    raw_text: str = field(repr=False)
+
+
+def analyze_drep_compass_profile(
+    payload: dict[str, Any],
+    *,
+    model: str = DEFAULT_MODEL,
+    max_output_tokens: int = 2400,
+) -> DrepCompassProfileResult:
+    """Infer an 11-axis DRep compass profile with AI."""
+    client = _get_client()
+    user_text = _build_drep_profile_user_text(payload)
+    response = _send_with_retry(
+        client,
+        model=model,
+        system_text=_DREP_PROFILE_SYSTEM,
+        user_text=user_text,
+        max_tokens=max_output_tokens,
+    )
+    raw = response.choices[0].message.content or ""
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"drep compass profile: failed to parse JSON: {e}") from e
+
+    def clamp_map(value: Any) -> dict[str, float]:
+        out: dict[str, float] = {}
+        if not isinstance(value, dict):
+            return out
+        for k, v in value.items():
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                continue
+            out[str(k)] = max(0.0, min(1.0, f))
+        return out
+
+    profile = clamp_map(parsed.get("profile"))
+    confidence = clamp_map(parsed.get("confidence"))
+    rationale_raw = parsed.get("rationale") if isinstance(parsed.get("rationale"), dict) else {}
+    rationale = {str(k): str(v or "")[:1000] for k, v in rationale_raw.items()}
+    evidence_raw = parsed.get("evidence") if isinstance(parsed.get("evidence"), dict) else {}
+    evidence: dict[str, list[dict[str, Any]]] = {}
+    for axis, items in evidence_raw.items():
+        if not isinstance(items, list):
+            continue
+        cleaned: list[dict[str, Any]] = []
+        for item in items[:10]:
+            if isinstance(item, dict):
+                cleaned.append({
+                    "proposal_id": str(item.get("proposal_id") or ""),
+                    "vote": str(item.get("vote") or ""),
+                    "reason": str(item.get("reason") or "")[:500],
+                    "source": "ai",
+                })
+        evidence[str(axis)] = cleaned
+
+    usage = response.usage
+    tokens_input = getattr(usage, "prompt_tokens", 0) or 0
+    tokens_output = getattr(usage, "completion_tokens", 0) or 0
+    details = getattr(usage, "prompt_tokens_details", None)
+    tokens_cached_input = getattr(details, "cached_tokens", 0) if details is not None else 0
+    cost = _compute_cost(tokens_input, tokens_cached_input, tokens_output)
+
+    return DrepCompassProfileResult(
+        profile=profile,
+        confidence=confidence,
+        rationale=rationale,
+        evidence=evidence,
+        model_id=model,
+        tokens_input=tokens_input,
+        tokens_cached_input=tokens_cached_input,
+        tokens_output=tokens_output,
+        cost_usd=cost,
+        raw_text=raw,
+    )
