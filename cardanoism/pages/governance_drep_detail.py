@@ -224,34 +224,39 @@ class DrepDetailState(rx.State):
                     return "mid"
                 return "low"
 
-            # 対立軸 4 行: pos 側 score を採用 (0.5 中立、>0.5 = pos 寄り)
+            # 対立軸 4 行: pos 側 score を採用 (0=完全 neg, 0.5 中立, 1=完全 pos)
             balance_rows: list[dict[str, str]] = []
             for key, pos_axis, neg_axis in _COMPASS_BALANCE_AXES:
                 pos_score = _score(pos_axis)
-                # pos 側スコアから中央 50% を引いて振れ幅 (-50〜+50) → 0〜100% に
+                # 中央 50% からの振れ幅
                 offset = pos_score - 0.5     # -0.5〜+0.5
                 magnitude = abs(offset) * 2  # 0〜1
                 if offset > 0.02:
                     side = "pos"
+                    side_label_key = f"drep_match_balance_{key}_pos"
                     side_desc_key = f"drep_match_balance_{key}_pos_desc"
                 elif offset < -0.02:
                     side = "neg"
+                    side_label_key = f"drep_match_balance_{key}_neg"
                     side_desc_key = f"drep_match_balance_{key}_neg_desc"
                 else:
                     side = "center"
-                    side_desc_key = ""  # 中立は説明文を出さない
-                # confidence は pos/neg のうち高い方
+                    side_label_key = ""
+                    side_desc_key = ""
                 conf_val = max(_conf(pos_axis), _conf(neg_axis))
                 balance_rows.append({
-                    "kind":           "balance",
-                    "key":            key,
-                    "label_key":      f"drep_match_balance_{key}_label",
-                    "pos_label_key":  f"drep_match_balance_{key}_pos",
-                    "neg_label_key":  f"drep_match_balance_{key}_neg",
-                    "side":           side,
-                    "magnitude_pct":  f"{magnitude * 100:.0f}",
-                    "side_desc_key":  side_desc_key,
-                    "conf_class":     _conf_class(conf_val),
+                    "kind":             "balance",
+                    "key":              key,
+                    "label_key":        f"drep_match_balance_{key}_label",
+                    "left_label_key":   f"drep_match_balance_{key}_neg",  # 左端 = neg
+                    "right_label_key":  f"drep_match_balance_{key}_pos",  # 右端 = pos
+                    "side":             side,
+                    "side_label_key":   side_label_key,
+                    "side_desc_key":    side_desc_key,
+                    "magnitude_pct":    f"{magnitude * 100:.0f}",
+                    # ドット位置 = pos_score * 100% (左端=0% / 中央=50% / 右端=100%)
+                    "dot_pos_pct":      f"{pos_score * 100:.0f}",
+                    "conf_class":       _conf_class(conf_val),
                 })
             self.compass_balance_rows = balance_rows
 
@@ -568,28 +573,25 @@ def _bar_color(conf_class) -> rx.Var:
 
 
 def _compass_balance_row(item) -> rx.Component:
-    """対立軸 1 行 (中央起点で左右に振れる)。
+    """対立軸 1 行 (スライダー型: 両端ラベル + 中央仕切り + ドット)。
 
     レイアウト:
-      [ 軸名 ] [ neg                          pos ]   [ 立場 + 強度% ]
-                    ━━━●━━━━━━━━┃━━━━━━━●━━━
-                                 ↑
-                          中央仕切り (50% absolute)
-              neg 側塗り = 中央 → 左 (right:50%)
-              pos 側塗り = 中央 → 右 (left:50%)
+      [ 軸名 ] [ 左端ラベル ━━━●━━━━┃━━━━━━ 右端ラベル ] [ 立場 + 強度% ]
+                                ↑     ↑
+                            ドット   中央仕切り (50% absolute)
+              ドット位置 = pos_score * 100% (左端 0% 〜 右端 100%)
     """
-    color = _bar_color(item["conf_class"])
+    dot_color = _bar_color(item["conf_class"])
 
-    side_label = rx.match(
-        item["side"],
-        ("pos", AuthState.t[item["pos_label_key"]]),
-        ("neg", AuthState.t[item["neg_label_key"]]),
-        AuthState.t["drep_match_results_low_conf_label"],
-    )
     side_text_color = rx.cond(
         item["side"] == "center",
         "var(--gray-10)",
         rx.cond(item["conf_class"] == "low", "var(--gray-10)", "var(--gray-12)"),
+    )
+    side_label = rx.cond(
+        item["side"] == "center",
+        AuthState.t["drep_match_results_low_conf_label"],
+        AuthState.t[item["side_label_key"]],
     )
 
     return rx.vstack(
@@ -600,43 +602,16 @@ def _compass_balance_row(item) -> rx.Component:
                 size="2", weight="bold", color="var(--gray-12)",
                 style={"width": "140px", "flexShrink": "0"},
             ),
-            # 中央: 中央仕切り + 左右に振れる絶対配置バー
+            # 左端ラベル (例: 規律 / 技術 / 既存組織 / 保守)
+            rx.text(
+                AuthState.t[item["left_label_key"]],
+                size="1", color="var(--gray-10)",
+                style={"width": "92px", "textAlign": "right",
+                       "flexShrink": "0", "whiteSpace": "nowrap"},
+            ),
+            # 中央: スライダー (レール + 中央仕切り + ドット)
             rx.box(
-                # pos 側塗り (中央から右)
-                rx.cond(
-                    item["side"] == "pos",
-                    rx.box(
-                        width=item["magnitude_pct"] + "%",
-                        height="100%",
-                        background=color,
-                        border_radius="0 999px 999px 0",
-                        style={
-                            "position": "absolute",
-                            "left": "50%",
-                            "top": "0",
-                            "transition": "width 0.3s",
-                        },
-                    ),
-                    rx.fragment(),
-                ),
-                # neg 側塗り (中央から左)
-                rx.cond(
-                    item["side"] == "neg",
-                    rx.box(
-                        width=item["magnitude_pct"] + "%",
-                        height="100%",
-                        background=color,
-                        border_radius="999px 0 0 999px",
-                        style={
-                            "position": "absolute",
-                            "right": "50%",
-                            "top": "0",
-                            "transition": "width 0.3s",
-                        },
-                    ),
-                    rx.fragment(),
-                ),
-                # 中央仕切り (50% 位置に absolute、外側に少しはみ出る高さ)
+                # 中央仕切り (50% 位置の細い縦線)
                 rx.box(
                     style={
                         "position": "absolute",
@@ -645,20 +620,44 @@ def _compass_balance_row(item) -> rx.Component:
                         "transform": "translate(-50%, -50%)",
                         "width": "2px",
                         "height": "16px",
-                        "background": "var(--gray-9)",
+                        "background": "var(--gray-8)",
                         "borderRadius": "999px",
-                        "zIndex": "2",
+                        "zIndex": "1",
                     },
                 ),
-                # 外枠 (背景 gray-3 のレール)
+                # ドット (現在位置を示す円)
+                rx.box(
+                    style={
+                        "position": "absolute",
+                        "left": item["dot_pos_pct"] + "%",
+                        "top": "50%",
+                        "transform": "translate(-50%, -50%)",
+                        "width": "18px",
+                        "height": "18px",
+                        "background": dot_color,
+                        "border": "2px solid white",
+                        "borderRadius": "999px",
+                        "boxShadow": "0 1px 4px rgba(0,0,0,0.18)",
+                        "zIndex": "2",
+                        "transition": "left 0.3s",
+                    },
+                ),
+                # 外枠 (細いレール)
                 flex="1",
-                height="10px",
+                height="6px",
                 background="var(--gray-3)",
                 border_radius="999px",
-                min_width="240px",
-                style={"position": "relative", "overflow": "hidden"},
+                min_width="220px",
+                style={"position": "relative"},
             ),
-            # 右: 立場ラベル + 強度
+            # 右端ラベル (例: 投資 / 実利用 / 分散 / 革新)
+            rx.text(
+                AuthState.t[item["right_label_key"]],
+                size="1", color="var(--gray-10)",
+                style={"width": "92px", "textAlign": "left",
+                       "flexShrink": "0", "whiteSpace": "nowrap"},
+            ),
+            # 立場 + 強度
             rx.hstack(
                 rx.text(side_label, size="2", weight="bold", color=side_text_color,
                         style={"whiteSpace": "nowrap"}),
@@ -672,7 +671,7 @@ def _compass_balance_row(item) -> rx.Component:
                     rx.fragment(),
                 ),
                 spacing="1", align="baseline",
-                style={"width": "160px", "flexShrink": "0",
+                style={"width": "140px", "flexShrink": "0",
                        "justifyContent": "flex-end"},
             ),
             spacing="3", align="center", width="100%",
