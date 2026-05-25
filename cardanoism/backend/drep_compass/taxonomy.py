@@ -121,3 +121,42 @@ AXES_SET: frozenset[str] = frozenset(AXES)
 
 def is_valid_axis(axis: str) -> bool:
     return axis in AXES_SET
+
+
+# ── UI 表示用: 対立軸 + 独立軸 ──────────────────────────────
+# 4 つの対立軸ペア (左右に振れる中央バーで表現)
+# (key, pos_axis, neg_axis)
+#   pos_axis = 右側 (+) 寄りに表示される axis
+#   neg_axis = 左側 (-) 寄りに表示される axis
+# ※ 表記の慣習に合わせて、より「慎重 / 保守的」な側を pos に置く
+BALANCE_AXES: tuple[tuple[str, str, str], ...] = (
+    ("treasury",  "treasury_discipline",      "growth_investment"),
+    ("ecosystem", "technical_foundation",     "ecosystem_expansion"),
+    ("org",       "institutional_continuity", "decentralized_allocation"),
+    ("protocol",  "protocol_conservatism",    "protocol_innovation"),
+)
+
+# 単独軸 (0〜100% の単純なバーで表現)
+SINGLE_AXES: tuple[str, ...] = (
+    "marketing_support",
+    "transparency_focus",
+    "reasoning_disclosure",
+)
+
+# 対立軸を構成する全 axis (matched/mismatched 表示時の重複検出に使う)
+BALANCE_AXIS_MEMBERS: frozenset[str] = frozenset(
+    a for _, pos, neg in BALANCE_AXES for a in (pos, neg)
+)
+
+# 対立軸 key から (pos_axis, neg_axis) を取るマップ
+BALANCE_BY_KEY: dict[str, tuple[str, str]] = {
+    key: (pos, neg) for key, pos, neg in BALANCE_AXES
+}
+
+# axis 名 → どの対立軸 key に属するか (None なら単独軸)
+AXIS_TO_BALANCE_KEY: dict[str, str] = {
+    pos: key for key, pos, _ in BALANCE_AXES
+}
+AXIS_TO_BALANCE_KEY.update({
+    neg: key for key, _, neg in BALANCE_AXES
+})

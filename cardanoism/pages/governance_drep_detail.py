@@ -16,7 +16,10 @@ from cardanoism.backend.auth_state import AuthState
 from cardanoism.backend.drep_db import get_drep, sum_total_delegation
 from cardanoism.backend.drep_meta import format_links as _format_links
 from cardanoism.backend.drep_compass.api import get_drep_profile as _get_compass_profile
-from cardanoism.backend.drep_compass.taxonomy import AXES as _COMPASS_AXES
+from cardanoism.backend.drep_compass.taxonomy import (
+    BALANCE_AXES as _COMPASS_BALANCE_AXES,
+    SINGLE_AXES as _COMPASS_SINGLE_AXES,
+)
 from cardanoism.backend.vote_db import get_votes_by_drep, count_votes_by_drep
 from cardanoism.backend.fiat_db import get_fiat_rate
 from cardanoism.backend.price import format_ada, format_jpy_short, format_usd_short
@@ -68,10 +71,13 @@ class DrepDetailState(rx.State):
     compass_has_profile: bool = False
     compass_analyzed_votes: str = "0"
     compass_reasoning_pct: str = "0"
-    # 各 axis を foreach で描画するためのフラット dict 配列
-    # {axis_key, label_key, score_pct, conf_pct, conf_class}
-    #   conf_class: "high" / "mid" / "low" (UI で色濃度を切り替える)
-    compass_axis_bars: list[dict[str, str]] = []
+    # 対立軸 4 行 (中央バー左右振れ表示用)
+    # {kind="balance", key, label_key, pos_label_key, neg_label_key,
+    #   side ("pos"|"neg"|"center"), magnitude_pct, side_desc_key, conf_class}
+    compass_balance_rows: list[dict[str, str]] = []
+    # 独立軸 3 行 (0〜100% バー表示用)
+    # {kind="single", label_key, desc_key, score_pct, conf_class}
+    compass_single_rows: list[dict[str, str]] = []
 
     @rx.var
     def has_profile_metadata(self) -> bool:
@@ -198,31 +204,70 @@ class DrepDetailState(rx.State):
             disclosure = float(cp.get("reasoning_disclosure_rate") or 0)
             self.compass_analyzed_votes = str(analyzed)
             self.compass_reasoning_pct = f"{disclosure * 100:.0f}"
-            bars: list[dict[str, str]] = []
-            for axis in _COMPASS_AXES:
+
+            def _score(key: str) -> float:
                 try:
-                    score = float(profile.get(axis, 0.5))
+                    return float(profile.get(key, 0.5))
                 except (TypeError, ValueError):
-                    score = 0.5
+                    return 0.5
+
+            def _conf(key: str) -> float:
                 try:
-                    conf = float(confidence.get(axis, 0.0))
+                    return float(confidence.get(key, 0.0))
                 except (TypeError, ValueError):
-                    conf = 0.0
-                if conf >= 0.6:
-                    conf_class = "high"
-                elif conf >= 0.3:
-                    conf_class = "mid"
+                    return 0.0
+
+            def _conf_class(c: float) -> str:
+                if c >= 0.6:
+                    return "high"
+                if c >= 0.3:
+                    return "mid"
+                return "low"
+
+            # 対立軸 4 行: pos 側 score を採用 (0.5 中立、>0.5 = pos 寄り)
+            balance_rows: list[dict[str, str]] = []
+            for key, pos_axis, neg_axis in _COMPASS_BALANCE_AXES:
+                pos_score = _score(pos_axis)
+                # pos 側スコアから中央 50% を引いて振れ幅 (-50〜+50) → 0〜100% に
+                offset = pos_score - 0.5     # -0.5〜+0.5
+                magnitude = abs(offset) * 2  # 0〜1
+                if offset > 0.02:
+                    side = "pos"
+                    side_desc_key = f"drep_match_balance_{key}_pos_desc"
+                elif offset < -0.02:
+                    side = "neg"
+                    side_desc_key = f"drep_match_balance_{key}_neg_desc"
                 else:
-                    conf_class = "low"
-                bars.append({
-                    "axis_key":  axis,
-                    "label_key": f"drep_match_axis_{axis}",
-                    "desc_key":  f"drep_match_axis_{axis}_desc",
-                    "score_pct": f"{score * 100:.0f}",
-                    "conf_pct":  f"{conf * 100:.0f}",
-                    "conf_class": conf_class,
+                    side = "center"
+                    side_desc_key = ""  # 中立は説明文を出さない
+                # confidence は pos/neg のうち高い方
+                conf_val = max(_conf(pos_axis), _conf(neg_axis))
+                balance_rows.append({
+                    "kind":           "balance",
+                    "key":            key,
+                    "label_key":      f"drep_match_balance_{key}_label",
+                    "pos_label_key":  f"drep_match_balance_{key}_pos",
+                    "neg_label_key":  f"drep_match_balance_{key}_neg",
+                    "side":           side,
+                    "magnitude_pct":  f"{magnitude * 100:.0f}",
+                    "side_desc_key":  side_desc_key,
+                    "conf_class":     _conf_class(conf_val),
                 })
-            self.compass_axis_bars = bars
+            self.compass_balance_rows = balance_rows
+
+            # 独立軸 3 行: そのまま 0〜100% バー
+            single_rows: list[dict[str, str]] = []
+            for axis in _COMPASS_SINGLE_AXES:
+                score = _score(axis)
+                conf_val = _conf(axis)
+                single_rows.append({
+                    "kind":       "single",
+                    "label_key":  f"drep_match_axis_{axis}",
+                    "desc_key":   f"drep_match_axis_{axis}_desc",
+                    "score_pct":  f"{score * 100:.0f}",
+                    "conf_class": _conf_class(conf_val),
+                })
+            self.compass_single_rows = single_rows
 
             # 投票履歴（未投票 GA も含む）
             raw = get_votes_by_drep(drep_id, limit=500)
@@ -513,78 +558,163 @@ def _profile_metadata_card() -> rx.Component:
     )
 
 
-def _compass_axis_row(item) -> rx.Component:
-    """1 axis の行表示。
-
-    レイアウト:
-      [ ラベル + 説明 (2 行) ] [ バー ] [ スコア % ] [ 信頼度低 (該当時) ]
-
-    confidence の高 / 中 / 低 に応じてバー色濃度を切り替える (low は中立に近い灰)。
-    """
-    bar_color = rx.match(
-        item["conf_class"],
+def _bar_color(conf_class) -> rx.Var:
+    return rx.match(
+        conf_class,
         ("high", "var(--amber-9)"),
         ("mid",  "var(--amber-7)"),
         "var(--gray-7)",
     )
-    score_color = rx.match(
-        item["conf_class"],
-        ("high", "var(--gray-12)"),
-        ("mid",  "var(--gray-12)"),
-        "var(--gray-10)",
+
+
+def _compass_balance_row(item) -> rx.Component:
+    """対立軸 1 行 (中央バーから左右に振れる)。
+
+    レイアウト:
+      [ 軸名 ] [ 左ラベル ━━━●━━━━ 右ラベル ] [ 立場 (pos/neg/center) + 強度% ]
+    """
+    # 左半分: side == "neg" のとき左から内側へ伸びる
+    left_width = rx.cond(item["side"] == "neg", item["magnitude_pct"] + "%", "0%")
+    # 右半分: side == "pos" のとき右から内側へ伸びる (実際は中央起点 → 右へ伸ばす)
+    right_width = rx.cond(item["side"] == "pos", item["magnitude_pct"] + "%", "0%")
+
+    color = _bar_color(item["conf_class"])
+
+    side_label = rx.match(
+        item["side"],
+        ("pos", AuthState.t[item["pos_label_key"]]),
+        ("neg", AuthState.t[item["neg_label_key"]]),
+        AuthState.t["drep_match_results_low_conf_label"],
     )
-    return rx.hstack(
-        # 左: ラベル + 1 行説明 (vstack)
-        rx.vstack(
+    side_text_color = rx.cond(
+        item["side"] == "center",
+        "var(--gray-10)",
+        rx.cond(item["conf_class"] == "low", "var(--gray-10)", "var(--gray-12)"),
+    )
+
+    return rx.vstack(
+        rx.hstack(
+            # 左: 軸名
             rx.text(
                 AuthState.t[item["label_key"]],
                 size="2", weight="bold", color="var(--gray-12)",
-                style={"lineHeight": "1.4"},
+                style={"width": "140px", "flexShrink": "0"},
             ),
-            rx.text(
-                AuthState.t[item["desc_key"]],
-                size="1", color="var(--gray-10)",
-                style={"lineHeight": "1.4"},
-            ),
-            spacing="1", align="start",
-            style={"width": "260px", "flexShrink": "0"},
-        ),
-        # 中央: 横バー
-        rx.box(
+            # 中央: 左右に伸びる中央バー
             rx.box(
-                width=item["score_pct"] + "%",
-                height="100%",
-                background=bar_color,
+                # 左半分 (neg 側に伸びる)
+                rx.box(
+                    rx.box(
+                        width=left_width,
+                        height="100%",
+                        background=color,
+                        border_radius="999px 0 0 999px",
+                        margin_left="auto",
+                        transition="width 0.3s",
+                    ),
+                    flex="1", height="100%", overflow="hidden",
+                ),
+                # 中央仕切り
+                rx.box(
+                    width="2px", height="14px",
+                    background="var(--gray-9)",
+                    style={"flexShrink": "0"},
+                ),
+                # 右半分 (pos 側に伸びる)
+                rx.box(
+                    rx.box(
+                        width=right_width,
+                        height="100%",
+                        background=color,
+                        border_radius="0 999px 999px 0",
+                        transition="width 0.3s",
+                    ),
+                    flex="1", height="100%", overflow="hidden",
+                ),
+                # 全体: 2 つの flex 内 box が中央仕切りを挟む形
+                style={"display": "flex", "alignItems": "center"},
+                flex="1",
+                height="10px",
+                background="var(--gray-3)",
                 border_radius="999px",
-                transition="width 0.3s",
+                overflow="hidden",
+                min_width="200px",
             ),
-            flex="1",
-            height="10px",
-            background="var(--gray-3)",
-            border_radius="999px",
-            overflow="hidden",
-            min_width="120px",
+            # 右: 立場ラベル + 強度
+            rx.hstack(
+                rx.text(side_label, size="2", weight="bold", color=side_text_color,
+                        style={"whiteSpace": "nowrap"}),
+                rx.cond(
+                    item["side"] != "center",
+                    rx.text(item["magnitude_pct"], "%",
+                            size="2", color="var(--gray-11)",
+                            style={
+                                "fontFamily": "var(--code-font-family, ui-monospace, monospace)",
+                            }),
+                    rx.fragment(),
+                ),
+                spacing="1", align="baseline",
+                style={"width": "160px", "flexShrink": "0",
+                       "justifyContent": "flex-end"},
+            ),
+            spacing="3", align="center", width="100%",
         ),
-        # 右: スコア %
-        rx.text(
-            item["score_pct"], "%",
-            size="2", weight="bold", color=score_color,
-            style={"width": "56px", "textAlign": "right", "flexShrink": "0",
-                   "fontFamily": "var(--code-font-family, ui-monospace, monospace)"},
-        ),
-        # 信頼度の補助表示 (low のときだけ「判断材料が少ない項目」と添える)
+        # サブ説明文 (どちら寄りかの具体的中身)
         rx.cond(
-            item["conf_class"] == "low",
+            item["side"] != "center",
             rx.text(
-                AuthState.t["drep_match_results_low_conf_label"],
+                AuthState.t[item["side_desc_key"]],
                 size="1", color="var(--gray-10)",
-                style={"width": "140px", "flexShrink": "0",
-                       "fontStyle": "italic"},
+                style={"lineHeight": "1.5",
+                       "paddingLeft": "152px"},
             ),
-            rx.box(style={"width": "140px", "flexShrink": "0"}),
+            rx.fragment(),
         ),
-        spacing="3", align="center", width="100%",
-        wrap="wrap",
+        spacing="1", align="stretch", width="100%",
+    )
+
+
+def _compass_single_row(item) -> rx.Component:
+    """独立軸 1 行 (0〜100% バー)。"""
+    color = _bar_color(item["conf_class"])
+    score_color = rx.cond(
+        item["conf_class"] == "low", "var(--gray-10)", "var(--gray-12)",
+    )
+    return rx.vstack(
+        rx.hstack(
+            rx.text(
+                AuthState.t[item["label_key"]],
+                size="2", weight="bold", color="var(--gray-12)",
+                style={"width": "140px", "flexShrink": "0"},
+            ),
+            rx.box(
+                rx.box(
+                    width=item["score_pct"] + "%",
+                    height="100%",
+                    background=color,
+                    border_radius="999px",
+                    transition="width 0.3s",
+                ),
+                flex="1", height="10px",
+                background="var(--gray-3)",
+                border_radius="999px",
+                overflow="hidden",
+                min_width="200px",
+            ),
+            rx.text(
+                item["score_pct"], "%",
+                size="2", weight="bold", color=score_color,
+                style={"width": "160px", "textAlign": "right", "flexShrink": "0",
+                       "fontFamily": "var(--code-font-family, ui-monospace, monospace)"},
+            ),
+            spacing="3", align="center", width="100%",
+        ),
+        rx.text(
+            AuthState.t[item["desc_key"]],
+            size="1", color="var(--gray-10)",
+            style={"lineHeight": "1.5", "paddingLeft": "152px"},
+        ),
+        spacing="1", align="stretch", width="100%",
     )
 
 
@@ -631,14 +761,23 @@ def _compass_profile_section() -> rx.Component:
                 ),
                 spacing="7", wrap="wrap",
             ),
-            # 11 axis バー
+            # 対立軸 4 行
             rx.vstack(
                 rx.foreach(
-                    DrepDetailState.compass_axis_bars.to(list[dict[str, str]]),
-                    _compass_axis_row,
+                    DrepDetailState.compass_balance_rows.to(list[dict[str, str]]),
+                    _compass_balance_row,
                 ),
-                spacing="2", align="stretch", width="100%",
+                spacing="4", align="stretch", width="100%",
                 padding_top="8px",
+            ),
+            rx.divider(margin_y="8px"),
+            # 独立軸 3 行
+            rx.vstack(
+                rx.foreach(
+                    DrepDetailState.compass_single_rows.to(list[dict[str, str]]),
+                    _compass_single_row,
+                ),
+                spacing="4", align="stretch", width="100%",
             ),
             spacing="4", align="start", width="100%",
         ),

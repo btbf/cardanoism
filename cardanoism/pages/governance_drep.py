@@ -170,6 +170,10 @@ from cardanoism.backend.drep_compass.questionnaire import (
     build_user_vector as _build_user_vector,
 )
 from cardanoism.backend.drep_compass import config as _COMPASS_CONFIG
+from cardanoism.backend.drep_compass.taxonomy import (
+    AXIS_TO_BALANCE_KEY as _COMPASS_AXIS_TO_BALANCE,
+    BALANCE_BY_KEY as _COMPASS_BALANCE_BY_KEY,
+)
 from cardanoism.backend.drep_db import get_drep as _get_drep
 
 
@@ -386,9 +390,27 @@ class DrepMatchState(rx.State):
             else:
                 share_display = "0"
 
-            matched_csv = ",".join(r.get("matched_axes") or [])
-            mismatched_csv = ",".join(r.get("mismatched_axes") or [])
-            lowconf_csv = ",".join(r.get("low_confidence_axes") or [])
+            # 11 axis を「対立軸 4 + 独立軸 3」モデルにマージしてラベル化。
+            # 対立ペアの両方が一致リストに入っていても重複させない。
+            def _axes_to_labels(axes: list[str]) -> list[str]:
+                seen_balance: set[str] = set()
+                labels: list[str] = []
+                for ax in axes:
+                    if not ax:
+                        continue
+                    balance_key = _COMPASS_AXIS_TO_BALANCE.get(ax)
+                    if balance_key:
+                        if balance_key in seen_balance:
+                            continue
+                        seen_balance.add(balance_key)
+                        labels.append(f"drep_match_balance_{balance_key}_label")
+                    else:
+                        labels.append(f"drep_match_axis_{ax}")
+                return labels
+
+            matched_csv = ",".join(_axes_to_labels(r.get("matched_axes") or []))
+            mismatched_csv = ",".join(_axes_to_labels(r.get("mismatched_axes") or []))
+            lowconf_csv = ",".join(_axes_to_labels(r.get("low_confidence_axes") or []))
 
             out.append({
                 "drep_id":              drep_id,
@@ -1215,15 +1237,19 @@ def _social_link_icon(item) -> rx.Component:
     )
 
 
-def _axis_chip(axis_key, scheme: str) -> rx.Component:
+def _axis_chip(label_key, scheme: str) -> rx.Component:
     """軸スコアチップ (一致点 / 相違点 / 低信頼)。
+
+    label_key: i18n キー (対立軸名 or 独立軸名)
+      対立軸: "drep_match_balance_<key>_label"
+      独立軸: "drep_match_axis_<axis>"
 
     scheme:
       "match"    → green
       "mismatch" → tomato
       "lowconf"  → gray
     """
-    label = AuthState.t["drep_match_axis_" + axis_key]
+    label = AuthState.t[label_key]
     if scheme == "match":
         bg = "var(--green-3)"; border = "1px solid var(--green-7)"; color = "var(--green-12)"
     elif scheme == "mismatch":
@@ -1241,16 +1267,16 @@ def _axis_chip(axis_key, scheme: str) -> rx.Component:
     )
 
 
-def _match_axis_chip(axis_key) -> rx.Component:
-    return _axis_chip(axis_key, "match")
+def _match_axis_chip(label_key) -> rx.Component:
+    return _axis_chip(label_key, "match")
 
 
-def _mismatch_axis_chip(axis_key) -> rx.Component:
-    return _axis_chip(axis_key, "mismatch")
+def _mismatch_axis_chip(label_key) -> rx.Component:
+    return _axis_chip(label_key, "mismatch")
 
 
-def _lowconf_axis_chip(axis_key) -> rx.Component:
-    return _axis_chip(axis_key, "lowconf")
+def _lowconf_axis_chip(label_key) -> rx.Component:
+    return _axis_chip(label_key, "lowconf")
 
 
 def _match_result_card(r) -> rx.Component:
