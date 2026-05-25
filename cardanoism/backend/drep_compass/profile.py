@@ -250,7 +250,8 @@ def compute_profile_from_rows(
 
     Args:
       vote_rows: [{proposal_id, vote, has_rationale}, ...]
-                 vote: "Yes" / "No" / "Abstain" / "" (未投票)
+                 vote: "Yes" / "No" / "Abstain" のいずれか
+                 (シンプル化方針により、DRep が実際に投票した GA だけが対象)
       tag_rows:  [{proposal_id, tag}, ...] (gov_action_tags 全件)
 
     Returns:
@@ -259,11 +260,12 @@ def compute_profile_from_rows(
     アルゴリズム:
       1. proposal_id → set(tag) のマップを構築
       2. 各 vote_row について タグ × vote を _apply_vote で加算
+         (Yes / No 票だけが axis スコアに影響、Abstain は中立扱い)
       3. 各 axis について normalized = (raw + 1) / 2 にクランプ
          confidence = min(1.0, related_vote_count / 5) + rationale bonus
          final = 0.5 * (1 - confidence) + normalized * confidence
-      4. participation_rate = voted (Yes/No/Abstain) / eligible
-      5. reasoning_disclosure_rate = rationale 付き / total_votes
+      4. reasoning_disclosure_rate = rationale 付き / 投票総数
+      5. participation_rate / eligible_action_count は廃止 (シンプル化)
     """
     # tag マップ
     ga_tags: dict[str, set[str]] = defaultdict(set)
@@ -273,21 +275,17 @@ def compute_profile_from_rows(
         if pid and tag:
             ga_tags[str(pid)].add(str(tag))
 
-    # 投票集計
+    # 投票集計 (vote_rows は既に DRep の実投票のみ)
     acc: dict[str, _AxisAcc] = {}
-    voted_count = 0       # Yes/No/Abstain いずれかを投じた件数
-    eligible = 0          # 対象 GA 件数 (vote_rows の長さ — 未投票も含む)
-    total_actual_votes = 0  # Yes/No/Abstain いずれか (rationale_disclosure の分母)
+    total_actual_votes = 0
     rationale_count = 0
 
     for vrow in vote_rows:
-        eligible += 1
         pid = str(vrow.get("proposal_id") or "")
         vote = str(vrow.get("vote") or "").strip()
         has_rationale = bool(vrow.get("has_rationale"))
 
         if vote in ("Yes", "No", "Abstain"):
-            voted_count += 1
             total_actual_votes += 1
             if has_rationale:
                 rationale_count += 1
@@ -345,18 +343,21 @@ def compute_profile_from_rows(
     conf_dis = min(1.0, total_actual_votes / config.CONFIDENCE_VOTE_TARGET)
     confidence["reasoning_disclosure"] = round(conf_dis, 4)
 
-    participation_rate = (voted_count / eligible) if eligible > 0 else 0.0
     reasoning_disclosure_rate = disclosure  # 0.0〜1.0
 
+    # participation_rate / eligible_action_count は廃止 (シンプル化方針)。
+    # DB スキーマ互換性のため列は残置し、固定値を書き込む:
+    #   participation_rate = 1.0 (vote_rows は実投票のみなので)
+    #   eligible_action_count = 分析対象投票数と同じ
     return DrepProfileResult(
         drep_id=drep_id,
         final_score=final_score,
         raw_score=raw_score,
         confidence=confidence,
-        participation_rate=round(participation_rate, 4),
+        participation_rate=1.0 if total_actual_votes > 0 else 0.0,
         reasoning_disclosure_rate=round(reasoning_disclosure_rate, 4),
         analyzed_vote_count=total_actual_votes,
-        eligible_action_count=eligible,
+        eligible_action_count=total_actual_votes,
         evidence=evidence,
     )
 
@@ -367,38 +368,25 @@ def compute_profile_from_rows(
 def _fetch_vote_and_tag_rows(drep_id: str) -> tuple[list[dict], list[dict]]:
     """DB から 1 DRep の vote_rows と全 GA の tag_rows を取得する。
 
-    eligible 判定:
-      - dreps.registered = 1 の期間に存在した GA を「対象」とみなす
-      - 厳密な registration_epoch がないので、簡易版として:
-        * その DRep が 1 度でも votes に登場した GA = eligible (vote 行で表現)
-        * 未投票も含めるため、対象 GA をすべて LEFT JOIN
-      MVP では「DRep が投票した全 GA + 同 DRep の登録期間中の active GA すべて」を
-      eligible とする。ただし registration window が取れないので、簡易的に
-      proposal_votes に voter_role='DRep' で出ている GA すべてを対象母数とする。
+    シンプル化方針:
+      - DRep が実際に投票した GA だけが分析対象 (Yes / No / Abstain いずれか)
+      - GA のステータス (active / ratified / dropped / expired) は問わない
+      - 未投票の GA はそもそも思想マッチの判断材料にならないため母数に入れない
+      → SQL は proposal_votes だけを INNER で取得する
     """
     with get_db() as (cursor, _):
-        # 対象 GA = 「その DRep が投票したか、または投票期間中だった」 GA。
-        # MVP: その DRep が voter_id として登場した GA + 全 active 後の GA を
-        #      eligible とする (簡略化のため、active 全 GA を対象に LEFT JOIN)。
-        # spec の意図は「未投票で参加率を下げる」だが、過剰に下がるのを避けるため、
-        # その DRep が 1 度でも投票した GA だけを母数にする (analyzed_vote_count
-        # ベース) のは現実的選択。ここでは proposal_votes が 1 件以上ある全 GA を
-        # 対象とし、その DRep のみ未投票なら未投票としてカウントする。
         cursor.execute(
             """
-            SELECT ga.proposal_id,
+            SELECT pv.proposal_id,
                    pv.vote,
                    CASE
                      WHEN (pv.rationale IS NOT NULL AND pv.rationale <> '')
                        OR (pv.meta_url IS NOT NULL AND pv.meta_url <> '')
                      THEN 1 ELSE 0
                    END AS has_rationale
-              FROM governance_actions ga
-              LEFT JOIN proposal_votes pv
-                ON pv.proposal_id = ga.proposal_id
-               AND pv.voter_role = 'DRep'
-               AND pv.voter_id = ?
-             WHERE ga.proposal_id IS NOT NULL AND ga.proposal_id <> ''
+              FROM proposal_votes pv
+             WHERE pv.voter_role = 'DRep'
+               AND pv.voter_id   = ?
             """,
             (str(drep_id),),
         )
