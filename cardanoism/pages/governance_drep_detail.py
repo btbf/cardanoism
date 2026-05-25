@@ -217,6 +217,7 @@ class DrepDetailState(rx.State):
                 bars.append({
                     "axis_key":  axis,
                     "label_key": f"drep_match_axis_{axis}",
+                    "desc_key":  f"drep_match_axis_{axis}_desc",
                     "score_pct": f"{score * 100:.0f}",
                     "conf_pct":  f"{conf * 100:.0f}",
                     "conf_class": conf_class,
@@ -513,8 +514,13 @@ def _profile_metadata_card() -> rx.Component:
 
 
 def _compass_axis_row(item) -> rx.Component:
-    """1 axis のバー表示 (ラベル + バー + スコア %)。conf に応じて色濃度を変える。"""
-    # confidence クラスによる色設定 (low は中立に近いほぼ無色)
+    """1 axis の行表示。
+
+    レイアウト:
+      [ ラベル + 説明 (2 行) ] [ バー ] [ スコア % ] [ 信頼度低 (該当時) ]
+
+    confidence の高 / 中 / 低 に応じてバー色濃度を切り替える (low は中立に近い灰)。
+    """
     bar_color = rx.match(
         item["conf_class"],
         ("high", "var(--amber-9)"),
@@ -528,13 +534,22 @@ def _compass_axis_row(item) -> rx.Component:
         "var(--gray-10)",
     )
     return rx.hstack(
-        # 左: axis ラベル (固定幅)
-        rx.text(
-            AuthState.t[item["label_key"]],
-            size="2", color="var(--gray-12)",
-            style={"width": "180px", "flexShrink": "0"},
+        # 左: ラベル + 1 行説明 (vstack)
+        rx.vstack(
+            rx.text(
+                AuthState.t[item["label_key"]],
+                size="2", weight="bold", color="var(--gray-12)",
+                style={"lineHeight": "1.4"},
+            ),
+            rx.text(
+                AuthState.t[item["desc_key"]],
+                size="1", color="var(--gray-10)",
+                style={"lineHeight": "1.4"},
+            ),
+            spacing="1", align="start",
+            style={"width": "260px", "flexShrink": "0"},
         ),
-        # 中央: 横バー (0〜100% を amber-9 / gray-3 の比で表現)
+        # 中央: 横バー
         rx.box(
             rx.box(
                 width=item["score_pct"] + "%",
@@ -557,18 +572,19 @@ def _compass_axis_row(item) -> rx.Component:
             style={"width": "56px", "textAlign": "right", "flexShrink": "0",
                    "fontFamily": "var(--code-font-family, ui-monospace, monospace)"},
         ),
-        # 信頼度の補助表示 (low のときだけ「信頼度低」と添える)
+        # 信頼度の補助表示 (low のときだけ「判断材料が少ない項目」と添える)
         rx.cond(
             item["conf_class"] == "low",
             rx.text(
                 AuthState.t["drep_match_results_low_conf_label"],
                 size="1", color="var(--gray-10)",
-                style={"width": "100px", "flexShrink": "0",
+                style={"width": "140px", "flexShrink": "0",
                        "fontStyle": "italic"},
             ),
-            rx.box(style={"width": "100px", "flexShrink": "0"}),
+            rx.box(style={"width": "140px", "flexShrink": "0"}),
         ),
         spacing="3", align="center", width="100%",
+        wrap="wrap",
     )
 
 
