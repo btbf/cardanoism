@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS gov_action_tags (
   INDEX ix_gat_ga    (gov_action_id),
   INDEX ix_gat_tag   (tag),
   INDEX ix_gat_type  (tag_type)
-) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) DEFAULT CHARSET=utf8mb4;
 
 -- ── 2. DRep プロファイル (11 axis 価値観モデル) ─────────────
 -- 1 DRep につき 1 行。calculate_drep_profile() が定期的に再計算する。
@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS drep_profiles (
   calculated_at              DATETIME DEFAULT NULL,
   updated_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
                              ON UPDATE CURRENT_TIMESTAMP
-) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) DEFAULT CHARSET=utf8mb4;
 
 -- ── 3. ユーザーアンケート回答保存 ──────────────────────────
 -- ログイン済みなら user_id、未ログインなら session_id を使う (どちらか必須)
@@ -84,4 +84,4 @@ CREATE TABLE IF NOT EXISTS user_drep_compass_answers (
                   ON UPDATE CURRENT_TIMESTAMP,
   INDEX ix_compass_user    (user_id),
   INDEX ix_compass_session (session_id)
-) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) DEFAULT CHARSET=utf8mb4;
