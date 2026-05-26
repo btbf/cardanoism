@@ -1432,102 +1432,76 @@ def _intro_feature_card(icon: str, title_key: str, desc_key: str) -> rx.Componen
     """スタートカード内の特徴 1 枚 (アイコン + タイトル + 説明)。"""
     return rx.vstack(
         rx.center(
-            rx.icon(icon, size=32, color="var(--amber-11)"),
-            width="64px", height="64px",
+            rx.icon(icon, size=22, color="var(--amber-11)"),
+            width="44px", height="44px",
             border_radius="999px",
             background="var(--amber-3)",
             border="1px solid var(--amber-6)",
         ),
         rx.text(
             AuthState.t[title_key],
-            size="3", weight="bold", color="var(--gray-12)",
+            size="2", weight="bold", color="var(--gray-12)",
             style={"textAlign": "center"},
         ),
         rx.text(
             AuthState.t[desc_key],
-            size="2", color="var(--gray-11)",
-            style={"textAlign": "center", "lineHeight": "1.7"},
+            size="1", color="var(--gray-11)",
+            style={"textAlign": "center", "lineHeight": "1.6"},
         ),
-        spacing="3", align="center", width="100%",
-        padding="20px 18px",
+        spacing="2", align="center", width="100%",
+        padding="14px 12px",
     )
 
 
 def _intro_view() -> rx.Component:
-    """マッチング診断タブを押した直後に表示するスタート画面 (ヒーロー型)。"""
-    # ヒーロー (大型 握手アイコン + 見出し + リード文)
+    """マッチング診断タブを押した直後に表示するスタート画面 (ミニマル)。
+
+    親コンテナ (_match_view) で見出し + Beta バッジは既に出ているので、
+    ここでは説明文 → 特徴 3 つ → 開始ボタン → 注意書きの順で簡潔にまとめる。
+    """
+    # アイコン + リード文 (中央寄せ、アイコンは小さめ)
     hero = rx.vstack(
         rx.center(
-            rx.icon("handshake", size=56, color="var(--amber-11)"),
-            width="120px", height="120px",
+            rx.icon("handshake", size=28, color="var(--amber-11)"),
+            width="64px", height="64px",
             border_radius="999px",
             background=rx.color_mode_cond("var(--amber-2)", "var(--amber-3)"),
-            border=f"2px solid {rx.color('amber', 7)}",
-            style={"boxShadow": "0 6px 24px -8px rgba(245,158,11,0.35)"},
-        ),
-        rx.hstack(
-            rx.heading(
-                AuthState.t["drep_match_heading"],
-                size="8", weight="bold", color="var(--gray-12)",
-                style={"letterSpacing": "-0.01em", "textAlign": "center"},
-            ),
-            rx.badge(
-                AuthState.t["drep_match_beta_label"],
-                color_scheme="amber", variant="soft", size="2",
-                style={"alignSelf": "center"},
-            ),
-            spacing="3", align="center", wrap="wrap", justify="center",
+            border=f"1px solid {rx.color('amber', 6)}",
         ),
         rx.text(
             AuthState.t["drep_match_intro"],
-            size="4", color="var(--gray-11)",
+            size="3", color="var(--gray-11)",
             style={
-                "lineHeight": "1.8",
+                "lineHeight": "1.7",
                 "textAlign": "center",
-                "maxWidth": "720px",
+                "maxWidth": "640px",
                 "margin": "0 auto",
             },
         ),
-        spacing="5", align="center", width="100%",
+        spacing="3", align="center", width="100%",
     )
 
-    # 特徴 3 カード (グリッド配置、レスポンシブ)
+    # 特徴 3 カード (コンパクト、レスポンシブ grid)
     features = rx.box(
         _intro_feature_card("list-checks", "drep_match_feature1_title", "drep_match_feature1_desc"),
         _intro_feature_card("radar",       "drep_match_feature2_title", "drep_match_feature2_desc"),
         _intro_feature_card("users-round", "drep_match_feature3_title", "drep_match_feature3_desc"),
         style={
             "display": "grid",
-            "gridTemplateColumns": "repeat(auto-fit, minmax(240px, 1fr))",
+            "gridTemplateColumns": "repeat(auto-fit, minmax(200px, 1fr))",
             "gridAutoRows": "1fr",
-            "gap": "16px",
+            "gap": "12px",
         },
         width="100%",
     )
 
-    # 注意書きと AI 免責
-    notes = rx.vstack(
-        rx.text(
-            AuthState.t["drep_match_intro_note"],
-            size="2", color="var(--gray-10)",
-            style={"lineHeight": "1.7", "textAlign": "center"},
-        ),
-        rx.callout(
-            AuthState.t["drep_match_ai_disclaimer"],
-            icon="triangle-alert",
-            color_scheme="amber",
-            size="2",
-        ),
-        spacing="3", align="stretch", width="100%",
-    )
-
-    # 大型開始ボタン (クイズの「診断する」ボタンと同じスタイルで統一)
+    # 大型開始ボタン
     start_button = rx.center(
         rx.el.button(
-            rx.icon("play", size=24, color="var(--amber-12)"),
+            rx.icon("play", size=22, color="var(--amber-12)"),
             rx.text(
                 AuthState.t["drep_match_start_button"],
-                size="5", weight="bold", color="var(--amber-12)",
+                size="4", weight="bold", color="var(--amber-12)",
             ),
             on_click=DrepMatchState.start_quiz,
             cursor="pointer",
@@ -1535,12 +1509,12 @@ def _intro_view() -> rx.Component:
                 "display":        "inline-flex",
                 "alignItems":     "center",
                 "justifyContent": "center",
-                "gap":            "12px",
-                "padding":        "20px 64px",
+                "gap":            "10px",
+                "padding":        "14px 48px",
                 "borderRadius":   "999px",
                 "background":     "var(--amber-9)",
                 "border":         "none",
-                "minWidth":       "320px",
+                "minWidth":       "260px",
                 "boxShadow":      "0 4px 16px -4px rgba(245,158,11,0.45)",
                 "transition":     "background 0.15s, transform 0.15s, box-shadow 0.15s",
             },
@@ -1550,19 +1524,27 @@ def _intro_view() -> rx.Component:
                 "box_shadow": "0 6px 20px -4px rgba(245,158,11,0.55)",
             },
         ),
-        width="100%", padding_y="12px",
+        width="100%",
+    )
+
+    # 注意書き (footnote 風に小さく)
+    disclaimer = rx.callout(
+        AuthState.t["drep_match_ai_disclaimer"],
+        icon="triangle-alert",
+        color_scheme="amber",
+        size="1",
     )
 
     card = rx.box(
         rx.vstack(
             hero,
             features,
-            notes,
             start_button,
-            spacing="7", align_items="stretch", width="100%",
+            disclaimer,
+            spacing="5", align_items="stretch", width="100%",
         ),
-        padding="48px 36px",
-        border_radius="16px",
+        padding="28px 24px",
+        border_radius="14px",
         border=f"1px solid {rx.color('gray', 5)}",
         background=rx.color_mode_cond(
             "linear-gradient(180deg, var(--amber-1) 0%, white 60%)",
@@ -1570,7 +1552,7 @@ def _intro_view() -> rx.Component:
         ),
         width="100%",
     )
-    return rx.box(card, width="100%", padding_y="12px")
+    return rx.box(card, width="100%", padding_y="8px")
 
 
 def _match_view() -> rx.Component:
