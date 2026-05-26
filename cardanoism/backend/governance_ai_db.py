@@ -153,9 +153,11 @@ def save_result(
     facts = payload.get("proposal_facts") or []
     articles = payload.get("articles") or []
 
-    # 注: 旧 DRep マッチング診断 (topic_tags / axis_tags) は廃止。
-    # 新コンパス (drep_compass パッケージ) は gov_action_tags テーブルを
-    # rule-based 分類で別途生成するため、AI 側ではタグ分類しない。
+    # drep-match v3: GA per-axis 分類タグ (AI 抽出)
+    # 旧 v2 (rule-based gov_action_tags + drep-side AI) は廃止。
+    # 新 v3 は GA 1 件につき 1 度だけ AI が axis_tags を抽出 → drep_compass が
+    # ユーザーの投票履歴と集計してマッチング。AI 推論は GA 側に集約される。
+    axis_tags = payload.get("axis_tags") or {}
 
     with get_db() as (cursor, conn):
         cursor.execute(
@@ -169,6 +171,7 @@ def save_result(
                 articles_json       = ?,
                 proposal_facts_json = ?,
                 rule_checks_json    = ?,
+                axis_tags_json      = ?,
                 model_id              = ?,
                 constitution_meta_url = ?,
                 tokens_input  = ?,
@@ -182,6 +185,7 @@ def save_result(
                 json.dumps(articles, ensure_ascii=False),
                 json.dumps(facts, ensure_ascii=False),
                 json.dumps(rule_checks or [], ensure_ascii=False),
+                json.dumps(axis_tags, ensure_ascii=False) if axis_tags else None,
                 str(model_id)[:64],
                 constitution_meta_url,
                 int(tokens_input),

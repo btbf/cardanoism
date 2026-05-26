@@ -151,10 +151,9 @@ You MUST NOT output any score, verdict, compliance rating, KPI assessment, or
 constitution analysis. Your only outputs are:
 1. A neutral plain-text summary of the proposal (Japanese + English).
 2. A bullet-list of factual key information extracted from the proposal.
-
-Topic / faction / axis classification is handled by a separate rule-based
-classifier (cardanoism.backend.drep_compass) and NOT by AI. Do not include
-topic_tags, axis_tags, or any classification fields in your output.
+3. A `axis_tags` block that classifies the proposal along 7 intrinsic axes
+   (drep-match v3). This is structured TAG classification, not scoring —
+   you tag what the proposal IS, you do NOT judge if it's good or bad.
 
 ## Per-Type Fact Extraction
 
@@ -205,8 +204,97 @@ Output ONLY this JSON object with no extra text:
     {"label_ja": "受取先", "label_en": "Recipient",
      "value_ja": "stake1xxx... (Cardanoism 財団)",
      "value_en": "stake1xxx... (Cardanoism Foundation)"}
-  ]
+  ],
+  "axis_tags": {
+    "treasury_size":     "large" | "small" | "n_a",
+    "priority":          "technical" | "adoption" | "both" | "n_a",
+    "org_recipient":     [array of org tags, possibly empty],
+    "protocol_change":   "hard_fork" | "param_change" | "n_a",
+    "marketing_purpose": "yes" | "no",
+    "kpi_clarity":       "clear" | "unclear" | "n_a",
+    "risk_level":        "high" | "low" | "n_a",
+    "reasoning": {
+      "treasury_size":     "なぜそう判定したか (≤80 chars)",
+      "priority":          "...",
+      "org_recipient":     "...",
+      "protocol_change":   "...",
+      "marketing_purpose": "...",
+      "kpi_clarity":       "...",
+      "risk_level":        "..."
+    }
+  }
 }
+
+## axis_tags Classification Rules (drep-match v3)
+
+### treasury_size
+- "large" : Treasury withdrawal で総額 >= 100,000 ADA、または規模が大きい
+- "small" : Treasury withdrawal で総額 < 100,000 ADA
+- "n_a"   : Treasury 系ではない (ParameterChange / HardFork / InfoAction 等)
+
+### priority (提案の目的軸)
+- "technical" : プロトコル R&D、研究、セキュリティ、ノード/インフラ、開発者ツール
+- "adoption"  : dApp、DeFi、ウォレット、ユーザー獲得、教育、マーケ採用拡大
+- "both"      : **本当に 50:50 で両方が等しく主目的の場合のみ** 使う。
+                **迷ったら "both" ではなく「より強い側」を選ぶ**こと。
+                以下は "both" にしない:
+                  - イベント / サミット / カンファレンス開催 → 常に adoption
+                    (技術展示やデモを含んでも adoption)
+                  - 開発者ツール / ライブラリ / インフラ R&D → 常に technical
+                    (dApp 開発者「も」使える、と書かれてても technical)
+                  - 教育 / 啓蒙 / コミュニティ拡大 → adoption
+                  - プロトコル研究 / セキュリティ / コア保守 → technical
+                **"both" を選ぶ前に「これは本当にどっちが主か」を考える**。
+- "n_a"       : どちらでもない (procedure-only など)
+
+### org_recipient (受益組織を多重 array で。author ではなく実際に予算を受け取る組織)
+- "IO"       : Input Output (IOG / IOHK)
+- "CF"       : Cardano Foundation
+- "Intersect": **実際に予算を Intersect 自身が受領して内部運営に使う場合のみ**。
+               以下は "Intersect" に含めない:
+                 - Intersect が代理で他組織のために提出している
+                 - Intersect が管理 / 取りまとめ / オーケストレーション役割
+                 - Intersect が事務局的に予算を流して別組織が実行
+               迷ったら "Intersect" は **含めない**。
+               (例: 「IO と Ensurable の保守予算を Intersect が管理」→ ["IO", "other"]
+                のみ。Intersect は含めない)
+- "Emurgo"   : Emurgo
+- "Midnight" : Midnight (IO 系列だが別組織扱い)
+- "new_team" : Cardano エコシステム内の新興 / 個別開発チーム。
+               例: DeFi の DEX チーム、独立 dApp 開発、オープンソース貢献団体
+                   (Harmonic Labs / DeltaDeFi / Andamio / Aiken team 等)。
+               規模感: Cardano コミュニティ発で、上記 5 大組織よりも小さい。
+- "individual": 個人開発者 / フリーランス
+- "other"    : Cardano エコシステム外の **既存の大企業** (例: Tweag, Fireblocks,
+               Chainlink 等)、または上記 6 区分に明確に当てはまらない既存団体。
+               **Cardano 発の新興チームには使わない (それは new_team)**。
+- []         : 組織受益が無い (InfoAction、ParameterChange 等)
+- 複数該当する場合は ["IO", "CF"] のように複数指定。
+
+### protocol_change
+- "hard_fork"   : HardForkInitiation
+- "param_change": ParameterChange
+- "n_a"         : それ以外
+
+### marketing_purpose
+- "yes" : PR / イベント / カンファレンス / 認知拡大 / スポンサーシップが主目的
+- "no"  : 開発・運営・研究等の主目的、マーケは副次的または無し
+
+### kpi_clarity
+- "clear"  : 明確な KPI、マイルストーン、成果検証手順が記述されている
+- "unclear": KPI が抽象的、達成基準不明、報告義務不明
+- "n_a"    : 性質上 KPI が適用されない (InfoAction、ParameterChange、HardFork)
+
+### risk_level
+- "high" : 実験的 / 未検証技術 / 単一エンティティへの大型出資 / 不確実性大
+- "low"  : 既存技術 / 実績ある運営 / 分散実行 / 既存契約継続
+- "n_a"  : 評価困難 (InfoAction 等)
+
+### axis_tags 共通原則
+- 提案の中身 (title + abstract) から判定する。author 情報には依存しない。
+- 表面的なキーワードマッチではなく、提案の意図を理解する。
+- 不確かな場合は "n_a" / "unclear" を使うことを恐れない。
+- 全フィールド必須。reasoning も全項目必須 (各 ≤80 chars)。
 
 ## Summary Writing Guidelines
 
@@ -232,9 +320,10 @@ Aim for 300-500 Japanese characters / 6-10 sentences. Avoid value judgments.
   Both value_ja and value_en MUST be present for every entry.
 - The proposal_summary should be neutral and descriptive — no positive or
   negative judgment.
-- DO NOT include topic_tags, axis_tags, faction labels, or any classification
-  fields. Classification is handled by a separate rule-based module
-  (cardanoism.backend.drep_compass) and is not AI's responsibility.
+- DO NOT include topic_tags or faction labels.
+- axis_tags MUST be included exactly as specified in the "axis_tags
+  Classification Rules" section above. All 7 axes are required plus reasoning
+  for each. No additional axes, no missing axes.
 """
 
 

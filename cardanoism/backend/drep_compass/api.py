@@ -36,13 +36,16 @@ logger = logging.getLogger(__name__)
 
 
 def calculate_drep_profile(drep_id: str) -> dict[str, Any]:
-    """1 DRep を AI 分析して drep_profiles に保存し、結果を dict で返す。"""
+    """1 DRep のプロファイルを集計して drep_profiles に保存し、結果を dict で返す。
+
+    v3: AI コール無し。GA per-axis タグ (governance_ai_analysis.axis_tags_json)
+    を読んで投票を集計する純粋な算術。
+    """
     result = _profile_calc_and_save(drep_id)
     return {
         "drep_id":                   result.drep_id,
         "profile":                   result.profile,
         "confidence":                result.confidence,
-        "summary":                   result.summary,
         "evidence":                  result.evidence,
         "analyzed_vote_count":       result.analyzed_vote_count,
         "reasoning_disclosure_rate": result.reasoning_disclosure_rate,
@@ -50,7 +53,7 @@ def calculate_drep_profile(drep_id: str) -> dict[str, Any]:
 
 
 def recalculate_all_drep_profiles(*, only_active: bool = True) -> int:
-    """全 (active) DRep を再分析する。失敗は warning に出して継続。"""
+    """全 (active) DRep を再集計する。v3 では AI 不要なので高速 + ほぼ無料。"""
     sql = "SELECT drep_id FROM dreps WHERE registered = 1"
     if only_active:
         sql += " AND drep_status = 'active'"

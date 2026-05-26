@@ -4,7 +4,9 @@ DRepマッチング診断の設定値。
 from __future__ import annotations
 
 # プロファイルアルゴリズム識別子
-ANALYSIS_VERSION = "match-v2"
+# v3: AI 推論を廃止し、GA per-axis tags (governance_ai_analysis.axis_tags_json)
+#     を集計してスコアを算出する。透明性と再現性を確保。
+ANALYSIS_VERSION = "match-v3"
 
 # アンケート定義識別子
 QUESTIONNAIRE_VERSION = "match-v2"
