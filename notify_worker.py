@@ -2242,6 +2242,18 @@ def check_drep_sync():
         info = info_map.get(did, {})
         is_registered = bool(basic.get("registered"))
 
+        # drep_status は Koios の生値 ("registered" / "deregistered" 等) ではなく、
+        # active boolean から導出した UI 用ラベル ("active" / "inactive" / "deregistered")
+        # を DB に保存する。これにより `WHERE drep_status = 'active'` で正しく
+        # 現在アクティブな DRep をフィルタできる。
+        is_active = bool(info.get("active"))
+        if not is_registered:
+            derived_status = "deregistered"
+        elif is_active:
+            derived_status = "active"
+        else:
+            derived_status = "inactive"
+
         # registered=0 の DRep (= 未登録 / deregister 済み) は /drep_info に来ない。
         # 既存行があれば registered=0 として記録、新規ならスキップしてもよいが
         # 一覧取得には残すため upsert_drep を呼ぶ (metadata 列は空)。
@@ -2250,8 +2262,8 @@ def check_drep_sync():
                 # 既存行: registered フラグだけ落として info_only 扱い
                 update_drep_info({
                     "drep_id":          did,
-                    "drep_status":      info.get("drep_status"),
-                    "active":           info.get("active"),
+                    "drep_status":      derived_status,
+                    "active":           False,
                     "deposit":          info.get("deposit"),
                     "expires_epoch_no": info.get("expires_epoch_no"),
                     "meta_url":         info.get("meta_url"),
@@ -2265,8 +2277,8 @@ def check_drep_sync():
             "hex":              basic.get("hex"),
             "has_script":       basic.get("has_script"),
             "registered":       basic.get("registered"),
-            "drep_status":      info.get("drep_status"),
-            "active":           info.get("active"),
+            "drep_status":      derived_status,
+            "active":           is_active,
             "deposit":          info.get("deposit"),
             "expires_epoch_no": info.get("expires_epoch_no"),
             "meta_url":         info.get("meta_url"),
