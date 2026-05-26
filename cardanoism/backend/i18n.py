@@ -539,9 +539,6 @@ UI_JA: dict[str, str] = {
     "drep_match_q_rationale_value":       "DRep の投票理由公開について",
     "drep_match_q_rationale_value_left":  "🗳 投票実績が見えれば十分",
     "drep_match_q_rationale_value_right": "📢 必ず公開してほしい",
-    "drep_match_q_community_focus":       "Cardano コミュニティへの支援は?",
-    "drep_match_q_community_focus_left":  "🌍 グローバルな大規模プロジェクト",
-    "drep_match_q_community_focus_right": "🏘 地域コミュニティ・草の根活動",
     "drep_match_answer_unsure":           "迷う",
     "drep_match_summary_label":           "AI が見たこの DRep",
     # 結果カード
@@ -2237,9 +2234,6 @@ UI_EN: dict[str, str] = {
     "drep_match_q_rationale_value":       "On DRep rationale disclosure?",
     "drep_match_q_rationale_value_left":  "🗳 Voting record is enough",
     "drep_match_q_rationale_value_right": "📢 Rationale must be public",
-    "drep_match_q_community_focus":       "On community support?",
-    "drep_match_q_community_focus_left":  "🌍 Global large-scale projects",
-    "drep_match_q_community_focus_right": "🏘 Local communities / grassroots",
     "drep_match_answer_unsure":           "Unsure",
     "drep_match_summary_label":           "AI's read on this DRep",
     # Result card

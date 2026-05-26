@@ -174,7 +174,7 @@ from cardanoism.backend.drep_db import get_drep as _get_drep
 
 
 class DrepMatchState(rx.State):
-    """DRepマッチング診断 v2 (7 axis / 10 問 二者択一+迷う) の State。
+    """DRepマッチング診断 v2 (7 axis / 9 問 二者択一+迷う) の State。
 
     view: "list" / "intro" / "quiz" / "results"
     answers: { q_id: 1 (左) / 2 (迷う) / 3 (右) }

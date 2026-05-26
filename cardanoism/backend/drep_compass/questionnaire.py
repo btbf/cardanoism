@@ -1,5 +1,5 @@
 """drep_compass.questionnaire
-DRepマッチング診断 (新設計): 10 問の二者択一 + 「迷う」アンケート。
+DRepマッチング診断 (新設計): 9 問の二者択一 + 「迷う」アンケート。
 
 各設問は 1〜2 axis に紐づき、回答は:
   1 (左)   → 0.0  (左端寄り)
@@ -18,7 +18,7 @@ from cardanoism.backend.drep_compass import config
 
 @dataclass(frozen=True)
 class Question:
-    q_id: str             # 内部 ID (q1..q10)
+    q_id: str             # 内部 ID (q1..q9)
     i18n_key: str         # 質問本文 i18n キー (drep_match_q_<key>)
     axes: tuple[str, ...] # この問が影響する axis 群
     # 補助情報 i18n キー (質問の論点解説)
@@ -38,7 +38,7 @@ def _q(q_id: str, key_base: str, axes: tuple[str, ...]) -> Question:
     )
 
 
-# 10 問。各設問は 1〜2 axis に紐づく。
+# 9 問。各設問は 1〜2 axis に紐づく。
 QUESTIONS: tuple[Question, ...] = (
     _q("q1",  "money_use",         ("treasury",)),
     _q("q2",  "investment_target", ("priority",)),
@@ -49,7 +49,6 @@ QUESTIONS: tuple[Question, ...] = (
     _q("q7",  "marketing_stance",  ("marketing",)),
     _q("q8",  "drep_selection",    ("org",)),         # org の補完問
     _q("q9",  "rationale_value",   ("transparency",)), # transparency の補完問
-    _q("q10", "community_focus",   ("org",)),         # org の補完問
 )
 
 QUESTION_BY_ID: dict[str, Question] = {q.q_id: q for q in QUESTIONS}
