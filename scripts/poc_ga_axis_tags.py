@@ -77,17 +77,29 @@ You output STRICTLY this JSON structure (no extra text):
 ## priority (提案の目的軸)
 - "technical" : プロトコル R&D、研究、セキュリティ、ノード/インフラ、開発者ツール
 - "adoption"  : dApp、DeFi、ウォレット、ユーザー獲得、教育、マーケ採用拡大
-- "both"      : 技術基盤 & 実利用拡大の両方が明確に主目的の場合のみ。
-                **主目的が明らかに片方に偏っているなら "both" を使わない**。
-                例: イベント開催で技術展示「も」含む → adoption (技術展示は副次)。
-                    R&D 開発で成果物を dApp 開発者「も」使える → technical。
+- "both"      : **本当に 50:50 で両方が等しく主目的の場合のみ** 使う。
+                **迷ったら "both" ではなく「より強い側」を選ぶ**こと。
+                以下は "both" にしない:
+                  - イベント / サミット / カンファレンス開催 → 常に adoption
+                    (技術展示やデモを含んでも adoption)
+                  - 開発者ツール / ライブラリ / インフラ R&D → 常に technical
+                    (dApp 開発者「も」使える、と書かれてても technical)
+                  - 教育 / 啓蒙 / コミュニティ拡大 → adoption
+                  - プロトコル研究 / セキュリティ / コア保守 → technical
+                **"both" を選ぶ前に「これは本当にどっちが主か」を考える**。
 - "n_a"       : どちらでもない (procedure-only など)
 
 ## org_recipient (受益組織を多重 array で。author ではなく実際に予算を受け取る組織)
 - "IO"       : Input Output (IOG / IOHK)
 - "CF"       : Cardano Foundation
-- "Intersect": Intersect (※ Intersect が代理で他組織のために提出する場合は含めない。
-               提案中身が Intersect 自身の運営/プログラム費用の場合のみ)
+- "Intersect": **実際に予算を Intersect 自身が受領して内部運営に使う場合のみ**。
+               以下は "Intersect" に含めない:
+                 - Intersect が代理で他組織のために提出している
+                 - Intersect が管理 / 取りまとめ / オーケストレーション役割
+                 - Intersect が事務局的に予算を流して別組織が実行
+               迷ったら "Intersect" は **含めない**。
+               (例: 「IO と Ensurable の保守予算を Intersect が管理」→ ["IO", "other"]
+                のみ。Intersect は含めない)
 - "Emurgo"   : Emurgo
 - "Midnight" : Midnight (IO 系列だが別組織扱い)
 - "new_team" : Cardano エコシステム内の新興 / 個別開発チーム。
