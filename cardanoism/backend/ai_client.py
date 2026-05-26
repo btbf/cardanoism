@@ -620,7 +620,8 @@ Use neutral "tends to..." tendency language only.
 {
   "profile":    {"<axis>": 0.0..1.0, ...},   // all 7 axes required
   "confidence": {"<axis>": 0.0..1.0, ...},   // all 7 axes required
-  "summary":    "neutral one-line description of this DRep's tendencies",
+  "summary":    "neutral one-sentence description in Japanese",
+  "summary_en": "the same description in English (same meaning, single sentence)",
   "evidence":   {"<axis>": [{"proposal_id": "...", "vote": "Yes|No|Abstain",
                               "reason": "..."}], ...}   // optional, may be empty
 }
@@ -628,10 +629,12 @@ Use neutral "tends to..." tendency language only.
 # Output size limits
 - evidence: MAX 3 items per axis (pick the strongest signals). Do NOT exceed this cap.
 - evidence.reason: MAX 120 chars per item, in Japanese.
-- summary: MAX 80 chars, single sentence in Japanese.
+- summary    (JA): MAX 80 Japanese characters, single sentence.
+- summary_en (EN): MAX 160 ASCII characters, single sentence, same meaning as `summary`.
 
-The summary should be a single sentence, neutral, in Japanese (e.g.,
-"新興プロジェクトを積極支援し、KPI を厳しく問う傾向").
+`summary` and `summary_en` MUST express the same content in the two languages
+(e.g., JA: "新興プロジェクトを積極支援し、KPI を厳しく問う傾向" /
+ EN: "Tends to back emerging projects while demanding strict KPIs.").
 """
 
 
@@ -646,7 +649,8 @@ def _build_drep_profile_user_text(payload: dict[str, Any], max_chars: int = 1800
 class DrepCompassProfileResult:
     profile: dict[str, float]
     confidence: dict[str, float]
-    summary: str                            # 1-line neutral description
+    summary: str                            # 1-line neutral description (Japanese)
+    summary_en: str                         # 1-line English version of summary
     rationale: dict[str, str]               # 旧 11 axis 用、後方互換のため残置
     evidence: dict[str, list[dict[str, Any]]]
     model_id: str
@@ -694,6 +698,7 @@ def analyze_drep_compass_profile(
     profile = clamp_map(parsed.get("profile"))
     confidence = clamp_map(parsed.get("confidence"))
     summary = str(parsed.get("summary") or "")[:500]
+    summary_en = str(parsed.get("summary_en") or "")[:500]
     rationale_raw = parsed.get("rationale") if isinstance(parsed.get("rationale"), dict) else {}
     rationale = {str(k): str(v or "")[:1000] for k, v in rationale_raw.items()}
     evidence_raw = parsed.get("evidence") if isinstance(parsed.get("evidence"), dict) else {}
@@ -723,6 +728,7 @@ def analyze_drep_compass_profile(
         profile=profile,
         confidence=confidence,
         summary=summary,
+        summary_en=summary_en,
         rationale=rationale,
         evidence=evidence,
         model_id=model,

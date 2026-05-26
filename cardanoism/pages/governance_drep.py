@@ -378,6 +378,7 @@ class DrepMatchState(rx.State):
                 "image_url":            str(d.get("image_url") or ""),
                 "total_score":          f"{float(r.get('total_score') or 0):.1f}",
                 "summary":              str(r.get("summary") or ""),
+                "summary_en":           str(r.get("summary_en") or ""),
                 "reasoning_pct":        f"{float(r.get('reasoning_disclosure_rate') or 0) * 100:.1f}",
                 "analyzed_votes":       str(r.get("analyzed_vote_count") or 0),
                 "matched_axes_csv":     _to_label(r.get("matched_axes")),
@@ -1264,6 +1265,7 @@ def _match_result_card(r) -> rx.Component:
             ),
             delegation_row,
             # AI が見たこの DRep のサマリ (1 行、なければ非表示)
+            # 言語に応じて summary_en / summary を切替。summary_en 空ならフォールバックで summary。
             rx.cond(
                 r["summary"] != "",
                 rx.box(
@@ -1277,7 +1279,11 @@ def _match_result_card(r) -> rx.Component:
                         spacing="2", align="center",
                     ),
                     rx.text(
-                        r["summary"],
+                        rx.cond(
+                            AuthState.language == "en",
+                            rx.cond(r["summary_en"] != "", r["summary_en"], r["summary"]),
+                            r["summary"],
+                        ),
                         size="2", color="var(--gray-12)",
                         style={"lineHeight": "1.6", "marginTop": "4px"},
                     ),

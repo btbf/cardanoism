@@ -185,6 +185,7 @@ def _serialize_match(r) -> dict:
         "drep_id":                   r.drep_id,
         "total_score":               r.total_score,
         "summary":                   r.summary,
+        "summary_en":                r.summary_en,
         "matched_axes":              r.matched_axes,
         "mismatched_axes":           r.mismatched_axes,
         "low_confidence_axes":       r.low_confidence_axes,

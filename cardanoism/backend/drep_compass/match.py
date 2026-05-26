@@ -38,7 +38,8 @@ class AxisDetail:
 class MatchResult:
     drep_id: str
     total_score: float                       # 0〜100
-    summary: str = ""                        # AI 生成サマリ
+    summary: str = ""                        # AI 生成サマリ (JA)
+    summary_en: str = ""                     # AI 生成サマリ (EN)
     axis_details: list[AxisDetail] = field(default_factory=list)
     matched_axes: list[str] = field(default_factory=list)      # similarity >= 0.75
     mismatched_axes: list[str] = field(default_factory=list)   # similarity <= 0.30
@@ -62,6 +63,7 @@ def calculate_drep_match(
     """
     drep_id = str(drep_row.get("drep_id") or "")
     summary = str(drep_row.get("summary") or "")
+    summary_en = str(drep_row.get("summary_en") or "")
     try:
         profile = json.loads(drep_row.get("profile_json") or "{}")
     except (TypeError, ValueError, json.JSONDecodeError):
@@ -121,6 +123,7 @@ def calculate_drep_match(
         drep_id=drep_id,
         total_score=round(total, 1),
         summary=summary,
+        summary_en=summary_en,
         axis_details=details,
         matched_axes=matched,
         mismatched_axes=mismatched,
@@ -147,7 +150,7 @@ def _fetch_and_score(
     """
     sql = """
         SELECT dp.drep_id, dp.profile_json, dp.confidence_json,
-               dp.evidence_json, dp.summary,
+               dp.evidence_json, dp.summary, dp.summary_en,
                dp.reasoning_disclosure_rate, dp.analyzed_vote_count,
                d.given_name, d.image_url, d.drep_status, d.registered, d.amount
           FROM drep_profiles dp

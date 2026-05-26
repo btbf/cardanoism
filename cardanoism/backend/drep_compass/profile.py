@@ -43,6 +43,7 @@ class DrepProfileResult:
     profile: dict[str, float]     # 7 axis 0.0〜1.0
     confidence: dict[str, float]  # 7 axis 0.0〜1.0
     summary: str                  # 1 行サマリ (AI 生成、日本語)
+    summary_en: str               # 1 行サマリ (AI 生成、英語)
     evidence: dict[str, list[dict[str, Any]]]
     analyzed_vote_count: int
     reasoning_disclosure_rate: float
@@ -122,6 +123,7 @@ def calculate_and_save(drep_id: str) -> DrepProfileResult:
             profile={a: 0.5 for a in AXES},
             confidence={a: 0.0 for a in AXES},
             summary="",
+            summary_en="",
             evidence={},
             analyzed_vote_count=0,
             reasoning_disclosure_rate=0.0,
@@ -163,6 +165,7 @@ def calculate_and_save(drep_id: str) -> DrepProfileResult:
         profile=profile,
         confidence=confidence,
         summary=ai_result.summary,
+        summary_en=ai_result.summary_en,
         evidence=evidence,
         analyzed_vote_count=voted,
         reasoning_disclosure_rate=disclosure,
@@ -174,7 +177,8 @@ def calculate_and_save(drep_id: str) -> DrepProfileResult:
 def _upsert(result: DrepProfileResult) -> None:
     """drep_profiles に AI 結果を UPSERT する。
 
-    summary 列は migration 022 で新規追加。
+    summary    列は migration 022 で追加 (日本語)。
+    summary_en 列は migration 024 で追加 (英語)。
     """
     with get_db() as (cursor, conn):
         cursor.execute(
@@ -183,8 +187,9 @@ def _upsert(result: DrepProfileResult) -> None:
               drep_id, profile_json, confidence_json, raw_score_json,
               participation_rate, reasoning_disclosure_rate,
               analyzed_vote_count, eligible_action_count,
-              analysis_version, evidence_json, summary, calculated_at
-            ) VALUES (?, ?, ?, NULL, 1.0, ?, ?, ?, ?, ?, ?, NOW())
+              analysis_version, evidence_json, summary, summary_en,
+              calculated_at
+            ) VALUES (?, ?, ?, NULL, 1.0, ?, ?, ?, ?, ?, ?, ?, NOW())
             ON DUPLICATE KEY UPDATE
               profile_json              = VALUES(profile_json),
               confidence_json           = VALUES(confidence_json),
@@ -196,6 +201,7 @@ def _upsert(result: DrepProfileResult) -> None:
               analysis_version          = VALUES(analysis_version),
               evidence_json             = VALUES(evidence_json),
               summary                   = VALUES(summary),
+              summary_en                = VALUES(summary_en),
               calculated_at             = NOW()
             """,
             (
@@ -208,6 +214,7 @@ def _upsert(result: DrepProfileResult) -> None:
                 config.ANALYSIS_VERSION,
                 json.dumps(result.evidence, ensure_ascii=False),
                 result.summary,
+                result.summary_en,
             ),
         )
         conn.commit()

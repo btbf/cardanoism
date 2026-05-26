@@ -73,6 +73,7 @@ liquid democracy 的に「質」で並べる設計。
               │     - profile     : 7 axis × 0.0〜1.0
               │     - confidence  : 7 axis × 0.0〜1.0
               │     - summary     : 日本語 1 文 (80 文字以内)
+              │     - summary_en  : 英語 1 文 (160 ASCII 文字以内、summary と同義)
               │     - evidence    : axis あたり最大 3 件の根拠投票
               └─ _upsert drep_profiles
 ```
@@ -98,7 +99,8 @@ active 350〜400 件で 1 回 $3〜$5。日次 fallback として cron 設定。
 | `drep_id`                  | PRIMARY KEY                                       |
 | `profile_json`             | 7 axis スコア (JSON, 0.0〜1.0)                    |
 | `confidence_json`          | 7 axis 信頼度 (JSON, 0.0〜1.0)                    |
-| `summary`                  | AI 生成の日本語 1 行サマリ                        |
+| `summary`                  | AI 生成サマリ (日本語、1 行)                      |
+| `summary_en`               | AI 生成サマリ (英語、1 行) — migration 024 で追加 |
 | `evidence_json`            | axis ごとの根拠投票 (JSON)                        |
 | `participation_rate`       | v2 では常に 1.0 (実投票のみが母数)                |
 | `reasoning_disclosure_rate`| 投票理由公開率 0.0〜1.0                           |
