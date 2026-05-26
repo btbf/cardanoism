@@ -915,6 +915,74 @@ def _drep_match_tabs() -> rx.Component:
     )
 
 
+def _drep_match_hero_cta() -> rx.Component:
+    """DRep 一覧ページの最上部に置く、マッチング診断への大型 CTA カード。
+    クリックで /governance/drep/match に遷移。
+    """
+    return rx.link(
+        rx.box(
+            rx.hstack(
+                # 左: アイコンバッジ
+                rx.center(
+                    rx.icon("sparkles", size=30, color="var(--amber-12)"),
+                    width="64px", height="64px",
+                    border_radius="999px",
+                    background="var(--amber-3)",
+                    border=f"1px solid {rx.color('amber', 7)}",
+                    style={"flexShrink": "0"},
+                ),
+                # 中: タイトル + 説明
+                rx.vstack(
+                    rx.hstack(
+                        rx.text(
+                            AuthState.t["drep_match_hero_cta_title"],
+                            size="5", weight="bold", color="var(--gray-12)",
+                        ),
+                        rx.badge(
+                            AuthState.t["drep_match_beta_label"],
+                            color_scheme="amber", variant="soft", size="1",
+                        ),
+                        spacing="2", align="center", wrap="wrap",
+                    ),
+                    rx.text(
+                        AuthState.t["drep_match_hero_cta_desc"],
+                        size="2", color="var(--gray-11)",
+                    ),
+                    spacing="1", align="start", flex="1", min_width="0",
+                ),
+                # 右: 矢印アイコン (CTA を強調)
+                rx.center(
+                    rx.icon("arrow-right", size=22, color="var(--amber-12)"),
+                    width="42px", height="42px",
+                    border_radius="999px",
+                    background="var(--amber-9)",
+                    style={"flexShrink": "0"},
+                ),
+                spacing="4", align="center", width="100%",
+            ),
+            padding="18px 22px",
+            border_radius="14px",
+            border=f"1px solid {rx.color('amber', 6)}",
+            background=rx.color_mode_cond(
+                "linear-gradient(135deg, var(--amber-2) 0%, white 100%)",
+                "linear-gradient(135deg, rgba(245,158,11,0.10) 0%, rgba(255,255,255,0.02) 100%)",
+            ),
+            width="100%",
+            style={
+                "transition": "transform 0.15s, box-shadow 0.15s, border-color 0.15s",
+                "boxShadow": "0 2px 8px -2px rgba(245,158,11,0.20)",
+            },
+            _hover={
+                "transform": "translateY(-2px)",
+                "border_color": rx.color("amber", 8),
+                "box_shadow": "0 6px 20px -4px rgba(245,158,11,0.35)",
+            },
+        ),
+        href="/governance/drep/match",
+        style={"textDecoration": "none", "width": "100%"},
+    )
+
+
 # 旧 _quiz_explanation_panel / _quiz_context_panel / _quiz_pros_cons_grid は
 # 新設計で不要になったため撤去 (i18n キー drep_match_q_*_context / _pros / _cons
 # を参照していた)。
@@ -1617,40 +1685,31 @@ def governance_drep_page() -> rx.Component:
             rx.vstack(
                 _breadcrumb(),
                 governance_subnav("drep"),
-                _drep_match_tabs(),
-                rx.match(
-                    DrepMatchState.view,
-                    ("intro",   _match_view()),
-                    ("quiz",    _match_view()),
-                    ("results", _match_view()),
-                    # default: "list" — 既存の DRep 一覧
-                    rx.vstack(
-                        _filter_bar(),
-                        rx.hstack(
-                            rx.text(AuthState.t["gov_search_results"], size="3"),
-                            rx.text(DrepState.total_items, size="5", weight="bold", color="var(--amber-11)"),
-                            rx.text(AuthState.t["gov_results_unit"], size="3"),
-                            rx.spacer(),
-                            rx.hstack(
-                                rx.text(AuthState.t["drep_total_delegation_label"], size="2", color="var(--gray-10)"),
-                                rx.text(DrepState.total_delegation_ada_display, size="3", weight="bold", color="var(--amber-11)"),
-                                rx.text("ADA", size="1", color="var(--gray-10)"),
-                                spacing="2", align="baseline",
-                            ),
-                            spacing="2", align="baseline", width="100%", wrap="wrap",
-                        ),
-                        rx.cond(
-                            DrepState.dreps,
-                            rx.vstack(
-                                rx.foreach(DrepState.dreps.to(list[dict[str, str]]), _drep_card),
-                                spacing="2", width="100%",
-                            ),
-                            rx.callout(AuthState.t["drep_empty"], icon="info", color_scheme="gray"),
-                        ),
-                        rx.cond(DrepState.dreps, _pagination(), rx.fragment()),
-                        spacing="4", width="100%",
+                # マッチング診断への大型 CTA カード (常時表示)
+                _drep_match_hero_cta(),
+                _filter_bar(),
+                rx.hstack(
+                    rx.text(AuthState.t["gov_search_results"], size="3"),
+                    rx.text(DrepState.total_items, size="5", weight="bold", color="var(--amber-11)"),
+                    rx.text(AuthState.t["gov_results_unit"], size="3"),
+                    rx.spacer(),
+                    rx.hstack(
+                        rx.text(AuthState.t["drep_total_delegation_label"], size="2", color="var(--gray-10)"),
+                        rx.text(DrepState.total_delegation_ada_display, size="3", weight="bold", color="var(--amber-11)"),
+                        rx.text("ADA", size="1", color="var(--gray-10)"),
+                        spacing="2", align="baseline",
                     ),
+                    spacing="2", align="baseline", width="100%", wrap="wrap",
                 ),
+                rx.cond(
+                    DrepState.dreps,
+                    rx.vstack(
+                        rx.foreach(DrepState.dreps.to(list[dict[str, str]]), _drep_card),
+                        spacing="2", width="100%",
+                    ),
+                    rx.callout(AuthState.t["drep_empty"], icon="info", color_scheme="gray"),
+                ),
+                rx.cond(DrepState.dreps, _pagination(), rx.fragment()),
                 spacing="4",
                 width="100%",
             ),
@@ -1658,4 +1717,53 @@ def governance_drep_page() -> rx.Component:
             max_width="1130px",
         ),
         rx.flex(rx.spinner(size="3"), justify="center", align="center", width="100%", padding_y="40px"),
+    )
+
+
+# ─── マッチング診断 専用ページ (/governance/drep/match) ───────────────────────
+
+
+@template(
+    route="/governance/drep/match",
+    title="DRepマッチング診断 | ガバナンス | Cardanoism",
+    on_load=DrepMatchState.enter_match_tab,
+)
+def governance_drep_match_page() -> rx.Component:
+    """マッチング診断の専用ページ。intro / quiz / results を view に応じて切替。
+
+    on_load の enter_match_tab で「結果があれば results / なければ intro」に振り分ける。
+    list view への遷移は明示的に「DRep 一覧に戻る」リンクで /governance/drep へ。
+    """
+    return rx.box(
+        login_modal(),
+        drep_delegation_dialog(),
+        rx.vstack(
+            # パンくず: ガバナンス > DRep 一覧 > マッチング診断
+            breadcrumb(
+                [
+                    ("nav_governance", "/governance"),
+                    ("gov_subnav_drep", "/governance/drep"),
+                ],
+                "drep_match_heading",
+            ),
+            governance_subnav("drep"),
+            # 「DRep 一覧に戻る」リンク (タブ撤廃の代替ナビ)
+            rx.link(
+                rx.hstack(
+                    rx.icon("arrow-left", size=14, color="var(--gray-11)"),
+                    rx.text(
+                        AuthState.t["drep_match_back_to_list"],
+                        size="2", color="var(--gray-11)",
+                    ),
+                    spacing="2", align="center",
+                ),
+                href="/governance/drep",
+                style={"textDecoration": "none", "alignSelf": "start"},
+            ),
+            _match_view(),
+            spacing="4",
+            width="100%",
+        ),
+        width="100%",
+        max_width="1130px",
     )
