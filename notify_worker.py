@@ -2173,57 +2173,151 @@ def check_spo_role_initial_sync():
 
 def check_drep_sync():
     """
-    Koios から全 DRep の情報を取得して DB にキャッシュする。
-    - /drep_list: 全 DRep の最小情報
-    - /drep_info: 登録状態 + 委任量
-    - /drep_metadata: CIP-119 メタデータ（画像・表示名等）
+    Koios から全 DRep の情報を取得して DB にキャッシュする。15 分 cron 想定。
+
+    フェーズ:
+      1. /drep_list で全 DRep の最小情報 (registered フラグ等)
+      2. registered 全件に /drep_info で動的列 (drep_status / active / deposit /
+         expires_epoch_no / meta_url / meta_hash) を取得
+      3. 既存 DB の meta_fetched_hash と info.meta_hash を比較し、
+         新規 DRep または CIP-119 が更新された DRep のみ /drep_metadata 取得
+         → upsert_drep でフル更新 (meta_fetched_hash も同期される)
+         上記以外は update_drep_info で動的列のみ更新 (CIP-119 列は触らない)
+      4. active かつ registered な全 DRep に /drep_delegators を投げて
+         live amount を合計し update_drep_amount で反映 (epoch-boundary の
+         /drep_info.amount は使わない)
+
+    /drep_delegators は 1 DRep = 1 リクエストなので約 1700 reqs/回。
+    15 分 cron + flock で重複起動を防ぐ。
     """
+    import time
+
     from cardanoism.backend.koios import (
-        KOIOS_BASE_URL, get_drep_list, get_drep_info_batch, get_drep_metadata_batch,
+        KOIOS_BASE_URL, _post, get_drep_list, get_drep_info_batch, get_drep_metadata_batch,
     )
-    from cardanoism.backend.drep_db import bulk_upsert_dreps
+    from cardanoism.backend.drep_db import (
+        upsert_drep, update_drep_info, update_drep_amount,
+        get_drep_meta_fetched_hashes,
+    )
 
     logger.info("DRep 同期 開始 (network=%s, url=%s)", _koios_network(), KOIOS_BASE_URL)
 
+    # --- フェーズ 1: 全 DRep 一覧 ---
     dreps = get_drep_list()
     if not dreps:
         logger.warning("DRep 一覧が取得できませんでした")
         return
     logger.info("DRep 一覧: %d 件", len(dreps))
 
-    # 登録済みのみ詳細フェッチ対象にする（リソース節約）
+    drep_basic_map = {d["drep_id"]: d for d in dreps if d.get("drep_id")}
     registered_ids = [d["drep_id"] for d in dreps if d.get("registered") and d.get("drep_id")]
     logger.info("registered DRep: %d 件", len(registered_ids))
 
+    # --- フェーズ 2: registered 全件に /drep_info ---
     info_map = {i["drep_id"]: i for i in get_drep_info_batch(registered_ids)}
-    meta_map = {m["drep_id"]: m for m in get_drep_metadata_batch(registered_ids)}
 
-    records: list[dict] = []
-    for d in dreps:
-        did = d.get("drep_id")
-        if not did:
-            continue
+    # --- フェーズ 3: meta_fetched_hash 差分判定 ---
+    fetched_hash_map = get_drep_meta_fetched_hashes()  # 既存全 DRep の hash
+    needs_metadata: list[str] = []
+    for did in registered_ids:
         info = info_map.get(did, {})
-        meta_row = meta_map.get(did, {})
-        meta = _extract_drep_meta(meta_row)
+        on_chain_hash = info.get("meta_hash")
+        if not on_chain_hash:
+            continue  # anchor 無し DRep は metadata 不要
+        db_fetched = fetched_hash_map.get(did)
+        if db_fetched != on_chain_hash:
+            needs_metadata.append(did)
 
-        records.append({
+    logger.info("metadata 再取得対象: %d 件 (新規 + meta_hash 変動)", len(needs_metadata))
+
+    meta_map: dict[str, dict] = {}
+    if needs_metadata:
+        meta_map = {m["drep_id"]: m for m in get_drep_metadata_batch(needs_metadata)}
+
+    # --- DB 書き込み: 新規 / metadata 更新あり → upsert_drep, それ以外 → update_drep_info ---
+    upsert_count = 0
+    info_only_count = 0
+    for did, basic in drep_basic_map.items():
+        info = info_map.get(did, {})
+        is_registered = bool(basic.get("registered"))
+
+        # registered=0 の DRep (= 未登録 / deregister 済み) は /drep_info に来ない。
+        # 既存行があれば registered=0 として記録、新規ならスキップしてもよいが
+        # 一覧取得には残すため upsert_drep を呼ぶ (metadata 列は空)。
+        if not is_registered:
+            if did in fetched_hash_map:
+                # 既存行: registered フラグだけ落として info_only 扱い
+                update_drep_info({
+                    "drep_id":          did,
+                    "drep_status":      info.get("drep_status"),
+                    "active":           info.get("active"),
+                    "deposit":          info.get("deposit"),
+                    "expires_epoch_no": info.get("expires_epoch_no"),
+                    "meta_url":         info.get("meta_url"),
+                    "meta_hash":        info.get("meta_hash"),
+                })
+                info_only_count += 1
+            continue
+
+        record_base = {
             "drep_id":          did,
-            "hex":              d.get("hex"),
-            "has_script":       d.get("has_script"),
-            "registered":       d.get("registered"),
+            "hex":              basic.get("hex"),
+            "has_script":       basic.get("has_script"),
+            "registered":       basic.get("registered"),
             "drep_status":      info.get("drep_status"),
             "active":           info.get("active"),
             "deposit":          info.get("deposit"),
             "expires_epoch_no": info.get("expires_epoch_no"),
-            "amount":           info.get("amount") or 0,
             "meta_url":         info.get("meta_url"),
             "meta_hash":        info.get("meta_hash"),
-            **meta,
-        })
+        }
 
-    inserted = bulk_upsert_dreps(records)
-    logger.info("DRep 同期 完了: %d / %d 件 upsert", inserted, len(records))
+        if did in needs_metadata or did not in fetched_hash_map:
+            # 新規 or metadata 差分あり → metadata 含めてフル upsert
+            meta_row = meta_map.get(did, {})
+            meta = _extract_drep_meta(meta_row)
+            try:
+                upsert_drep({**record_base, **meta})
+                upsert_count += 1
+            except Exception as e:  # noqa: BLE001
+                logger.exception("upsert_drep failed (drep_id=%s): %s", did, e)
+        else:
+            # metadata 一致 → 動的列のみ更新
+            try:
+                update_drep_info(record_base)
+                info_only_count += 1
+            except Exception as e:  # noqa: BLE001
+                logger.exception("update_drep_info failed (drep_id=%s): %s", did, e)
+
+    logger.info("DRep 基本同期 完了: full upsert=%d, info-only=%d", upsert_count, info_only_count)
+
+    # --- フェーズ 4: live amount sync (/drep_delegators per active DRep) ---
+    active_ids = [
+        did for did in registered_ids
+        if (info_map.get(did, {}).get("drep_status") == "active")
+    ]
+    logger.info("live amount 対象 (active DRep): %d 件", len(active_ids))
+
+    amount_ok = 0
+    amount_fail = 0
+    for idx, did in enumerate(active_ids, start=1):
+        try:
+            deleg = _post("/drep_delegators", {"_drep_id": did}) or []
+            live_sum = sum(int(d.get("amount") or 0) for d in deleg)
+            update_drep_amount(did, live_sum)
+            amount_ok += 1
+        except Exception as e:  # noqa: BLE001
+            logger.warning("/drep_delegators failed (drep_id=%s): %s", did, e)
+            amount_fail += 1
+
+        if idx % 200 == 0:
+            logger.info("live amount 進捗: %d / %d", idx, len(active_ids))
+
+        # Koios 配慮 (rate limit 緩衝)
+        time.sleep(0.05)
+
+    logger.info("DRep live amount 同期 完了: ok=%d, fail=%d", amount_ok, amount_fail)
+    logger.info("DRep 同期 完了 (network=%s)", _koios_network())
 
 
 # ============================================================
