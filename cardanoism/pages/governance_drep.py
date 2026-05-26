@@ -1401,17 +1401,41 @@ def _results_group_section(
     )
 
 
+def _restart_button(size: str = "3") -> rx.Component:
+    """「もう一度診断」ボタン。size=\"3\" / \"4\" で大きさを切り替え。"""
+    return rx.el.button(
+        rx.icon("rotate-cw", size=18, color="var(--amber-12)"),
+        rx.text(
+            AuthState.t["drep_match_restart_button"],
+            size=size, weight="bold", color="var(--amber-12)",
+        ),
+        on_click=DrepMatchState.start_quiz,
+        cursor="pointer",
+        style={
+            "display":        "inline-flex",
+            "alignItems":     "center",
+            "justifyContent": "center",
+            "gap":            "10px",
+            "padding":        "12px 32px",
+            "borderRadius":   "999px",
+            "background":     "var(--amber-9)",
+            "border":         "none",
+            "boxShadow":      "0 2px 10px -2px rgba(245,158,11,0.35)",
+            "transition":     "background 0.15s, transform 0.15s",
+        },
+        _hover={
+            "background": "var(--amber-10)",
+            "transform":  "translateY(-1px)",
+        },
+    )
+
+
 def _results_view() -> rx.Component:
     return rx.vstack(
         rx.hstack(
             rx.heading(AuthState.t["drep_match_results_heading"], size="5"),
             rx.spacer(),
-            rx.button(
-                rx.icon("rotate-cw", size=14),
-                rx.text(AuthState.t["drep_match_restart_button"], size="2"),
-                on_click=DrepMatchState.start_quiz,
-                variant="soft", color_scheme="gray", cursor="pointer",
-            ),
+            _restart_button(size="3"),
             width="100%", align="center", wrap="wrap",
         ),
         _results_group_section(
@@ -1424,6 +1448,9 @@ def _results_view() -> rx.Component:
             "drep_match_results_group_discovery_desc",
             DrepMatchState.results_discovery,
         ),
+        # 結果リスト末尾にも目立つ「もう一度診断」ボタンを置いて
+        # 一覧を最後まで読んだ後でも再診断しやすくする
+        rx.center(_restart_button(size="4"), width="100%", padding_y="16px"),
         spacing="6", width="100%",
     )
 
