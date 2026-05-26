@@ -1113,9 +1113,7 @@ def _social_link_icon(item) -> rx.Component:
 def _axis_chip(label_key, scheme: str) -> rx.Component:
     """軸スコアチップ (一致点 / 相違点 / 低信頼)。
 
-    label_key: i18n キー (対立軸名 or 独立軸名)
-      対立軸: "drep_match_balance_<key>_label"
-      独立軸: "drep_match_axis_<axis>"
+    label_key: 7 axis i18n キー ("drep_match_axis_<axis>")
 
     scheme:
       "match"    → green
