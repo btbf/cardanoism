@@ -1429,44 +1429,61 @@ def _results_view() -> rx.Component:
 
 
 def _intro_feature_card(icon: str, title_key: str, desc_key: str) -> rx.Component:
-    """スタートカード内の特徴 1 枚 (アイコン + タイトル + 説明)。"""
-    return rx.vstack(
+    """スタートカード内の特徴 1 行 (アイコン + タイトル + 説明、横並び)。"""
+    return rx.hstack(
         rx.center(
-            rx.icon(icon, size=22, color="var(--amber-11)"),
-            width="44px", height="44px",
+            rx.icon(icon, size=28, color="var(--amber-11)"),
+            width="56px", height="56px",
             border_radius="999px",
             background="var(--amber-3)",
             border="1px solid var(--amber-6)",
+            style={"flexShrink": "0"},
         ),
-        rx.text(
-            AuthState.t[title_key],
-            size="2", weight="bold", color="var(--gray-12)",
-            style={"textAlign": "center"},
+        rx.vstack(
+            rx.text(
+                AuthState.t[title_key],
+                size="4", weight="bold", color="var(--gray-12)",
+            ),
+            rx.text(
+                AuthState.t[desc_key],
+                size="3", color="var(--gray-11)",
+                style={"lineHeight": "1.6"},
+            ),
+            spacing="1", align="start", width="100%",
         ),
-        rx.text(
-            AuthState.t[desc_key],
-            size="1", color="var(--gray-11)",
-            style={"textAlign": "center", "lineHeight": "1.6"},
-        ),
-        spacing="2", align="center", width="100%",
-        padding="14px 12px",
+        spacing="4", align="center", width="100%",
+        padding="14px 16px",
     )
 
 
 def _intro_view() -> rx.Component:
-    """マッチング診断タブを押した直後に表示するスタート画面 (ミニマル)。
+    """マッチング診断タブを押した直後に表示するスタート画面。
 
-    親コンテナ (_match_view) で見出し + Beta バッジは既に出ているので、
-    ここでは説明文 → 特徴 3 つ → 開始ボタン → 注意書きの順で簡潔にまとめる。
+    カード内に「DRep マッチング診断 Beta」見出しを大きく表示し、
+    特徴は 3 行の縦並び (アイコン + タイトル + 説明)。
+    親 _match_view 側の小さい見出しはこの view では非表示にする。
     """
-    # アイコン + リード文 (中央寄せ、アイコンは小さめ)
+    # カード内の大見出し + Beta バッジ + リード文
     hero = rx.vstack(
         rx.center(
-            rx.icon("handshake", size=28, color="var(--amber-11)"),
-            width="64px", height="64px",
+            rx.icon("handshake", size=32, color="var(--amber-11)"),
+            width="72px", height="72px",
             border_radius="999px",
             background=rx.color_mode_cond("var(--amber-2)", "var(--amber-3)"),
             border=f"1px solid {rx.color('amber', 6)}",
+        ),
+        rx.hstack(
+            rx.heading(
+                AuthState.t["drep_match_heading"],
+                size="8", weight="bold", color="var(--gray-12)",
+                style={"letterSpacing": "-0.01em", "textAlign": "center"},
+            ),
+            rx.badge(
+                AuthState.t["drep_match_beta_label"],
+                color_scheme="amber", variant="soft", size="3",
+                style={"alignSelf": "center"},
+            ),
+            spacing="3", align="center", wrap="wrap", justify="center",
         ),
         rx.text(
             AuthState.t["drep_match_intro"],
@@ -1478,21 +1495,15 @@ def _intro_view() -> rx.Component:
                 "margin": "0 auto",
             },
         ),
-        spacing="3", align="center", width="100%",
+        spacing="4", align="center", width="100%",
     )
 
-    # 特徴 3 カード (コンパクト、レスポンシブ grid)
-    features = rx.box(
+    # 特徴 3 つを縦並び (各行: アイコン + タイトル + 説明)
+    features = rx.vstack(
         _intro_feature_card("list-checks", "drep_match_feature1_title", "drep_match_feature1_desc"),
         _intro_feature_card("radar",       "drep_match_feature2_title", "drep_match_feature2_desc"),
         _intro_feature_card("users-round", "drep_match_feature3_title", "drep_match_feature3_desc"),
-        style={
-            "display": "grid",
-            "gridTemplateColumns": "repeat(auto-fit, minmax(200px, 1fr))",
-            "gridAutoRows": "1fr",
-            "gap": "12px",
-        },
-        width="100%",
+        spacing="2", align="stretch", width="100%",
     )
 
     # 大型開始ボタン
@@ -1556,17 +1567,24 @@ def _intro_view() -> rx.Component:
 
 
 def _match_view() -> rx.Component:
-    """intro / quiz / results を view に応じて切り替える親コンテナ。"""
+    """intro / quiz / results を view に応じて切り替える親コンテナ。
+
+    intro の時はカード内に大きく見出しを出すので、この外側の見出しは隠す。
+    """
     return rx.box(
         rx.vstack(
-            rx.hstack(
-                rx.heading(AuthState.t["drep_match_heading"], size="6", weight="bold"),
-                rx.badge(
-                    AuthState.t["drep_match_beta_label"],
-                    color_scheme="amber", variant="soft", size="2",
-                    style={"alignSelf": "center"},
+            rx.cond(
+                DrepMatchState.view != "intro",
+                rx.hstack(
+                    rx.heading(AuthState.t["drep_match_heading"], size="6", weight="bold"),
+                    rx.badge(
+                        AuthState.t["drep_match_beta_label"],
+                        color_scheme="amber", variant="soft", size="2",
+                        style={"alignSelf": "center"},
+                    ),
+                    spacing="2", align="center", wrap="wrap",
                 ),
-                spacing="2", align="center", wrap="wrap",
+                rx.fragment(),
             ),
             rx.match(
                 DrepMatchState.view,
