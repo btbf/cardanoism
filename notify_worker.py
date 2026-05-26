@@ -2292,9 +2292,11 @@ def check_drep_sync():
     logger.info("DRep 基本同期 完了: full upsert=%d, info-only=%d", upsert_count, info_only_count)
 
     # --- フェーズ 4: live amount sync (/drep_delegators per active DRep) ---
+    # Koios /drep_info の `active` (boolean) を見る。
+    # `drep_status` フィールドは "registered" / "deregistered" 等で active/inactive を表さない。
     active_ids = [
         did for did in registered_ids
-        if (info_map.get(did, {}).get("drep_status") == "active")
+        if bool(info_map.get(did, {}).get("active"))
     ]
     logger.info("live amount 対象 (active DRep): %d 件", len(active_ids))
 
