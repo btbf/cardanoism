@@ -917,26 +917,32 @@ def _drep_match_tabs() -> rx.Component:
 
 def _drep_match_hero_cta() -> rx.Component:
     """DRep 一覧ページの最上部に置く、マッチング診断への大型 CTA カード。
-    クリックで /governance/drep/match に遷移。
+    クリックで /governance/drep/match に遷移。スマホでは文字 / アイコンを縮小。
     """
     return rx.link(
         rx.box(
             rx.hstack(
-                # 左: アイコンバッジ
+                # 左: アイコンバッジ (スマホで縮小)
                 rx.center(
-                    rx.icon("sparkles", size=30, color="var(--amber-12)"),
-                    width="64px", height="64px",
+                    rx.icon("sparkles", size=24, color="var(--amber-12)"),
                     border_radius="999px",
                     background="var(--amber-3)",
                     border=f"1px solid {rx.color('amber', 7)}",
-                    style={"flexShrink": "0"},
+                    style={
+                        "flexShrink": "0",
+                        "width": "48px", "height": "48px",
+                        "@media (min-width: 768px)": {
+                            "width": "64px", "height": "64px",
+                        },
+                    },
                 ),
-                # 中: タイトル + 説明
+                # 中: タイトル + 説明 (スマホでサイズ調整)
                 rx.vstack(
                     rx.hstack(
                         rx.text(
                             AuthState.t["drep_match_hero_cta_title"],
-                            size="5", weight="bold", color="var(--gray-12)",
+                            size={"initial": "3", "sm": "5"},
+                            weight="bold", color="var(--gray-12)",
                         ),
                         rx.badge(
                             AuthState.t["drep_match_beta_label"],
@@ -946,13 +952,14 @@ def _drep_match_hero_cta() -> rx.Component:
                     ),
                     rx.text(
                         AuthState.t["drep_match_hero_cta_desc"],
-                        size="2", color="var(--gray-11)",
+                        size={"initial": "1", "sm": "2"},
+                        color="var(--gray-11)",
                     ),
                     spacing="1", align="start", flex="1", min_width="0",
                 ),
-                # 右: 矢印アイコン (CTA を強調)
+                # 右: 矢印アイコン (CTA を強調、ダーク対応で amber-contrast)
                 rx.center(
-                    rx.icon("arrow-right", size=22, color="var(--amber-12)"),
+                    rx.icon("arrow-right", size=22, color="var(--amber-contrast)"),
                     width="42px", height="42px",
                     border_radius="999px",
                     background="var(--amber-9)",
@@ -989,7 +996,8 @@ def _drep_match_hero_cta() -> rx.Component:
 
 
 def _choice_button(level: int, label, scheme: str = "amber") -> rx.Component:
-    """3 択 (左 / 迷う / 右) の大型回答ボタン。"""
+    """3 択 (左 / 迷う / 右) の大型回答ボタン。スマホでは縦並びに収まるよう
+    最小幅を 100% にして全幅で 3 段重ねになる。"""
     is_selected = DrepMatchState.current_answer == level
     if scheme == "gray":
         sel_bg, sel_border = "var(--gray-3)", "var(--gray-9)"
@@ -998,22 +1006,26 @@ def _choice_button(level: int, label, scheme: str = "amber") -> rx.Component:
         sel_bg, sel_border = "var(--amber-3)", "var(--amber-9)"
         sel_text = "var(--amber-12)"
     return rx.el.button(
-        rx.text(label, size="4", weight="bold",
+        rx.text(label, size={"initial": "3", "sm": "4"}, weight="bold",
                 color=rx.cond(is_selected, sel_text, "var(--gray-12)"),
                 style={"whiteSpace": "normal", "textAlign": "center",
                        "lineHeight": "1.4"}),
         on_click=DrepMatchState.set_answer(level),
         cursor="pointer",
         style={
-            "padding":      "24px 18px",
+            "padding":      "18px 14px",
             "borderRadius": "14px",
             "background":   rx.cond(is_selected, sel_bg, "transparent"),
             "border":       rx.cond(is_selected, f"2px solid {sel_border}",
                                     "1.5px solid var(--gray-6)"),
-            "minWidth":     "200px",
-            "minHeight":    "100px",
-            "flex":         "1 1 220px",
+            "minHeight":    "80px",
+            "flex":         "1 1 100%",
             "transition":   "background 0.15s, border-color 0.15s, transform 0.15s",
+            "@media (min-width: 768px)": {
+                "padding":   "24px 18px",
+                "minHeight": "100px",
+                "flex":      "1 1 220px",
+            },
         },
         _hover={"background": "var(--amber-2)", "border_color": "var(--amber-8)",
                 "transform": "translateY(-1px)"},
@@ -1075,7 +1087,8 @@ def _quiz_view() -> rx.Component:
             ),
             rx.heading(
                 AuthState.t[DrepMatchState.current_question_i18n_key],
-                size="6", weight="bold", color="var(--gray-12)",
+                size={"initial": "4", "sm": "6"},
+                weight="bold", color="var(--gray-12)",
                 style={"lineHeight": "1.5", "textAlign": "center"},
             ),
             # 二者択一 + 迷う (大きな 3 ボタン)
@@ -1116,23 +1129,30 @@ def _quiz_view() -> rx.Component:
                     rx.el.button(
                         rx.text(
                             AuthState.t["drep_match_submit_button"],
-                            size="5", weight="bold", color="var(--amber-12)",
+                            size={"initial": "4", "sm": "5"}, weight="bold",
+                            color="var(--amber-contrast)",
                         ),
-                        rx.icon("arrow-right", size=24, color="var(--amber-12)"),
+                        rx.icon("arrow-right", size=22, color="var(--amber-contrast)"),
                         on_click=DrepMatchState.submit_quiz,
                         cursor="pointer",
                         style={
                             "display":        "inline-flex",
                             "alignItems":     "center",
                             "justifyContent": "center",
-                            "gap":            "12px",
-                            "padding":        "20px 64px",
+                            "gap":            "10px",
+                            "padding":        "14px 32px",
                             "borderRadius":   "999px",
                             "background":     "var(--amber-9)",
                             "border":         "none",
-                            "minWidth":       "320px",
+                            "minWidth":       "240px",
+                            "maxWidth":       "100%",
                             "boxShadow":      "0 4px 16px -4px rgba(245,158,11,0.45)",
                             "transition":     "background 0.15s, transform 0.15s, box-shadow 0.15s",
+                            "@media (min-width: 768px)": {
+                                "padding":  "20px 64px",
+                                "minWidth": "320px",
+                                "gap":      "12px",
+                            },
                         },
                         _hover={
                             "background": "var(--amber-10)",
@@ -1146,11 +1166,16 @@ def _quiz_view() -> rx.Component:
             ),
             spacing="5", align_items="stretch", width="100%",
         ),
-        padding="32px 28px",
         border_radius="12px",
         border=f"1px solid {rx.color('gray', 5)}",
         background=rx.color_mode_cond("white", "rgba(255,255,255,0.04)"),
         width="100%",
+        style={
+            "padding": "20px 14px",
+            "@media (min-width: 768px)": {
+                "padding": "32px 28px",
+            },
+        },
     )
 
 
@@ -1245,8 +1270,10 @@ def _match_result_card(r) -> rx.Component:
     )
     name_text = rx.cond(
         r["given_name"] != "",
-        rx.text(r["given_name"], size="3", weight="bold", color="var(--gray-12)"),
-        rx.text(AuthState.t["drep_no_name"], size="3", color="var(--gray-10)"),
+        rx.text(r["given_name"], size={"initial": "2", "sm": "3"},
+                weight="bold", color="var(--gray-12)"),
+        rx.text(AuthState.t["drep_no_name"], size={"initial": "2", "sm": "3"},
+                color="var(--gray-10)"),
     )
     header_link = rx.link(
         rx.hstack(
@@ -1257,7 +1284,8 @@ def _match_result_card(r) -> rx.Component:
                     rx.text(AuthState.t["drep_match_results_match_label"], " ",
                             size="1", color="var(--gray-10)"),
                     rx.text(r["total_score"], "%",
-                            size="5", weight="bold", color="var(--amber-11)"),
+                            size={"initial": "4", "sm": "5"},
+                            weight="bold", color="var(--amber-11)"),
                     spacing="1", align="baseline", wrap="wrap",
                 ),
                 spacing="1", align_items="start", flex="1", min_width="0",
@@ -1282,11 +1310,13 @@ def _match_result_card(r) -> rx.Component:
             rx.fragment(),
         ),
     )
+    # 数値メトリクスはスマホで size 3、PC で size 4 に
+    _val_size = {"initial": "3", "sm": "4"}
     delegation_row = rx.hstack(
         rx.vstack(
             rx.text(AuthState.t["drep_delegated_label"], size="1", color="var(--gray-10)"),
             rx.hstack(
-                rx.text(r["amount_ada"], size="4", weight="bold", color="var(--amber-11)"),
+                rx.text(r["amount_ada"], size=_val_size, weight="bold", color="var(--amber-11)"),
                 rx.text("ADA", size="1", color="var(--gray-11)"),
                 spacing="1", align="baseline",
             ),
@@ -1296,7 +1326,7 @@ def _match_result_card(r) -> rx.Component:
         rx.vstack(
             rx.text(AuthState.t["drep_influence_label"], size="1", color="var(--gray-10)"),
             rx.hstack(
-                rx.text(r["share_pct"], size="4", weight="bold", color="var(--blue-11)"),
+                rx.text(r["share_pct"], size=_val_size, weight="bold", color="var(--blue-11)"),
                 rx.text("%", size="1", color="var(--blue-10)"),
                 spacing="0", align="baseline",
             ),
@@ -1306,7 +1336,7 @@ def _match_result_card(r) -> rx.Component:
             rx.text(AuthState.t["drep_match_results_analyzed_votes"],
                     size="1", color="var(--gray-10)"),
             rx.hstack(
-                rx.text(r["analyzed_votes"], size="4", weight="bold", color="var(--gray-12)"),
+                rx.text(r["analyzed_votes"], size=_val_size, weight="bold", color="var(--gray-12)"),
                 rx.text(AuthState.t["gov_results_unit"], size="1", color="var(--gray-11)"),
                 spacing="1", align="baseline",
             ),
@@ -1316,13 +1346,13 @@ def _match_result_card(r) -> rx.Component:
             rx.text(AuthState.t["drep_match_results_reasoning_rate"],
                     size="1", color="var(--gray-10)"),
             rx.hstack(
-                rx.text(r["reasoning_pct"], size="4", weight="bold", color="var(--gray-12)"),
+                rx.text(r["reasoning_pct"], size=_val_size, weight="bold", color="var(--gray-12)"),
                 rx.text("%", size="1", color="var(--gray-11)"),
                 spacing="0", align="baseline",
             ),
             spacing="0", align="start",
         ),
-        spacing="6", align="start", wrap="wrap",
+        spacing={"initial": "3", "sm": "6"}, align="start", wrap="wrap",
     )
     return rx.box(
         rx.vstack(
@@ -1420,7 +1450,6 @@ def _match_result_card(r) -> rx.Component:
             ),
             spacing="3", align_items="stretch", width="100%",
         ),
-        padding="18px 20px",
         border_radius="12px",
         border=f"1px solid {rx.color('gray', 5)}",
         background=rx.color_mode_cond("white", "rgba(255,255,255,0.04)"),
@@ -1429,17 +1458,27 @@ def _match_result_card(r) -> rx.Component:
             "border_color": rx.color("amber", 8),
             "transform":    "translateY(-1px)",
         },
-        style={"transition": "border-color 0.15s, transform 0.15s"},
+        style={
+            "transition": "border-color 0.15s, transform 0.15s",
+            "padding": "14px 14px",
+            "@media (min-width: 768px)": {
+                "padding": "18px 20px",
+            },
+        },
     )
 
 
 def _restart_button(size: str = "3") -> rx.Component:
-    """「もう一度診断」ボタン。size=\"3\" / \"4\" で大きさを切り替え。"""
+    """「もう一度診断」ボタン。size=\"3\" / \"4\" で大きさを切り替え。
+
+    text/icon は amber-9 (黄〜オレンジ) 背景の上でも常に読める
+    var(--amber-contrast) (= 濃色) を使う。
+    """
     return rx.el.button(
-        rx.icon("rotate-cw", size=18, color="var(--amber-12)"),
+        rx.icon("rotate-cw", size=18, color="var(--amber-contrast)"),
         rx.text(
             AuthState.t["drep_match_restart_button"],
-            size=size, weight="bold", color="var(--amber-12)",
+            size=size, weight="bold", color="var(--amber-contrast)",
         ),
         on_click=DrepMatchState.start_quiz,
         cursor="pointer",
@@ -1497,30 +1536,40 @@ def _results_view() -> rx.Component:
 
 
 def _intro_feature_card(icon: str, title_key: str, desc_key: str) -> rx.Component:
-    """スタートカード内の特徴 1 行 (アイコン + タイトル + 説明、横並び)。"""
+    """スタートカード内の特徴 1 行 (アイコン + タイトル + 説明、横並び)。
+
+    スマホでは文字 / アイコンを縮小して表示。
+    """
     return rx.hstack(
         rx.center(
-            rx.icon(icon, size=28, color="var(--amber-11)"),
-            width="56px", height="56px",
+            rx.icon(icon, size=22, color="var(--amber-11)"),
             border_radius="999px",
             background="var(--amber-3)",
             border="1px solid var(--amber-6)",
-            style={"flexShrink": "0"},
+            style={
+                "flexShrink": "0",
+                "width": "44px", "height": "44px",
+                "@media (min-width: 768px)": {
+                    "width": "56px", "height": "56px",
+                },
+            },
         ),
         rx.vstack(
             rx.text(
                 AuthState.t[title_key],
-                size="4", weight="bold", color="var(--gray-12)",
+                size={"initial": "3", "sm": "4"},
+                weight="bold", color="var(--gray-12)",
             ),
             rx.text(
                 AuthState.t[desc_key],
-                size="3", color="var(--gray-11)",
+                size={"initial": "2", "sm": "3"},
+                color="var(--gray-11)",
                 style={"lineHeight": "1.6"},
             ),
             spacing="1", align="start", width="100%",
         ),
-        spacing="4", align="center", width="100%",
-        padding="14px 16px",
+        spacing="3", align="center", width="100%",
+        padding="12px 14px",
     )
 
 
@@ -1531,40 +1580,48 @@ def _intro_view() -> rx.Component:
     特徴は 3 行の縦並び (アイコン + タイトル + 説明)。
     親 _match_view 側の小さい見出しはこの view では非表示にする。
     """
-    # カード内の大見出し + Beta バッジ + リード文
+    # カード内の大見出し + Beta バッジ + リード文 (スマホで縮小)
     hero = rx.vstack(
         rx.center(
-            rx.icon("handshake", size=32, color="var(--amber-11)"),
-            width="72px", height="72px",
+            rx.icon("handshake", size=28, color="var(--amber-11)"),
             border_radius="999px",
             background=rx.color_mode_cond("var(--amber-2)", "var(--amber-3)"),
             border=f"1px solid {rx.color('amber', 6)}",
+            style={
+                "width": "56px", "height": "56px",
+                "@media (min-width: 768px)": {
+                    "width": "72px", "height": "72px",
+                },
+            },
         ),
         rx.hstack(
             rx.heading(
                 AuthState.t["drep_match_heading"],
-                size="8", weight="bold", color="var(--gray-12)",
+                size={"initial": "6", "sm": "8"},
+                weight="bold", color="var(--gray-12)",
                 style={"letterSpacing": "-0.01em", "textAlign": "center"},
             ),
             rx.badge(
                 AuthState.t["drep_match_beta_label"],
-                color_scheme="amber", variant="soft", size="3",
+                color_scheme="amber", variant="soft",
+                size={"initial": "2", "sm": "3"},
                 style={"alignSelf": "center"},
             ),
-            spacing="3", align="center", wrap="wrap", justify="center",
+            spacing="2", align="center", wrap="wrap", justify="center",
         ),
         rx.text(
             AuthState.t["drep_match_intro"],
-            size="4", color="var(--gray-12)",
+            size={"initial": "3", "sm": "4"},
+            color="var(--gray-12)",
             style={
-                "lineHeight": "1.8",
+                "lineHeight": "1.7",
                 "textAlign": "center",
                 "maxWidth": "720px",
                 "margin": "0 auto",
                 "whiteSpace": "pre-line",
             },
         ),
-        spacing="4", align="center", width="100%",
+        spacing="3", align="center", width="100%",
     )
 
     # 特徴 3 つを縦並び (各行: アイコン + タイトル + 説明)
@@ -1575,13 +1632,14 @@ def _intro_view() -> rx.Component:
         spacing="2", align="stretch", width="100%",
     )
 
-    # 大型開始ボタン
+    # 大型開始ボタン (text/icon は amber-9 上でも読める var(--amber-contrast) を使用)
     start_button = rx.center(
         rx.el.button(
-            rx.icon("play", size=22, color="var(--amber-12)"),
+            rx.icon("play", size=20, color="var(--amber-contrast)"),
             rx.text(
                 AuthState.t["drep_match_start_button"],
-                size="4", weight="bold", color="var(--amber-12)",
+                size={"initial": "3", "sm": "4"}, weight="bold",
+                color="var(--amber-contrast)",
             ),
             on_click=DrepMatchState.start_quiz,
             cursor="pointer",
@@ -1590,13 +1648,18 @@ def _intro_view() -> rx.Component:
                 "alignItems":     "center",
                 "justifyContent": "center",
                 "gap":            "10px",
-                "padding":        "14px 48px",
+                "padding":        "12px 32px",
                 "borderRadius":   "999px",
                 "background":     "var(--amber-9)",
                 "border":         "none",
-                "minWidth":       "260px",
+                "minWidth":       "220px",
+                "maxWidth":       "100%",
                 "boxShadow":      "0 4px 16px -4px rgba(245,158,11,0.45)",
                 "transition":     "background 0.15s, transform 0.15s, box-shadow 0.15s",
+                "@media (min-width: 768px)": {
+                    "padding":  "14px 48px",
+                    "minWidth": "260px",
+                },
             },
             _hover={
                 "background": "var(--amber-10)",
@@ -1623,7 +1686,6 @@ def _intro_view() -> rx.Component:
             disclaimer,
             spacing="5", align_items="stretch", width="100%",
         ),
-        padding="28px 24px",
         border_radius="14px",
         border=f"1px solid {rx.color('gray', 5)}",
         background=rx.color_mode_cond(
@@ -1631,6 +1693,12 @@ def _intro_view() -> rx.Component:
             "linear-gradient(180deg, rgba(245,158,11,0.08) 0%, rgba(255,255,255,0.02) 60%)",
         ),
         width="100%",
+        style={
+            "padding": "20px 16px",
+            "@media (min-width: 768px)": {
+                "padding": "28px 24px",
+            },
+        },
     )
     return rx.box(card, width="100%", padding_y="8px")
 
