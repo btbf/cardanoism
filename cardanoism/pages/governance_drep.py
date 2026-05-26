@@ -1493,6 +1493,7 @@ def _intro_view() -> rx.Component:
                 "textAlign": "center",
                 "maxWidth": "720px",
                 "margin": "0 auto",
+                "whiteSpace": "pre-line",
             },
         ),
         spacing="4", align="center", width="100%",
