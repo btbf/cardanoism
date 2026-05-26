@@ -625,6 +625,11 @@ Use neutral "tends to..." tendency language only.
                               "reason": "..."}], ...}   // optional, may be empty
 }
 
+# Output size limits
+- evidence: MAX 3 items per axis (pick the strongest signals). Do NOT exceed this cap.
+- evidence.reason: MAX 120 chars per item, in Japanese.
+- summary: MAX 80 chars, single sentence in Japanese.
+
 The summary should be a single sentence, neutral, in Japanese (e.g.,
 "新興プロジェクトを積極支援し、KPI を厳しく問う傾向").
 """
@@ -656,7 +661,7 @@ def analyze_drep_compass_profile(
     payload: dict[str, Any],
     *,
     model: str = DEFAULT_MODEL,
-    max_output_tokens: int = 2400,
+    max_output_tokens: int = 4000,
 ) -> DrepCompassProfileResult:
     """Infer an 11-axis DRep compass profile with AI."""
     client = _get_client()
