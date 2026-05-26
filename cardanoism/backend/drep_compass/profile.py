@@ -36,6 +36,9 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from cardanoism.backend.ai_client import (
+    analyze_drep_v3_summary as _ai_v3_summary,
+)
 from cardanoism.backend.db_connect import get_db
 from cardanoism.backend.drep_compass import config
 from cardanoism.backend.drep_compass.taxonomy import AXES
@@ -67,6 +70,8 @@ class DrepProfileResult:
     evidence: dict[str, list[dict[str, Any]]]
     analyzed_vote_count: int
     reasoning_disclosure_rate: float
+    summary_ja: str = ""
+    summary_en: str = ""
 
 
 # ── DB から DRep の投票 + GA タグを取得 ──────────────────────
@@ -271,6 +276,10 @@ def calculate_and_save(drep_id: str) -> DrepProfileResult:
                 with_rationale += 1
     disclosure = (with_rationale / voted) if voted > 0 else 0.0
 
+    # 集計結果から AI に 1 文サマリを生成させる (axis 定義は system prompt 内)。
+    # 集計と独立した呼び出しなので score の決定論性は保たれる。
+    summary_ja, summary_en = _generate_summary(profile, confidence, drep_id)
+
     result = DrepProfileResult(
         drep_id=drep_id,
         profile=profile,
@@ -278,6 +287,8 @@ def calculate_and_save(drep_id: str) -> DrepProfileResult:
         evidence=evidence,
         analyzed_vote_count=voted,
         reasoning_disclosure_rate=disclosure,
+        summary_ja=summary_ja,
+        summary_en=summary_en,
     )
     _upsert(result)
     logger.info(
@@ -287,13 +298,38 @@ def calculate_and_save(drep_id: str) -> DrepProfileResult:
     return result
 
 
+def _generate_summary(
+    profile: dict[str, float],
+    confidence: dict[str, float],
+    drep_id: str,
+) -> tuple[str, str]:
+    """7 axis スコアを AI に渡して 1 文サマリを生成。
+
+    AI が失敗 / 例外時は空文字を返す (best-effort)。
+    全 axis が低信頼の場合は AI 側で「判断材料不足」サマリを返す想定。
+    """
+    axes_payload = {
+        a: {
+            "score": round(float(profile.get(a, 0.5)), 3),
+            "conf":  round(float(confidence.get(a, 0.0)), 3),
+        }
+        for a in AXES
+    }
+    try:
+        result = _ai_v3_summary(axes_payload)
+        return result.summary_ja, result.summary_en
+    except Exception as e:  # noqa: BLE001
+        logger.warning("v3 summary AI failed for %s: %s", drep_id, e)
+        return "", ""
+
+
 def _upsert(result: DrepProfileResult) -> None:
     """drep_profiles に集計結果を UPSERT する。
 
-    v3 では summary / summary_en は生成しない (集計式のため AI コール無し)。
-    既存 v2 の summary が残っている場合は上書きしない方針で NULL を渡さない
-    → COALESCE で既存値を保持するのが理想だが、シンプルさのため NULL を入れる
-    (将来 v3 用の rule-based サマリを書くまでの暫定)。
+    v3 では:
+    - 7 axis スコア / 信頼度 / evidence は集計式で決定論的
+    - summary / summary_en は集計結果を AI に渡して生成 (axis 定義は
+      system prompt 側でキャッシュされる)
     """
     with get_db() as (cursor, conn):
         cursor.execute(
@@ -304,7 +340,7 @@ def _upsert(result: DrepProfileResult) -> None:
               analyzed_vote_count, eligible_action_count,
               analysis_version, evidence_json, summary, summary_en,
               calculated_at
-            ) VALUES (?, ?, ?, NULL, 1.0, ?, ?, ?, ?, ?, NULL, NULL, NOW())
+            ) VALUES (?, ?, ?, NULL, 1.0, ?, ?, ?, ?, ?, ?, ?, NOW())
             ON DUPLICATE KEY UPDATE
               profile_json              = VALUES(profile_json),
               confidence_json           = VALUES(confidence_json),
@@ -315,8 +351,8 @@ def _upsert(result: DrepProfileResult) -> None:
               eligible_action_count     = VALUES(eligible_action_count),
               analysis_version          = VALUES(analysis_version),
               evidence_json             = VALUES(evidence_json),
-              summary                   = NULL,
-              summary_en                = NULL,
+              summary                   = VALUES(summary),
+              summary_en                = VALUES(summary_en),
               calculated_at             = NOW()
             """,
             (
@@ -328,6 +364,8 @@ def _upsert(result: DrepProfileResult) -> None:
                 int(result.analyzed_vote_count),
                 config.ANALYSIS_VERSION,
                 json.dumps(result.evidence, ensure_ascii=False),
+                result.summary_ja or None,
+                result.summary_en or None,
             ),
         )
         conn.commit()

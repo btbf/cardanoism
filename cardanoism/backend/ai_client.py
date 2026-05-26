@@ -827,3 +827,113 @@ def analyze_drep_compass_profile(
         cost_usd=cost,
         raw_text=raw,
     )
+
+
+# ─── DRep v3 サマリ生成 (集計結果から AI が 1 文ナラティブを書く) ─────────────
+
+_DREP_V3_SUMMARY_SYSTEM = """\
+あなたは Cardano DRep の投票傾向を 1 文で要約するアシスタントです。
+DRep の 7 axis スコア (drep_compass v3 で集計済み) を受け取り、自然な
+日本語と英語で「この DRep はどんな投票傾向か」を要約します。
+
+# 7 axis 定義 (score 0.0〜1.0、0.5 = 中立 / 判断材料不足)
+
+- treasury     : 0.0 = 大型 Treasury 支出に積極 (攻め) /
+                 1.0 = 大型支出に慎重 (守り)
+- priority     : 0.0 = 技術基盤・プロトコル R&D / セキュリティ / 開発者ツール /
+                 1.0 = 実利用・dApp / DeFi / 採用拡大
+- org          : 0.0 = 既存大組織 (IO / CF / Emurgo / Intersect / Midnight) 支持 /
+                 1.0 = 新興チーム / 個別開発者 / 分散的配分支持
+- protocol     : 0.0 = 革新 (HardFork / パラメータ変更を歓迎) /
+                 1.0 = 安定 (合意層変更に慎重)
+- transparency : 0.0 = ゆるめ (信頼ベース) /
+                 1.0 = KPI / マイルストーン / 報告義務を厳格に要求
+- risk         : 0.0 = 実験的 / 未検証 / 単一エンティティ大型出資 OK /
+                 1.0 = 慎重 (既存実績・分散実行優先)
+- marketing    : 0.0 = マーケティング / PR / イベント / スポンサーシップ推進 /
+                 1.0 = マーケ抑制 (開発・運営優先)
+
+# ルール
+- **confidence < 0.3 の axis は無視** (判断材料不足、サマリに含めない)
+- score の極端さで言葉の強弱を変える:
+    0.0-0.15 or 0.85-1.0 → 「強く X 寄り」
+    0.15-0.30 or 0.70-0.85 → 「やや X 寄り」
+    0.30-0.40 or 0.60-0.70 → 「X 寄りの傾向」
+- 中立 (0.40-0.60) の axis はスキップ
+- 信頼度の高い、極端な axis を 2-3 個 選んで自然に統合
+- 派閥ラベル (例: anti-IO, 集権派) は使わない。「〜する傾向」「〜寄り」のみ
+- JA: 80 文字以内、1 文
+- EN: 160 文字以内、1 文 (JA と同じ意味)
+
+# 出力 (STRICT JSON only)
+
+{
+  "summary_ja": "新興プロジェクトと革新的なプロトコル変更を支援し、マーケティング支出には慎重な傾向",
+  "summary_en": "Tends to back emerging projects and progressive protocol changes while being cautious about marketing spend"
+}
+
+# 注意
+- 渡されない axis、confidence ゼロの axis は無いものとして扱う
+- 全 axis が低信頼の場合は「判断材料が不足しています」と返す:
+    {"summary_ja": "投票実績が少なく、傾向の判断材料が不足しています",
+     "summary_en": "Limited voting record — insufficient data to determine tendencies"}
+"""
+
+
+@dataclass
+class DrepV3SummaryResult:
+    """drep-match v3: AI が集計結果から生成した 1 文サマリ。"""
+    summary_ja: str
+    summary_en: str
+    model_id: str
+    tokens_input: int
+    tokens_cached_input: int
+    tokens_output: int
+    cost_usd: float
+
+
+def analyze_drep_v3_summary(
+    axes: dict[str, dict[str, float]],
+    *,
+    model: str = DEFAULT_MODEL,
+    max_output_tokens: int = 400,
+) -> DrepV3SummaryResult:
+    """v3 集計結果から 1 文サマリを AI で生成する (axis 定義は system prompt)。
+
+    axes: {axis_name: {"score": 0.0-1.0, "conf": 0.0-1.0}, ...}
+          全 7 axis を渡す前提 (中立 / 低信頼は AI 側で除外)。
+    """
+    client = _get_client()
+    user_text = json.dumps({"axes": axes}, ensure_ascii=False)
+    response = _send_with_retry(
+        client,
+        model=model,
+        system_text=_DREP_V3_SUMMARY_SYSTEM,
+        user_text=user_text,
+        max_tokens=max_output_tokens,
+    )
+    raw = response.choices[0].message.content or ""
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"drep v3 summary: failed to parse JSON: {e}") from e
+
+    summary_ja = str(parsed.get("summary_ja") or "")[:200]
+    summary_en = str(parsed.get("summary_en") or "")[:300]
+
+    usage = response.usage
+    tokens_input = getattr(usage, "prompt_tokens", 0) or 0
+    tokens_output = getattr(usage, "completion_tokens", 0) or 0
+    details = getattr(usage, "prompt_tokens_details", None)
+    tokens_cached_input = getattr(details, "cached_tokens", 0) if details is not None else 0
+    cost = _compute_cost(tokens_input, tokens_cached_input, tokens_output)
+
+    return DrepV3SummaryResult(
+        summary_ja=summary_ja,
+        summary_en=summary_en,
+        model_id=model,
+        tokens_input=tokens_input,
+        tokens_cached_input=tokens_cached_input,
+        tokens_output=tokens_output,
+        cost_usd=cost,
+    )

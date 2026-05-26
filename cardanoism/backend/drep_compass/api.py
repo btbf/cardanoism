@@ -38,14 +38,16 @@ logger = logging.getLogger(__name__)
 def calculate_drep_profile(drep_id: str) -> dict[str, Any]:
     """1 DRep のプロファイルを集計して drep_profiles に保存し、結果を dict で返す。
 
-    v3: AI コール無し。GA per-axis タグ (governance_ai_analysis.axis_tags_json)
-    を読んで投票を集計する純粋な算術。
+    v3: axis スコアは GA per-axis タグ (governance_ai_analysis.axis_tags_json)
+    の集計で決定論的に算出。最後に集計結果から AI が 1 文サマリを生成する。
     """
     result = _profile_calc_and_save(drep_id)
     return {
         "drep_id":                   result.drep_id,
         "profile":                   result.profile,
         "confidence":                result.confidence,
+        "summary":                   result.summary_ja,
+        "summary_en":                result.summary_en,
         "evidence":                  result.evidence,
         "analyzed_vote_count":       result.analyzed_vote_count,
         "reasoning_disclosure_rate": result.reasoning_disclosure_rate,
