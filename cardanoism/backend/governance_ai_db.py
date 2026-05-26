@@ -153,6 +153,10 @@ def save_result(
     facts = payload.get("proposal_facts") or []
     articles = payload.get("articles") or []
 
+    # 注: 旧 DRep マッチング診断 (topic_tags / axis_tags) は廃止。
+    # 新コンパス (drep_compass パッケージ) は gov_action_tags テーブルを
+    # rule-based 分類で別途生成するため、AI 側ではタグ分類しない。
+
     with get_db() as (cursor, conn):
         cursor.execute(
             """

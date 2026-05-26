@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS dreps (
     meta_url         TEXT         DEFAULT NULL,
     meta_hash        VARCHAR(64)  DEFAULT NULL,
     meta_is_valid    TINYINT(1)   DEFAULT NULL,
+    meta_fetched_hash VARCHAR(64) DEFAULT NULL,                -- check_drep_sync が CIP-119 を取り込んだ時点の meta_hash (差分判定用)
     last_event_slot  BIGINT       DEFAULT NULL,
     fetched_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

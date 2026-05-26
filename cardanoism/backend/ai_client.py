@@ -152,6 +152,10 @@ constitution analysis. Your only outputs are:
 1. A neutral plain-text summary of the proposal (Japanese + English).
 2. A bullet-list of factual key information extracted from the proposal.
 
+Topic / faction / axis classification is handled by a separate rule-based
+classifier (cardanoism.backend.drep_compass) and NOT by AI. Do not include
+topic_tags, axis_tags, or any classification fields in your output.
+
 ## Per-Type Fact Extraction
 
 `proposal_facts` is a list of {label_ja, label_en, value_ja, value_en} entries
@@ -228,6 +232,9 @@ Aim for 300-500 Japanese characters / 6-10 sentences. Avoid value judgments.
   Both value_ja and value_en MUST be present for every entry.
 - The proposal_summary should be neutral and descriptive — no positive or
   negative judgment.
+- DO NOT include topic_tags, axis_tags, faction labels, or any classification
+  fields. Classification is handled by a separate rule-based module
+  (cardanoism.backend.drep_compass) and is not AI's responsibility.
 """
 
 
@@ -349,6 +356,381 @@ def analyze_proposal(
 
     return AnalysisResult(
         payload=payload,
+        model_id=model,
+        tokens_input=tokens_input,
+        tokens_cached_input=tokens_cached_input,
+        tokens_output=tokens_output,
+        cost_usd=cost,
+        raw_text=raw,
+    )
+
+
+# ─── DRep委任コンパス用: GA タグ分類 ──────────────────────────────────────────
+
+_COMPASS_TAG_SYSTEM = """\
+You are a classification assistant for Cardano governance proposals.
+
+Your job is to assign Cardanoism's proprietary tags to a single Governance
+Action (GA) based on its type, title, abstract, motivation and rationale.
+
+Tags are grouped into three families. Pick ONLY from the lists below — do
+NOT invent new tags. Multiple tags may apply.
+
+## category (broad topic — what the proposal is about)
+- treasury, protocol, governance, constitution, core_development,
+  infrastructure, ecosystem, marketing, community, education, event,
+  dapp, wallet, defi, other
+
+## attribute (the proposal's properties — scale, target, type of work)
+- large_budget, recurring_budget, operational_budget,
+  existing_entity, new_team, individual_contributor,
+  regional_focus, global_focus, open_source, closed_source,
+  public_goods, commercial_product,
+  developer_experience, user_adoption, awareness,
+  long_term_research, security_related,
+  parameter_change, hard_fork, urgent, high_risk
+
+## quality (proposal quality / governance hygiene)
+- kpi_defined, kpi_unclear,
+  milestone_based, milestone_unclear,
+  budget_reasonable, budget_unclear, budget_excessive,
+  track_record_strong, track_record_unknown,
+  transparency_high, transparency_low,
+  accountability_defined, accountability_unclear,
+  conflict_of_interest_possible
+
+## Selection rules
+- Always include at least one category tag. Use "other" only if no
+  category truly applies.
+- For TreasuryWithdrawals: always include "treasury". Pick the most
+  specific category (marketing / event / education / defi / wallet /
+  dapp / infrastructure / community / core_development / ecosystem etc.)
+  based on the stated spending purpose.
+- For ParameterChange: include "protocol" + "parameter_change".
+- For HardForkInitiation: include "protocol" + "hard_fork".
+- For NewConstitution / ConstitutionUpdate: include "governance" +
+  "constitution".
+- For InfoAction / NewCommittee / NoConfidence: include "governance".
+- attribute tags: add ones whose conditions are clearly evidenced in the
+  text. Skip ambiguous ones. (For example, "open_source" only if a
+  GitHub / GitLab / "open source" reference exists.)
+- quality tags: pair up — if KPI is clearly defined add "kpi_defined",
+  if KPI is mentioned but not actually measurable add "kpi_unclear".
+  Likewise for milestone / accountability / transparency / budget.
+- Do NOT add value-judgmental tags. The taxonomy explicitly forbids
+  labels like "bad_proposal" / "wasteful" / "centralized_bad".
+
+## Output format (STRICT JSON)
+Return ONLY this object:
+
+{
+  "tags": [
+    {"tag": "<one of the lists above>",
+     "confidence": 0.0..1.0,
+     "rationale": "<short reason in English, ≤120 chars>"},
+    ...
+  ]
+}
+
+- Up to 8 tags total.
+- confidence is YOUR own probability of correctness (0.5 = uncertain,
+  0.9 = clear evidence in text, 1.0 = derived directly from
+  proposal_type).
+- Output English-only rationale; no Markdown, no extra prose.
+"""
+
+
+def _build_compass_user_text(proposal: dict[str, Any], max_chars: int = 8000) -> str:
+    """compass tag 分類用の user message を組み立てる。"""
+    parts: list[str] = []
+
+    title = proposal.get("title") or proposal.get("title_ja") or ""
+    parts.append(f"# Title\n{title}")
+
+    ptype = proposal.get("proposal_type", "")
+    parts.append(f"# Type\n{ptype}")
+
+    abstract = proposal.get("abstract") or proposal.get("abstract_ja") or ""
+    if abstract:
+        parts.append(f"# Abstract\n{abstract}")
+
+    motivation = proposal.get("motivation") or proposal.get("motivation_ja") or ""
+    if motivation:
+        parts.append(f"# Motivation\n{motivation}")
+
+    rationale = proposal.get("rationale") or proposal.get("rationale_ja") or ""
+    if rationale:
+        parts.append(f"# Rationale\n{rationale}")
+
+    if proposal.get("withdrawal_total_lovelace"):
+        ada = int(proposal["withdrawal_total_lovelace"]) // 1_000_000
+        parts.append(f"# Withdrawal\n{ada:,} ADA")
+
+    text = "\n\n".join(parts)
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n\n... [truncated for length]"
+    return text
+
+
+@dataclass
+class CompassTagResult:
+    """classify_proposal_tags の戻り値。"""
+    tags: list[dict[str, Any]]    # [{tag, confidence, rationale}]
+    model_id: str
+    tokens_input: int
+    tokens_cached_input: int
+    tokens_output: int
+    cost_usd: float
+    raw_text: str = field(repr=False)
+
+
+def classify_proposal_tags(
+    proposal: dict[str, Any],
+    *,
+    model: str = DEFAULT_MODEL,
+    max_output_tokens: int = 800,
+) -> CompassTagResult:
+    """1 つの GA に対する Cardanoism独自タグ群を OpenAI で生成する。
+
+    決定性向上のため:
+      - response_format=json_object で構造化出力を強制
+      - system プロンプトは固定 → OpenAI 自動キャッシュに乗る
+
+    Args:
+      proposal: governance_actions row (proposal_type / title / abstract /
+                motivation / rationale / withdrawal_total_lovelace を含む dict)
+
+    Returns:
+      CompassTagResult。tags は [{tag, confidence, rationale}] の list。
+      呼び出し側で taxonomy.is_valid_tag() による検証必須。
+    """
+    client = _get_client()
+    user_text = _build_compass_user_text(proposal)
+
+    response = _send_with_retry(
+        client,
+        model=model,
+        system_text=_COMPASS_TAG_SYSTEM,
+        user_text=user_text,
+        max_tokens=max_output_tokens,
+    )
+    raw = response.choices[0].message.content or ""
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"compass classify: failed to parse JSON: {e}") from e
+
+    tags_raw = payload.get("tags") or []
+    if not isinstance(tags_raw, list):
+        tags_raw = []
+
+    # tag フィールドだけは必ず正規化 (空白・小文字)。validation は呼び出し側。
+    tags: list[dict[str, Any]] = []
+    for t in tags_raw:
+        if not isinstance(t, dict):
+            continue
+        tag = str(t.get("tag") or "").strip().lower()
+        if not tag:
+            continue
+        try:
+            conf = float(t.get("confidence") or 0.0)
+        except (TypeError, ValueError):
+            conf = 0.0
+        conf = max(0.0, min(1.0, conf))
+        rationale = str(t.get("rationale") or "").strip()
+        tags.append({"tag": tag, "confidence": conf, "rationale": rationale})
+
+    usage = response.usage
+    tokens_input = getattr(usage, "prompt_tokens", 0) or 0
+    tokens_output = getattr(usage, "completion_tokens", 0) or 0
+    details = getattr(usage, "prompt_tokens_details", None)
+    tokens_cached_input = 0
+    if details is not None:
+        tokens_cached_input = getattr(details, "cached_tokens", 0) or 0
+    cost = _compute_cost(tokens_input, tokens_cached_input, tokens_output)
+
+    return CompassTagResult(
+        tags=tags,
+        model_id=model,
+        tokens_input=tokens_input,
+        tokens_cached_input=tokens_cached_input,
+        tokens_output=tokens_output,
+        cost_usd=cost,
+        raw_text=raw,
+    )
+
+
+_DREP_PROFILE_SYSTEM = """\
+You analyze a Cardano DRep's voting behavior for Cardanoism's "DRep Matching
+Diagnostic". You receive the DRep's past votes (Yes/No/Abstain), the
+corresponding Governance Action title and abstract, and any voter rationale
+the DRep published (CIP-100/108 metadata).
+
+Your job: infer the DRep's tendencies along 7 axes, each scored 0.0..1.0,
+and write a neutral one-line summary for delegators.
+
+Do NOT use faction labels (anti-IO, centralized, wasteful, giveaway, etc.).
+Use neutral "tends to..." tendency language only.
+
+# 7 axes (all 0.0..1.0, 0.5 = neutral / mixed / no evidence)
+
+- treasury     (0=Aggressive Treasury use / 1=Cautious Treasury use)
+  Higher when the DRep votes No on large lump-sum proposals and prefers
+  small targeted grants. Lower when they support large bold investments.
+
+- priority     (0=Technical foundation / 1=Real-world usage)
+  Lower when DRep supports protocol R&D, security, infrastructure,
+  developer tooling. Higher when they support dApps, DeFi, wallets,
+  user-adoption and commercial product growth.
+
+- org          (0=Established orgs / 1=Distributed allocation)
+  Lower when DRep supports continuing budgets for IO / CF / Intersect /
+  Emurgo. Higher when they prefer funding new teams, regions, individual
+  contributors and community DAOs.
+
+- protocol     (0=Progressive protocol change / 1=Conservative stability)
+  Lower when DRep supports hard forks and parameter changes for new
+  features. Higher when they vote No on consensus-affecting changes
+  for stability.
+
+- transparency (0=Lenient on disclosure / 1=Strict on disclosure)
+  Higher when DRep votes No on proposals lacking KPIs, milestones,
+  budget transparency or accountability. Lower when they accept
+  proposals based on trust without strict reporting.
+
+- risk         (0=Aggressive risk taking / 1=Cautious risk management)
+  Lower when DRep supports experimental, unproven or high-risk
+  proposals. Higher when they vote No on speculative or unclear-ROI
+  proposals.
+
+- marketing    (0=Pro marketing / 1=Marketing-cautious)
+  Lower when DRep supports PR, events, awareness, conferences.
+  Higher when they prefer product/dev funding over marketing spend.
+
+# Scoring rules
+- 0.5 means neutral, mixed evidence, or no relevant votes.
+- Abstain is participation but a weak signal. Move axes only slightly.
+- A No vote may signal multiple axes. Use the GA content and rationale
+  text to infer which axis the No is really about.
+- confidence is per-axis 0.0..1.0. Low confidence when evidence is sparse
+  or ambiguous, high confidence when many clear votes + rationale text.
+
+# Output (STRICT JSON only)
+{
+  "profile":    {"<axis>": 0.0..1.0, ...},   // all 7 axes required
+  "confidence": {"<axis>": 0.0..1.0, ...},   // all 7 axes required
+  "summary":    "neutral one-sentence description in Japanese",
+  "summary_en": "the same description in English (same meaning, single sentence)",
+  "evidence":   {"<axis>": [{"proposal_id": "...", "vote": "Yes|No|Abstain",
+                              "reason": "..."}], ...}   // optional, may be empty
+}
+
+# Output size limits
+- evidence: MAX 3 items per axis (pick the strongest signals). Do NOT exceed this cap.
+- evidence.reason: MAX 120 chars per item, in Japanese.
+- summary    (JA): MAX 80 Japanese characters, single sentence.
+- summary_en (EN): MAX 160 ASCII characters, single sentence, same meaning as `summary`.
+
+`summary` and `summary_en` MUST express the same content in the two languages
+(e.g., JA: "新興プロジェクトを積極支援し、KPI を厳しく問う傾向" /
+ EN: "Tends to back emerging projects while demanding strict KPIs.").
+"""
+
+
+def _build_drep_profile_user_text(payload: dict[str, Any], max_chars: int = 18000) -> str:
+    text = json.dumps(payload, ensure_ascii=False, default=str)
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n... [truncated for length]"
+    return text
+
+
+@dataclass
+class DrepCompassProfileResult:
+    profile: dict[str, float]
+    confidence: dict[str, float]
+    summary: str                            # 1-line neutral description (Japanese)
+    summary_en: str                         # 1-line English version of summary
+    rationale: dict[str, str]               # 旧 11 axis 用、後方互換のため残置
+    evidence: dict[str, list[dict[str, Any]]]
+    model_id: str
+    tokens_input: int
+    tokens_cached_input: int
+    tokens_output: int
+    cost_usd: float
+    raw_text: str = field(repr=False)
+
+
+def analyze_drep_compass_profile(
+    payload: dict[str, Any],
+    *,
+    model: str = DEFAULT_MODEL,
+    max_output_tokens: int = 4000,
+) -> DrepCompassProfileResult:
+    """Infer an 11-axis DRep compass profile with AI."""
+    client = _get_client()
+    user_text = _build_drep_profile_user_text(payload)
+    response = _send_with_retry(
+        client,
+        model=model,
+        system_text=_DREP_PROFILE_SYSTEM,
+        user_text=user_text,
+        max_tokens=max_output_tokens,
+    )
+    raw = response.choices[0].message.content or ""
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"drep compass profile: failed to parse JSON: {e}") from e
+
+    def clamp_map(value: Any) -> dict[str, float]:
+        out: dict[str, float] = {}
+        if not isinstance(value, dict):
+            return out
+        for k, v in value.items():
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                continue
+            out[str(k)] = max(0.0, min(1.0, f))
+        return out
+
+    profile = clamp_map(parsed.get("profile"))
+    confidence = clamp_map(parsed.get("confidence"))
+    summary = str(parsed.get("summary") or "")[:500]
+    summary_en = str(parsed.get("summary_en") or "")[:500]
+    rationale_raw = parsed.get("rationale") if isinstance(parsed.get("rationale"), dict) else {}
+    rationale = {str(k): str(v or "")[:1000] for k, v in rationale_raw.items()}
+    evidence_raw = parsed.get("evidence") if isinstance(parsed.get("evidence"), dict) else {}
+    evidence: dict[str, list[dict[str, Any]]] = {}
+    for axis, items in evidence_raw.items():
+        if not isinstance(items, list):
+            continue
+        cleaned: list[dict[str, Any]] = []
+        for item in items[:10]:
+            if isinstance(item, dict):
+                cleaned.append({
+                    "proposal_id": str(item.get("proposal_id") or ""),
+                    "vote": str(item.get("vote") or ""),
+                    "reason": str(item.get("reason") or "")[:500],
+                    "source": "ai",
+                })
+        evidence[str(axis)] = cleaned
+
+    usage = response.usage
+    tokens_input = getattr(usage, "prompt_tokens", 0) or 0
+    tokens_output = getattr(usage, "completion_tokens", 0) or 0
+    details = getattr(usage, "prompt_tokens_details", None)
+    tokens_cached_input = getattr(details, "cached_tokens", 0) if details is not None else 0
+    cost = _compute_cost(tokens_input, tokens_cached_input, tokens_output)
+
+    return DrepCompassProfileResult(
+        profile=profile,
+        confidence=confidence,
+        summary=summary,
+        summary_en=summary_en,
+        rationale=rationale,
+        evidence=evidence,
         model_id=model,
         tokens_input=tokens_input,
         tokens_cached_input=tokens_cached_input,

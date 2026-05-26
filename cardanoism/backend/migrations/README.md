@@ -26,6 +26,7 @@ Cardanoism の MariaDB スキーマ定義（最終形）。
 | 013 | `013_stake_rewards.sql` | stake_rewards（エポック × reward_type 別の報酬キャッシュ） |
 | 014 | `014_subscriptions.sql` | subscriptions（サブスク基盤）+ ベータ向け既存ユーザー backfill |
 | 015 | `015_ga_withdrawal_payout.sql` | ga_withdrawal_payout（TreasuryWithdrawals GA の受取先ごとの出金状況） |
+| 016 | `016_drep_match.sql` | drep_profiles / user_drep_compass_answers（DRep マッチング診断 v2、7 axis + AI サマリ JA/EN） |
 
 ## 適用例
 

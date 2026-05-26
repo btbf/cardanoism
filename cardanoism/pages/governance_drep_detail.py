@@ -14,6 +14,9 @@ import reflex as rx
 from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.backend.drep_db import get_drep, sum_total_delegation
+from cardanoism.backend.drep_meta import format_links as _format_links
+from cardanoism.backend.drep_compass.api import get_drep_profile as _get_compass_profile
+from cardanoism.backend.drep_compass.taxonomy import AXES as _COMPASS_AXES
 from cardanoism.backend.vote_db import get_votes_by_drep, count_votes_by_drep
 from cardanoism.backend.fiat_db import get_fiat_rate
 from cardanoism.backend.price import format_ada, format_jpy_short, format_usd_short
@@ -21,6 +24,10 @@ from cardanoism.components.breadcrumb import breadcrumb
 from cardanoism.components.governance_nav import governance_subnav
 from cardanoism.components.login_modal import login_modal
 from cardanoism.components.governance_card import _vote_badge
+from cardanoism.components.drep_delegation_dialog import (
+    drep_delegation_dialog,
+    drep_delegate_button,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +52,38 @@ class DrepDetailState(rx.State):
     amount_usd: str = ""
     share_pct: str = "0"
 
+    # CIP-119 プロフィール (全文)
+    objectives: str = ""
+    motivations: str = ""
+    qualifications: str = ""
+    links_csv: str = ""  # "icon|url,icon|url" CSV (_social_link_icon が分解)
+
     # 投票集計
     vote_total: int = 0
     vote_yes: int = 0
     vote_no: int = 0
     vote_abstain: int = 0
+
+    # DRep委任コンパス プロファイル
+    compass_has_profile: bool = False
+    compass_analyzed_votes: str = "0"
+    compass_reasoning_pct: str = "0"
+    # 対立軸 4 行 (中央バー左右振れ表示用)
+    # {kind="balance", key, label_key, pos_label_key, neg_label_key,
+    #   side ("pos"|"neg"|"center"), magnitude_pct, side_desc_key, conf_class}
+    compass_balance_rows: list[dict[str, str]] = []
+    # 独立軸 3 行 (0〜100% バー表示用)
+    # {kind="single", label_key, desc_key, score_pct, conf_class}
+    compass_single_rows: list[dict[str, str]] = []
+
+    @rx.var
+    def has_profile_metadata(self) -> bool:
+        return bool(
+            (self.objectives or "").strip()
+            or (self.motivations or "").strip()
+            or (self.qualifications or "").strip()
+            or (self.links_csv or "").strip()
+        )
 
     # 投票履歴
     votes: List[Dict[str, Any]] = []
@@ -120,6 +154,13 @@ class DrepDetailState(rx.State):
             self.image_url = str(d.get("image_url") or "")
             self.is_active = "1" if d.get("active") else ""
 
+            # CIP-119 プロフィール (全文表示用)
+            self.objectives = str(d.get("objectives") or "").strip()
+            self.motivations = str(d.get("motivations") or "").strip()
+            self.qualifications = str(d.get("qualifications") or "").strip()
+            links = _format_links(d.get("references_json"))
+            self.links_csv = ",".join(f"{icon}|{url}" for icon, url in links)
+
             # 委任量
             amount = int(d.get("amount") or 0)
             ada = amount / 1_000_000
@@ -146,6 +187,71 @@ class DrepDetailState(rx.State):
             self.vote_yes = counts["yes"]
             self.vote_no = counts["no"]
             self.vote_abstain = counts["abstain"]
+
+            # DRep委任コンパス プロファイル
+            try:
+                cp = _get_compass_profile(drep_id) or {}
+            except Exception as e:  # noqa: BLE001
+                logger.warning("get_drep_profile failed for %s: %s", drep_id, e)
+                cp = {}
+            profile = cp.get("profile_json") or {}
+            confidence = cp.get("confidence_json") or {}
+            self.compass_has_profile = bool(profile)
+            analyzed = int(cp.get("analyzed_vote_count") or 0)
+            disclosure = float(cp.get("reasoning_disclosure_rate") or 0)
+            self.compass_analyzed_votes = str(analyzed)
+            self.compass_reasoning_pct = f"{disclosure * 100:.0f}"
+
+            def _score(key: str) -> float:
+                try:
+                    return float(profile.get(key, 0.5))
+                except (TypeError, ValueError):
+                    return 0.5
+
+            def _conf(key: str) -> float:
+                try:
+                    return float(confidence.get(key, 0.0))
+                except (TypeError, ValueError):
+                    return 0.0
+
+            def _conf_class(c: float) -> str:
+                if c >= 0.6:
+                    return "high"
+                if c >= 0.3:
+                    return "mid"
+                return "low"
+
+            # 7 axis 全てを 1 つのスライダー型行で表示 (v2 設計、対立軸/独立軸の区別なし)
+            balance_rows: list[dict[str, str]] = []
+            single_rows: list[dict[str, str]] = []
+            for axis in _COMPASS_AXES:
+                score = _score(axis)
+                conf_val = _conf(axis)
+                offset = score - 0.5
+                if offset > 0.02:
+                    side = "pos"
+                    side_label_key = f"drep_match_axis_{axis}_right"
+                elif offset < -0.02:
+                    side = "neg"
+                    side_label_key = f"drep_match_axis_{axis}_left"
+                else:
+                    side = "center"
+                    side_label_key = ""
+                balance_rows.append({
+                    "kind":             "balance",
+                    "key":              axis,
+                    "label_key":        f"drep_match_axis_{axis}",
+                    "left_label_key":   f"drep_match_axis_{axis}_left",
+                    "right_label_key":  f"drep_match_axis_{axis}_right",
+                    "side":             side,
+                    "side_label_key":   side_label_key,
+                    "side_desc_key":    f"drep_match_axis_{axis}_desc",
+                    "magnitude_pct":    f"{abs(offset) * 200:.0f}",
+                    "dot_pos_pct":      f"{score * 100:.0f}",
+                    "conf_class":       _conf_class(conf_val),
+                })
+            self.compass_balance_rows = balance_rows
+            self.compass_single_rows = single_rows  # 後方互換のため空のまま
 
             # 投票履歴（未投票 GA も含む）
             raw = get_votes_by_drep(drep_id, limit=500)
@@ -272,7 +378,12 @@ def _profile_card() -> rx.Component:
         rx.hstack(
             avatar,
             rx.vstack(
-                rx.hstack(name_text, status_badge, spacing="3", align="center", wrap="wrap"),
+                rx.hstack(
+                    rx.hstack(name_text, status_badge, spacing="3", align="center", wrap="wrap"),
+                    rx.spacer(),
+                    drep_delegate_button(DrepDetailState.display_drep_id),
+                    spacing="3", align="center", width="100%", wrap="wrap",
+                ),
                 drep_id_block,
                 rx.hstack(
                     rx.vstack(
@@ -305,6 +416,348 @@ def _profile_card() -> rx.Component:
             align="start",
             width="100%",
             wrap="wrap",
+        ),
+        padding="20px",
+        border=f"1px solid {rx.color('gray', 4)}",
+        border_radius="12px",
+        background="var(--gray-2)",
+        width="100%",
+    )
+
+
+def _social_link_icon(item) -> rx.Component:
+    """item は 'icon|url' 形式の Var[str]。CIP-119 references_json から作る外部リンク。
+
+    Reflex の StringVar.split は maxsplit を受け付けないため単純 split を使用。
+    """
+    parts = item.split("|")
+    icon_name = parts[0]
+    url = parts[1]
+    icon_comp = rx.match(
+        icon_name,
+        ("twitter",        rx.icon("twitter",        size=16, color="#1DA1F2")),
+        ("github",         rx.icon("github",         size=16, color="var(--gray-12)")),
+        ("send",           rx.icon("send",           size=16, color="#2AABEE")),
+        ("youtube",        rx.icon("youtube",        size=16, color="#FF0000")),
+        ("message-circle", rx.icon("message-circle", size=16, color="#5865F2")),
+        ("linkedin",       rx.icon("linkedin",       size=16, color="#0A66C2")),
+        rx.icon("globe", size=16, color="var(--gray-11)"),
+    )
+    return rx.link(
+        rx.box(
+            icon_comp,
+            width="30px", height="30px",
+            display="flex",
+            align_items="center",
+            justify_content="center",
+            border_radius="999px",
+            background="var(--gray-3)",
+            style={"transition": "background 0.15s"},
+            _hover={"background": "var(--amber-4)"},
+        ),
+        href=url,
+        is_external=True,
+        underline="none",
+        custom_attrs={"title": url},
+    )
+
+
+def _profile_text_section(label_key: str, value) -> rx.Component:
+    """objectives / motivations / qualifications の 1 セクション。
+
+    値が空でない時のみブロックを描画する。
+    """
+    return rx.cond(
+        value != "",
+        rx.vstack(
+            rx.text(
+                AuthState.t[label_key],
+                size="2", weight="bold", color="var(--gray-12)",
+            ),
+            rx.text(
+                value,
+                size="2", color="var(--gray-11)",
+                style={
+                    "whiteSpace": "pre-wrap",
+                    "wordBreak": "break-word",
+                    "lineHeight": "1.7",
+                },
+            ),
+            spacing="1", align="start", width="100%",
+        ),
+        rx.fragment(),
+    )
+
+
+def _profile_metadata_card() -> rx.Component:
+    """CIP-119 メタデータ (objectives / motivations / qualifications + links) の全文表示。"""
+    return rx.box(
+        rx.vstack(
+            rx.hstack(
+                rx.icon("user", size=18, color="var(--amber-11)"),
+                rx.text(
+                    AuthState.t["drep_profile_section_title"],
+                    size="4", weight="bold", color="var(--gray-12)",
+                ),
+                spacing="2", align="center",
+            ),
+            rx.cond(
+                DrepDetailState.has_profile_metadata,
+                rx.vstack(
+                    _profile_text_section("drep_profile_objectives",     DrepDetailState.objectives),
+                    _profile_text_section("drep_profile_motivations",    DrepDetailState.motivations),
+                    _profile_text_section("drep_profile_qualifications", DrepDetailState.qualifications),
+                    rx.cond(
+                        DrepDetailState.links_csv != "",
+                        rx.vstack(
+                            rx.text(
+                                AuthState.t["drep_profile_links"],
+                                size="2", weight="bold", color="var(--gray-12)",
+                            ),
+                            rx.hstack(
+                                rx.foreach(
+                                    DrepDetailState.links_csv.split(","),
+                                    _social_link_icon,
+                                ),
+                                spacing="2", align="center", wrap="wrap",
+                            ),
+                            spacing="2", align="start", width="100%",
+                        ),
+                        rx.fragment(),
+                    ),
+                    spacing="4", align="start", width="100%",
+                ),
+                rx.text(
+                    AuthState.t["drep_profile_no_metadata"],
+                    size="2", color="var(--gray-10)",
+                ),
+            ),
+            spacing="3", align="start", width="100%",
+        ),
+        padding="20px",
+        border=f"1px solid {rx.color('gray', 4)}",
+        border_radius="12px",
+        background="var(--gray-2)",
+        width="100%",
+    )
+
+
+def _bar_color(conf_class) -> rx.Var:
+    return rx.match(
+        conf_class,
+        ("high", "var(--amber-9)"),
+        ("mid",  "var(--amber-7)"),
+        "var(--gray-7)",
+    )
+
+
+def _compass_balance_row(item) -> rx.Component:
+    """対立軸 1 行 (スライダー型: 両端ラベル + 中央仕切り + ドット)。
+
+    レイアウト:
+      [ 軸名 ] [ 左端ラベル ━━━●━━━━┃━━━━━━ 右端ラベル ] [ 立場 + 強度% ]
+                                ↑     ↑
+                            ドット   中央仕切り (50% absolute)
+              ドット位置 = pos_score * 100% (左端 0% 〜 右端 100%)
+    """
+    dot_color = _bar_color(item["conf_class"])
+
+    side_text_color = rx.cond(
+        item["side"] == "center",
+        "var(--gray-10)",
+        rx.cond(item["conf_class"] == "low", "var(--gray-10)", "var(--gray-12)"),
+    )
+    side_label = rx.cond(
+        item["side"] == "center",
+        AuthState.t["drep_match_results_low_conf_label"],
+        AuthState.t[item["side_label_key"]],
+    )
+
+    return rx.vstack(
+        rx.hstack(
+            # 左: 軸名
+            rx.text(
+                AuthState.t[item["label_key"]],
+                size="2", weight="bold", color="var(--gray-12)",
+                style={"width": "140px", "flexShrink": "0"},
+            ),
+            # 左端ラベル (例: 規律 / 技術 / 既存組織 / 保守)
+            rx.text(
+                AuthState.t[item["left_label_key"]],
+                size="1", color="var(--gray-10)",
+                style={"width": "92px", "textAlign": "right",
+                       "flexShrink": "0", "whiteSpace": "nowrap"},
+            ),
+            # 中央: スライダー (レール + 中央仕切り + ドット)
+            rx.box(
+                # 中央仕切り (50% 位置の細い縦線)
+                rx.box(
+                    style={
+                        "position": "absolute",
+                        "left": "50%",
+                        "top": "50%",
+                        "transform": "translate(-50%, -50%)",
+                        "width": "2px",
+                        "height": "16px",
+                        "background": "var(--gray-8)",
+                        "borderRadius": "999px",
+                        "zIndex": "1",
+                    },
+                ),
+                # ドット (現在位置を示す円)
+                rx.box(
+                    style={
+                        "position": "absolute",
+                        "left": item["dot_pos_pct"] + "%",
+                        "top": "50%",
+                        "transform": "translate(-50%, -50%)",
+                        "width": "18px",
+                        "height": "18px",
+                        "background": dot_color,
+                        "border": "2px solid white",
+                        "borderRadius": "999px",
+                        "boxShadow": "0 1px 4px rgba(0,0,0,0.18)",
+                        "zIndex": "2",
+                        "transition": "left 0.3s",
+                    },
+                ),
+                # 外枠 (細いレール)
+                flex="1",
+                height="6px",
+                background="var(--gray-3)",
+                border_radius="999px",
+                min_width="220px",
+                style={"position": "relative"},
+            ),
+            # 右端ラベル (例: 投資 / 実利用 / 分散 / 革新)
+            rx.text(
+                AuthState.t[item["right_label_key"]],
+                size="1", color="var(--gray-10)",
+                style={"width": "92px", "textAlign": "left",
+                       "flexShrink": "0", "whiteSpace": "nowrap"},
+            ),
+            # 立場 + 強度
+            rx.hstack(
+                rx.text(side_label, size="2", weight="bold", color=side_text_color,
+                        style={"whiteSpace": "nowrap"}),
+                rx.cond(
+                    item["side"] != "center",
+                    rx.text(item["magnitude_pct"], "%",
+                            size="2", color="var(--gray-11)",
+                            style={
+                                "fontFamily": "var(--code-font-family, ui-monospace, monospace)",
+                            }),
+                    rx.fragment(),
+                ),
+                spacing="1", align="baseline",
+                style={"width": "140px", "flexShrink": "0",
+                       "justifyContent": "flex-end"},
+            ),
+            spacing="3", align="center", width="100%",
+        ),
+        # サブ説明文 (どちら寄りかの具体的中身) — 中央揃え
+        rx.cond(
+            item["side"] != "center",
+            rx.text(
+                AuthState.t[item["side_desc_key"]],
+                size="1", color="var(--gray-10)",
+                style={"lineHeight": "1.5", "textAlign": "center"},
+                width="100%",
+            ),
+            rx.fragment(),
+        ),
+        spacing="1", align="stretch", width="100%",
+    )
+
+
+# 旧 _compass_single_row は撤去。独立軸も _compass_balance_row で統一描画。
+
+
+def _compass_profile_section() -> rx.Component:
+    """DRep委任コンパス プロファイル (11 axis バー + 投票実績 + 理由公開率)。
+
+    プロファイル未生成の場合は「未生成」案内を表示。
+    """
+    body = rx.cond(
+        DrepDetailState.compass_has_profile,
+        rx.vstack(
+            # 投票実績 + 理由公開率
+            rx.hstack(
+                rx.vstack(
+                    rx.text(
+                        AuthState.t["drep_match_results_analyzed_votes"],
+                        size="1", color="var(--gray-10)",
+                    ),
+                    rx.hstack(
+                        rx.text(
+                            DrepDetailState.compass_analyzed_votes,
+                            size="5", weight="bold", color="var(--amber-11)",
+                        ),
+                        rx.text(AuthState.t["gov_results_unit"], size="2",
+                                color="var(--gray-11)"),
+                        spacing="1", align="baseline",
+                    ),
+                    spacing="0", align="start",
+                ),
+                rx.vstack(
+                    rx.text(
+                        AuthState.t["drep_match_results_reasoning_rate"],
+                        size="1", color="var(--gray-10)",
+                    ),
+                    rx.hstack(
+                        rx.text(
+                            DrepDetailState.compass_reasoning_pct,
+                            size="5", weight="bold", color="var(--gray-12)",
+                        ),
+                        rx.text("%", size="2", color="var(--gray-11)"),
+                        spacing="0", align="baseline",
+                    ),
+                    spacing="0", align="start",
+                ),
+                spacing="7", wrap="wrap",
+            ),
+            # 対立軸 4 行
+            rx.vstack(
+                rx.foreach(
+                    DrepDetailState.compass_balance_rows.to(list[dict[str, str]]),
+                    _compass_balance_row,
+                ),
+                spacing="4", align="stretch", width="100%",
+                padding_top="8px",
+            ),
+            rx.divider(margin_y="8px"),
+            # 独立軸 3 行
+            rx.vstack(
+                rx.foreach(
+                    DrepDetailState.compass_single_rows.to(list[dict[str, str]]),
+                    _compass_balance_row,
+                ),
+                spacing="4", align="stretch", width="100%",
+            ),
+            spacing="4", align="start", width="100%",
+        ),
+        rx.callout(
+            AuthState.t["drep_match_section_no_profile"],
+            icon="info", color_scheme="gray",
+        ),
+    )
+    return rx.box(
+        rx.vstack(
+            rx.hstack(
+                rx.icon("radar", size=18, color="var(--amber-11)"),
+                rx.text(
+                    AuthState.t["drep_match_section_profile_heading"],
+                    size="4", weight="bold", color="var(--gray-12)",
+                ),
+                spacing="2", align="center",
+            ),
+            body,
+            rx.text(
+                AuthState.t["drep_match_results_classification_note"],
+                size="1", color="var(--gray-10)",
+                style={"fontStyle": "italic"},
+            ),
+            spacing="3", align="start", width="100%",
         ),
         padding="20px",
         border=f"1px solid {rx.color('gray', 4)}",
@@ -553,6 +1006,8 @@ def governance_drep_detail_page() -> rx.Component:
         DrepDetailState.load,
         rx.box(
             login_modal(),
+            # DRep 委任確認モーダル (1 ページに 1 度だけマウント)
+            drep_delegation_dialog(),
             rx.vstack(
                 _breadcrumb(),
                 governance_subnav("drep"),
@@ -565,6 +1020,8 @@ def governance_drep_detail_page() -> rx.Component:
                     ),
                     rx.vstack(
                         _profile_card(),
+                        _profile_metadata_card(),
+                        _compass_profile_section(),
                         _vote_stats(),
                         _vote_history(),
                         spacing="4", width="100%",

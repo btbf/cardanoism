@@ -280,3 +280,93 @@ def drep_delegation_dialog() -> rx.Component:
         open=WalletState.delegate_drep_dialog_open,
         on_open_change=WalletState.on_drep_delegate_dialog_open_change,
     )
+
+
+def drep_delegate_button(drep_id) -> rx.Component:
+    """DRep への委任ボタン (pill 形 amber)。
+
+    governance_drep._drep_card と同じ 3 状態:
+      - 接続中 & このDRepに委任中 → 「委任中」バッジ (clickable 不可)
+      - 接続中 & 別のDRep / 未委任 → 「委任する」amber ボタン
+      - 未接続                  → 「委任する」amber ボタン (認証誘導モーダル)
+    """
+    is_currently_delegated = (
+        WalletState.connected
+        & (WalletState.current_delegated_drep_id == drep_id)
+    )
+    delegated_badge = rx.hstack(
+        rx.icon("circle-check", size=11, color="var(--amber-11)"),
+        rx.text(
+            AuthState.t["delegate_btn_currently"],
+            size="1", weight="bold", color="var(--amber-12)",
+            style={"whiteSpace": "nowrap"},
+        ),
+        spacing="2",
+        align="center",
+        padding="4px 12px 4px 10px",
+        border_radius="999px",
+        background="var(--amber-3)",
+        border="1px solid var(--amber-8)",
+        cursor="default",
+        style={
+            "boxShadow": "0 1px 3px rgba(245,158,11,0.18)",
+            "display": "inline-flex",
+            "flexShrink": "0",
+        },
+    )
+    button_style = {
+        "display": "inline-flex",
+        "alignItems": "center",
+        "gap": "6px",
+        "padding": "8px 16px",
+        "borderRadius": "999px",
+        "background": "transparent",
+        "border": "1.5px solid var(--amber-8)",
+        "transition": "background 0.15s ease, border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease",
+        "flexShrink": "0",
+        "boxShadow": "0 1px 2px rgba(0,0,0,0.04)",
+    }
+    button_label = rx.text(
+        AuthState.t["delegate_btn"],
+        color="var(--amber-12)",
+        style={
+            "fontSize": "13px",
+            "fontWeight": "700",
+            "lineHeight": "1.0",
+            "whiteSpace": "nowrap",
+        },
+    )
+    button_hover = {
+        "background": "var(--amber-3)",
+        "border_color": "var(--amber-10)",
+        "transform": "translateY(-1px)",
+        "box_shadow": "0 4px 10px -2px rgba(245,158,11,0.25)",
+    }
+    delegate_active = rx.el.button(
+        rx.icon("zap", size=14, color="var(--amber-11)"),
+        button_label,
+        on_click=WalletState.request_delegate_to_drep(drep_id),
+        cursor="pointer",
+        style=button_style,
+        _hover=button_hover,
+    )
+    delegate_prompt_auth = rx.el.button(
+        rx.icon("zap", size=14, color="var(--amber-11)"),
+        button_label,
+        on_click=AuthState.open_auth_required_modal,
+        cursor="pointer",
+        style=button_style,
+        _hover=button_hover,
+    )
+    return rx.box(
+        rx.cond(
+            is_currently_delegated,
+            delegated_badge,
+            rx.cond(
+                WalletState.connected,
+                delegate_active,
+                delegate_prompt_auth,
+            ),
+        ),
+        flex_shrink="0",
+    )

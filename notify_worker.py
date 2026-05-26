@@ -939,14 +939,24 @@ def _check_drep_status_change():
         return
 
     # ユニーク drep_id を 1,000 件チャンクで一括取得
+    # 状態は drep_sync と同じ derivation で "active" / "inactive" / "deregistered"。
+    # Koios /drep_info の生フィールドは drep_status="registered" 等で、active 判定は
+    # 別途 active(bool) を見る必要がある。
     unique_drep_ids = list({a["delegated_drep_id"] for a in addrs})
     drep_status_map: dict[str, str] = {}
     for chunk in _chunks(unique_drep_ids, KOIOS_BATCH_SIZE):
         data = _post("/drep_info", {"_drep_ids": chunk})
         if data and isinstance(data, list):
             for item in data:
-                if item.get("drep_id"):
-                    drep_status_map[item["drep_id"]] = item.get("status") or ""
+                did = item.get("drep_id")
+                if not did:
+                    continue
+                if bool(item.get("active")):
+                    drep_status_map[did] = "active"
+                elif item.get("drep_status") == "registered":
+                    drep_status_map[did] = "inactive"
+                else:
+                    drep_status_map[did] = item.get("drep_status") or "deregistered"
     if not drep_status_map:
         return
 
@@ -964,6 +974,11 @@ def _check_drep_status_change():
 
         last_status = get_state("stake_address", stake_id, "drep_status")
         if last_status is None:
+            set_state("stake_address", stake_id, "drep_status", status)
+            continue
+        if not last_status:
+            # 旧バグで "" (空文字) が保存されていたケース。実際の状態変化ではないため
+            # 通知を発火させず、新しい正しい値だけ書き戻して次回以降の比較に備える。
             set_state("stake_address", stake_id, "drep_status", status)
             continue
         if last_status == status:
@@ -1837,6 +1852,146 @@ def check_pool_block_history(epochs: int = 5):
                 inserted, len(pool_ids), apy_captured, APY_WINDOW)
 
 
+# ============================================================
+# DRep マッチング診断 (v2: 7 axis AI 主導)
+# ============================================================
+# 旧 v1 (gov_action_tags ベース) は廃止。DRep プロファイルは AI が
+# rationale を直接読んで 7 axis スコア + サマリ文を生成する。
+#
+# CLI:
+#   --event compass_profile_all : 全 active DRep を AI で再分析
+#   --event compass_status      : drep_profiles テーブルの診断
+
+def check_drep_compass_profile_all() -> int:
+    """全 active DRep を AI で再分析して drep_profiles に書き込む。"""
+    from cardanoism.backend.drep_compass.api import recalculate_all_drep_profiles
+    logger.info("=== Match DRep プロファイル: 全件 開始 (AI 主導) ===")
+    n = recalculate_all_drep_profiles(only_active=True)
+    logger.info("=== Match DRep プロファイル: 完了 (%d DReps) ===", n)
+    return n
+
+
+def check_drep_compass_status() -> None:
+    """drep_profiles + dreps + proposal_votes の診断 (原因切り分け用)。"""
+    logger.info("=== Match Status 診断 開始 ===")
+    with get_db() as (cursor, _):
+        # ── 1. dreps テーブル ──
+        cursor.execute("SELECT COUNT(*) AS n FROM dreps")
+        d_total = int(cursor.fetchone()["n"])
+        cursor.execute("SELECT COUNT(*) AS n FROM dreps WHERE registered = 1")
+        d_reg = int(cursor.fetchone()["n"])
+        cursor.execute(
+            "SELECT COUNT(*) AS n FROM dreps WHERE drep_status = 'active'"
+        )
+        d_active = int(cursor.fetchone()["n"])
+        cursor.execute(
+            "SELECT COUNT(*) AS n FROM dreps "
+            "WHERE registered = 1 AND drep_status = 'active'"
+        )
+        d_reg_active = int(cursor.fetchone()["n"])
+        cursor.execute(
+            "SELECT drep_id FROM dreps "
+            "WHERE registered = 1 AND drep_status = 'active' LIMIT 3"
+        )
+        drep_id_samples = [r["drep_id"] for r in cursor.fetchall()]
+
+        # ── 2. proposal_votes (DRep 限定) ──
+        cursor.execute(
+            "SELECT COUNT(*) AS n FROM proposal_votes WHERE voter_role = 'DRep'"
+        )
+        pv_drep = int(cursor.fetchone()["n"])
+        cursor.execute(
+            "SELECT DISTINCT voter_id FROM proposal_votes "
+            "WHERE voter_role = 'DRep' LIMIT 3"
+        )
+        voter_id_samples = [r["voter_id"] for r in cursor.fetchall()]
+
+        # ── 3. dreps.drep_id ↔ proposal_votes.voter_id の一致 ──
+        cursor.execute(
+            "SELECT COUNT(DISTINCT d.drep_id) AS n "
+            "FROM dreps d "
+            "JOIN proposal_votes pv "
+            "  ON pv.voter_id = d.drep_id AND pv.voter_role = 'DRep' "
+            "WHERE d.registered = 1 AND d.drep_status = 'active'"
+        )
+        joined = int(cursor.fetchone()["n"])
+
+        # ── 4. drep_profiles ──
+        cursor.execute("SELECT COUNT(*) AS n FROM drep_profiles")
+        profile_count = int(cursor.fetchone()["n"])
+        cursor.execute(
+            "SELECT COUNT(*) AS n FROM drep_profiles WHERE analyzed_vote_count >= 1"
+        )
+        gte_1 = int(cursor.fetchone()["n"])
+        cursor.execute(
+            "SELECT COUNT(*) AS n FROM drep_profiles WHERE analyzed_vote_count >= 3"
+        )
+        gte_3 = int(cursor.fetchone()["n"])
+        cursor.execute(
+            "SELECT COUNT(*) AS n FROM drep_profiles dp "
+            "JOIN dreps d ON d.drep_id = dp.drep_id "
+            "WHERE d.registered = 1 AND d.drep_status = 'active' "
+            "  AND dp.analyzed_vote_count >= 3"
+        )
+        candidates = int(cursor.fetchone()["n"])
+        cursor.execute(
+            "SELECT drep_id, analyzed_vote_count, "
+            "       reasoning_disclosure_rate, summary "
+            "FROM drep_profiles ORDER BY analyzed_vote_count DESC LIMIT 5"
+        )
+        top_dreps = [dict(r) for r in cursor.fetchall()]
+
+    logger.info("─── dreps テーブル ───")
+    logger.info("  total                          : %d 件", d_total)
+    logger.info("  registered = 1                 : %d 件", d_reg)
+    logger.info("  drep_status = 'active'         : %d 件", d_active)
+    logger.info("  registered=1 AND active        : %d 件 ← AI 分析対象", d_reg_active)
+    if drep_id_samples:
+        logger.info("  drep_id サンプル (3 件):")
+        for did in drep_id_samples:
+            logger.info("    %s", did)
+    logger.info("─── proposal_votes (DRep 限定) ───")
+    logger.info("  voter_role='DRep' 投票数       : %d 件", pv_drep)
+    if voter_id_samples:
+        logger.info("  voter_id サンプル (3 件):")
+        for vid in voter_id_samples:
+            logger.info("    %s", vid)
+    logger.info("─── dreps.drep_id == proposal_votes.voter_id (active 限定) ───")
+    logger.info("  JOIN 一致 DRep 数              : %d 件", joined)
+    if joined == 0 and d_reg_active > 0 and pv_drep > 0:
+        logger.warning("⚠ active DRep と DRep 投票がそれぞれ存在するが、JOIN 一致が 0。")
+        logger.warning("  → drep_id と voter_id の表記揺れ (CIP-129 vs hex 等) を疑う。")
+    logger.info("─── drep_profiles ───")
+    logger.info("  total                    : %d 件", profile_count)
+    logger.info("  analyzed_vote_count >= 1 : %d 件", gte_1)
+    logger.info("  analyzed_vote_count >= 3 : %d 件", gte_3)
+    logger.info("─── マッチング候補数 (active + analyzed>=3) ───")
+    logger.info("  %d 件", candidates)
+    if candidates == 0:
+        logger.warning("⚠ マッチング候補が 0 件です。")
+        if d_reg_active == 0:
+            logger.warning("  原因: active DRep が 1 つもない。drep_sync を実行")
+        elif pv_drep == 0:
+            logger.warning("  原因: proposal_votes に DRep 投票が 1 件もない。vote_sync を実行")
+        elif joined == 0:
+            logger.warning("  原因: drep_id / voter_id が一致しない (表記揺れ)。要 schema 確認")
+        elif gte_3 == 0:
+            logger.warning("  原因: AI 分析は走ったが投票実績 3 件以上の DRep がいない")
+    logger.info("─── 上位 5 DRep (profile 順) ───")
+    for d in top_dreps:
+        did = d["drep_id"]
+        if len(did) > 40:
+            did = did[:40] + "..."
+        logger.info(
+            "  %s : votes=%d rationale=%.2f summary=%s",
+            did,
+            int(d["analyzed_vote_count"] or 0),
+            float(d["reasoning_disclosure_rate"] or 0),
+            (d.get("summary") or "")[:60],
+        )
+    logger.info("=== Match Status 診断 完了 ===")
+
+
 def _split_pool_updates(updates: list[dict], current_epoch: int) -> tuple[dict | None, dict | None]:
     """/pool_updates の一覧から (active 更新, pending 更新) を抽出する。
 
@@ -2033,57 +2188,165 @@ def check_spo_role_initial_sync():
 
 def check_drep_sync():
     """
-    Koios から全 DRep の情報を取得して DB にキャッシュする。
-    - /drep_list: 全 DRep の最小情報
-    - /drep_info: 登録状態 + 委任量
-    - /drep_metadata: CIP-119 メタデータ（画像・表示名等）
+    Koios から全 DRep の情報を取得して DB にキャッシュする。15 分 cron 想定。
+
+    フェーズ:
+      1. /drep_list で全 DRep の最小情報 (registered フラグ等)
+      2. registered 全件に /drep_info で動的列 (drep_status / active / deposit /
+         expires_epoch_no / meta_url / meta_hash) を取得
+      3. 既存 DB の meta_fetched_hash と info.meta_hash を比較し、
+         新規 DRep または CIP-119 が更新された DRep のみ /drep_metadata 取得
+         → upsert_drep でフル更新 (meta_fetched_hash も同期される)
+         上記以外は update_drep_info で動的列のみ更新 (CIP-119 列は触らない)
+      4. active かつ registered な全 DRep に /drep_delegators を投げて
+         live amount を合計し update_drep_amount で反映 (epoch-boundary の
+         /drep_info.amount は使わない)
+
+    /drep_delegators は 1 DRep = 1 リクエストなので約 1700 reqs/回。
+    15 分 cron + flock で重複起動を防ぐ。
     """
+    import time
+
     from cardanoism.backend.koios import (
         KOIOS_BASE_URL, get_drep_list, get_drep_info_batch, get_drep_metadata_batch,
+        get_drep_delegators_total,
     )
-    from cardanoism.backend.drep_db import bulk_upsert_dreps
+    from cardanoism.backend.drep_db import (
+        upsert_drep, update_drep_info, update_drep_amount,
+        get_drep_meta_fetched_hashes,
+    )
 
     logger.info("DRep 同期 開始 (network=%s, url=%s)", _koios_network(), KOIOS_BASE_URL)
 
+    # --- フェーズ 1: 全 DRep 一覧 ---
     dreps = get_drep_list()
     if not dreps:
         logger.warning("DRep 一覧が取得できませんでした")
         return
     logger.info("DRep 一覧: %d 件", len(dreps))
 
-    # 登録済みのみ詳細フェッチ対象にする（リソース節約）
+    drep_basic_map = {d["drep_id"]: d for d in dreps if d.get("drep_id")}
     registered_ids = [d["drep_id"] for d in dreps if d.get("registered") and d.get("drep_id")]
     logger.info("registered DRep: %d 件", len(registered_ids))
 
+    # --- フェーズ 2: registered 全件に /drep_info ---
     info_map = {i["drep_id"]: i for i in get_drep_info_batch(registered_ids)}
-    meta_map = {m["drep_id"]: m for m in get_drep_metadata_batch(registered_ids)}
 
-    records: list[dict] = []
-    for d in dreps:
-        did = d.get("drep_id")
-        if not did:
-            continue
+    # --- フェーズ 3: meta_fetched_hash 差分判定 ---
+    fetched_hash_map = get_drep_meta_fetched_hashes()  # 既存全 DRep の hash
+    needs_metadata: list[str] = []
+    for did in registered_ids:
         info = info_map.get(did, {})
-        meta_row = meta_map.get(did, {})
-        meta = _extract_drep_meta(meta_row)
+        on_chain_hash = info.get("meta_hash")
+        if not on_chain_hash:
+            continue  # anchor 無し DRep は metadata 不要
+        db_fetched = fetched_hash_map.get(did)
+        if db_fetched != on_chain_hash:
+            needs_metadata.append(did)
 
-        records.append({
+    logger.info("metadata 再取得対象: %d 件 (新規 + meta_hash 変動)", len(needs_metadata))
+
+    meta_map: dict[str, dict] = {}
+    if needs_metadata:
+        meta_map = {m["drep_id"]: m for m in get_drep_metadata_batch(needs_metadata)}
+
+    # --- DB 書き込み: 新規 / metadata 更新あり → upsert_drep, それ以外 → update_drep_info ---
+    upsert_count = 0
+    info_only_count = 0
+    for did, basic in drep_basic_map.items():
+        info = info_map.get(did, {})
+        is_registered = bool(basic.get("registered"))
+
+        # drep_status は Koios の生値 ("registered" / "deregistered" 等) ではなく、
+        # active boolean から導出した UI 用ラベル ("active" / "inactive" / "deregistered")
+        # を DB に保存する。これにより `WHERE drep_status = 'active'` で正しく
+        # 現在アクティブな DRep をフィルタできる。
+        is_active = bool(info.get("active"))
+        if not is_registered:
+            derived_status = "deregistered"
+        elif is_active:
+            derived_status = "active"
+        else:
+            derived_status = "inactive"
+
+        # registered=0 の DRep (= 未登録 / deregister 済み) は /drep_info に来ない。
+        # 既存行があれば registered=0 として記録、新規ならスキップしてもよいが
+        # 一覧取得には残すため upsert_drep を呼ぶ (metadata 列は空)。
+        if not is_registered:
+            if did in fetched_hash_map:
+                # 既存行: registered フラグだけ落として info_only 扱い
+                update_drep_info({
+                    "drep_id":          did,
+                    "drep_status":      derived_status,
+                    "active":           False,
+                    "deposit":          info.get("deposit"),
+                    "expires_epoch_no": info.get("expires_epoch_no"),
+                    "meta_url":         info.get("meta_url"),
+                    "meta_hash":        info.get("meta_hash"),
+                })
+                info_only_count += 1
+            continue
+
+        record_base = {
             "drep_id":          did,
-            "hex":              d.get("hex"),
-            "has_script":       d.get("has_script"),
-            "registered":       d.get("registered"),
-            "drep_status":      info.get("drep_status"),
-            "active":           info.get("active"),
+            "hex":              basic.get("hex"),
+            "has_script":       basic.get("has_script"),
+            "registered":       basic.get("registered"),
+            "drep_status":      derived_status,
+            "active":           is_active,
             "deposit":          info.get("deposit"),
             "expires_epoch_no": info.get("expires_epoch_no"),
-            "amount":           info.get("amount") or 0,
             "meta_url":         info.get("meta_url"),
             "meta_hash":        info.get("meta_hash"),
-            **meta,
-        })
+        }
 
-    inserted = bulk_upsert_dreps(records)
-    logger.info("DRep 同期 完了: %d / %d 件 upsert", inserted, len(records))
+        if did in needs_metadata or did not in fetched_hash_map:
+            # 新規 or metadata 差分あり → metadata 含めてフル upsert
+            meta_row = meta_map.get(did, {})
+            meta = _extract_drep_meta(meta_row)
+            try:
+                upsert_drep({**record_base, **meta})
+                upsert_count += 1
+            except Exception as e:  # noqa: BLE001
+                logger.exception("upsert_drep failed (drep_id=%s): %s", did, e)
+        else:
+            # metadata 一致 → 動的列のみ更新
+            try:
+                update_drep_info(record_base)
+                info_only_count += 1
+            except Exception as e:  # noqa: BLE001
+                logger.exception("update_drep_info failed (drep_id=%s): %s", did, e)
+
+    logger.info("DRep 基本同期 完了: full upsert=%d, info-only=%d", upsert_count, info_only_count)
+
+    # --- フェーズ 4: live amount sync (/drep_delegators per active DRep) ---
+    # Koios /drep_info の `active` (boolean) を見る。
+    # `drep_status` フィールドは "registered" / "deregistered" 等で active/inactive を表さない。
+    active_ids = [
+        did for did in registered_ids
+        if bool(info_map.get(did, {}).get("active"))
+    ]
+    logger.info("live amount 対象 (active DRep): %d 件", len(active_ids))
+
+    amount_ok = 0
+    amount_fail = 0
+    for idx, did in enumerate(active_ids, start=1):
+        try:
+            live_sum = get_drep_delegators_total(did)
+            update_drep_amount(did, live_sum)
+            amount_ok += 1
+        except Exception as e:  # noqa: BLE001
+            logger.warning("/drep_delegators failed (drep_id=%s): %s", did, e)
+            amount_fail += 1
+
+        if idx % 200 == 0:
+            logger.info("live amount 進捗: %d / %d", idx, len(active_ids))
+
+        # Koios 配慮 (rate limit 緩衝)
+        time.sleep(0.05)
+
+    logger.info("DRep live amount 同期 完了: ok=%d, fail=%d", amount_ok, amount_fail)
+    logger.info("DRep 同期 完了 (network=%s)", _koios_network())
 
 
 # ============================================================
@@ -2459,50 +2722,62 @@ def check_treasury_events():
 # GA AI 分析: 初回同期バッチ
 # ============================================================
 
-def check_ga_ai_initial_sync() -> None:
+def check_ga_ai_initial_sync(include_all: bool = False) -> None:
     """既存 GA に対して AI 分析キューを初期化するバッチ。
 
-    対象（OR 条件で union）:
+    通常対象（OR 条件で union）:
       - Active（ratified/enacted/dropped/expired すべて NULL）
       - Ratified（ratified_epoch IS NOT NULL）
       - Enacted（enacted_epoch IS NOT NULL）
       - expiration >= 現在エポック - 6（最近 Expired / Dropped した GA も含める）
 
+    include_all=True の場合:
+      - proposal_id がある GA 全件を対象（過去の Dropped / Expired も含む）
+      - DRep マッチング診断のサンプルサイズを拡大したいときに使う
+
     INSERT IGNORE で投入するため、既に行があれば何もしない（再実行安全）。
     実際の分析は ga_ai_worker.py が pending を拾って進める。
     """
-    logger.info("=== GA AI 分析 初回同期バッチ 開始 ===")
+    logger.info("=== GA AI 分析 初回同期バッチ 開始 (include_all=%s) ===", include_all)
 
-    try:
-        current_epoch = get_current_epoch()
-    except Exception as e:
-        logger.warning("現在エポック取得失敗 (continue with None): %s", e)
-        current_epoch = None
-
-    epoch_threshold: int | None = None
-    if current_epoch is not None:
-        epoch_threshold = max(0, int(current_epoch) - 6)
-
-    sql = (
-        "SELECT proposal_id FROM governance_actions "
-        "WHERE proposal_id IS NOT NULL AND proposal_id <> '' AND ("
-        "  (ratified_epoch IS NULL AND enacted_epoch IS NULL "
-        "   AND dropped_epoch IS NULL AND expired_epoch IS NULL)"
-        "  OR ratified_epoch IS NOT NULL"
-        "  OR enacted_epoch IS NOT NULL"
-    )
     params: list = []
-    if epoch_threshold is not None:
-        sql += "  OR expiration >= ?"
-        params.append(epoch_threshold)
-    sql += ")"
+    if include_all:
+        sql = (
+            "SELECT proposal_id FROM governance_actions "
+            "WHERE proposal_id IS NOT NULL AND proposal_id <> ''"
+        )
+        current_epoch = None
+        epoch_threshold = None
+    else:
+        try:
+            current_epoch = get_current_epoch()
+        except Exception as e:
+            logger.warning("現在エポック取得失敗 (continue with None): %s", e)
+            current_epoch = None
+
+        epoch_threshold = None
+        if current_epoch is not None:
+            epoch_threshold = max(0, int(current_epoch) - 6)
+
+        sql = (
+            "SELECT proposal_id FROM governance_actions "
+            "WHERE proposal_id IS NOT NULL AND proposal_id <> '' AND ("
+            "  (ratified_epoch IS NULL AND enacted_epoch IS NULL "
+            "   AND dropped_epoch IS NULL AND expired_epoch IS NULL)"
+            "  OR ratified_epoch IS NOT NULL"
+            "  OR enacted_epoch IS NOT NULL"
+        )
+        if epoch_threshold is not None:
+            sql += "  OR expiration >= ?"
+            params.append(epoch_threshold)
+        sql += ")"
 
     with get_db() as (cursor, _):
         cursor.execute(sql, params)
         rows = cursor.fetchall()
     proposal_ids = [str(r["proposal_id"]) for r in rows]
-    logger.info("対象 GA: %d 件 (current_epoch=%s, threshold=%s)",
-                len(proposal_ids), current_epoch, epoch_threshold)
+    logger.info("対象 GA: %d 件 (include_all=%s, current_epoch=%s, threshold=%s)",
+                len(proposal_ids), include_all, current_epoch, epoch_threshold)
 
     if not proposal_ids:
         logger.info("対象 GA なし。終了。")
@@ -2631,12 +2906,20 @@ def _translate_constitution_text(translator, text: str, chunk_chars: int = 4000)
     return "\n\n".join(out)
 
 
-def check_ga_ai_reanalyze(proposal_id: str | None = None, all_flag: bool = False) -> None:
+def check_ga_ai_reanalyze(
+    proposal_id: str | None = None,
+    all_flag: bool = False,
+    include_old: bool = False,
+) -> None:
     """既に analyzed の GA を pending に戻して再分析対象にする。
 
     Args:
         proposal_id: 単一 GA を対象に再分析する場合に指定。
         all_flag:    True なら status='analyzed' の全行を再分析対象にする。
+        include_old: --all と組み合わせて指定すると Ratified / Enacted /
+                     Dropped / Expired も含めて再分析する（トピック分類の
+                     体系を変更したときなど、過去 GA も含めて再分類したい
+                     ケース向け）。
 
     どちらも指定しなかった / 両方指定した場合は何もしない。
     """
@@ -2658,10 +2941,16 @@ def check_ga_ai_reanalyze(proposal_id: str | None = None, all_flag: bool = False
             logger.warning("再分析対象に変更できませんでした (proposal_id 確認してください)")
         return
 
-    logger.info("=== GA AI 再分析: Active な analyzed 全件 ===")
-    n = requeue_all(only_analyzed=True, active_only=True)
-    logger.info("%d 件を pending に戻しました（Active な GA のみ対象）。"
-                " ga_ai_worker が順次再分析します。", n)
+    if include_old:
+        logger.info("=== GA AI 再分析: 全 analyzed (Ratified / Enacted / Dropped / Expired 含む) ===")
+        n = requeue_all(only_analyzed=True, active_only=False)
+        logger.info("%d 件を pending に戻しました（過去 GA 含む全件）。"
+                    " ga_ai_worker が順次再分析します。", n)
+    else:
+        logger.info("=== GA AI 再分析: Active な analyzed 全件 ===")
+        n = requeue_all(only_analyzed=True, active_only=True)
+        logger.info("%d 件を pending に戻しました（Active な GA のみ対象）。"
+                    " ga_ai_worker が順次再分析します。", n)
 
 
 # ============================================================
@@ -2752,7 +3041,7 @@ def main():
     parser.add_argument(
         "--event",
         default="all",
-        choices=["all", "pool", "drep", "drep_unvoted", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync", "spo_role_initial_sync", "notify_test"],
+        choices=["all", "pool", "drep", "drep_unvoted", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync", "spo_role_initial_sync", "compass_profile_all", "compass_status", "notify_test"],
         help="実行するイベントグループ",
     )
     parser.add_argument(
@@ -2780,8 +3069,20 @@ def main():
     parser.add_argument(
         "--all",
         action="store_true",
-        help="ga_ai_reanalyze で Active かつ analyzed の GA 全件を再分析対象にする"
-             "（Ratified / Enacted / Dropped / Expired は対象外）",
+        help=(
+            "ga_ai_reanalyze: Active かつ analyzed の GA 全件を再分析対象にする"
+            "（Ratified / Enacted / Dropped / Expired は対象外）。"
+            "ga_ai_initial_sync: 期間制限を外し過去 Dropped / Expired も含む全 GA を投入対象にする。"
+        ),
+    )
+    parser.add_argument(
+        "--include-old",
+        action="store_true",
+        help=(
+            "ga_ai_reanalyze --all と組み合わせて、Ratified / Enacted / Dropped /"
+            " Expired も含む全 analyzed GA を再分析対象にする"
+            "（トピック分類体系の変更時など、過去 GA も再分類したいケース向け）。"
+        ),
     )
     args = parser.parse_args()
 
@@ -2831,11 +3132,15 @@ def main():
     # GA AI 初回同期は --event ga_ai_initial_sync で明示指定したときのみ実行する
     # （"all" には含めない: 通常は governance.py 側 enqueue で自動投入されるため）
     if args.event == "ga_ai_initial_sync":
-        check_ga_ai_initial_sync()
+        check_ga_ai_initial_sync(include_all=args.all)
 
     # GA AI 再分析: --event ga_ai_reanalyze で明示指定（"all" には含めない）
     if args.event == "ga_ai_reanalyze":
-        check_ga_ai_reanalyze(proposal_id=args.proposal_id, all_flag=args.all)
+        check_ga_ai_reanalyze(
+            proposal_id=args.proposal_id,
+            all_flag=args.all,
+            include_old=args.include_old,
+        )
 
     # 憲法同期 + 翻訳: --event constitution_sync で明示指定（"all" には含めない）
     if args.event == "constitution_sync":
@@ -2844,6 +3149,13 @@ def main():
     # SPO 判定 初期投入: --event spo_role_initial_sync で明示指定（"all" には含めない）
     if args.event == "spo_role_initial_sync":
         check_spo_role_initial_sync()
+
+    # DRep マッチング診断用トピックプロフィール: 明示指定 or cron 経由（"all" には含めない）
+    # DRep委任コンパス (11 axis MVP): rule-based GA 分類 / DRep プロファイル再計算
+    if args.event == "compass_profile_all":
+        check_drep_compass_profile_all()
+    if args.event == "compass_status":
+        check_drep_compass_status()
 
     # 管理者用 通知疎通テスト: --event notify_test で明示指定（"all" には含めない）
     if args.event == "notify_test":
