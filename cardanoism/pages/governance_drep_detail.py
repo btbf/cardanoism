@@ -552,10 +552,12 @@ def _bar_color(conf_class) -> rx.Var:
 
 
 def _compass_balance_row(item) -> rx.Component:
-    """対立軸 1 行 (スライダー型: 両端ラベル + 中央仕切り + ドット)。
+    """7 axis 1 行 (スライダー型)。スマホ対応のため 2 段レイアウト。
 
-    レイアウト:
-      [ 軸名 ] [ 左端ラベル ━━━●━━━━┃━━━━━━ 右端ラベル ] [ 立場 + 強度% ]
+    レイアウト (mobile & PC 共通):
+      [ 軸名 ........................ 立場 + 強度% ]
+      [ 左ラベル ━━━●━━━━┃━━━━━━ 右ラベル ]
+      [ サブ説明文 (中央) ]                   (※ 該当時のみ)
                                 ↑     ↑
                             ドット   中央仕切り (50% absolute)
               ドット位置 = pos_score * 100% (左端 0% 〜 右端 100%)
@@ -573,88 +575,91 @@ def _compass_balance_row(item) -> rx.Component:
         AuthState.t[item["side_label_key"]],
     )
 
-    return rx.vstack(
-        rx.hstack(
-            # 左: 軸名
-            rx.text(
-                AuthState.t[item["label_key"]],
-                size="2", weight="bold", color="var(--gray-12)",
-                style={"width": "140px", "flexShrink": "0"},
-            ),
-            # 左端ラベル (例: 規律 / 技術 / 既存組織 / 保守)
-            rx.text(
-                AuthState.t[item["left_label_key"]],
-                size="1", color="var(--gray-10)",
-                style={"width": "92px", "textAlign": "right",
-                       "flexShrink": "0", "whiteSpace": "nowrap"},
-            ),
-            # 中央: スライダー (レール + 中央仕切り + ドット)
-            rx.box(
-                # 中央仕切り (50% 位置の細い縦線)
-                rx.box(
-                    style={
-                        "position": "absolute",
-                        "left": "50%",
-                        "top": "50%",
-                        "transform": "translate(-50%, -50%)",
-                        "width": "2px",
-                        "height": "16px",
-                        "background": "var(--gray-8)",
-                        "borderRadius": "999px",
-                        "zIndex": "1",
-                    },
-                ),
-                # ドット (現在位置を示す円)
-                rx.box(
-                    style={
-                        "position": "absolute",
-                        "left": item["dot_pos_pct"] + "%",
-                        "top": "50%",
-                        "transform": "translate(-50%, -50%)",
-                        "width": "18px",
-                        "height": "18px",
-                        "background": dot_color,
-                        "border": "2px solid white",
-                        "borderRadius": "999px",
-                        "boxShadow": "0 1px 4px rgba(0,0,0,0.18)",
-                        "zIndex": "2",
-                        "transition": "left 0.3s",
-                    },
-                ),
-                # 外枠 (細いレール)
-                flex="1",
-                height="6px",
-                background="var(--gray-3)",
-                border_radius="999px",
-                min_width="220px",
-                style={"position": "relative"},
-            ),
-            # 右端ラベル (例: 投資 / 実利用 / 分散 / 革新)
-            rx.text(
-                AuthState.t[item["right_label_key"]],
-                size="1", color="var(--gray-10)",
-                style={"width": "92px", "textAlign": "left",
-                       "flexShrink": "0", "whiteSpace": "nowrap"},
-            ),
-            # 立場 + 強度
-            rx.hstack(
-                rx.text(side_label, size="2", weight="bold", color=side_text_color,
-                        style={"whiteSpace": "nowrap"}),
-                rx.cond(
-                    item["side"] != "center",
-                    rx.text(item["magnitude_pct"], "%",
-                            size="2", color="var(--gray-11)",
-                            style={
-                                "fontFamily": "var(--code-font-family, ui-monospace, monospace)",
-                            }),
-                    rx.fragment(),
-                ),
-                spacing="1", align="baseline",
-                style={"width": "140px", "flexShrink": "0",
-                       "justifyContent": "flex-end"},
-            ),
-            spacing="3", align="center", width="100%",
+    # 段 1: 軸名 (左) + 立場/強度 (右)
+    header_row = rx.hstack(
+        rx.text(
+            AuthState.t[item["label_key"]],
+            size="2", weight="bold", color="var(--gray-12)",
+            style={"flex": "1", "minWidth": "0"},
         ),
+        rx.hstack(
+            rx.text(side_label, size="2", weight="bold", color=side_text_color,
+                    style={"whiteSpace": "nowrap"}),
+            rx.cond(
+                item["side"] != "center",
+                rx.text(item["magnitude_pct"], "%",
+                        size="2", color="var(--gray-11)",
+                        style={
+                            "fontFamily": "var(--code-font-family, ui-monospace, monospace)",
+                        }),
+                rx.fragment(),
+            ),
+            spacing="1", align="baseline",
+            style={"flexShrink": "0"},
+        ),
+        spacing="2", align="center", width="100%",
+    )
+
+    # 段 2: 左端ラベル + スライダー + 右端ラベル (全幅)
+    slider_row = rx.hstack(
+        rx.text(
+            AuthState.t[item["left_label_key"]],
+            size="1", color="var(--gray-10)",
+            style={"textAlign": "right", "flexShrink": "0", "whiteSpace": "nowrap",
+                   "maxWidth": "30%"},
+        ),
+        rx.box(
+            # 中央仕切り (50% 位置の細い縦線)
+            rx.box(
+                style={
+                    "position": "absolute",
+                    "left": "50%",
+                    "top": "50%",
+                    "transform": "translate(-50%, -50%)",
+                    "width": "2px",
+                    "height": "16px",
+                    "background": "var(--gray-8)",
+                    "borderRadius": "999px",
+                    "zIndex": "1",
+                },
+            ),
+            # ドット (現在位置を示す円)
+            rx.box(
+                style={
+                    "position": "absolute",
+                    "left": item["dot_pos_pct"] + "%",
+                    "top": "50%",
+                    "transform": "translate(-50%, -50%)",
+                    "width": "18px",
+                    "height": "18px",
+                    "background": dot_color,
+                    "border": "2px solid white",
+                    "borderRadius": "999px",
+                    "boxShadow": "0 1px 4px rgba(0,0,0,0.18)",
+                    "zIndex": "2",
+                    "transition": "left 0.3s",
+                },
+            ),
+            # 外枠 (細いレール) — 縦軸はフレックス、幅は親の残りを使う
+            flex="1",
+            height="6px",
+            background="var(--gray-3)",
+            border_radius="999px",
+            min_width="120px",
+            style={"position": "relative"},
+        ),
+        rx.text(
+            AuthState.t[item["right_label_key"]],
+            size="1", color="var(--gray-10)",
+            style={"textAlign": "left", "flexShrink": "0", "whiteSpace": "nowrap",
+                   "maxWidth": "30%"},
+        ),
+        spacing="2", align="center", width="100%",
+    )
+
+    return rx.vstack(
+        header_row,
+        slider_row,
         # サブ説明文 (どちら寄りかの具体的中身) — 中央揃え
         rx.cond(
             item["side"] != "center",
@@ -666,7 +671,7 @@ def _compass_balance_row(item) -> rx.Component:
             ),
             rx.fragment(),
         ),
-        spacing="1", align="stretch", width="100%",
+        spacing="2", align="stretch", width="100%",
     )
 
 
