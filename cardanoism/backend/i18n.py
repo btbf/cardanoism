@@ -455,6 +455,9 @@ UI_JA: dict[str, str] = {
     "drep_tab_list":         "DRep 一覧",
     "drep_tab_match":        "マッチング診断",
     "drep_match_heading":    "DRep マッチング診断",
+    "drep_match_hero_cta_title": "あなたに合う DRep を AI が診断",
+    "drep_match_hero_cta_desc":  "9 問の質問にお答えいただくだけ。所要 1 分程度。",
+    "drep_match_back_to_list":   "DRep 一覧に戻る",
     "drep_match_intro":      "9 問の質問にお答えいただくと、AI が過去の投票行動と投票理由から推定した DRep のプロファイルと照合して、価値観の近い DRep を参考情報としてご提案します。\n（所要 1 分程度）",
     "drep_match_intro_note": "DRep ご本人の自己申告ではなく、過去の投票履歴と CIP-100/108 投票理由を AI（OpenAI）が読んで推定した結果です。スコアは参考情報であり、最終的な委任判断はご自身で行ってください。",
     # スタートカード「特徴」3 枚 (アイコン + タイトル + 説明)
@@ -2151,6 +2154,9 @@ UI_EN: dict[str, str] = {
     "drep_tab_list":         "DRep list",
     "drep_tab_match":        "Matching",
     "drep_match_heading":    "DRep Matching Diagnostic",
+    "drep_match_hero_cta_title": "Find your DRep with AI",
+    "drep_match_hero_cta_desc":  "Just 9 quick questions — about 1 minute.",
+    "drep_match_back_to_list":   "Back to DRep list",
     "drep_match_intro":      "Answer 9 quick questions and AI will match your values against profiles it inferred from each DRep's past votes and rationale.\n(≈1 min)",
     "drep_match_intro_note": "Profiles are inferred by AI (OpenAI) reading each DRep's past on-chain votes and CIP-100/108 rationale — NOT from DRep self-declarations. Use the score as a reference; the final delegation choice is yours.",
     # Start-card "features" (icon + title + description × 3)
