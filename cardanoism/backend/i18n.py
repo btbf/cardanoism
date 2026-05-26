@@ -543,10 +543,7 @@ UI_JA: dict[str, str] = {
     "drep_match_summary_label":           "AI が見たこの DRep",
     # 結果カード
     "drep_match_results_heading":          "あなたとの相性スコア",
-    "drep_match_results_group_top_amount":      "人気の DRep",
-    "drep_match_results_group_top_amount_desc": "委任量上位 20 名の中で、あなたと価値観が近い 5 名。",
-    "drep_match_results_group_discovery":       "注目の DRep",
-    "drep_match_results_group_discovery_desc":  "それ以外の DRep から、あなたと価値観がとくに近い 5 名。",
+    "drep_match_results_quality_note":     "委任量ではなく、投票実績・投票理由の公開率・自己紹介の有無で母集団を絞り、純粋にマッチ度が高い順に表示しています。",
     "drep_match_results_match_label":      "相性スコア",
     "drep_match_results_no_match":         "条件に合う DRep が見つかりませんでした。回答を見直してもう一度お試しください。",
     "drep_match_results_participation":    "投票参加率",
@@ -2242,10 +2239,7 @@ UI_EN: dict[str, str] = {
     "drep_match_summary_label":           "AI's read on this DRep",
     # Result card
     "drep_match_results_heading":          "Your compatibility scores",
-    "drep_match_results_group_top_amount":      "Popular DReps",
-    "drep_match_results_group_top_amount_desc": "From the 20 most-delegated DReps, the 5 closest to your values.",
-    "drep_match_results_group_discovery":       "DReps to watch",
-    "drep_match_results_group_discovery_desc":  "From the rest, the 5 whose values most closely match yours.",
+    "drep_match_results_quality_note":     "Ranked purely by value alignment, filtered by voting record, rationale disclosure, and self-introduction — not by delegation amount.",
     "drep_match_results_match_label":      "Compatibility",
     "drep_match_results_no_match":         "No matching DRep found. Please review your answers and try again.",
     "drep_match_results_participation":    "Voting participation",

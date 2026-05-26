@@ -137,6 +137,12 @@ def _fetch_and_score(
     only_active: bool = True,
 ) -> list[tuple[MatchResult, dict[str, Any]]]:
     """全 DRep プロファイルを取得して match score を計算する内部ヘルパー。
+
+    quality filter:
+      - dp.analyzed_vote_count >= MIN_ANALYZED_VOTE_COUNT
+      - dp.reasoning_disclosure_rate >= MIN_REASONING_DISCLOSURE_RATE
+      - REQUIRE_GIVEN_NAME=True なら d.given_name IS NOT NULL AND <> ''
+    amount (委任量) はソート / フィルタには使わない。
     結果: [(MatchResult, drep_row dict), ...] (未ソート)
     """
     sql = """
@@ -147,11 +153,17 @@ def _fetch_and_score(
           FROM drep_profiles dp
           JOIN dreps d ON d.drep_id = dp.drep_id
          WHERE dp.analyzed_vote_count >= ?
+           AND dp.reasoning_disclosure_rate >= ?
            AND d.registered = 1
     """
-    params: list[Any] = [int(config.MIN_ANALYZED_VOTE_COUNT)]
+    params: list[Any] = [
+        int(config.MIN_ANALYZED_VOTE_COUNT),
+        float(config.MIN_REASONING_DISCLOSURE_RATE),
+    ]
     if only_active:
         sql += " AND d.drep_status = 'active'"
+    if config.REQUIRE_GIVEN_NAME:
+        sql += " AND d.given_name IS NOT NULL AND d.given_name <> ''"
 
     with get_db() as (cursor, _):
         cursor.execute(sql, params)
@@ -176,47 +188,12 @@ def list_matches(
     limit: int = config.DEFAULT_MATCH_LIMIT,
     only_active: bool = True,
 ) -> list[MatchResult]:
-    """全 DRep プロファイルを取得し、相性スコアを TOP N 返す (単一リスト)。
+    """quality filter を通った DRep プロファイルから match 上位 N 件を返す。
 
-    only_active=True なら drep_status='active' のみ。
+    委任量 (amount) はソートに使わず、マッチ度のみで並べる。
+    influence power に依存しない liquid democracy 的な並べ方。
     """
     scored = _fetch_and_score(user_vector, axis_weights, only_active=only_active)
-    # 総合スコア降順 → 委任量降順
-    scored.sort(key=lambda t: (-t[0].total_score, -int(t[1].get("amount") or 0)))
+    # 総合スコア降順 → 投票実績多い順 (タイブレーク)
+    scored.sort(key=lambda t: (-t[0].total_score, -int(t[0].analyzed_vote_count or 0)))
     return [r for r, _ in scored[:max(1, int(limit))]]
-
-
-def list_matches_split(
-    user_vector: dict[str, float],
-    axis_weights: dict[str, float],
-    *,
-    top_amount_pool: int = 20,
-    per_group: int = 5,
-    only_active: bool = True,
-) -> dict[str, list[MatchResult]]:
-    """マッチ結果を 2 グループに分けて返す。
-
-    - "top_amount":  委任量上位 top_amount_pool 名の中で、マッチ度上位 per_group 名
-    - "discovery":   それ以外の DRep の中で、マッチ度上位 per_group 名
-
-    用途: 「大手 DRep からのおすすめ」と「それ以外の遺珠発見」の 2 セクション表示。
-    """
-    scored = _fetch_and_score(user_vector, axis_weights, only_active=only_active)
-
-    # 委任量降順にソートして TOP pool / その他 に二分
-    by_amount = sorted(scored, key=lambda t: -int(t[1].get("amount") or 0))
-    top_pool = by_amount[:max(1, int(top_amount_pool))]
-    other_pool = by_amount[max(1, int(top_amount_pool)):]
-
-    # 各グループ内で match score 降順 → 委任量降順
-    def _pick(pool: list[tuple[MatchResult, dict[str, Any]]]) -> list[MatchResult]:
-        sorted_pool = sorted(
-            pool,
-            key=lambda t: (-t[0].total_score, -int(t[1].get("amount") or 0)),
-        )
-        return [r for r, _ in sorted_pool[:max(1, int(per_group))]]
-
-    return {
-        "top_amount": _pick(top_pool),
-        "discovery":  _pick(other_pool),
-    }

@@ -21,7 +21,6 @@ from cardanoism.backend.drep_compass import config
 from cardanoism.backend.drep_compass.match import (
     calculate_drep_match as _calc_match,
     list_matches as _list_matches,
-    list_matches_split as _list_matches_split,
 )
 from cardanoism.backend.drep_compass.profile import (
     calculate_and_save as _profile_calc_and_save,
@@ -212,36 +211,16 @@ def list_drep_matches_for_vector(
     *,
     limit: int = config.DEFAULT_MATCH_LIMIT,
 ) -> list[dict]:
-    """user_vector / weights を直接受け取り TOP N マッチを返す (単一リスト)。"""
+    """user_vector / weights を直接受け取り quality filter を通った TOP N マッチを返す。
+
+    quality filter (config.py):
+      - analyzed_vote_count >= MIN_ANALYZED_VOTE_COUNT (default 5)
+      - reasoning_disclosure_rate >= MIN_REASONING_DISCLOSURE_RATE (default 0.30)
+      - REQUIRE_GIVEN_NAME=True なら CIP-119 自己紹介必須
+    委任量 (amount) はソート / フィルタには使わない。
+    """
     results = _list_matches(user_vector, axis_weights, limit=limit, only_active=True)
     return [_serialize_match(r) for r in results]
-
-
-def list_drep_matches_split_for_vector(
-    user_vector: dict[str, float],
-    axis_weights: dict[str, float],
-    *,
-    top_amount_pool: int = 20,
-    per_group: int = 5,
-) -> dict[str, list[dict]]:
-    """user_vector / weights から 2 グループに分けたマッチ結果を返す。
-
-    返り値:
-      {
-        "top_amount": [<dict>, ...],   # 委任量上位 top_amount_pool 内マッチ
-        "discovery":  [<dict>, ...],   # それ以外マッチ
-      }
-    """
-    groups = _list_matches_split(
-        user_vector, axis_weights,
-        top_amount_pool=top_amount_pool,
-        per_group=per_group,
-        only_active=True,
-    )
-    return {
-        "top_amount": [_serialize_match(r) for r in groups.get("top_amount", [])],
-        "discovery":  [_serialize_match(r) for r in groups.get("discovery",  [])],
-    }
 
 
 def list_drep_matches(

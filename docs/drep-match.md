@@ -36,8 +36,16 @@
 2. 9 問の二者択一 + 「迷う」(answer=1/2/3 → 値 0.0 / 0.5 / 1.0)
 3. 最大 3 つまで「重要マーク」を付与可（該当 axis の重み × 1.5）
 4. 回答送信 → `build_user_vector` で 7 axis の平均ベクトル化
-5. `list_matches` が DRep プロファイルとの類似度（axis 重み付き）でソート
-6. 上位 5 件をカード表示 + AI 生成のサマリ 1 行を併記
+5. `list_matches` が quality filter を通った DRep プロファイルとの類似度（axis 重み付き）でソート
+6. 上位 10 件をカード表示 + AI 生成のサマリ 1 行を併記
+
+**quality filter** (config.py):
+- `analyzed_vote_count >= MIN_ANALYZED_VOTE_COUNT` (default 5) — 投票実績がある程度ある
+- `reasoning_disclosure_rate >= MIN_REASONING_DISCLOSURE_RATE` (default 0.30) — 投票理由を公開している
+- `REQUIRE_GIVEN_NAME=True` — CIP-119 自己紹介がある
+
+委任量 (amount) はソート / フィルタには **使わない**。influence power に依存せず
+liquid democracy 的に「質」で並べる設計。
 
 質問定義: [questionnaire.py](../cardanoism/backend/drep_compass/questionnaire.py)
 類似度計算: [match.py](../cardanoism/backend/drep_compass/match.py)
@@ -145,15 +153,17 @@ infisical run --env=mainnet -- python notify_worker.py --event compass_status
 
 ## 6. 設定定数 ([config.py](../cardanoism/backend/drep_compass/config.py))
 
-| 定数                     | 値           | 説明                              |
-|-------------------------|--------------|-----------------------------------|
-| `ANALYSIS_VERSION`      | `match-v2`   | profile スキーマ識別子            |
-| `QUESTIONNAIRE_VERSION` | `match-v2`   | 質問セット識別子                  |
-| `MIN_ANALYZED_VOTE_COUNT` | `3`        | マッチ候補となる最小投票数        |
-| `WEIGHT_IMPORTANT`      | `1.5`        | 重要マーク axis の重み倍率        |
-| `MAX_IMPORTANT_AXES`    | `3`          | 1 ユーザーが付けられる重要マーク数 |
-| `DEFAULT_MATCH_LIMIT`   | `5`          | 結果表示件数                      |
-| `LOW_CONFIDENCE`        | `0.2`        | 「判断材料が少ない」と表示する閾値 |
+| 定数                            | 値           | 説明                              |
+|--------------------------------|--------------|-----------------------------------|
+| `ANALYSIS_VERSION`             | `match-v2`   | profile スキーマ識別子            |
+| `QUESTIONNAIRE_VERSION`        | `match-v2`   | 質問セット識別子                  |
+| `MIN_ANALYZED_VOTE_COUNT`      | `5`          | quality filter: 最小投票実績数    |
+| `MIN_REASONING_DISCLOSURE_RATE`| `0.30`       | quality filter: 投票理由公開率の下限 |
+| `REQUIRE_GIVEN_NAME`           | `True`       | quality filter: CIP-119 自己紹介必須 |
+| `WEIGHT_IMPORTANT`             | `1.5`        | 重要マーク axis の重み倍率        |
+| `MAX_IMPORTANT_AXES`           | `3`          | 1 ユーザーが付けられる重要マーク数 |
+| `DEFAULT_MATCH_LIMIT`          | `10`         | 結果表示件数                      |
+| `LOW_CONFIDENCE`               | `0.2`        | 「判断材料が少ない」と表示する閾値 |
 
 ---
 
