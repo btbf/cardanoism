@@ -144,7 +144,7 @@ def get_drep_meta_fetched_hashes() -> dict[str, str | None]:
     """全 DRep の {drep_id: meta_fetched_hash} を返す (差分判定用)。"""
     with get_db() as (cursor, _conn):
         cursor.execute("SELECT drep_id, meta_fetched_hash FROM dreps")
-        return {row[0]: row[1] for row in cursor.fetchall()}
+        return {row["drep_id"]: row.get("meta_fetched_hash") for row in cursor.fetchall()}
 
 
 def get_active_drep_ids() -> list[str]:
@@ -153,7 +153,7 @@ def get_active_drep_ids() -> list[str]:
         cursor.execute(
             "SELECT drep_id FROM dreps WHERE registered = 1 AND drep_status = 'active'"
         )
-        return [row[0] for row in cursor.fetchall()]
+        return [row["drep_id"] for row in cursor.fetchall()]
 
 
 def bulk_upsert_dreps(records: list[dict]) -> int:
