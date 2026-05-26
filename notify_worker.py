@@ -2193,7 +2193,8 @@ def check_drep_sync():
     import time
 
     from cardanoism.backend.koios import (
-        KOIOS_BASE_URL, _post, get_drep_list, get_drep_info_batch, get_drep_metadata_batch,
+        KOIOS_BASE_URL, get_drep_list, get_drep_info_batch, get_drep_metadata_batch,
+        get_drep_delegators_total,
     )
     from cardanoism.backend.drep_db import (
         upsert_drep, update_drep_info, update_drep_amount,
@@ -2304,8 +2305,7 @@ def check_drep_sync():
     amount_fail = 0
     for idx, did in enumerate(active_ids, start=1):
         try:
-            deleg = _post("/drep_delegators", {"_drep_id": did}) or []
-            live_sum = sum(int(d.get("amount") or 0) for d in deleg)
+            live_sum = get_drep_delegators_total(did)
             update_drep_amount(did, live_sum)
             amount_ok += 1
         except Exception as e:  # noqa: BLE001

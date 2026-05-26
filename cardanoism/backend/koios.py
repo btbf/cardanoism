@@ -94,7 +94,8 @@ else:
 
 def _request_with_retry(method: str, endpoint: str, *, params=None, json_body=None, timeout: float):
     """Session 経由 + アプリ層の追加リトライ。urllib3 のリトライで拾えない接続切断
-    (RemoteDisconnected / NameResolutionError) もここで 3 回まで再試行する。"""
+    (RemoteDisconnected / NameResolutionError) もここで 3 回まで再試行する。
+    POST でも params (?limit=N&offset=N 等) を許容する。"""
     last_err = None
     for attempt in range(3):
         _rate_limiter.acquire()
@@ -102,7 +103,10 @@ def _request_with_retry(method: str, endpoint: str, *, params=None, json_body=No
             if method == "GET":
                 resp = _session.get(f"{KOIOS_BASE_URL}{endpoint}", params=params, timeout=timeout)
             else:
-                resp = _session.post(f"{KOIOS_BASE_URL}{endpoint}", json=json_body, timeout=timeout)
+                resp = _session.post(
+                    f"{KOIOS_BASE_URL}{endpoint}",
+                    json=json_body, params=params, timeout=timeout,
+                )
             if resp.status_code != 200:
                 logger.warning("Koios %s error %s: %s", method, resp.status_code, endpoint)
                 return None
@@ -120,8 +124,35 @@ def _request_with_retry(method: str, endpoint: str, *, params=None, json_body=No
     return None
 
 
-def _post(endpoint: str, payload: dict, timeout: float = 10.0) -> list | dict | None:
-    return _request_with_retry("POST", endpoint, json_body=payload, timeout=timeout)
+def _post(endpoint: str, payload: dict, timeout: float = 10.0, params: dict | None = None) -> list | dict | None:
+    return _request_with_retry("POST", endpoint, json_body=payload, params=params, timeout=timeout)
+
+
+def get_drep_delegators_total(drep_id: str, page_size: int = 1000, timeout: float = 15.0) -> int:
+    """指定 DRep の現在の委任者 amount を全件合計して返す。
+    /drep_delegators は POST + ?limit=&offset= のページネーション。
+    Koios の上限 (1000 行/page) を超える委任者がいる DRep でも正確に合計できる。
+    """
+    total = 0
+    offset = 0
+    while True:
+        data = _post(
+            "/drep_delegators",
+            {"_drep_id": drep_id},
+            timeout=timeout,
+            params={"limit": page_size, "offset": offset},
+        )
+        if not data or not isinstance(data, list):
+            break
+        for row in data:
+            try:
+                total += int(row.get("amount") or 0)
+            except (TypeError, ValueError):
+                continue
+        if len(data) < page_size:
+            break
+        offset += page_size
+    return total
 
 
 def _get(endpoint: str, params: dict | None = None, timeout: float = 10.0) -> list | dict | None:
