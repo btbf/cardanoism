@@ -77,7 +77,10 @@ You output STRICTLY this JSON structure (no extra text):
 ## priority (提案の目的軸)
 - "technical" : プロトコル R&D、研究、セキュリティ、ノード/インフラ、開発者ツール
 - "adoption"  : dApp、DeFi、ウォレット、ユーザー獲得、教育、マーケ採用拡大
-- "both"      : 技術基盤 & 実利用拡大の両方に意義がある
+- "both"      : 技術基盤 & 実利用拡大の両方が明確に主目的の場合のみ。
+                **主目的が明らかに片方に偏っているなら "both" を使わない**。
+                例: イベント開催で技術展示「も」含む → adoption (技術展示は副次)。
+                    R&D 開発で成果物を dApp 開発者「も」使える → technical。
 - "n_a"       : どちらでもない (procedure-only など)
 
 ## org_recipient (受益組織を多重 array で。author ではなく実際に予算を受け取る組織)
@@ -87,9 +90,14 @@ You output STRICTLY this JSON structure (no extra text):
                提案中身が Intersect 自身の運営/プログラム費用の場合のみ)
 - "Emurgo"   : Emurgo
 - "Midnight" : Midnight (IO 系列だが別組織扱い)
-- "new_team" : 新興の開発チーム / プロジェクト
+- "new_team" : Cardano エコシステム内の新興 / 個別開発チーム。
+               例: DeFi の DEX チーム、独立 dApp 開発、オープンソース貢献団体
+                   (Harmonic Labs / DeltaDeFi / Andamio / Aiken team 等)。
+               規模感: Cardano コミュニティ発で、上記 5 大組織よりも小さい。
 - "individual": 個人開発者 / フリーランス
-- "other"    : 上記に該当しない既存企業 / 団体
+- "other"    : Cardano エコシステム外の **既存の大企業** (例: Tweag, Fireblocks,
+               Chainlink 等)、または上記 6 区分に明確に当てはまらない既存団体。
+               **Cardano 発の新興チームには使わない (それは new_team)**。
 - []         : 組織受益が無い (InfoAction、ParameterChange 等)
 - 複数該当する場合は ["IO", "CF"] のように複数指定。
 
