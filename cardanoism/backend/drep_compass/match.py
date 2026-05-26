@@ -130,16 +130,14 @@ def calculate_drep_match(
     )
 
 
-def list_matches(
+def _fetch_and_score(
     user_vector: dict[str, float],
     axis_weights: dict[str, float],
     *,
-    limit: int = config.DEFAULT_MATCH_LIMIT,
     only_active: bool = True,
-) -> list[MatchResult]:
-    """全 DRep プロファイルを取得し、相性スコアを TOP N 返す。
-
-    only_active=True なら drep_status='active' のみ。
+) -> list[tuple[MatchResult, dict[str, Any]]]:
+    """全 DRep プロファイルを取得して match score を計算する内部ヘルパー。
+    結果: [(MatchResult, drep_row dict), ...] (未ソート)
     """
     sql = """
         SELECT dp.drep_id, dp.profile_json, dp.confidence_json,
@@ -168,7 +166,57 @@ def list_matches(
                            row.get("drep_id"), e)
             continue
         out.append((r, row))
+    return out
 
+
+def list_matches(
+    user_vector: dict[str, float],
+    axis_weights: dict[str, float],
+    *,
+    limit: int = config.DEFAULT_MATCH_LIMIT,
+    only_active: bool = True,
+) -> list[MatchResult]:
+    """全 DRep プロファイルを取得し、相性スコアを TOP N 返す (単一リスト)。
+
+    only_active=True なら drep_status='active' のみ。
+    """
+    scored = _fetch_and_score(user_vector, axis_weights, only_active=only_active)
     # 総合スコア降順 → 委任量降順
-    out.sort(key=lambda t: (-t[0].total_score, -int(t[1].get("amount") or 0)))
-    return [r for r, _ in out[:max(1, int(limit))]]
+    scored.sort(key=lambda t: (-t[0].total_score, -int(t[1].get("amount") or 0)))
+    return [r for r, _ in scored[:max(1, int(limit))]]
+
+
+def list_matches_split(
+    user_vector: dict[str, float],
+    axis_weights: dict[str, float],
+    *,
+    top_amount_pool: int = 20,
+    per_group: int = 5,
+    only_active: bool = True,
+) -> dict[str, list[MatchResult]]:
+    """マッチ結果を 2 グループに分けて返す。
+
+    - "top_amount":  委任量上位 top_amount_pool 名の中で、マッチ度上位 per_group 名
+    - "discovery":   それ以外の DRep の中で、マッチ度上位 per_group 名
+
+    用途: 「大手 DRep からのおすすめ」と「それ以外の遺珠発見」の 2 セクション表示。
+    """
+    scored = _fetch_and_score(user_vector, axis_weights, only_active=only_active)
+
+    # 委任量降順にソートして TOP pool / その他 に二分
+    by_amount = sorted(scored, key=lambda t: -int(t[1].get("amount") or 0))
+    top_pool = by_amount[:max(1, int(top_amount_pool))]
+    other_pool = by_amount[max(1, int(top_amount_pool)):]
+
+    # 各グループ内で match score 降順 → 委任量降順
+    def _pick(pool: list[tuple[MatchResult, dict[str, Any]]]) -> list[MatchResult]:
+        sorted_pool = sorted(
+            pool,
+            key=lambda t: (-t[0].total_score, -int(t[1].get("amount") or 0)),
+        )
+        return [r for r, _ in sorted_pool[:max(1, int(per_group))]]
+
+    return {
+        "top_amount": _pick(top_pool),
+        "discovery":  _pick(other_pool),
+    }

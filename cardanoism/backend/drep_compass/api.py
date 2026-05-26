@@ -21,6 +21,7 @@ from cardanoism.backend.drep_compass import config
 from cardanoism.backend.drep_compass.match import (
     calculate_drep_match as _calc_match,
     list_matches as _list_matches,
+    list_matches_split as _list_matches_split,
 )
 from cardanoism.backend.drep_compass.profile import (
     calculate_and_save as _profile_calc_and_save,
@@ -180,39 +181,67 @@ def get_drep_match_answers(
 # ═══ マッチング ════════════════════════════════════════════════════════════
 
 
+def _serialize_match(r) -> dict:
+    return {
+        "drep_id":                   r.drep_id,
+        "total_score":               r.total_score,
+        "summary":                   r.summary,
+        "matched_axes":              r.matched_axes,
+        "mismatched_axes":           r.mismatched_axes,
+        "low_confidence_axes":       r.low_confidence_axes,
+        "reasoning_disclosure_rate": r.reasoning_disclosure_rate,
+        "analyzed_vote_count":       r.analyzed_vote_count,
+        "axis_details": [
+            {
+                "axis":       d.axis,
+                "user_value": d.user_value,
+                "drep_value": d.drep_value,
+                "similarity": d.similarity,
+                "confidence": d.confidence,
+                "weight":     d.weight,
+                "excluded":   d.excluded,
+            }
+            for d in r.axis_details
+        ],
+    }
+
+
 def list_drep_matches_for_vector(
     user_vector: dict[str, float],
     axis_weights: dict[str, float],
     *,
     limit: int = config.DEFAULT_MATCH_LIMIT,
 ) -> list[dict]:
-    """user_vector / weights を直接受け取り TOP N マッチを返す。"""
+    """user_vector / weights を直接受け取り TOP N マッチを返す (単一リスト)。"""
     results = _list_matches(user_vector, axis_weights, limit=limit, only_active=True)
-    return [
-        {
-            "drep_id":                   r.drep_id,
-            "total_score":               r.total_score,
-            "summary":                   r.summary,
-            "matched_axes":              r.matched_axes,
-            "mismatched_axes":           r.mismatched_axes,
-            "low_confidence_axes":       r.low_confidence_axes,
-            "reasoning_disclosure_rate": r.reasoning_disclosure_rate,
-            "analyzed_vote_count":       r.analyzed_vote_count,
-            "axis_details": [
-                {
-                    "axis":       d.axis,
-                    "user_value": d.user_value,
-                    "drep_value": d.drep_value,
-                    "similarity": d.similarity,
-                    "confidence": d.confidence,
-                    "weight":     d.weight,
-                    "excluded":   d.excluded,
-                }
-                for d in r.axis_details
-            ],
-        }
-        for r in results
-    ]
+    return [_serialize_match(r) for r in results]
+
+
+def list_drep_matches_split_for_vector(
+    user_vector: dict[str, float],
+    axis_weights: dict[str, float],
+    *,
+    top_amount_pool: int = 20,
+    per_group: int = 5,
+) -> dict[str, list[dict]]:
+    """user_vector / weights から 2 グループに分けたマッチ結果を返す。
+
+    返り値:
+      {
+        "top_amount": [<dict>, ...],   # 委任量上位 top_amount_pool 内マッチ
+        "discovery":  [<dict>, ...],   # それ以外マッチ
+      }
+    """
+    groups = _list_matches_split(
+        user_vector, axis_weights,
+        top_amount_pool=top_amount_pool,
+        per_group=per_group,
+        only_active=True,
+    )
+    return {
+        "top_amount": [_serialize_match(r) for r in groups.get("top_amount", [])],
+        "discovery":  [_serialize_match(r) for r in groups.get("discovery",  [])],
+    }
 
 
 def list_drep_matches(

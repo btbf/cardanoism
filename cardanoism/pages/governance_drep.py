@@ -160,7 +160,7 @@ class DrepState(rx.State):
 # ─── DRep マッチング診断 (委任コンパス MVP) State ──────────────────────────────
 
 from cardanoism.backend.drep_compass.api import (
-    list_drep_matches_for_vector as _list_matches_for_vector,
+    list_drep_matches_split_for_vector as _list_matches_split_for_vector,
     save_drep_match_answers as _save_compass_answers,
 )
 from cardanoism.backend.drep_compass.questionnaire import (
@@ -179,13 +179,15 @@ class DrepMatchState(rx.State):
     view: "list" / "intro" / "quiz" / "results"
     answers: { q_id: 1 (左) / 2 (迷う) / 3 (右) }
     importance: 重要マーク済み q_id のリスト (最大 3)
-    results: 結果カード描画用 dict のリスト
+    results_top:       委任量上位 20 内のマッチ上位 5 件
+    results_discovery: それ以外 (委任量上位 20 外) のマッチ上位 5 件
     """
     view: str = "list"
     current_question: int = 0
     answers: dict[str, int] = {}
     importance: list[str] = []
-    results: list[dict[str, str]] = []
+    results_top:       list[dict[str, str]] = []
+    results_discovery: list[dict[str, str]] = []
 
     @rx.var
     def current_question_i18n_key(self) -> str:
@@ -261,7 +263,7 @@ class DrepMatchState(rx.State):
             self.view = view
 
     def enter_match_tab(self):
-        if self.results:
+        if self.results_top or self.results_discovery:
             self.view = "results"
         else:
             self.view = "intro"
@@ -271,7 +273,8 @@ class DrepMatchState(rx.State):
         self.current_question = 0
         self.answers = {}
         self.importance = []
-        self.results = []
+        self.results_top = []
+        self.results_discovery = []
 
     def set_answer(self, level: int):
         """1 (左) / 2 (迷う) / 3 (右) で回答。最終問以外は次に進む。"""
@@ -306,7 +309,11 @@ class DrepMatchState(rx.State):
             self.current_question -= 1
 
     def submit_quiz(self):
-        """回答から user_vector を計算し、TOP N マッチを取得。"""
+        """回答から user_vector を計算し、2 グループのマッチを取得。
+
+        - results_top:       委任量上位 20 内のマッチ上位 5 件
+        - results_discovery: それ以外のマッチ上位 5 件
+        """
         try:
             user_vector, weights = _build_user_vector(
                 dict(self.answers), list(self.importance),
@@ -315,15 +322,18 @@ class DrepMatchState(rx.State):
             logger.warning("build_user_vector failed: %s", e)
             user_vector, weights = {}, {}
         try:
-            raw = _list_matches_for_vector(
+            groups = _list_matches_split_for_vector(
                 user_vector, weights,
-                limit=_COMPASS_CONFIG.DEFAULT_MATCH_LIMIT,
+                top_amount_pool=20,
+                per_group=5,
             )
         except Exception as e:  # noqa: BLE001
-            logger.warning("list_drep_matches_for_vector failed: %s", e)
-            raw = []
-        logger.info("submit_quiz: user_vector=%d axes, results=%d",
-                    len(user_vector), len(raw))
+            logger.warning("list_drep_matches_split_for_vector failed: %s", e)
+            groups = {"top_amount": [], "discovery": []}
+        raw_top = groups.get("top_amount", [])
+        raw_discovery = groups.get("discovery", [])
+        logger.info("submit_quiz: user_vector=%d axes, top=%d, discovery=%d",
+                    len(user_vector), len(raw_top), len(raw_discovery))
 
         # アンケート回答を best-effort で保存
         try:
@@ -341,49 +351,53 @@ class DrepMatchState(rx.State):
         except Exception as e:  # noqa: BLE001
             logger.debug("save_drep_match_answers (best-effort) failed: %s", e)
 
-        # 委任量 / fiat 表示
+        # 委任量 / fiat 表示 (両グループで共通)
         rate = get_fiat_rate() or {}
         ada_jpy = float(rate.get("ada_jpy") or 0)
         ada_usd = float(rate.get("ada_usd") or 0)
         total_lovelace = sum_total_delegation(only_registered=True)
 
-        out: list[dict[str, str]] = []
-        for r in raw:
-            drep_id = str(r.get("drep_id") or "")
-            d = _get_drep(drep_id) or {}
-            amount = int(d.get("amount") or 0)
-            ada = amount / 1_000_000
-            jpy_d = format_jpy_short(ada * ada_jpy) if ada_jpy else ""
-            usd_d = format_usd_short(ada * ada_usd) if ada_usd else ""
-            share_pct = (amount / total_lovelace * 100.0) if total_lovelace > 0 else 0.0
-            if share_pct >= 1.0:
-                share_display = f"{share_pct:.2f}"
-            elif share_pct > 0:
-                share_display = f"{share_pct:.3f}"
-            else:
-                share_display = "0"
+        def _to_label(axes: list[str]) -> str:
+            # 7 axis を「drep_match_axis_<axis>」i18n キーに変換
+            return ",".join(f"drep_match_axis_{a}" for a in (axes or []) if a)
 
-            # 7 axis の matched/mismatched を「drep_match_axis_<axis>」i18n キーに変換
-            def _to_label(axes: list[str]) -> str:
-                return ",".join(f"drep_match_axis_{a}" for a in (axes or []) if a)
+        def _enrich(raw_list: list[dict]) -> list[dict[str, str]]:
+            out: list[dict[str, str]] = []
+            for r in raw_list:
+                drep_id = str(r.get("drep_id") or "")
+                d = _get_drep(drep_id) or {}
+                amount = int(d.get("amount") or 0)
+                ada = amount / 1_000_000
+                jpy_d = format_jpy_short(ada * ada_jpy) if ada_jpy else ""
+                usd_d = format_usd_short(ada * ada_usd) if ada_usd else ""
+                share_pct = (amount / total_lovelace * 100.0) if total_lovelace > 0 else 0.0
+                if share_pct >= 1.0:
+                    share_display = f"{share_pct:.2f}"
+                elif share_pct > 0:
+                    share_display = f"{share_pct:.3f}"
+                else:
+                    share_display = "0"
 
-            out.append({
-                "drep_id":              drep_id,
-                "given_name":           str(d.get("given_name") or ""),
-                "image_url":            str(d.get("image_url") or ""),
-                "total_score":          f"{float(r.get('total_score') or 0):.1f}",
-                "summary":              str(r.get("summary") or ""),
-                "reasoning_pct":        f"{float(r.get('reasoning_disclosure_rate') or 0) * 100:.1f}",
-                "analyzed_votes":       str(r.get("analyzed_vote_count") or 0),
-                "matched_axes_csv":     _to_label(r.get("matched_axes")),
-                "mismatched_axes_csv":  _to_label(r.get("mismatched_axes")),
-                "low_conf_axes_csv":    _to_label(r.get("low_confidence_axes")),
-                "amount_ada":           format_ada(amount, integer=True) if amount else "0",
-                "amount_jpy":           jpy_d,
-                "amount_usd":           usd_d,
-                "share_pct":            share_display,
-            })
-        self.results = out
+                out.append({
+                    "drep_id":              drep_id,
+                    "given_name":           str(d.get("given_name") or ""),
+                    "image_url":            str(d.get("image_url") or ""),
+                    "total_score":          f"{float(r.get('total_score') or 0):.1f}",
+                    "summary":              str(r.get("summary") or ""),
+                    "reasoning_pct":        f"{float(r.get('reasoning_disclosure_rate') or 0) * 100:.1f}",
+                    "analyzed_votes":       str(r.get("analyzed_vote_count") or 0),
+                    "matched_axes_csv":     _to_label(r.get("matched_axes")),
+                    "mismatched_axes_csv":  _to_label(r.get("mismatched_axes")),
+                    "low_conf_axes_csv":    _to_label(r.get("low_confidence_axes")),
+                    "amount_ada":           format_ada(amount, integer=True) if amount else "0",
+                    "amount_jpy":           jpy_d,
+                    "amount_usd":           usd_d,
+                    "share_pct":            share_display,
+                })
+            return out
+
+        self.results_top       = _enrich(raw_top)
+        self.results_discovery = _enrich(raw_discovery)
         self.view = "results"
 
 
@@ -1354,6 +1368,39 @@ def _match_result_card(r) -> rx.Component:
     )
 
 
+def _results_group_section(
+    heading_key: str,
+    desc_key: str,
+    items: rx.Var,
+) -> rx.Component:
+    """マッチング結果の 1 セクション (見出し + 説明 + カードリスト)。"""
+    return rx.vstack(
+        rx.vstack(
+            rx.heading(AuthState.t[heading_key], size="4"),
+            rx.text(
+                AuthState.t[desc_key],
+                size="2", color="var(--gray-11)",
+            ),
+            spacing="1", align="start", width="100%",
+        ),
+        rx.cond(
+            items,
+            rx.vstack(
+                rx.foreach(
+                    items.to(list[dict[str, str]]),
+                    _match_result_card,
+                ),
+                spacing="3", width="100%",
+            ),
+            rx.callout(
+                AuthState.t["drep_match_results_no_match"],
+                icon="info", color_scheme="gray", size="1",
+            ),
+        ),
+        spacing="3", width="100%",
+    )
+
+
 def _results_view() -> rx.Component:
     return rx.vstack(
         rx.hstack(
@@ -1367,21 +1414,17 @@ def _results_view() -> rx.Component:
             ),
             width="100%", align="center", wrap="wrap",
         ),
-        rx.cond(
-            DrepMatchState.results,
-            rx.vstack(
-                rx.foreach(
-                    DrepMatchState.results.to(list[dict[str, str]]),
-                    _match_result_card,
-                ),
-                spacing="3", width="100%",
-            ),
-            rx.callout(
-                AuthState.t["drep_match_results_no_match"],
-                icon="info", color_scheme="gray",
-            ),
+        _results_group_section(
+            "drep_match_results_group_top_amount",
+            "drep_match_results_group_top_amount_desc",
+            DrepMatchState.results_top,
         ),
-        spacing="4", width="100%",
+        _results_group_section(
+            "drep_match_results_group_discovery",
+            "drep_match_results_group_discovery_desc",
+            DrepMatchState.results_discovery,
+        ),
+        spacing="6", width="100%",
     )
 
 
