@@ -939,14 +939,24 @@ def _check_drep_status_change():
         return
 
     # ユニーク drep_id を 1,000 件チャンクで一括取得
+    # 状態は drep_sync と同じ derivation で "active" / "inactive" / "deregistered"。
+    # Koios /drep_info の生フィールドは drep_status="registered" 等で、active 判定は
+    # 別途 active(bool) を見る必要がある。
     unique_drep_ids = list({a["delegated_drep_id"] for a in addrs})
     drep_status_map: dict[str, str] = {}
     for chunk in _chunks(unique_drep_ids, KOIOS_BATCH_SIZE):
         data = _post("/drep_info", {"_drep_ids": chunk})
         if data and isinstance(data, list):
             for item in data:
-                if item.get("drep_id"):
-                    drep_status_map[item["drep_id"]] = item.get("status") or ""
+                did = item.get("drep_id")
+                if not did:
+                    continue
+                if bool(item.get("active")):
+                    drep_status_map[did] = "active"
+                elif item.get("drep_status") == "registered":
+                    drep_status_map[did] = "inactive"
+                else:
+                    drep_status_map[did] = item.get("drep_status") or "deregistered"
     if not drep_status_map:
         return
 
