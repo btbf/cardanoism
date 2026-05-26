@@ -976,6 +976,11 @@ def _check_drep_status_change():
         if last_status is None:
             set_state("stake_address", stake_id, "drep_status", status)
             continue
+        if not last_status:
+            # 旧バグで "" (空文字) が保存されていたケース。実際の状態変化ではないため
+            # 通知を発火させず、新しい正しい値だけ書き戻して次回以降の比較に備える。
+            set_state("stake_address", stake_id, "drep_status", status)
+            continue
         if last_status == status:
             continue
 
