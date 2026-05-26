@@ -1487,11 +1487,11 @@ def _intro_view() -> rx.Component:
         ),
         rx.text(
             AuthState.t["drep_match_intro"],
-            size="3", color="var(--gray-11)",
+            size="4", color="var(--gray-12)",
             style={
-                "lineHeight": "1.7",
+                "lineHeight": "1.8",
                 "textAlign": "center",
-                "maxWidth": "640px",
+                "maxWidth": "720px",
                 "margin": "0 auto",
             },
         ),
