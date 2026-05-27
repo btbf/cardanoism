@@ -260,7 +260,9 @@ class DrepDetailState(rx.State):
                     return "mid"
                 return "low"
 
-            # 7 axis 全てを 1 つのスライダー型行で表示 (v2 設計、対立軸/独立軸の区別なし)
+            # 8 axis をスライダー型行で表示。
+            # UI 表示順は「左 = 賛成 (score 高) / 右 = 反対 (score 低)」で反転。
+            # データの意味 (score 1.0 = Yes 寄り) は保持し、表示位置だけ swap。
             balance_rows: list[dict[str, str]] = []
             single_rows: list[dict[str, str]] = []
             for axis in _COMPASS_AXES:
@@ -268,9 +270,11 @@ class DrepDetailState(rx.State):
                 conf_val = _conf(axis)
                 offset = score - 0.5
                 if offset > 0.02:
+                    # 賛成寄り → 左側に dot。フローティングラベルは _right (= 賛成側ラベル)
                     side = "pos"
                     side_label_key = f"drep_match_axis_{axis}_right"
                 elif offset < -0.02:
+                    # 反対寄り → 右側に dot。フローティングラベルは _left (= 反対側ラベル)
                     side = "neg"
                     side_label_key = f"drep_match_axis_{axis}_left"
                 else:
@@ -280,13 +284,15 @@ class DrepDetailState(rx.State):
                     "kind":             "balance",
                     "key":              axis,
                     "label_key":        f"drep_match_axis_{axis}",
-                    "left_label_key":   f"drep_match_axis_{axis}_left",
-                    "right_label_key":  f"drep_match_axis_{axis}_right",
+                    # 左 = 賛成側ラベル (_right) / 右 = 反対側ラベル (_left) で swap
+                    "left_label_key":   f"drep_match_axis_{axis}_right",
+                    "right_label_key":  f"drep_match_axis_{axis}_left",
                     "side":             side,
                     "side_label_key":   side_label_key,
                     "side_desc_key":    f"drep_match_axis_{axis}_desc",
                     "magnitude_pct":    f"{abs(offset) * 200:.0f}",
-                    "dot_pos_pct":      f"{score * 100:.0f}",
+                    # 位置反転: score 1.0 (賛成) を左端 0%、score 0.0 (反対) を右端 100%
+                    "dot_pos_pct":      f"{(1.0 - score) * 100:.0f}",
                     "conf_class":       _conf_class(conf_val),
                 })
             self.compass_balance_rows = balance_rows

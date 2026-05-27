@@ -1240,12 +1240,13 @@ def _quiz_view() -> rx.Component:
                 width="100%",
             ),
             # 5 段階 Likert agree/disagree (universal labels)
+            # 左 = 強く賛成 → 右 = 強く反対 で表示 (UI 表示順のみ。値はそのまま)
             rx.hstack(
-                _choice_button(1, "drep_match_answer_strongly_disagree", "amber"),
-                _choice_button(2, "drep_match_answer_slightly_disagree", "soft_amber"),
-                _choice_button(3, "drep_match_answer_neutral",           "gray"),
-                _choice_button(4, "drep_match_answer_slightly_agree",    "soft_amber"),
                 _choice_button(5, "drep_match_answer_strongly_agree",    "amber"),
+                _choice_button(4, "drep_match_answer_slightly_agree",    "soft_amber"),
+                _choice_button(3, "drep_match_answer_neutral",           "gray"),
+                _choice_button(2, "drep_match_answer_slightly_disagree", "soft_amber"),
+                _choice_button(1, "drep_match_answer_strongly_disagree", "amber"),
                 spacing="2", wrap="wrap", justify="center", width="100%", padding_y="6px",
             ),
             # 賛成派の主張 / 反対派の主張 (v4) - 横並びだがモバイルは縦に wrap
