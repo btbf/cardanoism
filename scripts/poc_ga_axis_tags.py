@@ -75,20 +75,33 @@ You output STRICTLY this JSON structure (no extra text):
 - "n_a"   : Treasury 系ではない (ParameterChange / HardFork / InfoAction 等)
 
 ## priority (提案の目的軸)
-- "technical" : プロトコル R&D、研究、セキュリティ、ノード/インフラ、開発者ツール、
-                ライブラリ開発、コア保守
-- "adoption"  : dApp、DeFi、ウォレット、ユーザー獲得、教育 / トレーニング
-                (実用スキル向上)
-- "both"      : **本当に 50:50 で両方が等しく主目的の場合のみ** 使う。
-                迷ったら "both" ではなく「より強い側」を選ぶ。
-                - 開発者ツール / ライブラリ / インフラ R&D → 常に technical
-                - プロトコル研究 / セキュリティ / コア保守 → 常に technical
-                - dApp / DeFi / ウォレット 開発 → 常に adoption
+**technical の定義は厳しく**: Input Output (IO / IOG / IOHK) が主導する
+コア・プロトコル研究 / 合意層 / 暗号 / Hydra・Mithril・Leios 等の
+プロトコル仕様策定・実装、Cardano ノード本体の保守。
+IO 公式委託先 (例: Tweag が Peras を契約で実装する) も含む。
+
+- "technical" : 上記の「IO 主導 / 公式委託 のコア R&D / プロトコル / ノード保守」のみ。
+                例:
+                - Plomin / Chang HardFork
+                - Leios / Hydra プロトコル仕様策定 (IO)
+                - IO+Ensurable Cardano コア保守
+                - Tweag による Peras R&D (IO 委託)
+                - Mithril / Catalyst Voting プロトコル
+- "adoption"  : 上記以外の全ての開発 ・ 実装。例:
+                - dApp / DeFi / ウォレット (独立チーム)
+                - 外部スマートコントラクト言語 (例: Pebble by Harmonic Labs)
+                - Hydra を「使う」 dApp (例: DeltaDeFi の DEX)
+                - 教育 / トレーニング、ユーザー獲得
+                - 開発者向けライブラリ (IO 以外が作るもの)
+- "both"      : ほぼ使わない。
 - "n_a"       : 以下は priority 軸の対象外 (marketing 軸で扱うため重複を避ける)。
                 - イベント / サミット / カンファレンス / スポンサーシップ
                 - 啓蒙 / 認知拡大 / 広告 / PR キャンペーン
                 - コミュニティ拡大 (一般認知向上目的)
                 その他 procedure-only / 抽象的 InfoAction なども n_a。
+
+**判定の鍵**: 「IO 主導 (または公式委託) のコア R&D か」が技術判定。
+**外部チームによる独立開発は技術寄りでも adoption** に分類する。
 
 ## org_recipient (受益組織を多重 array で。author ではなく実際に予算を受け取る組織)
 - "IO"       : Input Output (IOG / IOHK)
