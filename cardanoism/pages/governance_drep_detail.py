@@ -15,7 +15,10 @@ from cardanoism.templates import template
 from cardanoism.backend.auth_state import AuthState
 from cardanoism.backend.drep_db import get_drep, sum_total_delegation
 from cardanoism.backend.drep_meta import format_links as _format_links
-from cardanoism.backend.drep_compass.api import get_drep_profile as _get_compass_profile
+from cardanoism.backend.drep_compass.api import (
+    get_drep_profile as _get_compass_profile,
+    get_ga_titles as _get_ga_titles,
+)
 from cardanoism.backend.drep_compass.taxonomy import AXES as _COMPASS_AXES
 from cardanoism.backend.vote_db import get_votes_by_drep, count_votes_by_drep
 from cardanoism.backend.fiat_db import get_fiat_rate
@@ -76,6 +79,21 @@ class DrepDetailState(rx.State):
     # {kind="single", label_key, desc_key, score_pct, conf_class}
     compass_single_rows: list[dict[str, str]] = []
 
+    # axis ごとの根拠投票 (drep_profiles.evidence_json から構築。GA タイトル付与済)
+    # {axis: [{"proposal_id","ga_title","vote","direction","reason"}, ...]}
+    compass_evidence_by_axis: dict[str, list[dict[str, str]]] = {}
+    # axis ごとの score/conf (モーダルヘッダ表示用)
+    # {axis: {"score","conf"}}
+    compass_axis_info_by_axis: dict[str, dict[str, str]] = {}
+
+    # axis 根拠モーダル
+    evidence_modal_open: bool = False
+    modal_axis_label_key: str = ""
+    modal_axis_side_label: str = ""
+    modal_axis_conf_pct: str = ""
+    modal_axis_vote_count: str = ""
+    modal_evidence_items: list[dict[str, str]] = []
+
     @rx.var
     def has_profile_metadata(self) -> bool:
         return bool(
@@ -132,6 +150,27 @@ class DrepDetailState(rx.State):
         if self.current_page < self.votes_total_pages:
             self.current_page += 1
         return rx.call_script("window.scrollTo(0, 0)")
+
+    # ─── axis 根拠モーダル ──────────────────────────────────────
+    def open_axis_modal(self, axis: str):
+        """投票傾向の各 axis 行クリックで該当 axis の根拠投票一覧を表示。"""
+        if not axis:
+            return
+        items = (self.compass_evidence_by_axis or {}).get(axis, [])
+        info = (self.compass_axis_info_by_axis or {}).get(axis, {})
+        self.modal_axis_label_key = f"drep_match_axis_{axis}"
+        self.modal_axis_side_label = f"DRep スコア: {info.get('score', '?')}"
+        self.modal_axis_conf_pct = f"{info.get('conf', '0')}%"
+        self.modal_axis_vote_count = f"{len(items)} 票"
+        self.modal_evidence_items = list(items)
+        self.evidence_modal_open = True
+
+    def close_evidence_modal(self):
+        self.evidence_modal_open = False
+
+    def on_evidence_modal_open_change(self, is_open: bool):
+        if not is_open:
+            self.evidence_modal_open = False
 
     async def on_load(self):
         self.load = False
@@ -252,6 +291,44 @@ class DrepDetailState(rx.State):
                 })
             self.compass_balance_rows = balance_rows
             self.compass_single_rows = single_rows  # 後方互換のため空のまま
+
+            # axis 根拠モーダル用: evidence_json から axis ごとの投票根拠を構築
+            evidence = cp.get("evidence_json") or {}
+            all_pids: set[str] = set()
+            if isinstance(evidence, dict):
+                for items in evidence.values():
+                    for e in (items or []):
+                        pid = str(e.get("proposal_id") or "")
+                        if pid:
+                            all_pids.add(pid)
+            ga_titles: dict[str, str] = {}
+            if all_pids:
+                try:
+                    ga_titles = _get_ga_titles(list(all_pids))
+                except Exception as e:  # noqa: BLE001
+                    logger.debug("get_ga_titles failed: %s", e)
+
+            evidence_by_axis: dict[str, list[dict[str, str]]] = {}
+            axis_info_by_axis: dict[str, dict[str, str]] = {}
+            for axis in _COMPASS_AXES:
+                items = (evidence.get(axis) or []) if isinstance(evidence, dict) else []
+                enriched: list[dict[str, str]] = []
+                for e in items:
+                    pid = str(e.get("proposal_id") or "")
+                    enriched.append({
+                        "proposal_id": pid,
+                        "ga_title":    str(ga_titles.get(pid, pid[:24])),
+                        "vote":        str(e.get("vote") or ""),
+                        "direction":   f"{float(e.get('direction') or 0.5):.2f}",
+                        "reason":      str(e.get("reason") or "")[:200],
+                    })
+                evidence_by_axis[axis] = enriched
+                axis_info_by_axis[axis] = {
+                    "score": f"{_score(axis):.2f}",
+                    "conf":  f"{_conf(axis) * 100:.0f}",
+                }
+            self.compass_evidence_by_axis = evidence_by_axis
+            self.compass_axis_info_by_axis = axis_info_by_axis
 
             # 投票履歴（未投票 GA も含む）
             raw = get_votes_by_drep(drep_id, limit=500)
@@ -575,32 +652,44 @@ def _compass_balance_row(item) -> rx.Component:
         AuthState.t[item["side_label_key"]],
     )
 
-    # 段 1: 軸名 (左) + 立場/強度 (右)
-    header_row = rx.hstack(
-        rx.text(
-            AuthState.t[item["label_key"]],
-            size="2", weight="bold", color="var(--gray-12)",
-            style={"flex": "1", "minWidth": "0"},
-        ),
-        rx.hstack(
-            rx.text(side_label, size="2", weight="bold", color=side_text_color,
-                    style={"whiteSpace": "nowrap"}),
-            rx.cond(
-                item["side"] != "center",
+    # 段 1: 軸名のみ (立場 / 強度% はドットの上に追従表示するため移動)
+    header_row = rx.text(
+        AuthState.t[item["label_key"]],
+        size="2", weight="bold", color="var(--gray-12)",
+        style={"width": "100%"},
+    )
+
+    # ドット直上に追従表示する「立場 + 強度%」フローティングラベル
+    # (item["side"] == "center" の場合は表示しない)
+    floating_label = rx.cond(
+        item["side"] != "center",
+        rx.box(
+            rx.hstack(
+                rx.text(side_label, size="1", weight="bold", color=side_text_color,
+                        style={"whiteSpace": "nowrap"}),
                 rx.text(item["magnitude_pct"], "%",
-                        size="2", color="var(--gray-11)",
+                        size="1", color="var(--gray-11)",
                         style={
                             "fontFamily": "var(--code-font-family, ui-monospace, monospace)",
+                            "whiteSpace": "nowrap",
                         }),
-                rx.fragment(),
+                spacing="1", align="baseline",
             ),
-            spacing="1", align="baseline",
-            style={"flexShrink": "0"},
+            style={
+                "position": "absolute",
+                "left": item["dot_pos_pct"] + "%",
+                "bottom": "calc(100% + 6px)",
+                "transform": "translateX(-50%)",
+                "zIndex": "3",
+                "pointerEvents": "none",
+                "transition": "left 0.3s",
+            },
         ),
-        spacing="2", align="center", width="100%",
+        rx.fragment(),
     )
 
     # 段 2: 左端ラベル + スライダー + 右端ラベル (全幅)
+    # スライダー本体の上にドット追従ラベルが浮く構造
     slider_row = rx.hstack(
         rx.text(
             AuthState.t[item["left_label_key"]],
@@ -640,13 +729,19 @@ def _compass_balance_row(item) -> rx.Component:
                     "transition": "left 0.3s",
                 },
             ),
+            # ドット直上のフローティングラベル
+            floating_label,
             # 外枠 (細いレール) — 縦軸はフレックス、幅は親の残りを使う
             flex="1",
             height="6px",
             background="var(--gray-3)",
             border_radius="999px",
             min_width="120px",
-            style={"position": "relative"},
+            style={
+                "position": "relative",
+                # フローティングラベル分のマージンを上に確保
+                "marginTop": "22px",
+            },
         ),
         rx.text(
             AuthState.t[item["right_label_key"]],
@@ -657,7 +752,7 @@ def _compass_balance_row(item) -> rx.Component:
         spacing="2", align="center", width="100%",
     )
 
-    return rx.vstack(
+    inner = rx.vstack(
         header_row,
         slider_row,
         # サブ説明文 (どちら寄りかの具体的中身) — 中央揃え
@@ -673,9 +768,132 @@ def _compass_balance_row(item) -> rx.Component:
         ),
         spacing="2", align="stretch", width="100%",
     )
+    # クリックで axis 根拠モーダルを開く
+    return rx.el.button(
+        inner,
+        on_click=DrepDetailState.open_axis_modal(item["key"]),
+        cursor="pointer",
+        style={
+            "all":           "unset",
+            "display":       "block",
+            "width":         "100%",
+            "padding":       "8px 12px",
+            "borderRadius":  "8px",
+            "transition":    "background 0.15s",
+        },
+        _hover={"background": "var(--gray-3)"},
+    )
 
 
 # 旧 _compass_single_row は撤去。独立軸も _compass_balance_row で統一描画。
+
+
+def _evidence_modal_row(item) -> rx.Component:
+    """axis 根拠モーダル内の 1 行 (1 投票)。"""
+    vote_color = rx.match(
+        item["vote"],
+        ("Yes", "var(--green-11)"),
+        ("No",  "var(--tomato-11)"),
+        "var(--gray-10)",
+    )
+    return rx.hstack(
+        rx.text(
+            item["vote"],
+            size="2", weight="bold", color=vote_color,
+            style={"width": "56px", "textAlign": "center", "flexShrink": "0"},
+        ),
+        rx.link(
+            rx.text(
+                item["ga_title"],
+                size="3", color="var(--gray-12)",
+                style={
+                    "overflow": "hidden", "textOverflow": "ellipsis",
+                    "whiteSpace": "nowrap",
+                },
+            ),
+            href="/governance/" + item["proposal_id"],
+            style={"textDecoration": "none", "flex": "1", "minWidth": "0"},
+            _hover={"color": "var(--amber-11)"},
+        ),
+        rx.text(
+            item["reason"],
+            size="2", color="var(--gray-10)",
+            style={
+                "overflow": "hidden", "textOverflow": "ellipsis",
+                "whiteSpace": "nowrap", "flex": "1.5", "minWidth": "0",
+            },
+        ),
+        spacing="3", align="center", width="100%",
+        padding="10px 0",
+        style={"borderBottom": "1px solid var(--gray-4)"},
+    )
+
+
+def _evidence_modal() -> rx.Component:
+    """axis 行クリックで開く根拠投票モーダル。"""
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.vstack(
+                rx.hstack(
+                    rx.icon("sparkles", size=20, color="var(--amber-11)"),
+                    rx.text(
+                        DrepDetailState.given_name,
+                        size="3", color="var(--gray-11)", weight="medium",
+                    ),
+                    rx.text("›", color="var(--gray-9)", size="3"),
+                    rx.text(
+                        AuthState.t[DrepDetailState.modal_axis_label_key],
+                        size="4", weight="bold", color="var(--gray-12)",
+                    ),
+                    spacing="2", align="center", wrap="wrap",
+                ),
+                rx.hstack(
+                    rx.text(
+                        DrepDetailState.modal_axis_side_label,
+                        size="2", color="var(--gray-11)",
+                    ),
+                    rx.text("·", color="var(--gray-8)"),
+                    rx.text(
+                        "信頼度 ", DrepDetailState.modal_axis_conf_pct,
+                        size="2", color="var(--gray-11)",
+                    ),
+                    rx.text("·", color="var(--gray-8)"),
+                    rx.text(
+                        "寄与 ", DrepDetailState.modal_axis_vote_count,
+                        size="2", color="var(--gray-11)",
+                    ),
+                    spacing="2", align="center", wrap="wrap",
+                ),
+                rx.cond(
+                    DrepDetailState.modal_evidence_items,
+                    rx.vstack(
+                        rx.foreach(
+                            DrepDetailState.modal_evidence_items.to(list[dict[str, str]]),
+                            _evidence_modal_row,
+                        ),
+                        spacing="0", width="100%",
+                        style={"maxHeight": "60vh", "overflowY": "auto"},
+                    ),
+                    rx.callout(
+                        "この axis に寄与した投票はありません (判断材料不足)。",
+                        icon="info", color_scheme="gray", size="2",
+                    ),
+                ),
+                rx.dialog.close(
+                    rx.button(
+                        "閉じる",
+                        variant="soft", color_scheme="gray", cursor="pointer",
+                        on_click=DrepDetailState.close_evidence_modal,
+                    ),
+                    style={"alignSelf": "flex-end"},
+                ),
+                spacing="3", align_items="stretch", width="100%",
+            ),
+            style={"maxWidth": "720px", "width": "92vw"},
+        ),
+        open=DrepDetailState.evidence_modal_open,
+        on_open_change=DrepDetailState.on_evidence_modal_open_change,
+    )
 
 
 def _compass_profile_section() -> rx.Component:
@@ -1013,6 +1231,8 @@ def governance_drep_detail_page() -> rx.Component:
             login_modal(),
             # DRep 委任確認モーダル (1 ページに 1 度だけマウント)
             drep_delegation_dialog(),
+            # axis 根拠モーダル
+            _evidence_modal(),
             rx.vstack(
                 _breadcrumb(),
                 governance_subnav("drep"),

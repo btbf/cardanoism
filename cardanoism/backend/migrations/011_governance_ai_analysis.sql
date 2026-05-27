@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS governance_ai_analysis (
     articles_json             TEXT         DEFAULT NULL,
     proposal_facts_json       TEXT         DEFAULT NULL,
     rule_checks_json          TEXT         DEFAULT NULL,
+    axis_tags_json            TEXT         DEFAULT NULL,               -- drep-match v3: 7 axis 分類タグ (treasury_size / priority / org_recipient / protocol_change / marketing_purpose / kpi_clarity / risk_level + reasoning)
     model_id                  VARCHAR(64)  DEFAULT NULL,
     constitution_meta_url     TEXT         DEFAULT NULL,
     tokens_input              INT          DEFAULT NULL,
