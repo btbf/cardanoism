@@ -74,6 +74,30 @@ def recalculate_all_drep_profiles(*, only_active: bool = True) -> int:
     return n
 
 
+def get_ga_titles(proposal_ids: list[str]) -> dict[str, str]:
+    """proposal_id 群を batch で照会し {proposal_id: title_ja or title} を返す。
+
+    透明性モーダル (axis chip クリック展開) で各根拠投票の GA タイトルを
+    表示するために使う。
+    """
+    pids = [str(p) for p in proposal_ids if p]
+    if not pids:
+        return {}
+    with get_db() as (cursor, _):
+        placeholders = ",".join(["?"] * len(pids))
+        cursor.execute(
+            f"""
+            SELECT proposal_id,
+                   COALESCE(title_ja, title, '') AS t
+              FROM governance_actions
+             WHERE proposal_id IN ({placeholders})
+            """,
+            tuple(pids),
+        )
+        rows = cursor.fetchall()
+    return {str(r["proposal_id"]): str(r.get("t") or "") for r in rows}
+
+
 def get_drep_profile(drep_id: str) -> dict | None:
     """drep_profiles の 1 行を取得 (JSON はパース済み)。"""
     with get_db() as (cursor, _):
@@ -208,6 +232,7 @@ def _serialize_match(r) -> dict:
             }
             for d in r.axis_details
         ],
+        "evidence_per_axis": r.evidence_per_axis,
     }
 
 

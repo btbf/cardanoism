@@ -162,6 +162,7 @@ class DrepState(rx.State):
 from cardanoism.backend.drep_compass.api import (
     list_drep_matches_for_vector as _list_matches_for_vector,
     save_drep_match_answers as _save_compass_answers,
+    get_ga_titles as _get_ga_titles,
 )
 from cardanoism.backend.drep_compass.questionnaire import (
     QUESTIONS as _COMPASS_QUESTIONS,
@@ -186,6 +187,15 @@ class DrepMatchState(rx.State):
     answers: dict[str, int] = {}
     importance: list[str] = []
     results: list[dict[str, str]] = []
+
+    # 透明性モーダル: axis chip クリックで「なぜこの axis 判定？」を見せる
+    evidence_modal_open: bool = False
+    modal_drep_name: str = ""
+    modal_axis_label_key: str = ""
+    modal_axis_side_label: str = ""        # 「攻め 22%」のような表示
+    modal_axis_conf_pct: str = ""          # 「90%」(信頼度)
+    modal_axis_vote_count: str = ""        # 「5 票分析」
+    modal_evidence_items: list[dict[str, str]] = []
 
     @rx.var
     def current_question_i18n_key(self) -> str:
@@ -356,6 +366,36 @@ class DrepMatchState(rx.State):
             # 7 axis を「drep_match_axis_<axis>」i18n キーに変換
             return ",".join(f"drep_match_axis_{a}" for a in (axes or []) if a)
 
+        # 透明性モーダル用に GA タイトルを batch fetch
+        all_pids: set[str] = set()
+        for r in raw:
+            evd = r.get("evidence_per_axis") or {}
+            if isinstance(evd, dict):
+                for items in evd.values():
+                    for e in (items or []):
+                        pid = str(e.get("proposal_id") or "")
+                        if pid:
+                            all_pids.add(pid)
+        ga_titles: dict[str, str] = {}
+        if all_pids:
+            try:
+                ga_titles = _get_ga_titles(list(all_pids))
+            except Exception as e:  # noqa: BLE001
+                logger.debug("get_ga_titles failed: %s", e)
+
+        # axis_detail を {axis: {score, conf, user_value}} の flat dict にする
+        # モーダルで axis ごとの情報表示用
+        def _axis_info(r: dict, axis: str) -> dict[str, str]:
+            details = r.get("axis_details") or []
+            for d in details:
+                if d.get("axis") == axis:
+                    return {
+                        "score":      f"{float(d.get('drep_value') or 0.5):.2f}",
+                        "conf":       f"{float(d.get('confidence') or 0.0) * 100:.0f}",
+                        "user_value": f"{float(d.get('user_value') or 0.5):.2f}",
+                    }
+            return {"score": "0.50", "conf": "0", "user_value": "0.50"}
+
         out: list[dict[str, str]] = []
         for r in raw:
             drep_id = str(r.get("drep_id") or "")
@@ -371,6 +411,26 @@ class DrepMatchState(rx.State):
                 share_display = f"{share_pct:.3f}"
             else:
                 share_display = "0"
+
+            # axis ごとの evidence (GA タイトル付き) を flat field で持つ
+            # Reflex の Var 操作で扱いやすいよう axis 名を suffix にした dict 文字列で
+            evidence_dict = r.get("evidence_per_axis") or {}
+            evidence_by_axis: dict[str, list[dict[str, str]]] = {}
+            axis_info_by_axis: dict[str, dict[str, str]] = {}
+            for axis in _COMPASS_AXES:
+                items = evidence_dict.get(axis, []) if isinstance(evidence_dict, dict) else []
+                enriched: list[dict[str, str]] = []
+                for e in (items or []):
+                    pid = str(e.get("proposal_id") or "")
+                    enriched.append({
+                        "proposal_id": pid,
+                        "ga_title":    str(ga_titles.get(pid, pid[:24])),
+                        "vote":        str(e.get("vote") or ""),
+                        "direction":   f"{float(e.get('direction') or 0.5):.2f}",
+                        "reason":      str(e.get("reason") or "")[:200],
+                    })
+                evidence_by_axis[axis] = enriched
+                axis_info_by_axis[axis] = _axis_info(r, axis)
 
             out.append({
                 "drep_id":              drep_id,
@@ -388,9 +448,44 @@ class DrepMatchState(rx.State):
                 "amount_jpy":           jpy_d,
                 "amount_usd":           usd_d,
                 "share_pct":            share_display,
+                "evidence_by_axis":     evidence_by_axis,
+                "axis_info":            axis_info_by_axis,
             })
         self.results = out
         self.view = "results"
+
+    # ─── 透明性モーダル: axis chip クリックで開く ─────────────
+
+    def open_evidence_modal(self, drep_id: str, drep_name: str, label_key: str):
+        """axis chip クリックハンドラ。drep_id + axis i18n key から evidence を抽出して
+        モーダル state に反映 → モーダル表示 ON。"""
+        # i18n key "drep_match_axis_<axis>" から axis 名を抽出
+        axis = (label_key or "").split("_")[-1] if label_key else ""
+        if not axis:
+            return
+        # 対象カードを探す
+        card = next((r for r in (self.results or []) if r.get("drep_id") == drep_id), None)
+        if not card:
+            return
+        evidence_by_axis = card.get("evidence_by_axis") or {}
+        items = evidence_by_axis.get(axis, []) if isinstance(evidence_by_axis, dict) else []
+        info = (card.get("axis_info") or {}).get(axis, {}) if isinstance(card.get("axis_info"), dict) else {}
+
+        self.modal_drep_name = drep_name or drep_id[:24]
+        self.modal_axis_label_key = label_key
+        self.modal_axis_side_label = f"DRep スコア: {info.get('score', '?')} / あなた: {info.get('user_value', '?')}"
+        self.modal_axis_conf_pct = f"{info.get('conf', '0')}%"
+        self.modal_axis_vote_count = f"{len(items)} 票"
+        self.modal_evidence_items = list(items)
+        self.evidence_modal_open = True
+
+    def close_evidence_modal(self):
+        self.evidence_modal_open = False
+
+    def on_evidence_modal_open_change(self, is_open: bool):
+        """Radix Dialog の閉じる操作 (× / ESC / overlay クリック) で発火。"""
+        if not is_open:
+            self.evidence_modal_open = False
 
 
 # ─── UI パーツ ────────────────────────────────────────────────────────────────
@@ -1209,9 +1304,10 @@ def _social_link_icon(item) -> rx.Component:
     )
 
 
-def _axis_chip(label_key, scheme: str) -> rx.Component:
-    """軸スコアチップ (一致点 / 相違点 / 低信頼)。
+def _axis_chip(drep_id, drep_name, label_key, scheme: str) -> rx.Component:
+    """軸スコアチップ (一致点 / 相違点 / 低信頼)。クリックで evidence モーダルを開く。
 
+    drep_id / drep_name: クリックハンドラに渡すコンテキスト (どの DRep か)
     label_key: 7 axis i18n キー ("drep_match_axis_<axis>")
 
     scheme:
@@ -1226,27 +1322,141 @@ def _axis_chip(label_key, scheme: str) -> rx.Component:
         bg = "var(--tomato-3)"; border = "1px solid var(--tomato-7)"; color = "var(--tomato-12)"
     else:
         bg = "var(--gray-3)"; border = "1px solid var(--gray-7)"; color = "var(--gray-12)"
-    return rx.box(
+    return rx.el.button(
         rx.text(label, size="2", weight="medium", color=color,
                 style={"whiteSpace": "nowrap"}),
-        padding="4px 12px",
-        border_radius="999px",
-        background=bg,
-        border=border,
-        style={"display": "inline-flex"},
+        on_click=DrepMatchState.open_evidence_modal(drep_id, drep_name, label_key),
+        cursor="pointer",
+        style={
+            "display":      "inline-flex",
+            "alignItems":   "center",
+            "padding":      "4px 12px",
+            "borderRadius": "999px",
+            "background":   bg,
+            "border":       border,
+            "transition":   "transform 0.1s, filter 0.15s",
+        },
+        _hover={"transform": "translateY(-1px)", "filter": "brightness(1.05)"},
     )
 
 
-def _match_axis_chip(label_key) -> rx.Component:
-    return _axis_chip(label_key, "match")
+def _evidence_modal_row(item) -> rx.Component:
+    """evidence モーダル内の 1 行 (1 投票)。GA タイトルクリックで GA 詳細へ。"""
+    vote_color = rx.match(
+        item["vote"],
+        ("Yes", "var(--green-11)"),
+        ("No",  "var(--tomato-11)"),
+        "var(--gray-10)",
+    )
+    return rx.hstack(
+        # 投票結果 (Yes / No / Abstain)
+        rx.text(
+            item["vote"],
+            size="1", weight="bold", color=vote_color,
+            style={"width": "44px", "textAlign": "center", "flexShrink": "0"},
+        ),
+        # GA タイトル + リンク
+        rx.link(
+            rx.text(
+                item["ga_title"],
+                size="2", color="var(--gray-12)",
+                style={
+                    "overflow": "hidden", "textOverflow": "ellipsis",
+                    "whiteSpace": "nowrap",
+                },
+            ),
+            href="/governance/" + item["proposal_id"],
+            style={"textDecoration": "none", "flex": "1", "minWidth": "0"},
+            _hover={"color": "var(--amber-11)"},
+        ),
+        # axis タグの reasoning (1 行)
+        rx.text(
+            item["reason"],
+            size="1", color="var(--gray-10)",
+            style={
+                "overflow": "hidden", "textOverflow": "ellipsis",
+                "whiteSpace": "nowrap", "flex": "1.5", "minWidth": "0",
+            },
+        ),
+        spacing="3", align="center", width="100%",
+        padding="6px 0",
+        style={"borderBottom": "1px solid var(--gray-4)"},
+    )
 
 
-def _mismatch_axis_chip(label_key) -> rx.Component:
-    return _axis_chip(label_key, "mismatch")
+def _evidence_modal() -> rx.Component:
+    """axis chip クリックで開く透明性モーダル。
 
-
-def _lowconf_axis_chip(label_key) -> rx.Component:
-    return _axis_chip(label_key, "lowconf")
+    1 ページに 1 つだけマウントする (全カード共通で使い回す)。
+    開いている axis と DRep は DrepMatchState に保持される。
+    """
+    return rx.dialog.root(
+        rx.dialog.content(
+            rx.vstack(
+                # ヘッダ: DRep 名 + axis 名
+                rx.hstack(
+                    rx.icon("sparkles", size=18, color="var(--amber-11)"),
+                    rx.text(
+                        DrepMatchState.modal_drep_name,
+                        size="2", color="var(--gray-11)", weight="medium",
+                    ),
+                    rx.text("›", color="var(--gray-9)"),
+                    rx.text(
+                        AuthState.t[DrepMatchState.modal_axis_label_key],
+                        size="3", weight="bold", color="var(--gray-12)",
+                    ),
+                    spacing="2", align="center", wrap="wrap",
+                ),
+                # サブヘッダ: score + 信頼度 + 票数
+                rx.hstack(
+                    rx.text(
+                        DrepMatchState.modal_axis_side_label,
+                        size="1", color="var(--gray-11)",
+                    ),
+                    rx.text("·", color="var(--gray-8)"),
+                    rx.text(
+                        "信頼度 ", DrepMatchState.modal_axis_conf_pct,
+                        size="1", color="var(--gray-11)",
+                    ),
+                    rx.text("·", color="var(--gray-8)"),
+                    rx.text(
+                        "寄与 ", DrepMatchState.modal_axis_vote_count,
+                        size="1", color="var(--gray-11)",
+                    ),
+                    spacing="2", align="center", wrap="wrap",
+                ),
+                # 投票リスト
+                rx.cond(
+                    DrepMatchState.modal_evidence_items,
+                    rx.vstack(
+                        rx.foreach(
+                            DrepMatchState.modal_evidence_items.to(list[dict[str, str]]),
+                            _evidence_modal_row,
+                        ),
+                        spacing="0", width="100%",
+                        style={"maxHeight": "60vh", "overflowY": "auto"},
+                    ),
+                    rx.callout(
+                        "この axis に寄与した投票はありません (判断材料不足)。",
+                        icon="info", color_scheme="gray", size="1",
+                    ),
+                ),
+                # 閉じるボタン
+                rx.dialog.close(
+                    rx.button(
+                        "閉じる",
+                        variant="soft", color_scheme="gray", cursor="pointer",
+                        on_click=DrepMatchState.close_evidence_modal,
+                    ),
+                    style={"alignSelf": "flex-end"},
+                ),
+                spacing="3", align_items="stretch", width="100%",
+            ),
+            style={"maxWidth": "720px", "width": "92vw"},
+        ),
+        open=DrepMatchState.evidence_modal_open,
+        on_open_change=DrepMatchState.on_evidence_modal_open_change,
+    )
 
 
 def _match_result_card(r) -> rx.Component:
@@ -1402,7 +1612,10 @@ def _match_result_card(r) -> rx.Component:
                         size="2", color="var(--green-11)", weight="medium",
                         style={"flexShrink": "0"},
                     ),
-                    rx.foreach(r["matched_axes_csv"].split(","), _match_axis_chip),
+                    rx.foreach(
+                        r["matched_axes_csv"].split(","),
+                        lambda lk: _axis_chip(r["drep_id"], r["given_name"], lk, "match"),
+                    ),
                     spacing="2", align="center", wrap="wrap",
                 ),
                 rx.fragment(),
@@ -1416,7 +1629,10 @@ def _match_result_card(r) -> rx.Component:
                         size="2", color="var(--tomato-11)", weight="medium",
                         style={"flexShrink": "0"},
                     ),
-                    rx.foreach(r["mismatched_axes_csv"].split(","), _mismatch_axis_chip),
+                    rx.foreach(
+                        r["mismatched_axes_csv"].split(","),
+                        lambda lk: _axis_chip(r["drep_id"], r["given_name"], lk, "mismatch"),
+                    ),
                     spacing="2", align="center", wrap="wrap",
                 ),
                 rx.fragment(),
@@ -1431,7 +1647,10 @@ def _match_result_card(r) -> rx.Component:
                             size="2", color="var(--gray-11)", weight="medium",
                             style={"flexShrink": "0"},
                         ),
-                        rx.foreach(r["low_conf_axes_csv"].split(","), _lowconf_axis_chip),
+                        rx.foreach(
+                            r["low_conf_axes_csv"].split(","),
+                            lambda lk: _axis_chip(r["drep_id"], r["given_name"], lk, "lowconf"),
+                        ),
                         spacing="2", align="center", wrap="wrap",
                     ),
                     rx.text(
@@ -1805,6 +2024,8 @@ def governance_drep_match_page() -> rx.Component:
     return rx.box(
         login_modal(),
         drep_delegation_dialog(),
+        # 透明性モーダル (axis chip クリックで展開、1 ページに 1 度だけマウント)
+        _evidence_modal(),
         rx.vstack(
             # パンくず: ガバナンス > DRep 一覧 > マッチング診断
             breadcrumb(

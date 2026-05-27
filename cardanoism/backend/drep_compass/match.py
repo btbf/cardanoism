@@ -48,6 +48,9 @@ class MatchResult:
     low_confidence_axes: list[str] = field(default_factory=list)
     reasoning_disclosure_rate: float = 0.0
     analyzed_vote_count: int = 0
+    # v3 透明性: 各 axis に寄与した投票 (drep_profiles.evidence_json の生)
+    # {axis: [{proposal_id, vote, direction, reason}, ...]}
+    evidence_per_axis: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
 
 def _axis_similarity(uv: float, dv: float) -> float:
@@ -74,6 +77,10 @@ def calculate_drep_match(
         confidence = json.loads(drep_row.get("confidence_json") or "{}")
     except (TypeError, ValueError, json.JSONDecodeError):
         confidence = {}
+    try:
+        evidence = json.loads(drep_row.get("evidence_json") or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        evidence = {}
 
     details: list[AxisDetail] = []
     sum_weighted_effective = 0.0   # Σ (effective_sim × weight)
@@ -137,6 +144,7 @@ def calculate_drep_match(
         low_confidence_axes=low_conf,
         reasoning_disclosure_rate=float(drep_row.get("reasoning_disclosure_rate") or 0.0),
         analyzed_vote_count=int(drep_row.get("analyzed_vote_count") or 0),
+        evidence_per_axis=evidence if isinstance(evidence, dict) else {},
     )
 
 
