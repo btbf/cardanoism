@@ -1,5 +1,5 @@
 """drep_compass.questionnaire
-DRepマッチング診断 (新設計): 9 問の二者択一 + 「迷う」アンケート。
+DRepマッチング診断 v3: 7 問の二者択一 + 「迷う」アンケート (6 axis 対応)。
 
 各設問は 1〜2 axis に紐づき、回答は:
   1 (左)   → 0.0  (左端寄り)
@@ -38,17 +38,16 @@ def _q(q_id: str, key_base: str, axes: tuple[str, ...]) -> Question:
     )
 
 
-# 9 問。各設問は 1〜2 axis に紐づく。
+# 7 問 / 6 axis。Q4 (protocol) と Q5 (transparency) は v3 で削除済み。
+# q_id は番号維持 (gap あり) — 保存済み回答との互換性のため。
 QUESTIONS: tuple[Question, ...] = (
-    _q("q1",  "money_use",         ("treasury",)),
-    _q("q2",  "investment_target", ("priority",)),
-    _q("q3",  "trust_target",      ("org",)),
-    _q("q4",  "protocol_change",   ("protocol",)),
-    _q("q5",  "accountability",    ("transparency",)),
-    _q("q6",  "risk_appetite",     ("risk",)),
-    _q("q7",  "marketing_stance",  ("marketing",)),
-    _q("q8",  "drep_selection",    ("org",)),         # org の補完問
-    _q("q9",  "rationale_value",   ("transparency",)), # transparency の補完問
+    _q("q1", "money_use",         ("treasury",)),
+    _q("q2", "investment_target", ("priority",)),
+    _q("q3", "trust_target",      ("org",)),
+    _q("q6", "risk_appetite",     ("risk",)),
+    _q("q7", "marketing_stance",  ("marketing",)),
+    _q("q8", "drep_selection",    ("org",)),        # org の補完問
+    _q("q9", "rationale_value",   ("rationale",)),  # v3 で transparency → rationale 単独軸に
 )
 
 QUESTION_BY_ID: dict[str, Question] = {q.q_id: q for q in QUESTIONS}

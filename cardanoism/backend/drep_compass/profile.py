@@ -127,6 +127,9 @@ def _axis_direction_for_vote(
     """1 axis × 1 投票 → axis スコアへの寄与値 (0.0 / 1.0) または None。
 
     None の場合は「この投票はこの axis に寄与しない」(タグ無 or 不適合)。
+
+    注: rationale 軸はこの関数では扱わない (DRep プロパティ直接型のため、
+    compute_axis_scores で別経路で計算)。
     """
     if vote not in ("Yes", "No"):
         # Abstain は方向性 signal が弱いので除外 (analyzed_vote_count にはカウント)
@@ -134,6 +137,7 @@ def _axis_direction_for_vote(
 
     if axis == "treasury":
         # large 支出への Yes (攻め=0.0) / No (守り=1.0)
+        # v3 で「large」閾値は 1000 万 ADA 以上 (ai_client.py 側で定義)
         if tags.get("treasury_size") == "large":
             return 0.0 if vote == "Yes" else 1.0
         return None
@@ -160,21 +164,9 @@ def _axis_direction_for_vote(
         # 両方混在 or どちらでも無い (other / 空) は寄与なし
         return None
 
-    if axis == "protocol":
-        # hard_fork / param_change への Yes (革新=0.0) / No (安定=1.0)
-        if tags.get("protocol_change") in ("hard_fork", "param_change"):
-            return 0.0 if vote == "Yes" else 1.0
-        return None
-
     if axis == "marketing":
         # marketing_purpose=yes への Yes (推進=0.0) / No (抑制=1.0)
         if tags.get("marketing_purpose") == "yes":
-            return 0.0 if vote == "Yes" else 1.0
-        return None
-
-    if axis == "transparency":
-        # kpi_unclear への Yes (ゆるめ=0.0) / No (厳しめ=1.0)
-        if tags.get("kpi_clarity") == "unclear":
             return 0.0 if vote == "Yes" else 1.0
         return None
 
@@ -184,23 +176,30 @@ def _axis_direction_for_vote(
             return 0.0 if vote == "Yes" else 1.0
         return None
 
+    # rationale は別経路で計算 (compute_axis_scores 内)
+    # protocol / transparency は v3 で削除済み (GA tag は残るが集計対象外)
     return None
 
 
 def compute_axis_scores(
     votes_with_tags: list[dict[str, Any]],
 ) -> tuple[dict[str, float], dict[str, float], dict[str, list[dict[str, Any]]]]:
-    """投票 × GA タグから 7 axis のスコア + 信頼度 + 根拠を算出。
+    """投票 × GA タグから 6 axis のスコア + 信頼度 + 根拠を算出。
 
     - score      : 寄与投票の方向値 (0.0/1.0) の平均。寄与ゼロなら 0.5
     - confidence : 寄与投票数を最大 10 票で正規化 (10 票以上で 1.0)
     - evidence   : axis ごとの寄与投票リスト (全件、上限なし)
+
+    rationale 軸は DRep プロパティ型なので別経路で計算 (GA tag に依存しない)。
     """
     profile: dict[str, float] = {}
     confidence: dict[str, float] = {}
     evidence: dict[str, list[dict[str, Any]]] = {}
 
+    # ── GA tag 集計型 axis (rationale 以外) ──────────────────
     for axis in AXES:
+        if axis == "rationale":
+            continue  # 別経路で計算
         directions: list[float] = []
         ev_items: list[dict[str, Any]] = []
         for v in votes_with_tags:
@@ -227,19 +226,48 @@ def compute_axis_scores(
             confidence[axis] = min(1.0, len(directions) / 10.0)
         evidence[axis] = ev_items
 
+    # ── DRep プロパティ直接型: rationale 軸 ───────────────────
+    # score = DRep の rationale 公開率 (= rationale 文を書いた投票 / 全 Yes+No+Abstain)
+    # confidence = 投票数 >= 5 なら 1.0 (直接測定なので少数票でも信頼可)
+    # evidence = 全投票に has_rationale フラグを付与
+    voted = 0
+    with_rationale = 0
+    rationale_evidence: list[dict[str, Any]] = []
+    for v in votes_with_tags:
+        if v["vote"] not in ("Yes", "No", "Abstain"):
+            continue
+        voted += 1
+        has_r = bool((v.get("rationale") or "").strip())
+        if has_r:
+            with_rationale += 1
+        rationale_evidence.append({
+            "proposal_id": v["proposal_id"],
+            "vote":        v["vote"],
+            "direction":   1.0 if has_r else 0.0,
+            "reason":      "投票理由を公開" if has_r else "投票理由なし",
+        })
+
+    if voted == 0:
+        profile["rationale"] = 0.5
+        confidence["rationale"] = 0.0
+    else:
+        profile["rationale"] = with_rationale / voted
+        confidence["rationale"] = min(1.0, voted / 5.0)
+    evidence["rationale"] = rationale_evidence
+
     return profile, confidence, evidence
 
 
 def _axis_to_tag_key(axis: str) -> str:
-    """drep_compass axis 名 → governance_ai_analysis.axis_tags の reasoning キー。"""
+    """drep_compass axis 名 → governance_ai_analysis.axis_tags の reasoning キー。
+    rationale 軸は GA tag に依存しないので mapping 不要。
+    """
     return {
-        "treasury":     "treasury_size",
-        "priority":     "priority",
-        "org":          "org_recipient",
-        "protocol":     "protocol_change",
-        "marketing":    "marketing_purpose",
-        "transparency": "kpi_clarity",
-        "risk":         "risk_level",
+        "treasury":  "treasury_size",
+        "priority":  "priority",
+        "org":       "org_recipient",
+        "marketing": "marketing_purpose",
+        "risk":      "risk_level",
     }.get(axis, axis)
 
 

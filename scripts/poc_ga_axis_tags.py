@@ -70,8 +70,8 @@ You output STRICTLY this JSON structure (no extra text):
 # Classification rules
 
 ## treasury_size
-- "large" : Treasury withdrawal で総額 >= 100,000 ADA、または規模が大きい
-- "small" : Treasury withdrawal で総額 < 100,000 ADA
+- "large" : Treasury withdrawal で総額 >= 10,000,000 ADA (1000 万 ADA 以上)
+- "small" : Treasury withdrawal で総額 < 10,000,000 ADA
 - "n_a"   : Treasury 系ではない (ParameterChange / HardFork / InfoAction 等)
 
 ## priority (提案の目的軸)
