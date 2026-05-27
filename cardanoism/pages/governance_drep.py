@@ -205,17 +205,24 @@ class DrepMatchState(rx.State):
         return ""
 
     @rx.var
-    def current_left_i18n_key(self) -> str:
+    def current_context_i18n_key(self) -> str:
         idx = self.current_question
         if 0 <= idx < _COMPASS_QUESTION_TOTAL:
-            return _COMPASS_QUESTIONS[idx].left_i18n_key
+            return _COMPASS_QUESTIONS[idx].context_i18n_key
         return ""
 
     @rx.var
-    def current_right_i18n_key(self) -> str:
+    def current_pros_i18n_key(self) -> str:
         idx = self.current_question
         if 0 <= idx < _COMPASS_QUESTION_TOTAL:
-            return _COMPASS_QUESTIONS[idx].right_i18n_key
+            return _COMPASS_QUESTIONS[idx].pros_i18n_key
+        return ""
+
+    @rx.var
+    def current_cons_i18n_key(self) -> str:
+        idx = self.current_question
+        if 0 <= idx < _COMPASS_QUESTION_TOTAL:
+            return _COMPASS_QUESTIONS[idx].cons_i18n_key
         return ""
 
     @rx.var
@@ -1094,16 +1101,17 @@ def _drep_match_hero_cta() -> rx.Component:
 
 def _choice_button(
     level: int,
-    qualifier_key: str | None,
-    label,
+    label_key: str,
     scheme: str = "amber",
 ) -> rx.Component:
-    """5 段階 Likert 回答ボタン。
+    """5 段階 Likert (agree/disagree) ボタン。
 
-    level: 1 (強く左) / 2 (やや左) / 3 (中立) / 4 (やや右) / 5 (強く右)
-    qualifier_key: "強く" / "やや" 等を表示する i18n キー (中立は None)
-    label: 主ラベル (左右端ラベルまたは「迷う」)
-    scheme: "amber" (左右端 = 強く) / "soft_amber" (やや) / "gray" (中立)
+    level: 1 (強く反対) / 2 (やや反対) / 3 (中立) / 4 (やや賛成) / 5 (強く賛成)
+    label_key: 「強く反対」「やや反対」など全質問共通の i18n キー
+    scheme: "amber" (両端 = 強く) / "soft_amber" (やや) / "gray" (中立)
+
+    v4 では全質問で同じ 5 ボタンを表示 (universal Likert)。
+    質問ごとの左右ラベル変更は無し。
     """
     is_selected = DrepMatchState.current_answer == level
     if scheme == "gray":
@@ -1119,29 +1127,13 @@ def _choice_button(
         sel_text = "var(--amber-12)"
         unsel_border = "1.5px solid var(--gray-6)"
 
-    text_children = []
-    if qualifier_key:
-        text_children.append(
-            rx.text(
-                AuthState.t[qualifier_key],
-                size="1", weight="medium",
-                color=rx.cond(is_selected, sel_text, "var(--gray-10)"),
-                style={"opacity": "0.85", "marginBottom": "2px"},
-            ),
-        )
-    text_children.append(
+    return rx.el.button(
         rx.text(
-            label, size={"initial": "2", "sm": "3"}, weight="bold",
+            AuthState.t[label_key],
+            size={"initial": "2", "sm": "3"}, weight="bold",
             color=rx.cond(is_selected, sel_text, "var(--gray-12)"),
             style={"whiteSpace": "normal", "textAlign": "center",
                    "lineHeight": "1.3"},
-        )
-    )
-
-    return rx.el.button(
-        rx.vstack(
-            *text_children,
-            spacing="0", align="center",
         ),
         on_click=DrepMatchState.set_answer(level),
         cursor="pointer",
@@ -1150,12 +1142,12 @@ def _choice_button(
             "borderRadius": "12px",
             "background":   rx.cond(is_selected, sel_bg, "transparent"),
             "border":       rx.cond(is_selected, f"2px solid {sel_border}", unsel_border),
-            "minHeight":    "72px",
+            "minHeight":    "60px",
             "flex":         "1 1 calc(50% - 6px)",
             "transition":   "background 0.15s, border-color 0.15s, transform 0.15s",
             "@media (min-width: 768px)": {
-                "padding":   "18px 12px",
-                "minHeight": "92px",
+                "padding":   "16px 12px",
+                "minHeight": "70px",
                 "flex":      "1 1 calc(20% - 10px)",
             },
         },
@@ -1223,19 +1215,80 @@ def _quiz_view() -> rx.Component:
                 weight="bold", color="var(--gray-12)",
                 style={"lineHeight": "1.5", "textAlign": "center"},
             ),
-            # 5 段階 Likert (強く左 / やや左 / 中立 / やや右 / 強く右)
+            # 質問の論点 (v4)
+            rx.box(
+                rx.hstack(
+                    rx.text(
+                        AuthState.t["drep_match_q_context_label"],
+                        size="1", weight="bold", color="var(--amber-11)",
+                        style={"whiteSpace": "nowrap"},
+                    ),
+                    rx.text(
+                        AuthState.t[DrepMatchState.current_context_i18n_key],
+                        size={"initial": "2", "sm": "3"},
+                        color="var(--gray-11)",
+                        style={"lineHeight": "1.7"},
+                    ),
+                    spacing="2", align="start", wrap="wrap",
+                ),
+                padding="12px 16px",
+                border_radius="8px",
+                background="var(--amber-2)",
+                border="1px solid var(--amber-5)",
+                width="100%",
+            ),
+            # 5 段階 Likert agree/disagree (universal labels)
             rx.hstack(
-                _choice_button(1, "drep_match_answer_strong_left",
-                               AuthState.t[DrepMatchState.current_left_i18n_key], "amber"),
-                _choice_button(2, "drep_match_answer_slight_left",
-                               AuthState.t[DrepMatchState.current_left_i18n_key], "soft_amber"),
-                _choice_button(3, None,
-                               AuthState.t["drep_match_answer_neutral"], "gray"),
-                _choice_button(4, "drep_match_answer_slight_right",
-                               AuthState.t[DrepMatchState.current_right_i18n_key], "soft_amber"),
-                _choice_button(5, "drep_match_answer_strong_right",
-                               AuthState.t[DrepMatchState.current_right_i18n_key], "amber"),
+                _choice_button(1, "drep_match_answer_strongly_disagree", "amber"),
+                _choice_button(2, "drep_match_answer_slightly_disagree", "soft_amber"),
+                _choice_button(3, "drep_match_answer_neutral",           "gray"),
+                _choice_button(4, "drep_match_answer_slightly_agree",    "soft_amber"),
+                _choice_button(5, "drep_match_answer_strongly_agree",    "amber"),
                 spacing="2", wrap="wrap", justify="center", width="100%", padding_y="6px",
+            ),
+            # 賛成派の主張 / 反対派の主張 (v4) - 横並びだがモバイルは縦に wrap
+            rx.hstack(
+                rx.box(
+                    rx.vstack(
+                        rx.text(
+                            AuthState.t["drep_match_q_pros_label"],
+                            size="1", weight="bold", color="var(--green-11)",
+                        ),
+                        rx.text(
+                            AuthState.t[DrepMatchState.current_pros_i18n_key],
+                            size={"initial": "1", "sm": "2"},
+                            color="var(--gray-12)",
+                            style={"lineHeight": "1.7", "whiteSpace": "pre-line"},
+                        ),
+                        spacing="1", align="start", width="100%",
+                    ),
+                    padding="10px 14px",
+                    border_radius="8px",
+                    background=rx.color_mode_cond("var(--green-2)", "rgba(34,197,94,0.06)"),
+                    border="1px solid var(--green-5)",
+                    style={"flex": "1 1 calc(50% - 6px)", "minWidth": "0"},
+                ),
+                rx.box(
+                    rx.vstack(
+                        rx.text(
+                            AuthState.t["drep_match_q_cons_label"],
+                            size="1", weight="bold", color="var(--tomato-11)",
+                        ),
+                        rx.text(
+                            AuthState.t[DrepMatchState.current_cons_i18n_key],
+                            size={"initial": "1", "sm": "2"},
+                            color="var(--gray-12)",
+                            style={"lineHeight": "1.7", "whiteSpace": "pre-line"},
+                        ),
+                        spacing="1", align="start", width="100%",
+                    ),
+                    padding="10px 14px",
+                    border_radius="8px",
+                    background=rx.color_mode_cond("var(--tomato-2)", "rgba(229,72,77,0.06)"),
+                    border="1px solid var(--tomato-5)",
+                    style={"flex": "1 1 calc(50% - 6px)", "minWidth": "0"},
+                ),
+                spacing="3", wrap="wrap", align="stretch", width="100%",
             ),
             # 重要視 toggle
             rx.hstack(

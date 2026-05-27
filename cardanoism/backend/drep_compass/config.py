@@ -11,7 +11,7 @@ ANALYSIS_VERSION = "match-v3"
 # アンケート定義識別子
 # v3: 7 問 / 6 axis (Q4 protocol, Q5 transparency 削除、rationale 軸追加)。
 # match-v2 の保存済み回答とは互換性が無いため、bump して pre-fill を抑止する。
-QUESTIONNAIRE_VERSION = "match-v3.1"
+QUESTIONNAIRE_VERSION = "match-v4"
 
 # ── マッチング (match.py) ──────────────────────────────────
 # 重要マーク済みの問の axis の重み倍率

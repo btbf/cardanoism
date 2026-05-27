@@ -1,57 +1,63 @@
 # DRep マッチング診断
 
-ユーザーが 8 問の二者択一（+「迷う」）に答えるだけで、自分の価値観に
+ユーザーが 8 問の Likert (強く反対〜強く賛成) に答えるだけで、自分の価値観に
 合う Cardano DRep を提案する診断機能。Cardano に詳しくない委任者でも
 直感的に DRep を選べることを目的とする。
 
-> **設計方針**: ユーザー回答 / DRep プロファイル共に **7 axis を 0.0〜1.0** の
-> 同じスケールで表現し、axis 距離 + 信頼度重み付けで類似度を出す。
-> DRep プロファイルは **AI が投票履歴 + rationale を直接読んで生成**
-> （旧設計の gov_action_tags ルール集計は廃止）。
+> **設計方針 (v4: outcome-first)**: ユーザー回答 / DRep プロファイル共に
+> **8 axis を 0.0〜1.0** の同じスケールで表現し、axis 距離 + 信頼度重み付けで
+> 類似度を出す。1 axis = 1 つの観察可能な DRep の振る舞い に対応し、
+> 全 axis が独立 (直交) になるよう設計。
+>
+> DRep プロファイルは **GA pre-classification** (`governance_ai_analysis.axis_tags_json`)
+> を集計して算出。AI は GA 単位でファクトと軸タグ付けを行い、DRep 単位の判定はしない。
 
 ---
 
-## 1. 7 axis モデル (v3)
+## 1. 8 axis モデル (v4)
 
-v3 では旧 v2 の `protocol` / `transparency` 軸を削除し、代わりに
-DRep の rationale 公開率を測る `rationale` 軸を追加した。
+各 axis は「DRep の観察可能な 1 つの振る舞い」と 1:1 対応する。
 
-理由:
-- `protocol`: 「内容を吟味した上での Yes/No」と「機械的賛成」の区別が
-  集計式では困難
-- `transparency`: 提案側の KPI 厳格度を測る軸として識別困難
-- `rationale`: DRep プロパティの直接測定で透明性が高い
-
-注: GA axis_tags 側では `protocol_change` / `kpi_clarity` の生成は維持
-(将来の他用途のため温存)。drep_compass 集計では未使用。
-
-各 DRep / 各ユーザーは 7 次元のベクトルで表現される。値は全て 0.0〜1.0
-（0.5 = 中立）。
-
-| axis           | 0.0 側                                  | 1.0 側                              |
-|----------------|----------------------------------------|------------------------------------|
-| `treasury`     | 攻め（大型支出 ≥1000 万 ADA に積極）     | 守り（大型支出に慎重）              |
-| `priority`     | 大規模コア開発・R&D・保守                | 営利可能なマスアダプション開発       |
-| `tech_origin`  | IO 主導コア技術                         | コミュニティ発の新興企業 tech       |
-| `org`          | 既存組織（IO / CF / Emurgo / Intersect / Midnight）| 分散配分（新興チーム / 個人）   |
-| `risk`         | 大胆（実験的 / 高リスク許容）            | 慎重（不確実性に No）               |
-| `marketing`    | 推進（PR / イベント支援）                | 抑制（プロダクト / 開発優先）        |
-| `rationale`    | ゆるめ（DRep が rationale を非公開でも可）| 厳格（DRep が必ず rationale 公開） |
+| axis                     | 値 0.0 (賛成度低) ↔ 値 1.0 (賛成度高)                             | 集計ソース                                              |
+|--------------------------|--------------------------------------------------------------|--------------------------------------------------------|
+| `large_treasury`         | 大型 Treasury (≥1000 万 ADA) 支出への Yes 率                    | GA tag: `treasury_size = large`                        |
+| `incumbent_org`          | IO / CF / Emurgo / Intersect / Midnight 関連提案への Yes 率      | GA tag: `orgs ∋ {IO, CF, Emurgo, Intersect, Midnight}` |
+| `new_team`               | 新興チーム / 個人開発者への配分提案への Yes 率                   | GA tag: `orgs` が空 or `recipient_type = new`          |
+| `technical`              | 技術基盤 / コア R&D 系提案への Yes 率                            | GA tag: `priority = technical`                         |
+| `adoption`               | dApp / DeFi / Wallet など実用層への Yes 率                       | GA tag: `priority = adoption`                          |
+| `marketing`              | マーケ / PR / イベント予算への Yes 率                            | GA tag: `priority = marketing`                         |
+| `protocol_change`        | HF / プロトコルパラメータ変更への Yes 率                         | GA `action_type` HardForkInitiation / ParameterChange  |
+| `rationale_disclosure`   | DRep が投票理由を公開する頻度                                    | DRep プロパティ `reasoning_disclosure_rate` を直接利用 |
 
 定義: [taxonomy.py](../cardanoism/backend/drep_compass/taxonomy.py)
+
+**v3 からの変更点 (outcome-first 再設計)**:
+- 旧 `treasury` (攻め/守り) → `large_treasury` (Yes 率に統一)
+- 旧 `priority` (技術/採用 1 軸) → `technical` / `adoption` / `marketing` の 3 独立軸に分解
+- 旧 `tech_origin` / `org` / `risk` の重複・対立構造を解消 → `incumbent_org` / `new_team` に再構成
+- `protocol_change` 軸を復活 (action_type ベースで判定容易)
+- `rationale_disclosure` (旧 `rationale`) は DRep プロパティ直接参照に固定 (集計不要)
 
 ---
 
 ## 2. ユーザー側フロー
 
 1. `/governance/drep` の「マッチング診断」セクションで開始
-2. 8 問 5 段階 Likert (answer=1/2/3/4/5 → 値 0.0 / 0.25 / 0.5 / 0.75 / 1.0)
-3. 最大 3 つまで「重要マーク」を付与可（該当 axis の重み × 1.5）
-4. 回答送信 → `build_user_vector` で 7 axis の平均ベクトル化
-5. `list_matches` が quality filter を通った DRep プロファイルとの類似度（axis 重み付き）でソート
-6. 上位 10 件をカード表示 + AI 生成のサマリ 1 行を併記
+2. 8 問 5 段階 Likert (強く反対=0.0 / やや反対=0.25 / 中立=0.5 / やや賛成=0.75 / 強く賛成=1.0)
+3. q_id = axis 名で 1:1 マッピング (回答値がそのまま axis 値)
+4. 最大 3 つまで「重要マーク」を付与可（該当 axis の重み × 1.5）
+5. 回答送信 → `build_user_vector` で 8 axis ベクトル化
+6. `list_matches` が quality filter を通った DRep プロファイルとの類似度（axis 重み付き）でソート
+7. 上位 10 件をカード表示 + 1 行サマリ + 透明性モーダル (axis chip クリックで evidence 表示)
 
-**quality filter** (config.py):
+**質問カードの構成 (v4)**:
+- 質問本文 (「○○すべきだ」の価値観表明スタイル)
+- 論点 (賛否の対立構造の解説)
+- 5 段階 Likert ボタン (全質問共通ラベル: 強く反対 / やや反対 / 中立 / やや賛成 / 強く賛成)
+- 賛成派の主張 / 反対派の主張 (両論併記)
+- 重要マーク toggle
+
+**quality filter** ([config.py](../cardanoism/backend/drep_compass/config.py)):
 - `analyzed_vote_count >= MIN_ANALYZED_VOTE_COUNT` (default 5) — 投票実績がある程度ある
 - `reasoning_disclosure_rate >= MIN_REASONING_DISCLOSURE_RATE` (default 0.30) — 投票理由を公開している
 - `REQUIRE_GIVEN_NAME=True` — CIP-119 自己紹介がある
@@ -64,11 +70,11 @@ liquid democracy 的に「質」で並べる設計。
 
 ---
 
-## 3. DRep プロファイル生成 (AI)
+## 3. DRep プロファイル生成 (集計のみ、AI 不要)
 
-`compass_profile_all` cron が active DRep 全件を OpenAI で分析し、
-`drep_profiles` テーブルに 7 axis スコア + 信頼度 + 1 行サマリ + 根拠
-を保存する。
+`compass_profile_all` cron が active DRep 全件について
+`governance_ai_analysis.axis_tags_json` を集計し、
+`drep_profiles` テーブルに 8 axis スコア + 信頼度 + evidence を保存する。
 
 ```
    cron (daily 06:45)
@@ -78,31 +84,22 @@ liquid democracy 的に「質」で並べる設計。
    recalculate_all_drep_profiles
         │
         └─ for each active DRep:
-              ├─ _fetch_drep_votes_with_tags (proposal_votes JOIN governance_ai_analysis)
+              ├─ _fetch_drep_votes_with_tags
+              │     (proposal_votes JOIN governance_ai_analysis.axis_tags_json)
               ├─ compute_axis_scores (純粋ロジック、AI 不要)
-              │     - profile     : 7 axis × 0.0〜1.0 (集計)
-              │     - confidence  : 7 axis × 0.0〜1.0 (寄与投票数 / 10)
-              │     - evidence    : axis ごとの寄与投票リスト (上限なし、全件)
-              │
-              ├─ analyze_drep_v3_summary (OpenAI gpt-5.4-mini)
-              │     - 集計結果 (axis スコア) を渡してナラティブ要約を生成
-              │     - summary     : 日本語 1 文 (80 文字以内)
-              │     - summary_en  : 英語 1 文 (160 ASCII 文字以内)
-              │
+              │     - profile     : 8 axis × 0.0〜1.0
+              │     - confidence  : 寄与投票数 / 10 で 0.0〜1.0 にクリップ
+              │     - evidence    : axis ごとの寄与投票リスト
+              │     ※ rationale_disclosure は dreps.reasoning_disclosure_rate を直接代入
               └─ _upsert drep_profiles
 ```
 
-集計は決定論的 (同じデータからは必ず同じスコア)。AI は最後の要約生成のみ。
+集計は決定論的 (同じデータからは必ず同じスコア)。
+GA 単位のタグ付けは `ga_ai_worker.py` で既に処理済 ([ga-ai-analysis-backend.md](ga-ai-analysis-backend.md))。
 
-AI 呼び出し: [ai_client.py:analyze_drep_v3_summary](../cardanoism/backend/ai_client.py)
 集計ロジック: [profile.py:compute_axis_scores](../cardanoism/backend/drep_compass/profile.py)
 
-**コスト目安**: 1 DRep ≒ 入力 3.5K + 出力 1.8K tokens ≒ $0.01。
-active 350〜400 件で 1 回 $3〜$5。日次 fallback として cron 設定。
-
-**JSON truncation 対策**:
-- `max_output_tokens = 4000`
-- system prompt で `evidence` を axis あたり最大 3 件 / `reason` 120 文字 / `summary` 80 文字に制限
+**コスト**: drep_compass 自体は AI 呼び出しなし。GA 側の AI コストは [ga-ai-analysis-backend.md](ga-ai-analysis-backend.md) 参照。
 
 ---
 
@@ -113,24 +110,23 @@ active 350〜400 件で 1 回 $3〜$5。日次 fallback として cron 設定。
 | 列                          | 説明                                              |
 |----------------------------|---------------------------------------------------|
 | `drep_id`                  | PRIMARY KEY                                       |
-| `profile_json`             | 7 axis スコア (JSON, 0.0〜1.0)                    |
-| `confidence_json`          | 7 axis 信頼度 (JSON, 0.0〜1.0)                    |
-| `summary`                  | AI 生成サマリ (日本語、1 行)                      |
-| `summary_en`               | AI 生成サマリ (英語、1 行) — migration 024 で追加 |
+| `profile_json`             | 8 axis スコア (JSON, 0.0〜1.0)                    |
+| `confidence_json`          | 8 axis 信頼度 (JSON, 0.0〜1.0)                    |
+| `summary` / `summary_en`   | 任意のナラティブサマリ (v4 では空でも可)          |
 | `evidence_json`            | axis ごとの根拠投票 (JSON)                        |
-| `participation_rate`       | v2 では常に 1.0 (実投票のみが母数)                |
-| `reasoning_disclosure_rate`| 投票理由公開率 0.0〜1.0                           |
-| `analyzed_vote_count`      | 分析した Yes/No/Abstain 票数                      |
-| `analysis_version`         | `'match-v2'`                                      |
-| `calculated_at`            | AI 分析実行時刻                                   |
+| `participation_rate`       | 常に 1.0 (実投票のみが母数)                       |
+| `reasoning_disclosure_rate`| 投票理由公開率 0.0〜1.0 (= rationale_disclosure 軸) |
+| `analyzed_vote_count`      | 分析した Yes/No 票数                              |
+| `analysis_version`         | `'match-v3'` (config の `ANALYSIS_VERSION`)       |
+| `calculated_at`            | 集計実行時刻                                      |
 
 ### user_drep_compass_answers
 
 | 列                      | 説明                                       |
 |------------------------|--------------------------------------------|
-| `answer_json`          | 8 問の 1/2/3 回答 (JSON)                   |
+| `answer_json`          | 8 問の 1〜5 回答 (JSON)                    |
 | `importance_json`      | 重要マーク q_id リスト (最大 3)            |
-| `questionnaire_version`| `'match-v2'`                               |
+| `questionnaire_version`| `'match-v4'` — 旧バージョン回答は pre-fill されない |
 
 ログイン中なら `user_id`、未ログインなら `session_id` で保存。
 
@@ -138,7 +134,7 @@ active 350〜400 件で 1 回 $3〜$5。日次 fallback として cron 設定。
 
 ## 5. 運用コマンド
 
-### 全 active DRep 再分析（OpenAI コスト発生）
+### 全 active DRep 再集計 (AI コストなし)
 
 ```bash
 infisical run --env=mainnet -- python notify_worker.py --event compass_profile_all
@@ -146,7 +142,7 @@ infisical run --env=mainnet -- python notify_worker.py --event compass_profile_a
 
 cron 自動: `45 6 * * *` (daily) — [deploy/cron.d-cardanoism-notify](../deploy/cron.d-cardanoism-notify)
 
-### 1 DRep のみ単体分析
+### 1 DRep のみ単体集計
 
 ```bash
 infisical run --env=mainnet -- python -c "
@@ -163,9 +159,15 @@ infisical run --env=mainnet -- python notify_worker.py --event compass_status
 ```
 
 主な観点:
-- `drep_status = 'active'`: AI 分析の対象母数
-- `JOIN 一致 DRep 数`: 投票実績ある active DRep（= 分析可能件数）
-- `analyzed_vote_count >= 3`: マッチング候補として表示可能な DRep 数
+- `drep_status = 'active'`: 集計対象母数
+- `JOIN 一致 DRep 数`: 投票実績ある active DRep
+- `analyzed_vote_count >= 5`: マッチング候補として表示可能な DRep 数
+
+### v3.x → v4 への移行
+
+`QUESTIONNAIRE_VERSION = "match-v4"` に bump 済。旧 v2/v3 で保存された回答は
+pre-fill されないため、ユーザーは再回答が必要。drep_profiles の `analysis_version`
+も v4 axis 構成で再生成するため、初回デプロイ後に `compass_profile_all` を 1 回手動実行。
 
 ---
 
@@ -173,20 +175,19 @@ infisical run --env=mainnet -- python notify_worker.py --event compass_status
 
 | 定数                            | 値           | 説明                              |
 |--------------------------------|--------------|-----------------------------------|
-| `ANALYSIS_VERSION`             | `match-v2`   | profile スキーマ識別子            |
-| `QUESTIONNAIRE_VERSION`        | `match-v2`   | 質問セット識別子                  |
+| `ANALYSIS_VERSION`             | `match-v3`   | profile スキーマ識別子            |
+| `QUESTIONNAIRE_VERSION`        | `match-v4`   | 質問セット識別子                  |
 | `MIN_ANALYZED_VOTE_COUNT`      | `5`          | quality filter: 最小投票実績数    |
 | `MIN_REASONING_DISCLOSURE_RATE`| `0.30`       | quality filter: 投票理由公開率の下限 |
 | `REQUIRE_GIVEN_NAME`           | `True`       | quality filter: CIP-119 自己紹介必須 |
 | `WEIGHT_IMPORTANT`             | `1.5`        | 重要マーク axis の重み倍率        |
 | `MAX_IMPORTANT_AXES`           | `3`          | 1 ユーザーが付けられる重要マーク数 |
 | `DEFAULT_MATCH_LIMIT`          | `10`         | 結果表示件数                      |
-| `LOW_CONFIDENCE`               | `0.2`        | 「判断材料が少ない」と表示する閾値 |
 
 ---
 
 ## 7. 関連ドキュメント
 
 - 通常の Koios 同期: [koios-polling-backend.md](koios-polling-backend.md)
-- GA 自体の AI 分析（マッチング診断とは別系統）: [ga-ai-analysis-backend.md](ga-ai-analysis-backend.md)
+- GA 自体の AI 分析（マッチング診断の前段、axis_tags_json 生成）: [ga-ai-analysis-backend.md](ga-ai-analysis-backend.md)
 - 初期セットアップ: [initial-setup.md](initial-setup.md)

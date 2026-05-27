@@ -124,104 +124,96 @@ def _axis_direction_for_vote(
     vote: str,
     tags: dict[str, Any],
 ) -> float | None:
-    """1 axis × 1 投票 → axis スコアへの寄与値 (0.0 / 1.0) または None。
+    """1 axis × 1 投票 → axis スコアへの寄与値 (0.0 = No / 1.0 = Yes) または None。
+
+    v4 設計:
+    - 各 axis = 「該当する GA への Yes 率」を測る
+    - Yes → 1.0、No → 0.0 でカウント、寄与全件を平均すると Yes 率になる
+    - 該当しない GA (tag 不一致) は None で寄与しない
 
     None の場合は「この投票はこの axis に寄与しない」(タグ無 or 不適合)。
 
-    注: rationale 軸はこの関数では扱わない (DRep プロパティ直接型のため、
+    注: rationale_disclosure 軸はこの関数では扱わない (DRep プロパティ直接型のため、
     compute_axis_scores で別経路で計算)。
     """
     if vote not in ("Yes", "No"):
         # Abstain は方向性 signal が弱いので除外 (analyzed_vote_count にはカウント)
         return None
 
-    if axis == "treasury":
-        # large 支出への Yes (攻め=0.0) / No (守り=1.0)
-        # v3 で「large」閾値は 1000 万 ADA 以上 (ai_client.py 側で定義)
+    # 共通: Yes → 1.0 / No → 0.0 → 平均すると Yes 率
+    yes_value = 1.0 if vote == "Yes" else 0.0
+
+    if axis == "large_treasury":
+        # 1000 万 ADA 超 Treasury 提案への Yes 率
         if tags.get("treasury_size") == "large":
-            return 0.0 if vote == "Yes" else 1.0
+            return yes_value
         return None
 
-    if axis == "priority":
-        # technical Yes → 0.0 / adoption Yes → 1.0 / No 投票は ambiguous で除外
-        p = tags.get("priority")
-        if vote == "Yes" and p == "technical":
-            return 0.0
-        if vote == "Yes" and p == "adoption":
-            return 1.0
-        return None
-
-    if axis == "tech_origin":
-        # 「IO 主導コア R&D」 vs 「コミュニティ発の新興企業の technical 開発」を区別。
-        # priority=technical でかつ:
-        #   - org_recipient が big5 系 (IO/CF/Emurgo/Intersect/Midnight) → IO 派 (0.0)
-        #   - org_recipient が new_team / individual → コミュ発 tech (1.0)
-        # この組合せに該当しない GA はこの axis に寄与しない。
-        # 「priority=technical」の GA に対する投票だけが意味を持つ
-        # (adoption GA は tech_origin の判定対象外)。
-        if tags.get("priority") != "technical":
-            return None
+    if axis == "incumbent_org":
+        # 中核 5 組織 (IO/CF/Emurgo/Intersect/Midnight) への Yes 率
         orgs = tags.get("org_recipient") or []
         if not isinstance(orgs, list):
             return None
-        has_big5 = any(o in _BIG5_ORGS for o in orgs)
-        has_dist = any(o in _DISTRIBUTED_ORGS for o in orgs)
-        if has_big5 and not has_dist:
-            # IO core tech GA: Yes = IO 派 (0.0) / No = コミュ tech 派 (1.0)
-            return 0.0 if vote == "Yes" else 1.0
-        if has_dist and not has_big5:
-            # community tech GA: Yes = コミュ tech 派 (1.0) / No = IO 派 (0.0)
-            return 1.0 if vote == "Yes" else 0.0
+        if any(o in _BIG5_ORGS for o in orgs):
+            return yes_value
         return None
 
-    if axis == "org":
+    if axis == "new_team":
+        # 新興チーム / 個人開発者への Yes 率
         orgs = tags.get("org_recipient") or []
         if not isinstance(orgs, list):
             return None
-        has_big5 = any(o in _BIG5_ORGS for o in orgs)
-        has_dist = any(o in _DISTRIBUTED_ORGS for o in orgs)
-        if has_big5 and not has_dist:
-            return 0.0 if vote == "Yes" else 1.0  # Yes=既存組織支持, No=拒否
-        if has_dist and not has_big5:
-            return 1.0 if vote == "Yes" else 0.0  # Yes=分散支持, No=拒否
-        # 両方混在 or どちらでも無い (other / 空) は寄与なし
+        if any(o in _DISTRIBUTED_ORGS for o in orgs):
+            return yes_value
+        return None
+
+    if axis == "technical":
+        # 技術系 (priority=technical) への Yes 率
+        if tags.get("priority") == "technical":
+            return yes_value
+        return None
+
+    if axis == "adoption":
+        # 採用拡大系 (priority=adoption) への Yes 率
+        if tags.get("priority") == "adoption":
+            return yes_value
         return None
 
     if axis == "marketing":
-        # marketing_purpose=yes への Yes (推進=0.0) / No (抑制=1.0)
+        # マーケ系 (marketing_purpose=yes) への Yes 率
         if tags.get("marketing_purpose") == "yes":
-            return 0.0 if vote == "Yes" else 1.0
+            return yes_value
         return None
 
-    if axis == "risk":
-        # risk_level=high への Yes (大胆=0.0) / No (慎重=1.0)
-        if tags.get("risk_level") == "high":
-            return 0.0 if vote == "Yes" else 1.0
+    if axis == "protocol_change":
+        # HF / param 変更への Yes 率
+        if tags.get("protocol_change") in ("hard_fork", "param_change"):
+            return yes_value
         return None
 
-    # rationale は別経路で計算 (compute_axis_scores 内)
-    # protocol / transparency は v3 で削除済み (GA tag は残るが集計対象外)
+    # rationale_disclosure は別経路で計算 (compute_axis_scores 内)
     return None
 
 
 def compute_axis_scores(
     votes_with_tags: list[dict[str, Any]],
 ) -> tuple[dict[str, float], dict[str, float], dict[str, list[dict[str, Any]]]]:
-    """投票 × GA タグから 6 axis のスコア + 信頼度 + 根拠を算出。
+    """投票 × GA タグから 8 axis (v4) のスコア + 信頼度 + 根拠を算出。
 
-    - score      : 寄与投票の方向値 (0.0/1.0) の平均。寄与ゼロなら 0.5
+    - score      : 寄与投票の Yes 率 (0.0=全 No / 1.0=全 Yes)。寄与ゼロなら 0.5
     - confidence : 寄与投票数を最大 10 票で正規化 (10 票以上で 1.0)
     - evidence   : axis ごとの寄与投票リスト (全件、上限なし)
 
-    rationale 軸は DRep プロパティ型なので別経路で計算 (GA tag に依存しない)。
+    rationale_disclosure 軸は DRep プロパティ型なので別経路で計算
+    (GA tag に依存しない)。
     """
     profile: dict[str, float] = {}
     confidence: dict[str, float] = {}
     evidence: dict[str, list[dict[str, Any]]] = {}
 
-    # ── GA tag 集計型 axis (rationale 以外) ──────────────────
+    # ── GA tag 集計型 axis (rationale_disclosure 以外) ──────
     for axis in AXES:
-        if axis == "rationale":
+        if axis == "rationale_disclosure":
             continue  # 別経路で計算
         directions: list[float] = []
         ev_items: list[dict[str, Any]] = []
@@ -249,7 +241,7 @@ def compute_axis_scores(
             confidence[axis] = min(1.0, len(directions) / 10.0)
         evidence[axis] = ev_items
 
-    # ── DRep プロパティ直接型: rationale 軸 ───────────────────
+    # ── DRep プロパティ直接型: rationale_disclosure 軸 ──────
     # score = DRep の rationale 公開率 (= rationale 文を書いた投票 / 全 Yes+No+Abstain)
     # confidence = 投票数 >= 5 なら 1.0 (直接測定なので少数票でも信頼可)
     # evidence = 全投票に has_rationale フラグを付与
@@ -271,29 +263,28 @@ def compute_axis_scores(
         })
 
     if voted == 0:
-        profile["rationale"] = 0.5
-        confidence["rationale"] = 0.0
+        profile["rationale_disclosure"] = 0.5
+        confidence["rationale_disclosure"] = 0.0
     else:
-        profile["rationale"] = with_rationale / voted
-        confidence["rationale"] = min(1.0, voted / 5.0)
-    evidence["rationale"] = rationale_evidence
+        profile["rationale_disclosure"] = with_rationale / voted
+        confidence["rationale_disclosure"] = min(1.0, voted / 5.0)
+    evidence["rationale_disclosure"] = rationale_evidence
 
     return profile, confidence, evidence
 
 
 def _axis_to_tag_key(axis: str) -> str:
     """drep_compass axis 名 → governance_ai_analysis.axis_tags の reasoning キー。
-    rationale 軸は GA tag に依存しないので mapping 不要。
-    tech_origin 軸は org_recipient + priority のクロスで判定するため、
-    reasoning は org_recipient 側を借りる (両方とも見て決まる)。
+    rationale_disclosure 軸は GA tag に依存しないので mapping 不要。
     """
     return {
-        "treasury":    "treasury_size",
-        "priority":    "priority",
-        "tech_origin": "org_recipient",
-        "org":         "org_recipient",
-        "marketing":   "marketing_purpose",
-        "risk":        "risk_level",
+        "large_treasury": "treasury_size",
+        "incumbent_org":  "org_recipient",
+        "new_team":       "org_recipient",
+        "technical":      "priority",
+        "adoption":       "priority",
+        "marketing":      "marketing_purpose",
+        "protocol_change": "protocol_change",
     }.get(axis, axis)
 
 
