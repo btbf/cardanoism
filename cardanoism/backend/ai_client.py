@@ -232,35 +232,38 @@ Output ONLY this JSON object with no extra text:
 - "small" : Treasury withdrawal で総額 < 10,000,000 ADA
 - "n_a"   : Treasury 系ではない (ParameterChange / HardFork / InfoAction 等)
 
-### priority (提案の目的軸)
-**technical の定義は厳しく**。Input Output (IO / IOG / IOHK) が主導する
-コア・プロトコル研究 / 合意層 / 暗号 / Hydra・Mithril・Leios 等の
-プロトコル仕様策定・実装、Cardano ノード本体の保守。
-IO 公式委託先 (例: Tweag が Peras を契約で実装する) も含む。
+### priority (提案の内容軸 — 「予算の使い道がコア技術か実用層か」)
+**内容のみで判定する**。誰が作る / 受け取るかは org_recipient で別軸として扱うため、
+ここでは混ぜない。作り手が IO であっても独立チーム (Pragma 等) であっても、
+内容が「コア技術 / 基盤レベル」なら technical。
 
-- "technical" : 上記の「IO 主導 / 公式委託 のコア R&D / プロトコル / ノード保守」のみ。
+- "technical" : Treasury 予算配分が「コア技術 / プロトコル / 基盤レベル」の
+                開発・研究に向く場合。作り手は不問。
                 例:
-                - Plomin / Chang HardFork (IO リードのプロトコル更新)
-                - Leios / Hydra プロトコル仕様策定 (IO)
-                - IO+Ensurable Cardano コア保守
-                - Tweag による Peras R&D (IO 委託)
-                - Mithril / Catalyst Voting プロトコル
-- "adoption"  : 上記以外の全ての開発 ・ 実装。例:
-                - dApp / DeFi / ウォレット (IO 系列以外の独立チーム)
-                - 外部スマートコントラクト言語 (例: Pebble by Harmonic Labs)
-                - Hydra を「使う」 dApp (例: DeltaDeFi の DEX)
-                - 教育 / トレーニング (実用スキル向上)
-                - ユーザー獲得 / 採用拡大 系
-                - 開発者向けライブラリ (IO 以外が作るもの)
-- "both"      : ほぼ使わない。本当に IO 主導コア R&D + dApp 実用が 50:50 なケースのみ。
-- "n_a"       : 以下は priority 軸の対象外 (marketing 軸で扱うため重複を避ける)。
-                - イベント / サミット / カンファレンス / スポンサーシップ
-                - 啓蒙 / 認知拡大 / 広告 / PR キャンペーン
-                - コミュニティ拡大 (一般認知向上目的)
-                その他 procedure-only / 抽象的 InfoAction なども n_a。
+                - cardano-node 保守 (IO Haskell 実装)
+                - **Amaru** (Pragma の Rust ノード実装) ← 非 IO でも内容で判定
+                - **dingo** / その他 third-party ノード実装
+                - Hydra / Mithril / Leios / Peras 等のプロトコル R&D
+                - Plutus / Aiken / Pebble 等のスマコン言語処理系
+                - 暗号 / 合意層 / 形式検証研究
+                - Catalyst Voting プロトコル / Mithril サインアグリゲーション
+- "adoption"  : エンドユーザー寄りの実用層 / 採用拡大に向く予算。
+                - dApp / DeFi / DEX / ウォレット / NFT
+                - ステーキング UX / ガバナンス UX / オンボーディング
+                - 教育 / トレーニング / ドキュメント整備
+                - エンタープライズ統合 / B2B 連携
+                - 開発者向けライブラリ (実用 SDK レベル)
+                - Hydra を「使う」dApp (Hydra 本体は technical だが利用側は adoption)
+- "both"      : ほぼ使わない。本当に基盤 R&D + 実用 dApp が 50:50 なケースのみ。
+- "n_a"       : 以下は priority 軸の対象外 (他軸で扱うため重複を避ける):
+                - **HardForkInitiation / ParameterChange** (protocol_change 軸で扱う)
+                - イベント / サミット / カンファレンス / スポンサーシップ (marketing 軸)
+                - 啓蒙 / 認知拡大 / 広告 / PR キャンペーン (marketing 軸)
+                - InfoAction / procedure-only / 抽象的提案
 
-**判定の鍵**: 「IO 主導 (または公式委託) のコア R&D か」が技術判定。
-それ以外の開発はすべて adoption。**外部チームによる独立開発は技術寄りでも adoption** に分類する。
+**判定の鍵**: 「内容が基盤レベル / コア技術か、それともユーザー寄りの実用層か」。
+作り手 (IO / Pragma / Harmonic Labs / その他) は org_recipient で別軸として扱う。
+ここで「IO 主導でないから adoption」とは判定しない。
 
 ### org_recipient (受益組織を多重 array で。author ではなく実際に予算を受け取る組織)
 - "IO"       : Input Output (IOG / IOHK)
@@ -275,10 +278,18 @@ IO 公式委託先 (例: Tweag が Peras を契約で実装する) も含む。
                 のみ。Intersect は含めない)
 - "Emurgo"   : Emurgo
 - "Midnight" : Midnight (IO 系列だが別組織扱い)
-- "new_team" : Cardano エコシステム内の新興 / 個別開発チーム。
-               例: DeFi の DEX チーム、独立 dApp 開発、オープンソース貢献団体
-                   (Harmonic Labs / DeltaDeFi / Andamio / Aiken team 等)。
-               規模感: Cardano コミュニティ発で、上記 5 大組織よりも小さい。
+- "new_team" : Cardano エコシステム内の新興 / 独立開発チーム / コミュニティ団体。
+               例:
+                 - **Pragma** (Amaru Rust ノード実装)
+                 - **TxPipe** (dingo, Oura, Demeter 系ツール)
+                 - **Harmonic Labs** (Pebble, Pluts 等の言語処理系)
+                 - **Aiken team** (Aiken 言語処理系)
+                 - **DeltaDeFi** / DEX チーム / 独立 DeFi 開発
+                 - **Andamio** / **Gimbalabs** (教育 / オンボーディング)
+                 - その他 Cardano コミュニティ発の独立 OSS / dApp チーム
+               規模感: Cardano 発で 5 大組織より小さい独立組織。
+               **注意**: ノード実装やプロトコル系ツールを作っていても、
+               IO 系列ではない (Pragma / TxPipe 等) なら確実に "new_team"。
 - "individual": 個人開発者 / フリーランス
 - "other"    : Cardano エコシステム外の **既存の大企業** (例: Tweag, Fireblocks,
                Chainlink 等)、または上記 6 区分に明確に当てはまらない既存団体。
@@ -291,9 +302,20 @@ IO 公式委託先 (例: Tweag が Peras を契約で実装する) も含む。
 - "param_change": ParameterChange
 - "n_a"         : それ以外
 
-### marketing_purpose
-- "yes" : PR / イベント / カンファレンス / 認知拡大 / スポンサーシップが主目的
-- "no"  : 開発・運営・研究等の主目的、マーケは副次的または無し
+### marketing_purpose (認知拡大 / ブランディング目的かどうか)
+- "yes" : 認知拡大 / ブランディング / コミュニティイベント運営が **主目的**。
+          例:
+            - Cardano Summit / Constellation 等の大型カンファレンス開催費
+            - MeetUp / Hackathon / ピッチコンテストのスポンサーシップ
+            - PR キャンペーン / 広告 / 動画コンテンツ制作
+            - インフルエンサー連携 / メディア露出
+            - 認知拡大目的の Cardano Ambassador プログラム
+- "no"  : 開発 / 運営 / 研究 / 教育が主目的。マーケは副次的または無し。
+          例:
+            - 教育プログラム (Andamio 系) — priority=adoption に分類、marketing は no
+            - 技術カンファレンス発表費用 (副次的露出)
+            - 開発者向けドキュメント整備 (priority=adoption, marketing=no)
+            - インフラ運営 / ノード保守
 
 ### kpi_clarity
 - "clear"  : 明確な KPI、マイルストーン、成果検証手順が記述されている

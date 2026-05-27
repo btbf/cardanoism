@@ -23,7 +23,7 @@
 | `large_treasury`         | 大型 Treasury (≥1000 万 ADA) 支出への Yes 率                    | GA tag: `treasury_size = large`                        |
 | `incumbent_org`          | IO / CF / Emurgo / Intersect / Midnight 関連提案への Yes 率      | GA tag: `orgs ∋ {IO, CF, Emurgo, Intersect, Midnight}` |
 | `new_team`               | 新興チーム / 個人開発者への配分提案への Yes 率                   | GA tag: `orgs` が空 or `recipient_type = new`          |
-| `technical`              | 技術基盤 / コア R&D 系提案への Yes 率                            | GA tag: `priority = technical`                         |
+| `technical`              | コア技術 / 基盤レベル提案 (ノード / プロトコル / 言語) への Yes 率 | GA tag: `priority = technical` (内容軸、作り手は不問)   |
 | `adoption`               | dApp / DeFi / Wallet など実用層への Yes 率                       | GA tag: `priority = adoption`                          |
 | `marketing`              | マーケ / PR / イベント予算への Yes 率                            | GA tag: `priority = marketing`                         |
 | `protocol_change`        | HF / プロトコルパラメータ変更への Yes 率                         | GA `action_type` HardForkInitiation / ParameterChange  |
