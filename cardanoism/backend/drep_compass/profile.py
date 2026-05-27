@@ -151,6 +151,29 @@ def _axis_direction_for_vote(
             return 1.0
         return None
 
+    if axis == "tech_origin":
+        # 「IO 主導コア R&D」 vs 「コミュニティ発の新興企業の technical 開発」を区別。
+        # priority=technical でかつ:
+        #   - org_recipient が big5 系 (IO/CF/Emurgo/Intersect/Midnight) → IO 派 (0.0)
+        #   - org_recipient が new_team / individual → コミュ発 tech (1.0)
+        # この組合せに該当しない GA はこの axis に寄与しない。
+        # 「priority=technical」の GA に対する投票だけが意味を持つ
+        # (adoption GA は tech_origin の判定対象外)。
+        if tags.get("priority") != "technical":
+            return None
+        orgs = tags.get("org_recipient") or []
+        if not isinstance(orgs, list):
+            return None
+        has_big5 = any(o in _BIG5_ORGS for o in orgs)
+        has_dist = any(o in _DISTRIBUTED_ORGS for o in orgs)
+        if has_big5 and not has_dist:
+            # IO core tech GA: Yes = IO 派 (0.0) / No = コミュ tech 派 (1.0)
+            return 0.0 if vote == "Yes" else 1.0
+        if has_dist and not has_big5:
+            # community tech GA: Yes = コミュ tech 派 (1.0) / No = IO 派 (0.0)
+            return 1.0 if vote == "Yes" else 0.0
+        return None
+
     if axis == "org":
         orgs = tags.get("org_recipient") or []
         if not isinstance(orgs, list):
@@ -261,13 +284,16 @@ def compute_axis_scores(
 def _axis_to_tag_key(axis: str) -> str:
     """drep_compass axis 名 → governance_ai_analysis.axis_tags の reasoning キー。
     rationale 軸は GA tag に依存しないので mapping 不要。
+    tech_origin 軸は org_recipient + priority のクロスで判定するため、
+    reasoning は org_recipient 側を借りる (両方とも見て決まる)。
     """
     return {
-        "treasury":  "treasury_size",
-        "priority":  "priority",
-        "org":       "org_recipient",
-        "marketing": "marketing_purpose",
-        "risk":      "risk_level",
+        "treasury":    "treasury_size",
+        "priority":    "priority",
+        "tech_origin": "org_recipient",
+        "org":         "org_recipient",
+        "marketing":   "marketing_purpose",
+        "risk":        "risk_level",
     }.get(axis, axis)
 
 

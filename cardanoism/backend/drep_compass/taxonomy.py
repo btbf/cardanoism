@@ -1,35 +1,38 @@
 """drep_compass.taxonomy
-DRepマッチング診断 v3 の 6 axis 定義のみを保持する。
+DRepマッチング診断 v3.1 (Likert) の 7 axis 定義のみを保持する。
 
 v2 (7 axis: protocol / transparency 含む) は廃止。
 - protocol: 「内容を吟味した上での Yes/No」と「機械的賛成」を区別できず除外
 - transparency: 提案側の KPI 厳格度を測る軸として識別困難で除外
-代わりに rationale axis を追加し、DRep の投票理由公開率を独立軸として測る。
+v3 で rationale axis を追加 (DRep の投票理由公開率)。
+v3.1 で tech_origin axis を追加 (IO 主導コア vs コミュニティ発技術 を区別)。
 
-6 axis:
-  1. treasury  : トレジャリ姿勢     (0=攻め / 1=守り)
-  2. priority  : 重視領域           (0=技術基盤 / 1=実利用)
-  3. org       : 組織のあり方       (0=既存組織 / 1=分散)
-  4. risk      : リスク許容         (0=大胆 / 1=慎重)
-  5. marketing : マーケティング      (0=推進 / 1=抑制)
-  6. rationale : 投票理由の公開      (0=非公開 OK / 1=必ず公開、新軸)
+7 axis:
+  1. treasury    : トレジャリ姿勢     (0=攻め / 1=守り)
+  2. priority    : 重視領域           (0=技術基盤 / 1=実利用)
+  3. tech_origin : 技術の出自         (0=IO 主導コア / 1=コミュ発新興企業の tech)
+  4. org         : 組織のあり方       (0=既存組織 / 1=分散)
+  5. risk        : リスク許容         (0=大胆 / 1=慎重)
+  6. marketing   : マーケティング      (0=推進 / 1=抑制)
+  7. rationale   : 投票理由の公開      (0=非公開 OK / 1=必ず公開)
 
 全 axis は 0.0〜1.0 (中央 0.5)。
-ユーザー回答も DRep プロファイルも同じスケール。
+ユーザー回答 (Likert 5 段階) も DRep プロファイルも同じスケール。
 
 axis のスコア算出方法は 2 種類:
-  - GA tag 集計型 (treasury / priority / org / risk / marketing):
+  - GA tag 集計型 (treasury / priority / tech_origin / org / risk / marketing):
       GA に AI が付けた axis_tags × DRep の Yes/No 投票を集計
   - DRep プロパティ直接型 (rationale):
-      DRep の reasoning_disclosure_rate (rationale 文を書いた投票 / 全投票) をそのまま score
+      DRep の reasoning_disclosure_rate をそのまま score
 """
 from __future__ import annotations
 
 
-# ── 6 axis 定義 ───────────────────────────────────────────────
+# ── 7 axis 定義 ───────────────────────────────────────────────
 AXES: tuple[str, ...] = (
     "treasury",
     "priority",
+    "tech_origin",
     "org",
     "risk",
     "marketing",

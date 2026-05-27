@@ -1,17 +1,17 @@
 # DRep マッチング診断
 
-ユーザーが 7 問の二者択一（+「迷う」）に答えるだけで、自分の価値観に
+ユーザーが 8 問の二者択一（+「迷う」）に答えるだけで、自分の価値観に
 合う Cardano DRep を提案する診断機能。Cardano に詳しくない委任者でも
 直感的に DRep を選べることを目的とする。
 
-> **設計方針**: ユーザー回答 / DRep プロファイル共に **6 axis を 0.0〜1.0** の
+> **設計方針**: ユーザー回答 / DRep プロファイル共に **7 axis を 0.0〜1.0** の
 > 同じスケールで表現し、axis 距離 + 信頼度重み付けで類似度を出す。
 > DRep プロファイルは **AI が投票履歴 + rationale を直接読んで生成**
 > （旧設計の gov_action_tags ルール集計は廃止）。
 
 ---
 
-## 1. 6 axis モデル (v3)
+## 1. 7 axis モデル (v3)
 
 v3 では旧 v2 の `protocol` / `transparency` 軸を削除し、代わりに
 DRep の rationale 公開率を測る `rationale` 軸を追加した。
@@ -30,11 +30,12 @@ DRep の rationale 公開率を測る `rationale` 軸を追加した。
 
 | axis           | 0.0 側                                  | 1.0 側                              |
 |----------------|----------------------------------------|------------------------------------|
-| `treasury`     | 攻め（大型支出 ≥1000 万 ADA に積極）    | 守り（大型支出に慎重）              |
-| `priority`     | 技術基盤（プロトコル R&D / インフラ）   | 実利用（dApp / DeFi / 採用拡大）    |
+| `treasury`     | 攻め（大型支出 ≥1000 万 ADA に積極）     | 守り（大型支出に慎重）              |
+| `priority`     | 大規模コア開発・R&D・保守                | 営利可能なマスアダプション開発       |
+| `tech_origin`  | IO 主導コア技術                         | コミュニティ発の新興企業 tech       |
 | `org`          | 既存組織（IO / CF / Emurgo / Intersect / Midnight）| 分散配分（新興チーム / 個人）   |
-| `risk`         | 大胆（実験的 / 高リスク許容）           | 慎重（不確実性に No）               |
-| `marketing`    | 推進（PR / イベント支援）               | 抑制（プロダクト / 開発優先）       |
+| `risk`         | 大胆（実験的 / 高リスク許容）            | 慎重（不確実性に No）               |
+| `marketing`    | 推進（PR / イベント支援）                | 抑制（プロダクト / 開発優先）        |
 | `rationale`    | ゆるめ（DRep が rationale を非公開でも可）| 厳格（DRep が必ず rationale 公開） |
 
 定義: [taxonomy.py](../cardanoism/backend/drep_compass/taxonomy.py)
@@ -44,9 +45,9 @@ DRep の rationale 公開率を測る `rationale` 軸を追加した。
 ## 2. ユーザー側フロー
 
 1. `/governance/drep` の「マッチング診断」セクションで開始
-2. 7 問の二者択一 + 「迷う」(answer=1/2/3 → 値 0.0 / 0.5 / 1.0)
+2. 8 問 5 段階 Likert (answer=1/2/3/4/5 → 値 0.0 / 0.25 / 0.5 / 0.75 / 1.0)
 3. 最大 3 つまで「重要マーク」を付与可（該当 axis の重み × 1.5）
-4. 回答送信 → `build_user_vector` で 6 axis の平均ベクトル化
+4. 回答送信 → `build_user_vector` で 7 axis の平均ベクトル化
 5. `list_matches` が quality filter を通った DRep プロファイルとの類似度（axis 重み付き）でソート
 6. 上位 10 件をカード表示 + AI 生成のサマリ 1 行を併記
 
@@ -66,7 +67,7 @@ liquid democracy 的に「質」で並べる設計。
 ## 3. DRep プロファイル生成 (AI)
 
 `compass_profile_all` cron が active DRep 全件を OpenAI で分析し、
-`drep_profiles` テーブルに 6 axis スコア + 信頼度 + 1 行サマリ + 根拠
+`drep_profiles` テーブルに 7 axis スコア + 信頼度 + 1 行サマリ + 根拠
 を保存する。
 
 ```
@@ -79,8 +80,8 @@ liquid democracy 的に「質」で並べる設計。
         └─ for each active DRep:
               ├─ _fetch_drep_votes_with_tags (proposal_votes JOIN governance_ai_analysis)
               ├─ compute_axis_scores (純粋ロジック、AI 不要)
-              │     - profile     : 6 axis × 0.0〜1.0 (集計)
-              │     - confidence  : 6 axis × 0.0〜1.0 (寄与投票数 / 10)
+              │     - profile     : 7 axis × 0.0〜1.0 (集計)
+              │     - confidence  : 7 axis × 0.0〜1.0 (寄与投票数 / 10)
               │     - evidence    : axis ごとの寄与投票リスト (上限なし、全件)
               │
               ├─ analyze_drep_v3_summary (OpenAI gpt-5.4-mini)
@@ -112,8 +113,8 @@ active 350〜400 件で 1 回 $3〜$5。日次 fallback として cron 設定。
 | 列                          | 説明                                              |
 |----------------------------|---------------------------------------------------|
 | `drep_id`                  | PRIMARY KEY                                       |
-| `profile_json`             | 6 axis スコア (JSON, 0.0〜1.0)                    |
-| `confidence_json`          | 6 axis 信頼度 (JSON, 0.0〜1.0)                    |
+| `profile_json`             | 7 axis スコア (JSON, 0.0〜1.0)                    |
+| `confidence_json`          | 7 axis 信頼度 (JSON, 0.0〜1.0)                    |
 | `summary`                  | AI 生成サマリ (日本語、1 行)                      |
 | `summary_en`               | AI 生成サマリ (英語、1 行) — migration 024 で追加 |
 | `evidence_json`            | axis ごとの根拠投票 (JSON)                        |
@@ -127,7 +128,7 @@ active 350〜400 件で 1 回 $3〜$5。日次 fallback として cron 設定。
 
 | 列                      | 説明                                       |
 |------------------------|--------------------------------------------|
-| `answer_json`          | 7 問の 1/2/3 回答 (JSON)                   |
+| `answer_json`          | 8 問の 1/2/3 回答 (JSON)                   |
 | `importance_json`      | 重要マーク q_id リスト (最大 3)            |
 | `questionnaire_version`| `'match-v2'`                               |
 

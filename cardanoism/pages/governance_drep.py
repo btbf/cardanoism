@@ -284,12 +284,14 @@ class DrepMatchState(rx.State):
         self.results = []
 
     def set_answer(self, level: int):
-        """1 (左) / 2 (迷う) / 3 (右) で回答。最終問以外は次に進む。"""
+        """5 段階 Likert で回答。最終問以外は次に進む。
+        1=強く左 / 2=やや左 / 3=中立 / 4=やや右 / 5=強く右
+        """
         try:
             v = int(level)
         except (TypeError, ValueError):
             return
-        if v < 1 or v > 3:
+        if v < 1 or v > 5:
             return
         qid = self.current_question_id
         if not qid:
@@ -1090,36 +1092,71 @@ def _drep_match_hero_cta() -> rx.Component:
 # を参照していた)。
 
 
-def _choice_button(level: int, label, scheme: str = "amber") -> rx.Component:
-    """3 択 (左 / 迷う / 右) の大型回答ボタン。スマホでは縦並びに収まるよう
-    最小幅を 100% にして全幅で 3 段重ねになる。"""
+def _choice_button(
+    level: int,
+    qualifier_key: str | None,
+    label,
+    scheme: str = "amber",
+) -> rx.Component:
+    """5 段階 Likert 回答ボタン。
+
+    level: 1 (強く左) / 2 (やや左) / 3 (中立) / 4 (やや右) / 5 (強く右)
+    qualifier_key: "強く" / "やや" 等を表示する i18n キー (中立は None)
+    label: 主ラベル (左右端ラベルまたは「迷う」)
+    scheme: "amber" (左右端 = 強く) / "soft_amber" (やや) / "gray" (中立)
+    """
     is_selected = DrepMatchState.current_answer == level
     if scheme == "gray":
         sel_bg, sel_border = "var(--gray-3)", "var(--gray-9)"
         sel_text = "var(--gray-12)"
-    else:
+        unsel_border = "1.5px solid var(--gray-6)"
+    elif scheme == "soft_amber":
+        sel_bg, sel_border = "var(--amber-2)", "var(--amber-7)"
+        sel_text = "var(--amber-12)"
+        unsel_border = "1.5px solid var(--gray-6)"
+    else:  # amber (強)
         sel_bg, sel_border = "var(--amber-3)", "var(--amber-9)"
         sel_text = "var(--amber-12)"
+        unsel_border = "1.5px solid var(--gray-6)"
+
+    text_children = []
+    if qualifier_key:
+        text_children.append(
+            rx.text(
+                AuthState.t[qualifier_key],
+                size="1", weight="medium",
+                color=rx.cond(is_selected, sel_text, "var(--gray-10)"),
+                style={"opacity": "0.85", "marginBottom": "2px"},
+            ),
+        )
+    text_children.append(
+        rx.text(
+            label, size={"initial": "2", "sm": "3"}, weight="bold",
+            color=rx.cond(is_selected, sel_text, "var(--gray-12)"),
+            style={"whiteSpace": "normal", "textAlign": "center",
+                   "lineHeight": "1.3"},
+        )
+    )
+
     return rx.el.button(
-        rx.text(label, size={"initial": "3", "sm": "4"}, weight="bold",
-                color=rx.cond(is_selected, sel_text, "var(--gray-12)"),
-                style={"whiteSpace": "normal", "textAlign": "center",
-                       "lineHeight": "1.4"}),
+        rx.vstack(
+            *text_children,
+            spacing="0", align="center",
+        ),
         on_click=DrepMatchState.set_answer(level),
         cursor="pointer",
         style={
-            "padding":      "18px 14px",
-            "borderRadius": "14px",
+            "padding":      "12px 10px",
+            "borderRadius": "12px",
             "background":   rx.cond(is_selected, sel_bg, "transparent"),
-            "border":       rx.cond(is_selected, f"2px solid {sel_border}",
-                                    "1.5px solid var(--gray-6)"),
-            "minHeight":    "80px",
-            "flex":         "1 1 100%",
+            "border":       rx.cond(is_selected, f"2px solid {sel_border}", unsel_border),
+            "minHeight":    "72px",
+            "flex":         "1 1 calc(50% - 6px)",
             "transition":   "background 0.15s, border-color 0.15s, transform 0.15s",
             "@media (min-width: 768px)": {
-                "padding":   "24px 18px",
-                "minHeight": "100px",
-                "flex":      "1 1 220px",
+                "padding":   "18px 12px",
+                "minHeight": "92px",
+                "flex":      "1 1 calc(20% - 10px)",
             },
         },
         _hover={"background": "var(--amber-2)", "border_color": "var(--amber-8)",
@@ -1186,12 +1223,19 @@ def _quiz_view() -> rx.Component:
                 weight="bold", color="var(--gray-12)",
                 style={"lineHeight": "1.5", "textAlign": "center"},
             ),
-            # 二者択一 + 迷う (大きな 3 ボタン)
+            # 5 段階 Likert (強く左 / やや左 / 中立 / やや右 / 強く右)
             rx.hstack(
-                _choice_button(1, AuthState.t[DrepMatchState.current_left_i18n_key], "amber"),
-                _choice_button(2, AuthState.t["drep_match_answer_unsure"], "gray"),
-                _choice_button(3, AuthState.t[DrepMatchState.current_right_i18n_key], "amber"),
-                spacing="3", wrap="wrap", justify="center", width="100%", padding_y="6px",
+                _choice_button(1, "drep_match_answer_strong_left",
+                               AuthState.t[DrepMatchState.current_left_i18n_key], "amber"),
+                _choice_button(2, "drep_match_answer_slight_left",
+                               AuthState.t[DrepMatchState.current_left_i18n_key], "soft_amber"),
+                _choice_button(3, None,
+                               AuthState.t["drep_match_answer_neutral"], "gray"),
+                _choice_button(4, "drep_match_answer_slight_right",
+                               AuthState.t[DrepMatchState.current_right_i18n_key], "soft_amber"),
+                _choice_button(5, "drep_match_answer_strong_right",
+                               AuthState.t[DrepMatchState.current_right_i18n_key], "amber"),
+                spacing="2", wrap="wrap", justify="center", width="100%", padding_y="6px",
             ),
             # 重要視 toggle
             rx.hstack(
