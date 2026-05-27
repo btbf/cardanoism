@@ -469,7 +469,9 @@ class DrepMatchState(rx.State):
         """axis chip クリックハンドラ。drep_id + axis i18n key から evidence を抽出して
         モーダル state に反映 → モーダル表示 ON。"""
         # i18n key "drep_match_axis_<axis>" から axis 名を抽出
-        axis = (label_key or "").split("_")[-1] if label_key else ""
+        # axis 名にアンダースコアが含まれる (large_treasury 等) ので split[-1] は不可。
+        _PREFIX = "drep_match_axis_"
+        axis = label_key[len(_PREFIX):] if (label_key or "").startswith(_PREFIX) else ""
         if not axis:
             return
         # 対象カードを探す
