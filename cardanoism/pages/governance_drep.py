@@ -1451,14 +1451,14 @@ def _evidence_modal_row(item) -> rx.Component:
         # 投票結果 (Yes / No / Abstain)
         rx.text(
             item["vote"],
-            size="1", weight="bold", color=vote_color,
-            style={"width": "44px", "textAlign": "center", "flexShrink": "0"},
+            size="2", weight="bold", color=vote_color,
+            style={"width": "56px", "textAlign": "center", "flexShrink": "0"},
         ),
         # GA タイトル + リンク
         rx.link(
             rx.text(
                 item["ga_title"],
-                size="2", color="var(--gray-12)",
+                size="3", color="var(--gray-12)",
                 style={
                     "overflow": "hidden", "textOverflow": "ellipsis",
                     "whiteSpace": "nowrap",
@@ -1471,14 +1471,14 @@ def _evidence_modal_row(item) -> rx.Component:
         # axis タグの reasoning (1 行)
         rx.text(
             item["reason"],
-            size="1", color="var(--gray-10)",
+            size="2", color="var(--gray-10)",
             style={
                 "overflow": "hidden", "textOverflow": "ellipsis",
                 "whiteSpace": "nowrap", "flex": "1.5", "minWidth": "0",
             },
         ),
         spacing="3", align="center", width="100%",
-        padding="6px 0",
+        padding="10px 0",
         style={"borderBottom": "1px solid var(--gray-4)"},
     )
 
@@ -1494,15 +1494,15 @@ def _evidence_modal() -> rx.Component:
             rx.vstack(
                 # ヘッダ: DRep 名 + axis 名
                 rx.hstack(
-                    rx.icon("sparkles", size=18, color="var(--amber-11)"),
+                    rx.icon("sparkles", size=20, color="var(--amber-11)"),
                     rx.text(
                         DrepMatchState.modal_drep_name,
-                        size="2", color="var(--gray-11)", weight="medium",
+                        size="3", color="var(--gray-11)", weight="medium",
                     ),
-                    rx.text("›", color="var(--gray-9)"),
+                    rx.text("›", color="var(--gray-9)", size="3"),
                     rx.text(
                         AuthState.t[DrepMatchState.modal_axis_label_key],
-                        size="3", weight="bold", color="var(--gray-12)",
+                        size="4", weight="bold", color="var(--gray-12)",
                     ),
                     spacing="2", align="center", wrap="wrap",
                 ),
@@ -1510,17 +1510,17 @@ def _evidence_modal() -> rx.Component:
                 rx.hstack(
                     rx.text(
                         DrepMatchState.modal_axis_side_label,
-                        size="1", color="var(--gray-11)",
+                        size="2", color="var(--gray-11)",
                     ),
                     rx.text("·", color="var(--gray-8)"),
                     rx.text(
                         "信頼度 ", DrepMatchState.modal_axis_conf_pct,
-                        size="1", color="var(--gray-11)",
+                        size="2", color="var(--gray-11)",
                     ),
                     rx.text("·", color="var(--gray-8)"),
                     rx.text(
                         "寄与 ", DrepMatchState.modal_axis_vote_count,
-                        size="1", color="var(--gray-11)",
+                        size="2", color="var(--gray-11)",
                     ),
                     spacing="2", align="center", wrap="wrap",
                 ),
@@ -1537,7 +1537,7 @@ def _evidence_modal() -> rx.Component:
                     ),
                     rx.callout(
                         "この axis に寄与した投票はありません (判断材料不足)。",
-                        icon="info", color_scheme="gray", size="1",
+                        icon="info", color_scheme="gray", size="2",
                     ),
                 ),
                 # 閉じるボタン
