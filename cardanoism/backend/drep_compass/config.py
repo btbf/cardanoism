@@ -4,10 +4,14 @@ DRepマッチング診断の設定値。
 from __future__ import annotations
 
 # プロファイルアルゴリズム識別子
-ANALYSIS_VERSION = "match-v2"
+# v3: AI 推論を廃止し、GA per-axis tags (governance_ai_analysis.axis_tags_json)
+#     を集計してスコアを算出する。透明性と再現性を確保。
+ANALYSIS_VERSION = "match-v3"
 
 # アンケート定義識別子
-QUESTIONNAIRE_VERSION = "match-v2"
+# v3: 7 問 / 6 axis (Q4 protocol, Q5 transparency 削除、rationale 軸追加)。
+# match-v2 の保存済み回答とは互換性が無いため、bump して pre-fill を抑止する。
+QUESTIONNAIRE_VERSION = "match-v4"
 
 # ── マッチング (match.py) ──────────────────────────────────
 # 重要マーク済みの問の axis の重み倍率

@@ -19,8 +19,10 @@ from cardanoism.backend.drep_compass.taxonomy import AXES
 
 logger = logging.getLogger(__name__)
 
-# confidence がこれ未満の axis はマッチ計算から除外
-_LOW_CONFIDENCE = 0.2
+# confidence がこれ未満の axis は「一致 / 相違」表示から除外して
+# 「判断材料が少ない項目」として表示する。
+# v3 では confidence = min(1.0, 寄与投票数 / 10) なので 0.3 = 3 票分。
+_LOW_CONFIDENCE = 0.3
 
 
 @dataclass
@@ -46,6 +48,9 @@ class MatchResult:
     low_confidence_axes: list[str] = field(default_factory=list)
     reasoning_disclosure_rate: float = 0.0
     analyzed_vote_count: int = 0
+    # v3 透明性: 各 axis に寄与した投票 (drep_profiles.evidence_json の生)
+    # {axis: [{proposal_id, vote, direction, reason}, ...]}
+    evidence_per_axis: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
 
 def _axis_similarity(uv: float, dv: float) -> float:
@@ -72,10 +77,14 @@ def calculate_drep_match(
         confidence = json.loads(drep_row.get("confidence_json") or "{}")
     except (TypeError, ValueError, json.JSONDecodeError):
         confidence = {}
+    try:
+        evidence = json.loads(drep_row.get("evidence_json") or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        evidence = {}
 
     details: list[AxisDetail] = []
-    sum_weighted_sim = 0.0
-    sum_weight_conf = 0.0
+    sum_weighted_effective = 0.0   # Σ (effective_sim × weight)
+    sum_weight = 0.0               # Σ weight (低信頼 axis も母数に含める)
     matched: list[str] = []
     mismatched: list[str] = []
     low_conf: list[str] = []
@@ -96,9 +105,14 @@ def calculate_drep_match(
 
         sim = _axis_similarity(uv, dv)
         excluded = conf < _LOW_CONFIDENCE
-        if not excluded:
-            sum_weighted_sim += sim * weight * conf
-            sum_weight_conf += weight * conf
+
+        # effective_sim: 信頼度に応じて raw sim と中立 (0.5) を線形補間。
+        # conf=1.0 → sim そのまま、conf=0.0 → 0.5 (中立)。
+        # 低信頼の axis は「分からない = 中立」扱いで必ず母数に含める。
+        # これで「1 axis だけ評価可能で sim=1.0 → 全体 100%」のバグを防ぐ。
+        effective_sim = conf * sim + (1.0 - conf) * 0.5
+        sum_weighted_effective += effective_sim * weight
+        sum_weight += weight
 
         details.append(AxisDetail(
             axis=axis,
@@ -117,7 +131,7 @@ def calculate_drep_match(
         elif sim <= 0.30:
             mismatched.append(axis)
 
-    total = (sum_weighted_sim / sum_weight_conf * 100.0) if sum_weight_conf > 0 else 0.0
+    total = (sum_weighted_effective / sum_weight * 100.0) if sum_weight > 0 else 0.0
 
     return MatchResult(
         drep_id=drep_id,
@@ -130,6 +144,7 @@ def calculate_drep_match(
         low_confidence_axes=low_conf,
         reasoning_disclosure_rate=float(drep_row.get("reasoning_disclosure_rate") or 0.0),
         analyzed_vote_count=int(drep_row.get("analyzed_vote_count") or 0),
+        evidence_per_axis=evidence if isinstance(evidence, dict) else {},
     )
 
 

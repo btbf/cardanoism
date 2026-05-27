@@ -151,10 +151,9 @@ You MUST NOT output any score, verdict, compliance rating, KPI assessment, or
 constitution analysis. Your only outputs are:
 1. A neutral plain-text summary of the proposal (Japanese + English).
 2. A bullet-list of factual key information extracted from the proposal.
-
-Topic / faction / axis classification is handled by a separate rule-based
-classifier (cardanoism.backend.drep_compass) and NOT by AI. Do not include
-topic_tags, axis_tags, or any classification fields in your output.
+3. A `axis_tags` block that classifies the proposal along 7 intrinsic axes
+   (drep-match v3). This is structured TAG classification, not scoring —
+   you tag what the proposal IS, you do NOT judge if it's good or bad.
 
 ## Per-Type Fact Extraction
 
@@ -205,8 +204,134 @@ Output ONLY this JSON object with no extra text:
     {"label_ja": "受取先", "label_en": "Recipient",
      "value_ja": "stake1xxx... (Cardanoism 財団)",
      "value_en": "stake1xxx... (Cardanoism Foundation)"}
-  ]
+  ],
+  "axis_tags": {
+    "treasury_size":     "large" | "small" | "n_a",
+    "priority":          "technical" | "adoption" | "both" | "n_a",
+    "org_recipient":     [array of org tags, possibly empty],
+    "protocol_change":   "hard_fork" | "param_change" | "n_a",
+    "marketing_purpose": "yes" | "no",
+    "kpi_clarity":       "clear" | "unclear" | "n_a",
+    "risk_level":        "high" | "low" | "n_a",
+    "reasoning": {
+      "treasury_size":     "なぜそう判定したか (≤80 chars)",
+      "priority":          "...",
+      "org_recipient":     "...",
+      "protocol_change":   "...",
+      "marketing_purpose": "...",
+      "kpi_clarity":       "...",
+      "risk_level":        "..."
+    }
+  }
 }
+
+## axis_tags Classification Rules (drep-match v3)
+
+### treasury_size
+- "large" : Treasury withdrawal で総額 >= 10,000,000 ADA (1000 万 ADA 以上)
+- "small" : Treasury withdrawal で総額 < 10,000,000 ADA
+- "n_a"   : Treasury 系ではない (ParameterChange / HardFork / InfoAction 等)
+
+### priority (提案の内容軸 — 「予算の使い道がコア技術か実用層か」)
+**内容のみで判定する**。誰が作る / 受け取るかは org_recipient で別軸として扱うため、
+ここでは混ぜない。作り手が IO であっても独立チーム (Pragma 等) であっても、
+内容が「コア技術 / 基盤レベル」なら technical。
+
+- "technical" : Treasury 予算配分が「コア技術 / プロトコル / 基盤レベル」の
+                開発・研究に向く場合。作り手は不問。
+                例:
+                - cardano-node 保守 (IO Haskell 実装)
+                - **Amaru** (Pragma の Rust ノード実装) ← 非 IO でも内容で判定
+                - **dingo** / その他 third-party ノード実装
+                - Hydra / Mithril / Leios / Peras 等のプロトコル R&D
+                - Plutus / Aiken / Pebble 等のスマコン言語処理系
+                - 暗号 / 合意層 / 形式検証研究
+                - Catalyst Voting プロトコル / Mithril サインアグリゲーション
+- "adoption"  : エンドユーザー寄りの実用層 / 採用拡大に向く予算。
+                - dApp / DeFi / DEX / ウォレット / NFT
+                - ステーキング UX / ガバナンス UX / オンボーディング
+                - 教育 / トレーニング / ドキュメント整備
+                - エンタープライズ統合 / B2B 連携
+                - 開発者向けライブラリ (実用 SDK レベル)
+                - Hydra を「使う」dApp (Hydra 本体は technical だが利用側は adoption)
+- "both"      : ほぼ使わない。本当に基盤 R&D + 実用 dApp が 50:50 なケースのみ。
+- "n_a"       : 以下は priority 軸の対象外 (他軸で扱うため重複を避ける):
+                - **HardForkInitiation / ParameterChange** (protocol_change 軸で扱う)
+                - イベント / サミット / カンファレンス / スポンサーシップ (marketing 軸)
+                - 啓蒙 / 認知拡大 / 広告 / PR キャンペーン (marketing 軸)
+                - InfoAction / procedure-only / 抽象的提案
+
+**判定の鍵**: 「内容が基盤レベル / コア技術か、それともユーザー寄りの実用層か」。
+作り手 (IO / Pragma / Harmonic Labs / その他) は org_recipient で別軸として扱う。
+ここで「IO 主導でないから adoption」とは判定しない。
+
+### org_recipient (受益組織を多重 array で。author ではなく実際に予算を受け取る組織)
+- "IO"       : Input Output (IOG / IOHK)
+- "CF"       : Cardano Foundation
+- "Intersect": **実際に予算を Intersect 自身が受領して内部運営に使う場合のみ**。
+               以下は "Intersect" に含めない:
+                 - Intersect が代理で他組織のために提出している
+                 - Intersect が管理 / 取りまとめ / オーケストレーション役割
+                 - Intersect が事務局的に予算を流して別組織が実行
+               迷ったら "Intersect" は **含めない**。
+               (例: 「IO と Ensurable の保守予算を Intersect が管理」→ ["IO", "other"]
+                のみ。Intersect は含めない)
+- "Emurgo"   : Emurgo
+- "Midnight" : Midnight (IO 系列だが別組織扱い)
+- "new_team" : Cardano エコシステム内の新興 / 独立開発チーム / コミュニティ団体。
+               例:
+                 - **Pragma** (Amaru Rust ノード実装)
+                 - **TxPipe** (dingo, Oura, Demeter 系ツール)
+                 - **Harmonic Labs** (Pebble, Pluts 等の言語処理系)
+                 - **Aiken team** (Aiken 言語処理系)
+                 - **DeltaDeFi** / DEX チーム / 独立 DeFi 開発
+                 - **Andamio** / **Gimbalabs** (教育 / オンボーディング)
+                 - その他 Cardano コミュニティ発の独立 OSS / dApp チーム
+               規模感: Cardano 発で 5 大組織より小さい独立組織。
+               **注意**: ノード実装やプロトコル系ツールを作っていても、
+               IO 系列ではない (Pragma / TxPipe 等) なら確実に "new_team"。
+- "individual": 個人開発者 / フリーランス
+- "other"    : Cardano エコシステム外の **既存の大企業** (例: Tweag, Fireblocks,
+               Chainlink 等)、または上記 6 区分に明確に当てはまらない既存団体。
+               **Cardano 発の新興チームには使わない (それは new_team)**。
+- []         : 組織受益が無い (InfoAction、ParameterChange 等)
+- 複数該当する場合は ["IO", "CF"] のように複数指定。
+
+### protocol_change
+- "hard_fork"   : HardForkInitiation
+- "param_change": ParameterChange
+- "n_a"         : それ以外
+
+### marketing_purpose (認知拡大 / ブランディング目的かどうか)
+- "yes" : 認知拡大 / ブランディング / コミュニティイベント運営が **主目的**。
+          例:
+            - Cardano Summit / Constellation 等の大型カンファレンス開催費
+            - MeetUp / Hackathon / ピッチコンテストのスポンサーシップ
+            - PR キャンペーン / 広告 / 動画コンテンツ制作
+            - インフルエンサー連携 / メディア露出
+            - 認知拡大目的の Cardano Ambassador プログラム
+- "no"  : 開発 / 運営 / 研究 / 教育が主目的。マーケは副次的または無し。
+          例:
+            - 教育プログラム (Andamio 系) — priority=adoption に分類、marketing は no
+            - 技術カンファレンス発表費用 (副次的露出)
+            - 開発者向けドキュメント整備 (priority=adoption, marketing=no)
+            - インフラ運営 / ノード保守
+
+### kpi_clarity
+- "clear"  : 明確な KPI、マイルストーン、成果検証手順が記述されている
+- "unclear": KPI が抽象的、達成基準不明、報告義務不明
+- "n_a"    : 性質上 KPI が適用されない (InfoAction、ParameterChange、HardFork)
+
+### risk_level
+- "high" : 実験的 / 未検証技術 / 単一エンティティへの大型出資 / 不確実性大
+- "low"  : 既存技術 / 実績ある運営 / 分散実行 / 既存契約継続
+- "n_a"  : 評価困難 (InfoAction 等)
+
+### axis_tags 共通原則
+- 提案の中身 (title + abstract) から判定する。author 情報には依存しない。
+- 表面的なキーワードマッチではなく、提案の意図を理解する。
+- 不確かな場合は "n_a" / "unclear" を使うことを恐れない。
+- 全フィールド必須。reasoning も全項目必須 (各 ≤80 chars)。
 
 ## Summary Writing Guidelines
 
@@ -232,9 +357,10 @@ Aim for 300-500 Japanese characters / 6-10 sentences. Avoid value judgments.
   Both value_ja and value_en MUST be present for every entry.
 - The proposal_summary should be neutral and descriptive — no positive or
   negative judgment.
-- DO NOT include topic_tags, axis_tags, faction labels, or any classification
-  fields. Classification is handled by a separate rule-based module
-  (cardanoism.backend.drep_compass) and is not AI's responsibility.
+- DO NOT include topic_tags or faction labels.
+- axis_tags MUST be included exactly as specified in the "axis_tags
+  Classification Rules" section above. All 7 axes are required plus reasoning
+  for each. No additional axes, no missing axes.
 """
 
 
@@ -737,4 +863,114 @@ def analyze_drep_compass_profile(
         tokens_output=tokens_output,
         cost_usd=cost,
         raw_text=raw,
+    )
+
+
+# ─── DRep v3 サマリ生成 (集計結果から AI が 1 文ナラティブを書く) ─────────────
+
+_DREP_V3_SUMMARY_SYSTEM = """\
+あなたは Cardano DRep の投票傾向を 1 文で要約するアシスタントです。
+DRep の 7 axis スコア (drep_compass v3 で集計済み) を受け取り、自然な
+日本語と英語で「この DRep はどんな投票傾向か」を要約します。
+
+# 7 axis 定義 (score 0.0〜1.0、0.5 = 中立 / 判断材料不足)
+
+- treasury     : 0.0 = 大型 Treasury 支出に積極 (攻め) /
+                 1.0 = 大型支出に慎重 (守り)
+- priority     : 0.0 = 技術基盤・プロトコル R&D / セキュリティ / 開発者ツール /
+                 1.0 = 実利用・dApp / DeFi / 採用拡大
+- org          : 0.0 = 既存大組織 (IO / CF / Emurgo / Intersect / Midnight) 支持 /
+                 1.0 = 新興チーム / 個別開発者 / 分散的配分支持
+- protocol     : 0.0 = 革新 (HardFork / パラメータ変更を歓迎) /
+                 1.0 = 安定 (合意層変更に慎重)
+- transparency : 0.0 = ゆるめ (信頼ベース) /
+                 1.0 = KPI / マイルストーン / 報告義務を厳格に要求
+- risk         : 0.0 = 実験的 / 未検証 / 単一エンティティ大型出資 OK /
+                 1.0 = 慎重 (既存実績・分散実行優先)
+- marketing    : 0.0 = マーケティング / PR / イベント / スポンサーシップ推進 /
+                 1.0 = マーケ抑制 (開発・運営優先)
+
+# ルール
+- **confidence < 0.3 の axis は無視** (判断材料不足、サマリに含めない)
+- score の極端さで言葉の強弱を変える:
+    0.0-0.15 or 0.85-1.0 → 「強く X 寄り」
+    0.15-0.30 or 0.70-0.85 → 「やや X 寄り」
+    0.30-0.40 or 0.60-0.70 → 「X 寄りの傾向」
+- 中立 (0.40-0.60) の axis はスキップ
+- 信頼度の高い、極端な axis を 2-3 個 選んで自然に統合
+- 派閥ラベル (例: anti-IO, 集権派) は使わない。「〜する傾向」「〜寄り」のみ
+- JA: 80 文字以内、1 文
+- EN: 160 文字以内、1 文 (JA と同じ意味)
+
+# 出力 (STRICT JSON only)
+
+{
+  "summary_ja": "新興プロジェクトと革新的なプロトコル変更を支援し、マーケティング支出には慎重な傾向",
+  "summary_en": "Tends to back emerging projects and progressive protocol changes while being cautious about marketing spend"
+}
+
+# 注意
+- 渡されない axis、confidence ゼロの axis は無いものとして扱う
+- 全 axis が低信頼の場合は「判断材料が不足しています」と返す:
+    {"summary_ja": "投票実績が少なく、傾向の判断材料が不足しています",
+     "summary_en": "Limited voting record — insufficient data to determine tendencies"}
+"""
+
+
+@dataclass
+class DrepV3SummaryResult:
+    """drep-match v3: AI が集計結果から生成した 1 文サマリ。"""
+    summary_ja: str
+    summary_en: str
+    model_id: str
+    tokens_input: int
+    tokens_cached_input: int
+    tokens_output: int
+    cost_usd: float
+
+
+def analyze_drep_v3_summary(
+    axes: dict[str, dict[str, float]],
+    *,
+    model: str = DEFAULT_MODEL,
+    max_output_tokens: int = 400,
+) -> DrepV3SummaryResult:
+    """v3 集計結果から 1 文サマリを AI で生成する (axis 定義は system prompt)。
+
+    axes: {axis_name: {"score": 0.0-1.0, "conf": 0.0-1.0}, ...}
+          全 7 axis を渡す前提 (中立 / 低信頼は AI 側で除外)。
+    """
+    client = _get_client()
+    user_text = json.dumps({"axes": axes}, ensure_ascii=False)
+    response = _send_with_retry(
+        client,
+        model=model,
+        system_text=_DREP_V3_SUMMARY_SYSTEM,
+        user_text=user_text,
+        max_tokens=max_output_tokens,
+    )
+    raw = response.choices[0].message.content or ""
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"drep v3 summary: failed to parse JSON: {e}") from e
+
+    summary_ja = str(parsed.get("summary_ja") or "")[:200]
+    summary_en = str(parsed.get("summary_en") or "")[:300]
+
+    usage = response.usage
+    tokens_input = getattr(usage, "prompt_tokens", 0) or 0
+    tokens_output = getattr(usage, "completion_tokens", 0) or 0
+    details = getattr(usage, "prompt_tokens_details", None)
+    tokens_cached_input = getattr(details, "cached_tokens", 0) if details is not None else 0
+    cost = _compute_cost(tokens_input, tokens_cached_input, tokens_output)
+
+    return DrepV3SummaryResult(
+        summary_ja=summary_ja,
+        summary_en=summary_en,
+        model_id=model,
+        tokens_input=tokens_input,
+        tokens_cached_input=tokens_cached_input,
+        tokens_output=tokens_output,
+        cost_usd=cost,
     )

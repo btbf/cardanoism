@@ -36,13 +36,18 @@ logger = logging.getLogger(__name__)
 
 
 def calculate_drep_profile(drep_id: str) -> dict[str, Any]:
-    """1 DRep を AI 分析して drep_profiles に保存し、結果を dict で返す。"""
+    """1 DRep のプロファイルを集計して drep_profiles に保存し、結果を dict で返す。
+
+    v3: axis スコアは GA per-axis タグ (governance_ai_analysis.axis_tags_json)
+    の集計で決定論的に算出。最後に集計結果から AI が 1 文サマリを生成する。
+    """
     result = _profile_calc_and_save(drep_id)
     return {
         "drep_id":                   result.drep_id,
         "profile":                   result.profile,
         "confidence":                result.confidence,
-        "summary":                   result.summary,
+        "summary":                   result.summary_ja,
+        "summary_en":                result.summary_en,
         "evidence":                  result.evidence,
         "analyzed_vote_count":       result.analyzed_vote_count,
         "reasoning_disclosure_rate": result.reasoning_disclosure_rate,
@@ -50,7 +55,7 @@ def calculate_drep_profile(drep_id: str) -> dict[str, Any]:
 
 
 def recalculate_all_drep_profiles(*, only_active: bool = True) -> int:
-    """全 (active) DRep を再分析する。失敗は warning に出して継続。"""
+    """全 (active) DRep を再集計する。v3 では AI 不要なので高速 + ほぼ無料。"""
     sql = "SELECT drep_id FROM dreps WHERE registered = 1"
     if only_active:
         sql += " AND drep_status = 'active'"
@@ -67,6 +72,30 @@ def recalculate_all_drep_profiles(*, only_active: bool = True) -> int:
             logger.warning("calculate_drep_profile failed for %s: %s", drep_id, e)
     logger.info("recalculate_all_drep_profiles: done %d/%d", n, len(ids))
     return n
+
+
+def get_ga_titles(proposal_ids: list[str]) -> dict[str, str]:
+    """proposal_id 群を batch で照会し {proposal_id: title_ja or title} を返す。
+
+    透明性モーダル (axis chip クリック展開) で各根拠投票の GA タイトルを
+    表示するために使う。
+    """
+    pids = [str(p) for p in proposal_ids if p]
+    if not pids:
+        return {}
+    with get_db() as (cursor, _):
+        placeholders = ",".join(["?"] * len(pids))
+        cursor.execute(
+            f"""
+            SELECT proposal_id,
+                   COALESCE(title_ja, title, '') AS t
+              FROM governance_actions
+             WHERE proposal_id IN ({placeholders})
+            """,
+            tuple(pids),
+        )
+        rows = cursor.fetchall()
+    return {str(r["proposal_id"]): str(r.get("t") or "") for r in rows}
 
 
 def get_drep_profile(drep_id: str) -> dict | None:
@@ -203,6 +232,7 @@ def _serialize_match(r) -> dict:
             }
             for d in r.axis_details
         ],
+        "evidence_per_axis": r.evidence_per_axis,
     }
 
 
