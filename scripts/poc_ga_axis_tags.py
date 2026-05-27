@@ -75,19 +75,20 @@ You output STRICTLY this JSON structure (no extra text):
 - "n_a"   : Treasury 系ではない (ParameterChange / HardFork / InfoAction 等)
 
 ## priority (提案の目的軸)
-- "technical" : プロトコル R&D、研究、セキュリティ、ノード/インフラ、開発者ツール
-- "adoption"  : dApp、DeFi、ウォレット、ユーザー獲得、教育、マーケ採用拡大
+- "technical" : プロトコル R&D、研究、セキュリティ、ノード/インフラ、開発者ツール、
+                ライブラリ開発、コア保守
+- "adoption"  : dApp、DeFi、ウォレット、ユーザー獲得、教育 / トレーニング
+                (実用スキル向上)
 - "both"      : **本当に 50:50 で両方が等しく主目的の場合のみ** 使う。
-                **迷ったら "both" ではなく「より強い側」を選ぶ**こと。
-                以下は "both" にしない:
-                  - イベント / サミット / カンファレンス開催 → 常に adoption
-                    (技術展示やデモを含んでも adoption)
-                  - 開発者ツール / ライブラリ / インフラ R&D → 常に technical
-                    (dApp 開発者「も」使える、と書かれてても technical)
-                  - 教育 / 啓蒙 / コミュニティ拡大 → adoption
-                  - プロトコル研究 / セキュリティ / コア保守 → technical
-                **"both" を選ぶ前に「これは本当にどっちが主か」を考える**。
-- "n_a"       : どちらでもない (procedure-only など)
+                迷ったら "both" ではなく「より強い側」を選ぶ。
+                - 開発者ツール / ライブラリ / インフラ R&D → 常に technical
+                - プロトコル研究 / セキュリティ / コア保守 → 常に technical
+                - dApp / DeFi / ウォレット 開発 → 常に adoption
+- "n_a"       : 以下は priority 軸の対象外 (marketing 軸で扱うため重複を避ける)。
+                - イベント / サミット / カンファレンス / スポンサーシップ
+                - 啓蒙 / 認知拡大 / 広告 / PR キャンペーン
+                - コミュニティ拡大 (一般認知向上目的)
+                その他 procedure-only / 抽象的 InfoAction なども n_a。
 
 ## org_recipient (受益組織を多重 array で。author ではなく実際に予算を受け取る組織)
 - "IO"       : Input Output (IOG / IOHK)
