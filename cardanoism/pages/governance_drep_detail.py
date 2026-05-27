@@ -575,32 +575,44 @@ def _compass_balance_row(item) -> rx.Component:
         AuthState.t[item["side_label_key"]],
     )
 
-    # 段 1: 軸名 (左) + 立場/強度 (右)
-    header_row = rx.hstack(
-        rx.text(
-            AuthState.t[item["label_key"]],
-            size="2", weight="bold", color="var(--gray-12)",
-            style={"flex": "1", "minWidth": "0"},
-        ),
-        rx.hstack(
-            rx.text(side_label, size="2", weight="bold", color=side_text_color,
-                    style={"whiteSpace": "nowrap"}),
-            rx.cond(
-                item["side"] != "center",
+    # 段 1: 軸名のみ (立場 / 強度% はドットの上に追従表示するため移動)
+    header_row = rx.text(
+        AuthState.t[item["label_key"]],
+        size="2", weight="bold", color="var(--gray-12)",
+        style={"width": "100%"},
+    )
+
+    # ドット直上に追従表示する「立場 + 強度%」フローティングラベル
+    # (item["side"] == "center" の場合は表示しない)
+    floating_label = rx.cond(
+        item["side"] != "center",
+        rx.box(
+            rx.hstack(
+                rx.text(side_label, size="1", weight="bold", color=side_text_color,
+                        style={"whiteSpace": "nowrap"}),
                 rx.text(item["magnitude_pct"], "%",
-                        size="2", color="var(--gray-11)",
+                        size="1", color="var(--gray-11)",
                         style={
                             "fontFamily": "var(--code-font-family, ui-monospace, monospace)",
+                            "whiteSpace": "nowrap",
                         }),
-                rx.fragment(),
+                spacing="1", align="baseline",
             ),
-            spacing="1", align="baseline",
-            style={"flexShrink": "0"},
+            style={
+                "position": "absolute",
+                "left": item["dot_pos_pct"] + "%",
+                "bottom": "calc(100% + 6px)",
+                "transform": "translateX(-50%)",
+                "zIndex": "3",
+                "pointerEvents": "none",
+                "transition": "left 0.3s",
+            },
         ),
-        spacing="2", align="center", width="100%",
+        rx.fragment(),
     )
 
     # 段 2: 左端ラベル + スライダー + 右端ラベル (全幅)
+    # スライダー本体の上にドット追従ラベルが浮く構造
     slider_row = rx.hstack(
         rx.text(
             AuthState.t[item["left_label_key"]],
@@ -640,13 +652,19 @@ def _compass_balance_row(item) -> rx.Component:
                     "transition": "left 0.3s",
                 },
             ),
+            # ドット直上のフローティングラベル
+            floating_label,
             # 外枠 (細いレール) — 縦軸はフレックス、幅は親の残りを使う
             flex="1",
             height="6px",
             background="var(--gray-3)",
             border_radius="999px",
             min_width="120px",
-            style={"position": "relative"},
+            style={
+                "position": "relative",
+                # フローティングラベル分のマージンを上に確保
+                "marginTop": "22px",
+            },
         ),
         rx.text(
             AuthState.t[item["right_label_key"]],
