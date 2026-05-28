@@ -1559,6 +1559,23 @@ def _evidence_modal() -> rx.Component:
     )
 
 
+def _drep_fav_btn(drep_id) -> rx.Component:
+    """DRep お気に入り (ハート) トグルボタン。"""
+    return rx.box(
+        rx.cond(
+            AuthState.drep_favorite_ids.contains(drep_id),
+            rx.icon("heart", size=22, color="var(--red-9)",
+                    style={"fill": "var(--red-9)"}),
+            rx.icon("heart", size=22, color="var(--gray-8)"),
+        ),
+        on_click=AuthState.toggle_drep_favorite(drep_id),
+        cursor="pointer",
+        padding="6px",
+        flex_shrink="0",
+        style={"display": "flex", "alignItems": "center"},
+    )
+
+
 def _match_result_card(r) -> rx.Component:
     """マッチ結果 1 件の DRep カード (委任コンパス用)。"""
     avatar = rx.cond(
@@ -1668,7 +1685,7 @@ def _match_result_card(r) -> rx.Component:
         rx.vstack(
             rx.hstack(
                 rx.box(header_link, flex="1", min_width="0"),
-                drep_delegate_button(r["drep_id"]),
+                _drep_fav_btn(r["drep_id"]),
                 spacing="3", align="center", width="100%", wrap="wrap",
             ),
             delegation_row,
@@ -1766,6 +1783,12 @@ def _match_result_card(r) -> rx.Component:
                 AuthState.t["drep_match_results_classification_note"],
                 size="1", color="var(--gray-10)",
                 style={"fontStyle": "italic"},
+            ),
+            # 委任するボタン (右下)
+            rx.hstack(
+                rx.spacer(),
+                drep_delegate_button(r["drep_id"]),
+                width="100%", align="center",
             ),
             spacing="3", align_items="stretch", width="100%",
         ),
