@@ -27,6 +27,7 @@ import os
 from typing import Any
 
 from cardanoism.backend.db_connect import get_db
+from cardanoism.backend.drep_db import mark_drep_dirty
 from cardanoism.backend.listener_governance import _encode_bech32, encode_voter_id
 
 logger = logging.getLogger(__name__)
@@ -213,6 +214,10 @@ def record_vote_delegation(cert: dict, slot: int) -> bool:
     drep_id = _resolve_drep_target(drep_obj)
     if drep_id is _NO_CHANGE:
         return False
+    # 新委任先 DRep を dirty mark (drep_sync が次回 live amount 再集計対象に拾う)。
+    # 旧委任先は cert に含まれないため mark しない (日次 fallback drep_sync --full でカバー)。
+    if isinstance(drep_id, str) and drep_id:
+        mark_drep_dirty(drep_id)
     updated = _update_stake_delegation(stake_addr, drep_id=drep_id, slot=slot)
     if updated:
         logger.info(
@@ -243,6 +248,10 @@ def record_stake_and_vote_delegation(cert: dict, slot: int) -> bool:
         kwargs["drep_id"] = drep_id
     if "pool_id" not in kwargs and "drep_id" not in kwargs:
         return False
+
+    # 新委任先 DRep を dirty mark (record_vote_delegation と同じ理由)
+    if isinstance(drep_id, str) and drep_id:
+        mark_drep_dirty(drep_id)
 
     updated = _update_stake_delegation(stake_addr, **kwargs)
     if updated:

@@ -27,6 +27,7 @@ Cardanoism の MariaDB スキーマ定義（最終形）。
 | 014 | `014_subscriptions.sql` | subscriptions（サブスク基盤）+ ベータ向け既存ユーザー backfill |
 | 015 | `015_ga_withdrawal_payout.sql` | ga_withdrawal_payout（TreasuryWithdrawals GA の受取先ごとの出金状況） |
 | 016 | `016_drep_match.sql` | drep_profiles / user_drep_compass_answers（DRep マッチング診断 v2、7 axis + AI サマリ JA/EN） |
+| 017 | `017_drep_dirty_marker.sql` | drep_dirty_marker（vote_delegation 検知マーカー、drep_sync 差分対象） |
 
 ## 適用例
 
