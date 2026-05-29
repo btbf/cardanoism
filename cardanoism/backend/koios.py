@@ -46,11 +46,11 @@ def _chunks(lst: list, n: int):
 
 class _RateLimiter:
     """スレッドセーフなスライディングウィンドウ方式レートリミッター。
-    Koios の anonymous tier は sustained では非常に厳しく、5 req/s でも 429 を返すため
-    安全側に倒して 30 req / 10s = 3 req/s に設定する。
-    KOIOS_API_KEY を設定すれば 60 / 10s に上げる（環境変数で動的調整）。
+    Koios の公式 burst limit は 100 req / 10s (= 10 req/s)。
+    安全マージンを取って 90 / 10s = 9 req/s で運用する。
+    1 プロセスあたりの burst 上限。複数プロセス並走時は別途プロセス間調整が必要。
     """
-    def __init__(self, max_calls: int = 30, period: float = 10.0):
+    def __init__(self, max_calls: int = 90, period: float = 10.0):
         self._lock = threading.Lock()
         self._timestamps: list[float] = []
         self._max = max_calls
@@ -84,12 +84,12 @@ KOIOS_BASE_URL = _NETWORK_URLS.get(_network, _NETWORK_URLS["mainnet"])
 KOIOS_API_KEY = os.getenv("KOIOS_API_KEY", "").strip()
 if KOIOS_API_KEY:
     _session.headers.update({"Authorization": f"Bearer {KOIOS_API_KEY}"})
-    # 認証付きなら制限が緩いので rate を上げる (60/10s = 6 req/s)
-    _rate_limiter = _RateLimiter(max_calls=60, period=10.0)
-    logger.info("Koios ネットワーク: %s (%s) [API key 認証あり: 6 req/s]", _network, KOIOS_BASE_URL)
+    logger.info("Koios ネットワーク: %s (%s) [API key 認証あり]", _network, KOIOS_BASE_URL)
 else:
-    _rate_limiter = _RateLimiter()  # デフォルト 30/10s = 3 req/s
-    logger.info("Koios ネットワーク: %s (%s) [anonymous: 3 req/s]", _network, KOIOS_BASE_URL)
+    logger.info("Koios ネットワーク: %s (%s) [anonymous]", _network, KOIOS_BASE_URL)
+# Koios の公式 burst は 100/10s。anonymous / API key 共通の上限なので
+# 同じレートリミッタを使う。API key の主な恩恵は monitoring 識別 (50k/day カウント)。
+_rate_limiter = _RateLimiter(max_calls=90, period=10.0)
 
 
 def _request_with_retry(method: str, endpoint: str, *, params=None, json_body=None, timeout: float):
@@ -159,26 +159,47 @@ def _get(endpoint: str, params: dict | None = None, timeout: float = 10.0) -> li
     return _request_with_retry("GET", endpoint, params=params, timeout=timeout)
 
 
-def get_current_epoch() -> int | None:
-    """現在のエポック番号を返す。"""
+# ─── /tip プロセス内キャッシュ ────────────────────────────────
+# /tip は Reflex のページ遷移ごと + 各 worker からも頻繁に叩かれるため
+# プロセス内で 30 秒キャッシュする。
+# epoch_no はエポック中変わらず、epoch_slot / block_time は最大 30 秒のズレ。
+# UI 表示なら全く問題なし。429 対策としてリクエスト数を 99%+ 削減する。
+_TIP_CACHE: dict | None = None
+_TIP_CACHE_AT: float = 0.0
+_TIP_CACHE_TTL = 30.0
+_TIP_CACHE_LOCK = threading.Lock()
+
+
+def _get_tip_cached() -> dict | None:
+    global _TIP_CACHE, _TIP_CACHE_AT
+    now = time.monotonic()
+    with _TIP_CACHE_LOCK:
+        if _TIP_CACHE is not None and (now - _TIP_CACHE_AT) < _TIP_CACHE_TTL:
+            return _TIP_CACHE
     data = _get("/tip")
     if not data or not isinstance(data, list) or not data[0]:
         return None
-    return data[0].get("epoch_no")
+    with _TIP_CACHE_LOCK:
+        _TIP_CACHE = data[0]
+        _TIP_CACHE_AT = time.monotonic()
+    return _TIP_CACHE
+
+
+def get_current_epoch() -> int | None:
+    """現在のエポック番号を返す (/tip を 30 秒キャッシュ)。"""
+    tip = _get_tip_cached()
+    return tip.get("epoch_no") if tip else None
 
 
 def get_tip() -> dict | None:
     """Koios `/tip` の生レスポンス (epoch_no / epoch_slot / block_time 等) を返す。
 
-    ダッシュボードでエポック残時間を計算するために使用する。
+    プロセス内で 30 秒キャッシュ。ダッシュボードでエポック残時間を計算するため使用。
     レスポンス例:
       { "epoch_no": 567, "epoch_slot": 12345, "block_no": ..., "block_time": 1716000000, ... }
     block_time は UNIX 秒 (UTC)。
     """
-    data = _get("/tip")
-    if not data or not isinstance(data, list) or not data[0]:
-        return None
-    return data[0]
+    return _get_tip_cached()
 
 
 def get_stake_address_from_addr(addr: str) -> str | None:
@@ -558,18 +579,37 @@ def _fetch_drep_name(drep_id: str) -> str:
 # トレジャリー関連
 # ============================================================
 
+# ─── /totals プロセス内キャッシュ ─────────────────────────────
+# /totals はエポック単位の値 (epoch 中は不変) なので 5 分 TTL で十分。
+# epoch_no 指定/未指定で別キーで保持する。
+_TOTALS_CACHE: dict[str, tuple[float, dict]] = {}
+_TOTALS_CACHE_TTL = 300.0  # 5 分
+_TOTALS_CACHE_LOCK = threading.Lock()
+
+
 def get_totals(epoch_no: int | None = None) -> dict | None:
     """
     指定エポック（未指定時は最新）の循環供給・トレジャリー・リワード・準備金を返す。
     レスポンスは最新順で返ってくる想定。
     戻り値: {epoch_no, circulation, treasury, reward, supply, reserves}（すべて Lovelace 文字列）
+
+    プロセス内で 5 分キャッシュ。エポック単位で値が変わらないため十分。
     """
+    key = "_latest" if epoch_no is None else str(int(epoch_no))
+    now = time.monotonic()
+    with _TOTALS_CACHE_LOCK:
+        cached = _TOTALS_CACHE.get(key)
+        if cached and (now - cached[0]) < _TOTALS_CACHE_TTL:
+            return cached[1]
     params = {"_epoch_no": epoch_no} if epoch_no is not None else None
     data = _get("/totals", params)
     if not data or not isinstance(data, list) or not data[0]:
         return None
     # Koios は降順で返すため先頭が最新
-    return data[0]
+    result = data[0]
+    with _TOTALS_CACHE_LOCK:
+        _TOTALS_CACHE[key] = (time.monotonic(), result)
+    return result
 
 
 def get_treasury_withdrawals(limit: int = 1000) -> list[dict]:
