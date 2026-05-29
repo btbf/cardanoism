@@ -2186,7 +2186,7 @@ def check_spo_role_initial_sync():
         logger.exception("SPO 判定 初期投入 失敗: %s", e)
 
 
-def check_drep_sync():
+def check_drep_sync(full: bool = False):
     """
     Koios から全 DRep の情報を取得して DB にキャッシュする。15 分 cron 想定。
 
@@ -2198,11 +2198,20 @@ def check_drep_sync():
          新規 DRep または CIP-119 が更新された DRep のみ /drep_metadata 取得
          → upsert_drep でフル更新 (meta_fetched_hash も同期される)
          上記以外は update_drep_info で動的列のみ更新 (CIP-119 列は触らない)
-      4. active かつ registered な全 DRep に /drep_delegators を投げて
-         live amount を合計し update_drep_amount で反映 (epoch-boundary の
-         /drep_info.amount は使わない)
+      4. live amount sync (D+B ハイブリッド、Koios 50k/day 制限対策):
+         4a. 全 active DRep に /drep_info.amount (epoch-boundary 値) を反映
+             → 追加 Koios リクエストなし (フェーズ 2 で取得済)
+         4b. drep_dirty_marker テーブルに直近 1h で記録された DRep だけ
+             /drep_delegators で live amount 再集計 → update_drep_amount で
+             4a の値を上書き (リアルタイム反映)
+             listener (record_vote_delegation) が新委任先 DRep を dirty mark する
 
-    /drep_delegators は 1 DRep = 1 リクエストなので約 1700 reqs/回。
+    full=True (--full フラグ) の場合は 4b を「全 active DRep」に拡大し、
+    旧来通り 1 起動 ~1840 reqs で完全同期する (日 1 回の fallback で使用)。
+
+    /drep_delegators は 1 DRep = 1 リクエストなので、
+      - 通常モード: ~68 + dirty_count reqs/回 (典型 70〜200)
+      - --full モード: ~1840 reqs/回
     15 分 cron + flock で重複起動を防ぐ。
     """
     import time
@@ -2214,6 +2223,7 @@ def check_drep_sync():
     from cardanoism.backend.drep_db import (
         upsert_drep, update_drep_info, update_drep_amount,
         get_drep_meta_fetched_hashes,
+        get_recent_dirty_dreps, cleanup_drep_dirty_marker,
     )
 
     logger.info("DRep 同期 開始 (network=%s, url=%s)", _koios_network(), KOIOS_BASE_URL)
@@ -2319,18 +2329,49 @@ def check_drep_sync():
 
     logger.info("DRep 基本同期 完了: full upsert=%d, info-only=%d", upsert_count, info_only_count)
 
-    # --- フェーズ 4: live amount sync (/drep_delegators per active DRep) ---
-    # Koios /drep_info の `active` (boolean) を見る。
-    # `drep_status` フィールドは "registered" / "deregistered" 等で active/inactive を表さない。
+    # --- フェーズ 4a: epoch-boundary amount を全 active DRep に反映 ---
+    # /drep_info.amount (フェーズ 2 で取得済) を使うので追加 Koios リクエストなし。
+    # これで全 DRep の amount は最低でも epoch-boundary 値で揃う。
+    # `active` (boolean) を見る。`drep_status` ("registered" 等) は active/inactive を表さない。
     active_ids = [
         did for did in registered_ids
         if bool(info_map.get(did, {}).get("active"))
     ]
     logger.info("live amount 対象 (active DRep): %d 件", len(active_ids))
 
+    epoch_amount_ok = 0
+    for did in active_ids:
+        info = info_map.get(did) or {}
+        epoch_amount = info.get("amount")
+        if epoch_amount is None:
+            continue
+        try:
+            update_drep_amount(did, int(epoch_amount))
+            epoch_amount_ok += 1
+        except (TypeError, ValueError):
+            continue
+        except Exception as e:  # noqa: BLE001
+            logger.warning("update_drep_amount (epoch) failed (drep_id=%s): %s", did, e)
+    logger.info("epoch-boundary amount 反映: %d 件", epoch_amount_ok)
+
+    # --- フェーズ 4b: dirty な (= 直近 1h で委任変動があった) DRep だけ live 集計 ---
+    # listener が record_vote_delegation で drep_dirty_marker に記録。
+    # full=True (--full、日次 fallback) のときは全 active DRep を対象に拡大。
+    if full:
+        target_ids = list(active_ids)
+        logger.info("live amount 強制全件モード (--full): %d 件", len(target_ids))
+    else:
+        active_set = set(active_ids)
+        dirty_ids = get_recent_dirty_dreps(hours=1)
+        target_ids = [d for d in dirty_ids if d in active_set]
+        logger.info(
+            "live amount 差分モード: dirty=%d, うち active=%d",
+            len(dirty_ids), len(target_ids),
+        )
+
     amount_ok = 0
     amount_fail = 0
-    for idx, did in enumerate(active_ids, start=1):
+    for idx, did in enumerate(target_ids, start=1):
         try:
             live_sum = get_drep_delegators_total(did)
             update_drep_amount(did, live_sum)
@@ -2340,12 +2381,21 @@ def check_drep_sync():
             amount_fail += 1
 
         if idx % 200 == 0:
-            logger.info("live amount 進捗: %d / %d", idx, len(active_ids))
+            logger.info("live amount 進捗: %d / %d", idx, len(target_ids))
 
         # Koios 配慮 (rate limit 緩衝)
         time.sleep(0.05)
 
     logger.info("DRep live amount 同期 完了: ok=%d, fail=%d", amount_ok, amount_fail)
+
+    # --- フェーズ 5: dirty marker のクリーンアップ (24h 以上前を削除) ---
+    try:
+        deleted = cleanup_drep_dirty_marker(retention_hours=24)
+        if deleted:
+            logger.info("drep_dirty_marker cleanup: %d 件削除", deleted)
+    except Exception as e:  # noqa: BLE001
+        logger.debug("cleanup_drep_dirty_marker failed: %s", e)
+
     logger.info("DRep 同期 完了 (network=%s)", _koios_network())
 
 
@@ -3084,6 +3134,15 @@ def main():
             "（トピック分類体系の変更時など、過去 GA も再分類したいケース向け）。"
         ),
     )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help=(
+            "drep_sync: live amount 同期を「dirty な DRep のみ」から「全 active DRep」"
+            "に拡大する (日次 fallback で listener 取りこぼし対策)。"
+            "通常 cron では指定しない。"
+        ),
+    )
     args = parser.parse_args()
 
     if args.epoch_schedule:
@@ -3111,7 +3170,7 @@ def main():
     if args.event in ("all", "fiat_sync"):
         check_fiat_sync()
     if args.event in ("all", "drep_sync"):
-        check_drep_sync()
+        check_drep_sync(full=bool(args.full))
     if args.event in ("all", "pool_sync"):
         check_pool_sync()
     if args.event in ("all", "pool_block_history_sync"):

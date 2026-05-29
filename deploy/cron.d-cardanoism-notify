@@ -33,37 +33,43 @@ PY=/home/btism/.pyenv/shims/python
 LOG=/home/btism/cardanoism_log
 
 # ── 通知 (常時) ───────────────────────────────────────────
+# 0 分集中による Koios 429 (burst limit 100/10s 超過) を避けるため、各 cron
+# を 1〜14 分内で分散 (jitter)。同時起動は最大 2 個に抑える。
+# 頻度 (5/10/15 分間隔) はそのまま維持。
+
+# ガバナンス再取得 (Koios /proposal_list 全件 upsert)。
+# listener が骨組み行を作るが title/abstract/type 等は Koios 由来。Koios が
+# index した直後に値が backfill されるよう高頻度で回す。--no-translate なので *_ja は触らない。
+7,22,37,52 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY cardanoism/backend/governance.py --no-translate >> $LOG/notify-governance.log 2>&1
+
 # プール系 (saturation / pledge / reward) — エポック計算値なので cron 必須
-*/10 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event pool      >> $LOG/notify-pool.log 2>&1
+3-59/10 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event pool      >> $LOG/notify-pool.log 2>&1
 
 # DRep 系 (status_change + drep_unvoted_ga) — drep_unvoted_ga は DB only なので高頻度可能
-*/5  * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event drep      >> $LOG/notify-drep.log 2>&1
+2-59/5  * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event drep      >> $LOG/notify-drep.log 2>&1
 
 # 委任リマインダー + stake_addresses 委任先のリフレッシュ
-*/15 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event reminder  >> $LOG/notify-reminder.log 2>&1
+5,20,35,50 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event reminder  >> $LOG/notify-reminder.log 2>&1
 
 # トレジャリー引き出し提案の enacted 検知 (listener も拾うが安全網)
-*/15 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event treasury  >> $LOG/notify-treasury.log 2>&1
+8,23,38,53 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event treasury  >> $LOG/notify-treasury.log 2>&1
 
 # Active GA の投票集計を最新化 (pre_ratify トリガーの前提)
-*/15 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event summary_sync >> $LOG/notify-summary_sync.log 2>&1
+11,26,41,56 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event summary_sync >> $LOG/notify-summary_sync.log 2>&1
 
-# DRep 同期: 15 分間隔
+# DRep アクティブ委任量計算取得
 #   - /drep_list で新規 DRep 検出
 #   - /drep_info で動的列 + meta_hash 取得 → meta_fetched_hash と差分のある DRep のみ /drep_metadata
 #   - 全 active DRep に /drep_delegators を投げて live amount を反映
 # 1 回 ~1840 reqs (うち /drep_delegators が 1700)。flock で前回未完了時の重複起動を防ぐ。
-*/15 * * * *  btism flock -n /tmp/cardanoism-drep_sync.lock -c "cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event drep_sync" >> $LOG/notify-drep_sync.log 2>&1
+14,29,44,59 * * * *  btism flock -n /tmp/cardanoism-drep_sync.lock -c "cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event drep_sync" >> $LOG/notify-drep_sync.log 2>&1
 
-# GA 本体の取り込み (Koios /proposal_list 全件 upsert)。
-# listener が骨組み行を作るが title/abstract/type 等は Koios 由来。Koios が
-# index した直後に値が backfill されるよう高頻度で回す。Koios 呼び出しは
-# /proposal_list 1 リクエストのみで軽量。--no-translate なので *_ja は触らない。
-*/15 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY cardanoism/backend/governance.py --no-translate >> $LOG/notify-governance.log 2>&1
+# 投票集計
+4,19,34,49 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event vote_sync >> $LOG/notify-vote_sync.log 2>&1
 
 # ── オフチェーン同期 (常時) ──────────────────────────────
 # 法定通貨レート (CoinGecko)
-*/5  * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event fiat_sync           >> $LOG/notify-fiat_sync.log 2>&1
+1-59/5  * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event fiat_sync           >> $LOG/notify-fiat_sync.log 2>&1
 
 # プールリレー TCP 疎通確認
 0    */6 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event relay_check        >> $LOG/notify-relay_check.log 2>&1
@@ -71,19 +77,21 @@ LOG=/home/btism/cardanoism_log
 # 投票理由の翻訳 (OpenAI、コスト抑制のため低頻度)
 0    */4 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event vote_rationale_sync >> $LOG/notify-vote_rationale_sync.log 2>&1
 
-# カタリスト提案フェッチ (Catalyst Explorer API、1 日 1 回 / fund 12-15)
-0    2 * * *  btism cd $WORKDIR && for FUND in 12 13 14 15; do infisical run --env=$ENV -- $PY cardanoism/backend/proposals_update_new.py --fund $FUND; done >> $LOG/catalyst-proposals.log 2>&1
+# カタリスト提案フェッチ (Catalyst Explorer API、1 日 1 回 / fund 12-14)
+0    2 * * *  btism cd $WORKDIR && for FUND in 12 13 14; do infisical run --env=$ENV -- $PY cardanoism/backend/proposals_update_new.py --fund $FUND; done >> $LOG/catalyst-proposals.log 2>&1
 
 # ── フォールバック (listener 停止対策、24 時間に 1 回深夜) ─────
 # 通常は Ogmios listener が epoch_start を検知してこれらを発火するが、
 # listener が落ちている間でもデータが完全停止しないよう 1 日 1 回バックアップ実行。
-# (summary_sync / governance.py / drep_sync は常時 15min 実行済みなので fallback には含めない)
-30   3 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event params_sync             >> $LOG/notify-params_sync.log 2>&1
-0    4 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event treasury_sync           >> $LOG/notify-treasury_sync.log 2>&1
-0    5 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event pool_sync               >> $LOG/notify-pool_sync.log 2>&1
-30   5 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event pool_block_history_sync >> $LOG/notify-pool_block_history_sync.log 2>&1
-0    6 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event vote_sync               >> $LOG/notify-vote_sync.log 2>&1
+# (summary_sync は常時 15min 実行済みなので fallback には含めない)
+0    3 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY cardanoism/backend/governance.py --no-translate    >> $LOG/notify-governance.log 2>&1
+30   3 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event params_sync               >> $LOG/notify-params_sync.log 2>&1
+0    4 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event treasury_sync             >> $LOG/notify-treasury_sync.log 2>&1
+30   4 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event drep_sync --full          >> $LOG/notify-drep_sync.log 2>&1
+0    5 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event pool_sync                 >> $LOG/notify-pool_sync.log 2>&1
+30   5 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event pool_block_history_sync   >> $LOG/notify-pool_block_history_sync.log 2>&1
+0    6 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event vote_sync                 >> $LOG/notify-vote_sync.log 2>&1
 
-# DRepマッチング診断: 全 active DRep を AI で再分析 (7 axis スコア + サマリ生成)
-45   6 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event compass_profile_all  >> $LOG/notify-compass_profile_all.log 2>&1
-0    7 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event constitution_sync       >> $LOG/notify-constitution_sync.log 2>&1
+# DRepマッチング診断: 全 active DRep を再分析 (集計のみ、AI 不要)
+45   6 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event compass_profile_all       >> $LOG/notify-compass_profile_all.log 2>&1
+0    7 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event constitution_sync         >> $LOG/notify-constitution_sync.log 2>&1

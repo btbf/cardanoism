@@ -140,6 +140,56 @@ def update_drep_amount(drep_id: str, amount: int) -> None:
         conn.commit()
 
 
+# ─── drep_dirty_marker (vote_delegation 検知 → drep_sync 差分対象) ──────
+#
+# Ogmios listener が vote_delegation cert を捕捉したとき、旧/新 drep_id を
+# ここに記録し、drep_sync が直近 N 時間以内に marked_at が更新された
+# DRep だけを /drep_delegators で live amount 再集計する。
+# それ以外の DRep は /drep_info.amount (epoch-boundary 値) で十分扱い。
+
+
+def mark_drep_dirty(drep_id: str | None) -> None:
+    """drep_dirty_marker に drep_id を記録 (best-effort、失敗しても無視)。
+    listener から呼ばれるので例外は握り潰す。"""
+    if not drep_id:
+        return
+    try:
+        with get_db() as (cursor, conn):
+            cursor.execute(
+                "INSERT INTO drep_dirty_marker (drep_id) VALUES (?) "
+                "ON DUPLICATE KEY UPDATE marked_at = NOW()",
+                (str(drep_id),),
+            )
+            conn.commit()
+    except Exception as e:  # noqa: BLE001
+        logger.debug("mark_drep_dirty failed for %s: %s", drep_id, e)
+
+
+def get_recent_dirty_dreps(hours: int = 1) -> list[str]:
+    """直近 N 時間以内に marked_at が更新された drep_id を返す。
+    drep_sync の差分モードで live amount 再集計対象として使う。"""
+    with get_db() as (cursor, _conn):
+        cursor.execute(
+            "SELECT drep_id FROM drep_dirty_marker "
+            "WHERE marked_at > NOW() - INTERVAL ? HOUR",
+            (int(hours),),
+        )
+        return [str(row["drep_id"]) for row in cursor.fetchall()]
+
+
+def cleanup_drep_dirty_marker(retention_hours: int = 24) -> int:
+    """N 時間より古い marker を削除する。戻り値は削除件数。"""
+    with get_db() as (cursor, conn):
+        cursor.execute(
+            "DELETE FROM drep_dirty_marker "
+            "WHERE marked_at < NOW() - INTERVAL ? HOUR",
+            (int(retention_hours),),
+        )
+        deleted = cursor.rowcount
+        conn.commit()
+    return int(deleted or 0)
+
+
 def get_drep_meta_fetched_hashes() -> dict[str, str | None]:
     """全 DRep の {drep_id: meta_fetched_hash} を返す (差分判定用)。"""
     with get_db() as (cursor, _conn):
