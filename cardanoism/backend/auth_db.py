@@ -623,7 +623,8 @@ def get_governance_favorites_for_export(user_id: int) -> list[dict]:
                    g.dropped_epoch, g.expired_epoch,
                    (SELECT COALESCE(SUM(amount_lovelace), 0)
                       FROM ga_withdrawal_payout
-                     WHERE proposal_id = g.proposal_id) AS withdrawal_lovelace
+                     WHERE proposal_id COLLATE utf8mb4_unicode_ci
+                         = g.proposal_id COLLATE utf8mb4_unicode_ci) AS withdrawal_lovelace
               FROM favorites f
               JOIN governance_actions g ON f.proposal_uuid = g.proposal_id
              WHERE f.user_id = ? AND f.type = 'governance'
