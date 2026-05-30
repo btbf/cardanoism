@@ -611,8 +611,8 @@ def get_ga_favorites(user_id: int) -> list:
 
 def get_governance_favorites_for_export(user_id: int) -> list[dict]:
     """ガバナンスお気に入りの CSV エクスポート用データ。
-    TreasuryWithdrawals の場合は ga_withdrawal_payout から引き出し合計 (Lovelace)
-    を集計して withdrawal_lovelace に格納する。
+    TreasuryWithdrawals の場合は governance_actions.withdrawal_total_lovelace
+    を引き出し合計として返す (全 status の GA で利用可能)。
     """
     with get_db() as (cursor, _):
         cursor.execute(
@@ -621,10 +621,7 @@ def get_governance_favorites_for_export(user_id: int) -> list[dict]:
                    g.title, g.title_ja, g.proposal_type,
                    g.proposed_epoch, g.ratified_epoch, g.enacted_epoch,
                    g.dropped_epoch, g.expired_epoch,
-                   (SELECT COALESCE(SUM(amount_lovelace), 0)
-                      FROM ga_withdrawal_payout
-                     WHERE proposal_id COLLATE utf8mb4_unicode_ci
-                         = g.proposal_id COLLATE utf8mb4_unicode_ci) AS withdrawal_lovelace
+                   g.withdrawal_total_lovelace AS withdrawal_lovelace
               FROM favorites f
               JOIN governance_actions g ON f.proposal_uuid = g.proposal_id
              WHERE f.user_id = ? AND f.type = 'governance'
