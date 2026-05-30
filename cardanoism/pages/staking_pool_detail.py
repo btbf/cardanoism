@@ -175,7 +175,7 @@ def _pool_share_btn() -> rx.Component:
     return rx.menu.root(
         rx.menu.trigger(
             rx.icon(
-                "share-2", size=22, color="var(--gray-11)",
+                "share-2", size=26, color="var(--gray-11)",
                 cursor="pointer", padding="4px",
             ),
         ),
