@@ -375,6 +375,54 @@ def _breadcrumb() -> rx.Component:
     )
 
 
+def _drep_share_btn() -> rx.Component:
+    """DRep ページの URL をクリップボードへコピーするシェアボタン。"""
+    return rx.el.button(
+        rx.icon("share-2", size=18, color="var(--gray-11)"),
+        on_click=[
+            rx.set_clipboard("https://cardanoism.com/drep/" + DrepDetailState.display_drep_id),
+            rx.toast(
+                AuthState.t["drep_url_copied"],
+                position="top-center",
+                style={
+                    "background-color": "var(--indigo-11)",
+                    "color": "white",
+                    "border-radius": "0.5rem",
+                },
+            ),
+        ],
+        cursor="pointer",
+        style={
+            "display":       "inline-flex",
+            "alignItems":    "center",
+            "border":        "none",
+            "background":    "transparent",
+            "padding":       "6px",
+            "borderRadius":  "8px",
+            "transition":    "background 0.15s",
+            "flexShrink":    "0",
+        },
+        _hover={"background": "var(--gray-3)"},
+    )
+
+
+def _drep_fav_btn() -> rx.Component:
+    """DRep お気に入り (ハート) トグルボタン。"""
+    return rx.box(
+        rx.cond(
+            AuthState.drep_favorite_ids.contains(DrepDetailState.display_drep_id),
+            rx.icon("heart", size=22, color="var(--red-9)",
+                    style={"fill": "var(--red-9)"}),
+            rx.icon("heart", size=22, color="var(--gray-8)"),
+        ),
+        on_click=AuthState.toggle_drep_favorite(DrepDetailState.display_drep_id),
+        cursor="pointer",
+        padding="6px",
+        flex_shrink="0",
+        style={"display": "flex", "alignItems": "center"},
+    )
+
+
 def _profile_card() -> rx.Component:
     avatar = rx.cond(
         DrepDetailState.image_url != "",
@@ -464,7 +512,11 @@ def _profile_card() -> rx.Component:
                 rx.hstack(
                     rx.hstack(name_text, status_badge, spacing="3", align="center", wrap="wrap"),
                     rx.spacer(),
-                    drep_delegate_button(DrepDetailState.display_drep_id),
+                    rx.hstack(
+                        _drep_share_btn(),
+                        _drep_fav_btn(),
+                        spacing="1", align="center", flex_shrink="0",
+                    ),
                     spacing="3", align="center", width="100%", wrap="wrap",
                 ),
                 drep_id_block,
@@ -489,6 +541,12 @@ def _profile_card() -> rx.Component:
                         spacing="0", align="start",
                     ),
                     spacing="6", wrap="wrap",
+                ),
+                # 委任ボタン (右下)
+                rx.hstack(
+                    rx.spacer(),
+                    drep_delegate_button(DrepDetailState.display_drep_id),
+                    width="100%", align="center", padding_top="4px",
                 ),
                 spacing="3",
                 align_items="start",

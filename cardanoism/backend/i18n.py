@@ -253,6 +253,8 @@ UI_JA: dict[str, str] = {
     "gov_id_copied": "提案 ID をコピーしました",
     "gov_stake_copied": "ステークアドレスをコピーしました",
     "gov_ref_no_label": "（ラベルなし）",
+    "drep_url_copied": "DRepページのリンクをコピーしました",
+    "pool_url_copied": "プールページのリンクをコピーしました",
 
     # ガバナンス サブナビゲーション
     "gov_subnav_why": "ガバナンスとは？",
@@ -1990,6 +1992,8 @@ UI_EN: dict[str, str] = {
     "gov_id_copied": "Proposal ID copied",
     "gov_stake_copied": "Stake address copied",
     "gov_ref_no_label": "(No label)",
+    "drep_url_copied": "DRep page link copied",
+    "pool_url_copied": "Pool page link copied",
 
     # Governance subnav
     "gov_subnav_why": "Why participate?",

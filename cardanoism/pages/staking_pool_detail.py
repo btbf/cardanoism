@@ -169,6 +169,56 @@ def _breadcrumb() -> rx.Component:
     )
 
 
+def _pool_share_btn() -> rx.Component:
+    """Pool ページの URL をクリップボードへコピーするシェアボタン。"""
+    pid = PoolDetailState.pool["pool_id"]
+    return rx.el.button(
+        rx.icon("share-2", size=18, color="var(--gray-11)"),
+        on_click=[
+            rx.set_clipboard("https://cardanoism.com/staking/pool/" + pid),
+            rx.toast(
+                AuthState.t["pool_url_copied"],
+                position="top-center",
+                style={
+                    "background-color": "var(--indigo-11)",
+                    "color": "white",
+                    "border-radius": "0.5rem",
+                },
+            ),
+        ],
+        cursor="pointer",
+        style={
+            "display":       "inline-flex",
+            "alignItems":    "center",
+            "border":        "none",
+            "background":    "transparent",
+            "padding":       "6px",
+            "borderRadius":  "8px",
+            "transition":    "background 0.15s",
+            "flexShrink":    "0",
+        },
+        _hover={"background": "var(--gray-3)"},
+    )
+
+
+def _pool_fav_btn() -> rx.Component:
+    """Pool お気に入り (ハート) トグルボタン。"""
+    pid = PoolDetailState.pool["pool_id"]
+    return rx.box(
+        rx.cond(
+            AuthState.pool_favorite_ids.contains(pid),
+            rx.icon("heart", size=22, color="var(--red-9)",
+                    style={"fill": "var(--red-9)"}),
+            rx.icon("heart", size=22, color="var(--gray-8)"),
+        ),
+        on_click=AuthState.toggle_pool_favorite(pid),
+        cursor="pointer",
+        padding="6px",
+        flex_shrink="0",
+        style={"display": "flex", "alignItems": "center"},
+    )
+
+
 def _header() -> rx.Component:
     p = PoolDetailState.pool
     icon = rx.cond(
@@ -272,11 +322,21 @@ def _header() -> rx.Component:
                     pool_id_row,
                     spacing="2", align_items="start", flex="1", min_width="0",
                 ),
-                # 委任 CTA はボックス右上に配置
-                _delegate_cta(),
+                # 右上: シェア + お気に入り
+                rx.hstack(
+                    _pool_share_btn(),
+                    _pool_fav_btn(),
+                    spacing="1", align="center", flex_shrink="0",
+                ),
                 spacing="4", align="start", width="100%", wrap="wrap",
             ),
             about,
+            # 右下: 委任 CTA
+            rx.hstack(
+                rx.spacer(),
+                _delegate_cta(),
+                width="100%", align="center", padding_top="4px",
+            ),
             spacing="4", align_items="stretch", width="100%",
         ),
         padding="20px 22px",
