@@ -253,6 +253,8 @@ UI_JA: dict[str, str] = {
     "gov_id_copied": "提案 ID をコピーしました",
     "gov_stake_copied": "ステークアドレスをコピーしました",
     "gov_ref_no_label": "（ラベルなし）",
+    "drep_url_copied": "DRepページのリンクをコピーしました",
+    "pool_url_copied": "プールページのリンクをコピーしました",
 
     # ガバナンス サブナビゲーション
     "gov_subnav_why": "ガバナンスとは？",
@@ -1675,6 +1677,7 @@ UI_JA: dict[str, str] = {
     "favorites_empty": "お気に入りはありません",
     "favorites_drep_empty": "DRep のお気に入りはまだありません",
     "favorites_pool_empty": "ステークプールのお気に入りはまだありません",
+    "favorites_export_csv": "CSV エクスポート",
 
     # プロフィールタブ
     "display_name": "表示名",
@@ -1990,6 +1993,8 @@ UI_EN: dict[str, str] = {
     "gov_id_copied": "Proposal ID copied",
     "gov_stake_copied": "Stake address copied",
     "gov_ref_no_label": "(No label)",
+    "drep_url_copied": "DRep page link copied",
+    "pool_url_copied": "Pool page link copied",
 
     # Governance subnav
     "gov_subnav_why": "Why participate?",
@@ -3390,6 +3395,7 @@ UI_EN: dict[str, str] = {
     "favorites_empty": "No favorites yet",
     "favorites_drep_empty": "No favorite DReps yet",
     "favorites_pool_empty": "No favorite stake pools yet",
+    "favorites_export_csv": "Export CSV",
 
     # Profile tab
     "display_name": "Display Name",

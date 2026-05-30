@@ -609,6 +609,29 @@ def get_ga_favorites(user_id: int) -> list:
         return [dict(row) for row in cursor.fetchall()]
 
 
+def get_governance_favorites_for_export(user_id: int) -> list[dict]:
+    """ガバナンスお気に入りの CSV エクスポート用データ。
+    TreasuryWithdrawals の場合は governance_actions.withdrawal_total_lovelace
+    を引き出し合計として返す (全 status の GA で利用可能)。
+    """
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT f.proposal_uuid AS proposal_id, f.created_at AS favorited_at,
+                   g.title, g.title_ja, g.proposal_type,
+                   g.proposed_epoch, g.ratified_epoch, g.enacted_epoch,
+                   g.dropped_epoch, g.expired_epoch,
+                   g.withdrawal_total_lovelace AS withdrawal_lovelace
+              FROM favorites f
+              JOIN governance_actions g ON f.proposal_uuid = g.proposal_id
+             WHERE f.user_id = ? AND f.type = 'governance'
+             ORDER BY f.created_at DESC
+            """,
+            (user_id,),
+        )
+        return [dict(r) for r in cursor.fetchall()]
+
+
 def get_drep_favorites(user_id: int) -> list:
     """DRep お気に入り一覧 (dreps JOIN)。favorites.proposal_uuid には drep_id を保存。
     UI 側で `!= ""` 等で分岐するため、NULL は空文字に正規化して返す。
@@ -628,13 +651,14 @@ def get_drep_favorites(user_id: int) -> list:
         )
         return [
             {
-                "id":          int(r.get("id") or 0),
-                "drep_id":     str(r.get("drep_id") or ""),
-                "given_name":  str(r.get("given_name") or ""),
-                "image_url":   str(r.get("image_url") or ""),
-                "active":      "1" if r.get("active") else "",
-                "drep_status": str(r.get("drep_status") or ""),
-                "amount":      "" if r.get("amount") is None else str(r.get("amount")),
+                "id":            int(r.get("id") or 0),
+                "drep_id":       str(r.get("drep_id") or ""),
+                "given_name":    str(r.get("given_name") or ""),
+                "image_url":     str(r.get("image_url") or ""),
+                "active":        "1" if r.get("active") else "",
+                "drep_status":   str(r.get("drep_status") or ""),
+                "amount":        "" if r.get("amount") is None else str(r.get("amount")),
+                "favorited_at":  str(r.get("created_at") or ""),
             }
             for r in cursor.fetchall()
         ]
@@ -671,6 +695,7 @@ def get_pool_favorites(user_id: int) -> list:
                 "live_delegators": "" if r.get("live_delegators") is None else str(r.get("live_delegators")),
                 "pool_status":     str(r.get("pool_status") or ""),
                 "retiring_epoch":  "" if r.get("retiring_epoch") is None else str(r.get("retiring_epoch")),
+                "favorited_at":    str(r.get("created_at") or ""),
             }
             for r in cursor.fetchall()
         ]

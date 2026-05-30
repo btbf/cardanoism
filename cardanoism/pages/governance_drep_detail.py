@@ -375,6 +375,77 @@ def _breadcrumb() -> rx.Component:
     )
 
 
+def _drep_share_btn() -> rx.Component:
+    """DRep ページのシェアメニュー (X / LINE / URL コピー)。
+    ガバナンス提案モーダルのシェアボタンと同じ挙動。"""
+    return rx.menu.root(
+        rx.menu.trigger(
+            rx.icon(
+                "share-2", size=26, color="var(--gray-11)",
+                cursor="pointer", padding="4px",
+            ),
+        ),
+        rx.menu.content(
+            rx.menu.item(
+                "X (Twitter)",
+                on_click=rx.call_script(
+                    "const t = document.querySelector('.drep-title')?.innerText ?? '';"
+                    "const url = 'https://x.com/intent/tweet'"
+                    "  + '?text=' + encodeURIComponent(t)"
+                    "  + '&url=' + encodeURIComponent(window.location.href);"
+                    "window.open(url,'x-share',"
+                    "'width=550,height=420,menubar=no,toolbar=no,"
+                    "location=no,status=no,resizable=yes,scrollbars=yes');"
+                ),
+            ),
+            rx.menu.item(
+                "LINE",
+                on_click=rx.call_script(
+                    "const t = document.querySelector('.drep-title')?.innerText ?? '';"
+                    "const url = 'https://social-plugins.line.me/lineit/share'"
+                    "  + '?url=' + encodeURIComponent(window.location.href)"
+                    "  + '&text=' + encodeURIComponent(t);"
+                    "window.open(url,'line-share',"
+                    "'width=520,height=520,menubar=no,toolbar=no,"
+                    "location=no,status=no,resizable=yes,scrollbars=yes');"
+                ),
+            ),
+            rx.menu.item(
+                AuthState.t["proposal_copy_url"],
+                on_click=[
+                    rx.call_script("navigator.clipboard.writeText(window.location.href);"),
+                    rx.toast(
+                        AuthState.t["drep_url_copied"],
+                        position="top-center",
+                        style={
+                            "background-color": "var(--indigo-11)",
+                            "color": "white",
+                            "border-radius": "0.5rem",
+                        },
+                    ),
+                ],
+            ),
+        ),
+    )
+
+
+def _drep_fav_btn() -> rx.Component:
+    """DRep お気に入り (ハート) トグルボタン。"""
+    return rx.box(
+        rx.cond(
+            AuthState.drep_favorite_ids.contains(DrepDetailState.display_drep_id),
+            rx.icon("heart", size=22, color="var(--red-9)",
+                    style={"fill": "var(--red-9)"}),
+            rx.icon("heart", size=22, color="var(--gray-8)"),
+        ),
+        on_click=AuthState.toggle_drep_favorite(DrepDetailState.display_drep_id),
+        cursor="pointer",
+        padding="6px",
+        flex_shrink="0",
+        style={"display": "flex", "alignItems": "center"},
+    )
+
+
 def _profile_card() -> rx.Component:
     avatar = rx.cond(
         DrepDetailState.image_url != "",
@@ -400,8 +471,10 @@ def _profile_card() -> rx.Component:
     )
     name_text = rx.cond(
         DrepDetailState.given_name != "",
-        rx.text(DrepDetailState.given_name, size="6", weight="bold", color="var(--gray-12)"),
-        rx.text(AuthState.t["drep_no_name"], size="6", weight="bold", color="var(--gray-10)"),
+        rx.text(DrepDetailState.given_name, size="6", weight="bold",
+                color="var(--gray-12)", class_name="drep-title"),
+        rx.text(AuthState.t["drep_no_name"], size="6", weight="bold",
+                color="var(--gray-10)", class_name="drep-title"),
     )
     fiat = rx.cond(
         AuthState.language == "en",
@@ -464,7 +537,11 @@ def _profile_card() -> rx.Component:
                 rx.hstack(
                     rx.hstack(name_text, status_badge, spacing="3", align="center", wrap="wrap"),
                     rx.spacer(),
-                    drep_delegate_button(DrepDetailState.display_drep_id),
+                    rx.hstack(
+                        _drep_share_btn(),
+                        _drep_fav_btn(),
+                        spacing="1", align="center", flex_shrink="0",
+                    ),
                     spacing="3", align="center", width="100%", wrap="wrap",
                 ),
                 drep_id_block,
@@ -489,6 +566,12 @@ def _profile_card() -> rx.Component:
                         spacing="0", align="start",
                     ),
                     spacing="6", wrap="wrap",
+                ),
+                # 委任ボタン (右下)
+                rx.hstack(
+                    rx.spacer(),
+                    drep_delegate_button(DrepDetailState.display_drep_id),
+                    width="100%", align="center", padding_top="4px",
                 ),
                 spacing="3",
                 align_items="start",
