@@ -165,6 +165,20 @@ def _fav_pagination(page_var, total_var, prev_handler, next_handler) -> rx.Compo
     )
 
 
+def _export_csv_button(handler, disabled=False) -> rx.Component:
+    """CSV エクスポートボタン (各お気に入りタブ上部)。"""
+    return rx.button(
+        rx.icon("download", size=14),
+        rx.text(AuthState.t["favorites_export_csv"], size="2"),
+        variant="soft",
+        color_scheme="gray",
+        size="2",
+        cursor="pointer",
+        on_click=handler,
+        disabled=disabled,
+    )
+
+
 def _catalyst_list() -> rx.Component:
     return rx.vstack(
         rx.hstack(
@@ -202,8 +216,15 @@ def _catalyst_list() -> rx.Component:
                 value=AuthState.favorites_sort,
                 on_change=AuthState.set_favorites_sort,
             ),
+            rx.spacer(),
+            _export_csv_button(
+                AuthState.export_catalyst_favorites_csv,
+                disabled=AuthState.is_favorites_empty,
+            ),
             wrap="wrap",
             spacing="2",
+            width="100%",
+            align="center",
         ),
         rx.cond(
             AuthState.is_favorites_empty,
@@ -234,28 +255,39 @@ def _catalyst_list() -> rx.Component:
 
 
 def _governance_list() -> rx.Component:
-    return rx.cond(
-        AuthState.is_ga_favorites_empty,
-        rx.center(
+    return rx.vstack(
+        rx.hstack(
+            rx.spacer(),
+            _export_csv_button(
+                AuthState.export_governance_favorites_csv,
+                disabled=AuthState.is_ga_favorites_empty,
+            ),
+            width="100%", align="center",
+        ),
+        rx.cond(
+            AuthState.is_ga_favorites_empty,
+            rx.center(
+                rx.vstack(
+                    rx.icon("bookmark", size=36, color="var(--gray-6)"),
+                    rx.text("ガバナンスのお気に入りはまだありません", size="4", color="var(--gray-8)"),
+                    spacing="3",
+                    align="center",
+                ),
+                padding_y="40px",
+            ),
             rx.vstack(
-                rx.icon("bookmark", size=36, color="var(--gray-6)"),
-                rx.text("ガバナンスのお気に入りはまだありません", size="4", color="var(--gray-8)"),
-                spacing="3",
-                align="center",
+                rx.foreach(AuthState.filtered_ga_favorites, ga_favorite_card),
+                _fav_pagination(
+                    AuthState.ga_favorites_page,
+                    AuthState.ga_favorites_total_pages,
+                    AuthState.ga_favorites_prev_page,
+                    AuthState.ga_favorites_next_page,
+                ),
+                spacing="2",
+                width="100%",
             ),
-            padding_y="40px",
         ),
-        rx.vstack(
-            rx.foreach(AuthState.filtered_ga_favorites, ga_favorite_card),
-            _fav_pagination(
-                AuthState.ga_favorites_page,
-                AuthState.ga_favorites_total_pages,
-                AuthState.ga_favorites_prev_page,
-                AuthState.ga_favorites_next_page,
-            ),
-            spacing="2",
-            width="100%",
-        ),
+        spacing="3", width="100%",
     )
 
 
@@ -381,54 +413,76 @@ def pool_favorite_card(fav: rx.Var[dict]) -> rx.Component:
 
 
 def _drep_list() -> rx.Component:
-    return rx.cond(
-        AuthState.is_drep_favorites_empty,
-        rx.center(
+    return rx.vstack(
+        rx.hstack(
+            rx.spacer(),
+            _export_csv_button(
+                AuthState.export_drep_favorites_csv,
+                disabled=AuthState.is_drep_favorites_empty,
+            ),
+            width="100%", align="center",
+        ),
+        rx.cond(
+            AuthState.is_drep_favorites_empty,
+            rx.center(
+                rx.vstack(
+                    rx.icon("bookmark", size=36, color="var(--gray-6)"),
+                    rx.text(AuthState.t["favorites_drep_empty"], size="4", color="var(--gray-8)"),
+                    spacing="3",
+                    align="center",
+                ),
+                padding_y="40px",
+            ),
             rx.vstack(
-                rx.icon("bookmark", size=36, color="var(--gray-6)"),
-                rx.text(AuthState.t["favorites_drep_empty"], size="4", color="var(--gray-8)"),
-                spacing="3",
-                align="center",
+                rx.foreach(AuthState.filtered_drep_favorites, drep_favorite_card),
+                _fav_pagination(
+                    AuthState.drep_favorites_page,
+                    AuthState.drep_favorites_total_pages,
+                    AuthState.drep_favorites_prev_page,
+                    AuthState.drep_favorites_next_page,
+                ),
+                spacing="2",
+                width="100%",
             ),
-            padding_y="40px",
         ),
-        rx.vstack(
-            rx.foreach(AuthState.filtered_drep_favorites, drep_favorite_card),
-            _fav_pagination(
-                AuthState.drep_favorites_page,
-                AuthState.drep_favorites_total_pages,
-                AuthState.drep_favorites_prev_page,
-                AuthState.drep_favorites_next_page,
-            ),
-            spacing="2",
-            width="100%",
-        ),
+        spacing="3", width="100%",
     )
 
 
 def _pool_list() -> rx.Component:
-    return rx.cond(
-        AuthState.is_pool_favorites_empty,
-        rx.center(
+    return rx.vstack(
+        rx.hstack(
+            rx.spacer(),
+            _export_csv_button(
+                AuthState.export_pool_favorites_csv,
+                disabled=AuthState.is_pool_favorites_empty,
+            ),
+            width="100%", align="center",
+        ),
+        rx.cond(
+            AuthState.is_pool_favorites_empty,
+            rx.center(
+                rx.vstack(
+                    rx.icon("bookmark", size=36, color="var(--gray-6)"),
+                    rx.text(AuthState.t["favorites_pool_empty"], size="4", color="var(--gray-8)"),
+                    spacing="3",
+                    align="center",
+                ),
+                padding_y="40px",
+            ),
             rx.vstack(
-                rx.icon("bookmark", size=36, color="var(--gray-6)"),
-                rx.text(AuthState.t["favorites_pool_empty"], size="4", color="var(--gray-8)"),
-                spacing="3",
-                align="center",
+                rx.foreach(AuthState.filtered_pool_favorites, pool_favorite_card),
+                _fav_pagination(
+                    AuthState.pool_favorites_page,
+                    AuthState.pool_favorites_total_pages,
+                    AuthState.pool_favorites_prev_page,
+                    AuthState.pool_favorites_next_page,
+                ),
+                spacing="2",
+                width="100%",
             ),
-            padding_y="40px",
         ),
-        rx.vstack(
-            rx.foreach(AuthState.filtered_pool_favorites, pool_favorite_card),
-            _fav_pagination(
-                AuthState.pool_favorites_page,
-                AuthState.pool_favorites_total_pages,
-                AuthState.pool_favorites_prev_page,
-                AuthState.pool_favorites_next_page,
-            ),
-            spacing="2",
-            width="100%",
-        ),
+        spacing="3", width="100%",
     )
 
 

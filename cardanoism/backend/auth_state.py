@@ -34,6 +34,7 @@ from cardanoism.backend.auth_db import (
     add_favorite,
     remove_favorite,
     get_ga_favorites,
+    get_governance_favorites_for_export,
     get_drep_favorites,
     get_pool_favorites,
     get_notification_settings,
@@ -1455,6 +1456,167 @@ class AuthState(rx.State):
     def pool_favorites_next_page(self):
         if self.pool_favorites_page < self.pool_favorites_total_pages:
             self.pool_favorites_page += 1
+
+    # ─── お気に入り CSV エクスポート ──────────────────────────────
+    # ヘッダーは英語キー、UTF-8 BOM 付きで Excel での日本語文字化けを防ぐ。
+
+    def _csv_response(self, headers: list[str], rows: list[list], filename: str):
+        import csv as _csv
+        import io as _io
+        buf = _io.StringIO()
+        writer = _csv.writer(buf, lineterminator="\r\n", quoting=_csv.QUOTE_MINIMAL)
+        writer.writerow(headers)
+        for row in rows:
+            writer.writerow(row)
+        # UTF-8 BOM を先頭に付与 (Excel 文字化け対策)
+        data = "﻿" + buf.getvalue()
+        return rx.download(data=data.encode("utf-8"), filename=filename)
+
+    def _today_str(self) -> str:
+        from datetime import datetime, timezone
+        return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    def _site_url(self) -> str:
+        import os as _os
+        return (_os.getenv("CARDANOISM_URL") or "https://cardanoism.com").rstrip("/")
+
+    def _status_from_epochs(self, ratified, enacted, dropped, expired) -> str:
+        if enacted:
+            return "enacted"
+        if ratified:
+            return "ratified"
+        if expired:
+            return "expired"
+        if dropped:
+            return "dropped"
+        return "active"
+
+    def export_catalyst_favorites_csv(self):
+        if not self.is_logged_in:
+            return
+        favs = get_favorites(self.user_id, "catalyst")
+        base = self._site_url()
+        headers = [
+            "uuid", "title", "title_ja", "fund", "status",
+            "amount_requested", "currency", "url", "favorited_at",
+        ]
+        rows = []
+        for f in favs:
+            uuid = str(f.get("proposal_uuid") or "")
+            rows.append([
+                uuid,
+                str(f.get("title") or ""),
+                str(f.get("title_ja") or ""),
+                str(f.get("fund_label") or ""),
+                str(f.get("funding_status") or ""),
+                str(f.get("amount_requested") if f.get("amount_requested") is not None else ""),
+                str(f.get("currency_symbol") or ""),
+                f"{base}/catalyst/proposals/{uuid}" if uuid else "",
+                str(f.get("created_at") or ""),
+            ])
+        return self._csv_response(
+            headers, rows, f"favorites_catalyst_{self._today_str()}.csv"
+        )
+
+    def export_governance_favorites_csv(self):
+        if not self.is_logged_in:
+            return
+        favs = get_governance_favorites_for_export(self.user_id)
+        base = self._site_url()
+        headers = [
+            "proposal_id", "title", "title_ja", "type", "proposed_epoch",
+            "status", "enacted_epoch", "withdrawal_ada", "url", "favorited_at",
+        ]
+        rows = []
+        for f in favs:
+            pid = str(f.get("proposal_id") or "")
+            withdrawal_lovelace = int(f.get("withdrawal_lovelace") or 0)
+            withdrawal_ada = ""
+            if withdrawal_lovelace > 0:
+                withdrawal_ada = f"{withdrawal_lovelace / 1_000_000:.6f}".rstrip("0").rstrip(".")
+            rows.append([
+                pid,
+                str(f.get("title") or ""),
+                str(f.get("title_ja") or ""),
+                str(f.get("proposal_type") or ""),
+                str(f.get("proposed_epoch") if f.get("proposed_epoch") is not None else ""),
+                self._status_from_epochs(
+                    f.get("ratified_epoch"), f.get("enacted_epoch"),
+                    f.get("dropped_epoch"), f.get("expired_epoch"),
+                ),
+                str(f.get("enacted_epoch") if f.get("enacted_epoch") is not None else ""),
+                withdrawal_ada,
+                f"{base}/governance/{pid}" if pid else "",
+                str(f.get("favorited_at") or ""),
+            ])
+        return self._csv_response(
+            headers, rows, f"favorites_governance_{self._today_str()}.csv"
+        )
+
+    def export_drep_favorites_csv(self):
+        if not self.is_logged_in:
+            return
+        favs = get_drep_favorites(self.user_id)
+        base = self._site_url()
+        headers = [
+            "drep_id", "given_name", "status", "amount_ada", "url", "favorited_at",
+        ]
+        rows = []
+        for f in favs:
+            drep_id = str(f.get("drep_id") or "")
+            amount_str = str(f.get("amount") or "")
+            try:
+                amount_ada = f"{int(amount_str) / 1_000_000:.6f}".rstrip("0").rstrip(".") if amount_str else ""
+            except (TypeError, ValueError):
+                amount_ada = ""
+            rows.append([
+                drep_id,
+                str(f.get("given_name") or ""),
+                str(f.get("drep_status") or ""),
+                amount_ada,
+                f"{base}/drep/{drep_id}" if drep_id else "",
+                str(f.get("favorited_at") or ""),
+            ])
+        return self._csv_response(
+            headers, rows, f"favorites_drep_{self._today_str()}.csv"
+        )
+
+    def export_pool_favorites_csv(self):
+        if not self.is_logged_in:
+            return
+        favs = get_pool_favorites(self.user_id)
+        base = self._site_url()
+        headers = [
+            "pool_id", "ticker", "pool_name", "live_stake_ada",
+            "live_saturation_pct", "live_delegators", "status",
+            "retiring_epoch", "url", "favorited_at",
+        ]
+        rows = []
+        for f in favs:
+            pool_id = str(f.get("pool_id") or "")
+            live_stake_str = str(f.get("live_stake") or "")
+            try:
+                live_stake_ada = (
+                    f"{int(live_stake_str) / 1_000_000:.6f}".rstrip("0").rstrip(".")
+                    if live_stake_str else ""
+                )
+            except (TypeError, ValueError):
+                live_stake_ada = ""
+            rows.append([
+                pool_id,
+                str(f.get("ticker") or ""),
+                str(f.get("pool_name") or ""),
+                live_stake_ada,
+                str(f.get("live_saturation") or ""),
+                str(f.get("live_delegators") or ""),
+                str(f.get("pool_status") or ""),
+                str(f.get("retiring_epoch") or ""),
+                f"{base}/staking/pool/{pool_id}" if pool_id else "",
+                str(f.get("favorited_at") or ""),
+            ])
+        return self._csv_response(
+            headers, rows, f"favorites_pool_{self._today_str()}.csv"
+        )
 
     @rx.var
     def filtered_pool_favorites(self) -> list[dict]:

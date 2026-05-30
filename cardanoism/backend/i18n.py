@@ -1677,6 +1677,7 @@ UI_JA: dict[str, str] = {
     "favorites_empty": "お気に入りはありません",
     "favorites_drep_empty": "DRep のお気に入りはまだありません",
     "favorites_pool_empty": "ステークプールのお気に入りはまだありません",
+    "favorites_export_csv": "CSV エクスポート",
 
     # プロフィールタブ
     "display_name": "表示名",
@@ -3394,6 +3395,7 @@ UI_EN: dict[str, str] = {
     "favorites_empty": "No favorites yet",
     "favorites_drep_empty": "No favorite DReps yet",
     "favorites_pool_empty": "No favorite stake pools yet",
+    "favorites_export_csv": "Export CSV",
 
     # Profile tab
     "display_name": "Display Name",
