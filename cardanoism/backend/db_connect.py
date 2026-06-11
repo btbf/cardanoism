@@ -78,8 +78,21 @@ def dbConnect():
     try:
         conn = pool.get_connection()
     except mariadb.Error as e:
-        print(f"Error getting connection from pool: {e}")
-        sys.exit(1)
+        logger.error("Error getting connection from pool: %s", e)
+        raise
+
+    try:
+        conn.ping()
+    except mariadb.Error:
+        try:
+            conn.reconnect()
+        except mariadb.Error as e:
+            logger.error("Failed to revive a dead pooled connection: %s", e)
+            try:
+                conn.close()
+            except mariadb.Error:
+                pass
+            raise
 
     #Get Cursor
     cursor = conn.cursor(dictionary=True)
