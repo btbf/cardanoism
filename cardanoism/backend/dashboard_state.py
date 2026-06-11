@@ -30,6 +30,7 @@ from cardanoism.backend.drep_db import get_drep
 from cardanoism.backend.vote_db import get_votes_by_drep
 from cardanoism.backend.stake_rewards_db import (
     get_recent_rewards,
+    get_rewards_for_epochs,
     get_total_rewards,
     get_total_rewards_by_type,
     has_rewards_for_addresses,
@@ -703,7 +704,16 @@ class DashboardState(rx.State):
             self.rewards_missing_addresses = []
             return
 
-        rows = get_recent_rewards(addrs, n_epochs=RECENT_REWARDS_EPOCHS)
+        # 「直近 N エポック」ラベル通り、現在エポックから連続した N 個を target に。
+        # stake_rewards テーブルに行が無いエポックは 0 ADA で補完する。
+        from cardanoism.backend.koios import get_current_epoch
+        current_epoch = get_current_epoch() or 0
+        target_epochs = [
+            current_epoch - i
+            for i in range(RECENT_REWARDS_EPOCHS)
+            if current_epoch - i >= 0
+        ]
+        rows = get_rewards_for_epochs(addrs, target_epochs)
         # rows 1 行 = (stake, epoch, type) なので epoch ごとに type 別に集約する
         # by_addr_by_epoch[addr][epoch] = {"member": N, "leader": N, "other": N}
         by_addr_by_epoch: dict[str, dict[int, dict[str, int]]] = {}
@@ -726,10 +736,10 @@ class DashboardState(rx.State):
         for sa in addrs:
             epoch_map = by_addr_by_epoch.get(sa, {})
             items: list[dict[str, str]] = []
-            # get_recent_rewards の LIMIT は行数ベースで余分に取れることがあるため、
-            # ここで各アドレスの直近 RECENT_REWARDS_EPOCHS エポックに明示的に絞る。
-            for ep in sorted(epoch_map.keys(), reverse=True)[:RECENT_REWARDS_EPOCHS]:
-                v = epoch_map[ep]
+            # target_epochs (現在エポックから N 個前まで) を新しい順に並べて 0 補完。
+            # epoch_map に該当 ep が無ければ全 type 0 として表示する。
+            for ep in target_epochs:
+                v = epoch_map.get(ep) or {"member": 0, "leader": 0, "other": 0}
                 total_lov = v["member"] + v["leader"] + v["other"]
                 items.append({
                     "epoch_no":   str(ep),

@@ -66,6 +66,10 @@ def get_recent_rewards(stake_addresses: list[str], n_epochs: int = 5) -> list[di
 
     戻り値: 1 行 = 1 (stake, epoch, type)。同じ epoch でも member / leader が別行で返る。
     epoch_no DESC, stake_address ASC, reward_type ASC でソート済み。
+
+    注: stake_rewards テーブルには「報酬を受け取った epoch」しか行が無いため、
+    報酬が飛び飛びのアドレスでは古い epoch が混ざる。
+    「直近 N エポックの連続値 (0 補完)」が必要なら get_rewards_for_epochs を使う。
     """
     if not stake_addresses:
         return []
@@ -83,6 +87,31 @@ def get_recent_rewards(stake_addresses: list[str], n_epochs: int = 5) -> list[di
             return [dict(row) for row in cursor.fetchall()]
     except Exception as e:  # noqa: BLE001
         logger.exception("get_recent_rewards failed: %s", e)
+        return []
+
+
+def get_rewards_for_epochs(stake_addresses: list[str], epochs: list[int]) -> list[dict]:
+    """指定アドレス × 指定 epoch のみの報酬行を返す。
+
+    戻り値: 1 行 = 1 (stake, epoch, type)。stake_rewards に行が存在する分だけ返る。
+    呼び出し側で 0 補完して連続エポック表示に整える。
+    """
+    if not stake_addresses or not epochs:
+        return []
+    addr_ph = ",".join(["?"] * len(stake_addresses))
+    ep_ph   = ",".join(["?"] * len(epochs))
+    sql = (
+        f"SELECT stake_address, epoch_no, amount_lovelace, pool_id, reward_type "
+        f"FROM stake_rewards "
+        f"WHERE stake_address IN ({addr_ph}) AND epoch_no IN ({ep_ph})"
+    )
+    params = list(stake_addresses) + [int(e) for e in epochs]
+    try:
+        with get_db() as (cursor, _):
+            cursor.execute(sql, params)
+            return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:  # noqa: BLE001
+        logger.exception("get_rewards_for_epochs failed: %s", e)
         return []
 
 
