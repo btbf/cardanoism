@@ -24,3 +24,4 @@ bun.lock
 .agents/
 .claude/skills/
 skills-lock.json
+docs/catalyst-closeout-fund12.md
