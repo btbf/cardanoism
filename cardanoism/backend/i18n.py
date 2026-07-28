@@ -1675,13 +1675,20 @@ UI_JA: dict[str, str] = {
     "sort_amount_desc": "要求金額（高い順）",
     "sort_amount_asc": "要求金額（低い順）",
     "favorites_empty": "お気に入りはありません",
+    "favorites_ga_empty": "ガバナンスのお気に入りはまだありません",
     "favorites_drep_empty": "DRep のお気に入りはまだありません",
     "favorites_pool_empty": "ステークプールのお気に入りはまだありません",
     "favorites_export_csv": "CSV エクスポート",
+    "favorites_cat_governance": "ガバナンス",
+    "favorites_cat_drep": "DRep",
+    "favorites_cat_pool": "ステークプール",
+    "favorites_cat_catalyst": "Catalyst",
 
     # プロフィールタブ
     "display_name": "表示名",
     "email_address": "メールアドレス",
+    "email_google_badge": "Google連携",
+    "email_google_locked": "Googleアカウントのメールアドレスは変更できません。",
     "email_register_hint": "メールアドレスを登録すると各種通知をメールでも受け取れます。@cardanoism.com からのメールを受信許可してください。",
     "save": "保存",
     "saved": "保存しました",
@@ -1789,6 +1796,13 @@ UI_JA: dict[str, str] = {
     "login_x": "Xでログイン",
     "login_back_to_top": "← トップページに戻る",
     "login_close": "閉じる",
+
+    # OAuth リダイレクト / コールバック中のローディング画面
+    "auth_connecting_line": "LINEへ接続中...",
+    "auth_connecting_google": "Googleへ接続中...",
+    "auth_connecting_x": "X(Twitter)へ接続中...",
+    "auth_processing_login": "ログイン処理中...",
+    "auth_processing_logout": "ログアウト中...",
 }
 
 UI_EN: dict[str, str] = {
@@ -3393,13 +3407,20 @@ UI_EN: dict[str, str] = {
     "sort_amount_desc": "Amount (High to Low)",
     "sort_amount_asc": "Amount (Low to High)",
     "favorites_empty": "No favorites yet",
+    "favorites_ga_empty": "No favorite governance actions yet",
     "favorites_drep_empty": "No favorite DReps yet",
     "favorites_pool_empty": "No favorite stake pools yet",
     "favorites_export_csv": "Export CSV",
+    "favorites_cat_governance": "Governance",
+    "favorites_cat_drep": "DRep",
+    "favorites_cat_pool": "Stake Pools",
+    "favorites_cat_catalyst": "Catalyst",
 
     # Profile tab
     "display_name": "Display Name",
     "email_address": "Email Address",
+    "email_google_badge": "Google linked",
+    "email_google_locked": "The email address of your Google account cannot be changed.",
     "email_register_hint": "Register your email to also receive notifications by email. Please allow emails from @cardanoism.com.",
     "save": "Save",
     "saved": "Saved",
@@ -3506,6 +3527,13 @@ UI_EN: dict[str, str] = {
     "login_x": "Log in with X",
     "login_back_to_top": "← Back to top",
     "login_close": "Close",
+
+    # OAuth redirect / callback loading screens
+    "auth_connecting_line": "Connecting to LINE...",
+    "auth_connecting_google": "Connecting to Google...",
+    "auth_connecting_x": "Connecting to X (Twitter)...",
+    "auth_processing_login": "Signing you in...",
+    "auth_processing_logout": "Signing you out...",
 }
 
 

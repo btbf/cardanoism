@@ -54,7 +54,11 @@ def ga_favorite_card(fav: rx.Var[dict]) -> rx.Component:
             rx.vstack(
                 rx.link(
                     rx.text(
-                        rx.cond(fav["title_ja"], fav["title_ja"], rx.cond(fav["title"], fav["title"], "（タイトルなし）")),
+                        rx.cond(
+                            AuthState.language == "en",
+                            rx.cond(fav["title"], fav["title"], rx.cond(fav["title_ja"], fav["title_ja"], AuthState.t["gov_title_none"])),
+                            rx.cond(fav["title_ja"], fav["title_ja"], rx.cond(fav["title"], fav["title"], AuthState.t["gov_title_none"])),
+                        ),
                         size="4",
                         weight="medium",
                         line_height="1.4",
@@ -97,7 +101,11 @@ def favorite_card(fav: rx.Var[dict]) -> rx.Component:
             rx.vstack(
                 rx.link(
                     rx.text(
-                        rx.cond(fav["title_ja"], fav["title_ja"], fav["title"]),
+                        rx.cond(
+                            AuthState.language == "en",
+                            rx.cond(fav["title"], fav["title"], fav["title_ja"]),
+                            rx.cond(fav["title_ja"], fav["title_ja"], fav["title"]),
+                        ),
                         size="4",
                         weight="medium",
                         line_height="1.4",
@@ -269,7 +277,7 @@ def _governance_list() -> rx.Component:
             rx.center(
                 rx.vstack(
                     rx.icon("bookmark", size=36, color="var(--gray-6)"),
-                    rx.text("ガバナンスのお気に入りはまだありません", size="4", color="var(--gray-8)"),
+                    rx.text(AuthState.t["favorites_ga_empty"], size="4", color="var(--gray-8)"),
                     spacing="3",
                     align="center",
                 ),
@@ -488,7 +496,7 @@ def _pool_list() -> rx.Component:
 
 def favorites_tab() -> rx.Component:
     # カテゴリ切り替えボタン
-    def _cat_btn(label: str, value: str, icon_name: str) -> rx.Component:
+    def _cat_btn(label, value: str, icon_name: str) -> rx.Component:
         is_active = AuthState.favorites_category == value
         return rx.button(
             rx.hstack(rx.icon(icon_name, size=14), rx.text(label, size="2"), spacing="1", align="center"),
@@ -501,10 +509,10 @@ def favorites_tab() -> rx.Component:
 
     return rx.vstack(
         rx.hstack(
-            _cat_btn("ガバナンス", "governance", "landmark"),
-            _cat_btn("DRep", "drep", "user-round"),
-            _cat_btn("ステークプール", "pool", "server"),
-            _cat_btn("Catalyst", "catalyst", "flask-conical"),
+            _cat_btn(AuthState.t["favorites_cat_governance"], "governance", "landmark"),
+            _cat_btn(AuthState.t["favorites_cat_drep"], "drep", "user-round"),
+            _cat_btn(AuthState.t["favorites_cat_pool"], "pool", "server"),
+            _cat_btn(AuthState.t["favorites_cat_catalyst"], "catalyst", "flask-conical"),
             spacing="2",
             wrap="wrap",
         ),
@@ -544,7 +552,7 @@ def profile_tab() -> rx.Component:
                 rx.text(AuthState.t["email_address"], size="3", weight="medium"),
                 rx.cond(
                     AuthState.auth_providers.contains("google"),
-                    rx.badge("Google連携", color_scheme="blue", size="1", variant="soft"),
+                    rx.badge(AuthState.t["email_google_badge"], color_scheme="blue", size="1", variant="soft"),
                     rx.box(),
                 ),
                 spacing="2",
@@ -567,7 +575,7 @@ def profile_tab() -> rx.Component:
             rx.cond(
                 AuthState.auth_providers.contains("google"),
                 rx.text(
-                    "Googleアカウントのメールアドレスは変更できません。",
+                    AuthState.t["email_google_locked"],
                     size="1",
                     color="var(--gray-8)",
                 ),

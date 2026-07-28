@@ -40,7 +40,8 @@
       "Bash(curl -s -X POST \"https://api.koios.rest/api/v1/proposal_list\" -H \"Content-Type: application/json\")",
       "Bash(.venv/Scripts/python *)",
       "Bash(grep -nA 50 \"def _sync_dreps\\\\|def sync_dreps\\\\|drep_sync\" cardanoism/backend/notify_worker.py)",
-      "WebFetch(domain:reflex.dev)"
+      "WebFetch(domain:reflex.dev)",
+      "Bash(python -)"
     ]
   }
 }
