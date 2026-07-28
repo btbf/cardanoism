@@ -13,9 +13,25 @@ Cardanoism の変更履歴。Keep a Changelog 形式に倣い、機能テーマ�
 
 > **Changes since 2.0.0 (2026-01-29)** (322 commits / 2026-04-10 to 2026-06-11, merge commits excluded)
 
-This release rounds out the portal's core: governance visualization, the DRep matching diagnostic, the staking dashboard, the three-track notification backend, multilingual support, and wallet-based delegation.
+The deliverable for the Catalyst final milestone is **My Page** (Catalyst proposal list, persistent favorites, favorites export), covered in section 1 below.
+Section 2 onward is listed for reference only: features added independently of the Catalyst scope — governance visualization, the DRep matching diagnostic, the staking dashboard, the three-track notification backend, multilingual support, and wallet-based delegation.
 
 ---
+
+## 1. Final milestone deliverable — My Page
+
+> **Catalyst reporting scope.** These are the features added for the final milestone.
+
+**My Page (`/mypage`)**
+- **Catalyst proposal list** — A list of the user's favorited Catalyst proposals on My Page, with fund / funding-status filters, sort switching, and pagination.
+- **Persistent favorites** — Favorites are stored per user account in the DB, so they persist across sessions and devices. Login required.
+- **Favorites export** — One-click CSV export of favorites from the top of the tab. RFC 4180 format, UTF-8 with BOM (mojibake-free in Excel), delivered as a browser download with nothing stored server-side. All rows are exported regardless of the active filters. See [export_spec.md](export_spec.md) for the full specification.
+
+---
+
+## 2. Reference — features added independently
+
+> The following are **outside the Catalyst reporting scope**. They were added independently and are listed here for completeness.
 
 ### Added
 
@@ -39,7 +55,7 @@ This release rounds out the portal's core: governance visualization, the DRep ma
 - Implemented withdrawal tracking for TreasuryWithdrawals GAs and a per-epoch change table.
 
 **Catalyst**
-- Added proposal / fund switch tabs. Bookmark favorites and CSV export (across all 4 favorites tabs).
+- Added proposal / fund switch tabs.
 
 **Staking / Dashboard**
 - New dashboard and SPO list pages under staking. Added a DB cache and sync worker for stake pools (SPOs).
@@ -50,7 +66,8 @@ This release rounds out the portal's core: governance visualization, the DRep ma
 
 **My Page / Auth**
 - Social login (LINE / Google / X) with multi-provider support and external UUID linking.
-- Stake address nickname editing; adding DReps / Pools to favorites.
+- Extended the favorites and CSV export mechanism beyond Catalyst to governance GAs, DReps, and Pools (4 favorites tabs in total).
+- Stake address nickname editing.
 - Initialize a new user's language from browser detection.
 
 **Notifications**
@@ -135,7 +152,6 @@ This release rounds out the portal's core: governance visualization, the DRep ma
 - Extracted shared components (breadcrumb / subnav pill, etc.); removed unused assets and the legacy `oura_listener` / old design docs.
 - Plus many smaller chores / refactors: typing fixes, logging improvements, i18n wording tweaks, and diagnostic tools (`fix_drep_vote_ids`, etc.).
 
-> Note: Features that were added and then reverted during development (moving the GA proposal page to `/governance/ga`; the first version of the dashboard delegation-target display) are revert pairs and are not part of this release.
 
 ---
 
@@ -145,9 +161,25 @@ This release rounds out the portal's core: governance visualization, the DRep ma
 
 > **2.0.0 (2026-01-29) 以降の変更**（322 コミット / 2026-04-10〜2026-06-11、マージコミット除く）
 
-このリリースでは、ガバナンス可視化・DRep マッチング診断・ステーキングダッシュボード・通知バックエンドの 3 系統化・多言語対応・ウォレット委任など、ポータルの中核機能が出そろいました。
+Catalyst ファイナルマイルストーンの成果物は**マイページ**（Catalyst 提案一覧・お気に入り登録の永続化・お気に入りのエクスポート）で、下記 1. に記載しています。
+2. 以降は参考掲載です。Catalyst の報告対象外として独自に追加した機能（ガバナンス可視化・DRep マッチング診断・ステーキングダッシュボード・通知バックエンドの 3 系統化・多言語対応・ウォレット委任など）をまとめています。
 
 ---
+
+## 1. ファイナルマイルストーン成果物 — マイページ
+
+> **Catalyst 報告対象。** ファイナルマイルストーンで追加した機能です。
+
+**マイページ（`/mypage`）**
+- **Catalyst 提案一覧** — お気に入り登録した Catalyst 提案の一覧をマイページに表示。ファンド / 資金ステータスによる絞り込み、並び順切替、ページネーションに対応。
+- **お気に入り登録の永続化** — お気に入りをユーザーアカウント単位で DB に保存し、セッションや端末をまたいで保持。ログイン必須。
+- **お気に入りのエクスポート** — タブ上部のボタンから CSV をワンクリック出力。RFC 4180 形式・UTF-8 BOM 付き（Excel で文字化けしない）で、サーバー側に保存せずブラウザダウンロードで配信。絞り込み状態にかかわらず全件を出力します。詳細仕様は [export_spec.md](export_spec.md) を参照。
+
+---
+
+## 2. 参考 — 独自に追加した機能
+
+> 以下は **Catalyst の報告対象外**です。独自に追加した機能を参考として掲載します。
 
 ### 新機能 (Added)
 
@@ -171,7 +203,7 @@ This release rounds out the portal's core: governance visualization, the DRep ma
 - TreasuryWithdrawals GA の出金状況追跡、エポック別増減表を実装。
 
 **カタリスト**
-- 提案 / ファンド切替タブを追加。お気に入りのブックマーク機能、CSV エクスポート（お気に入り 4 タブ対応）を実装。
+- 提案 / ファンド切替タブを追加。
 
 **ステーキング / ダッシュボード**
 - ステーキング配下にダッシュボード・SPO 一覧ページを新設。ステークプール（SPO）の DB キャッシュと同期ワーカーを追加。
@@ -182,7 +214,8 @@ This release rounds out the portal's core: governance visualization, the DRep ma
 
 **マイページ / 認証**
 - ソーシャルログイン（LINE / Google / X）と複数プロバイダ対応、外部 UUID 連携。
-- ステークアドレスのニックネーム編集、お気に入りの DRep / Pool 追加。
+- お気に入り・CSV エクスポートの仕組みを Catalyst 以外（ガバナンス GA / DRep / Pool）へ拡張し、計 4 タブに対応。
+- ステークアドレスのニックネーム編集。
 - 新規ユーザーの言語をブラウザ判定で初期化。
 
 **通知**
@@ -266,5 +299,3 @@ This release rounds out the portal's core: governance visualization, the DRep ma
 - `.env` を廃止し Infisical で集中管理へ移行。デプロイ環境（cron / systemd unit / 依存パッケージ）をリモート構成向けに更新。
 - breadcrumb / subnav pill 等の共通コンポーネント化、未使用アセット・旧 `oura_listener` / 旧設計書の削除。
 - その他、型対応・ログ改善・i18n 文言調整・診断ツール（`fix_drep_vote_ids` 等）追加を含む細かな chore / refactor を多数実施。
-
-> 注: 開発過程で一時的に追加後に取り消された機能（GA 提案ページの `/governance/ga` 移動、ダッシュボードの委任先表示初版）は revert ペアのため本リリースには含まれません。
