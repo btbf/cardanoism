@@ -46,7 +46,10 @@
       "Read(//c/Users/btbf/**)",
       "Bash(env)",
       "Read(//c/Users/btbf/AppData/Roaming/**)",
-      "Bash(.venv/Scripts/python.exe -c \"import mariadb; print\\('ok'\\)\")"
+      "Bash(.venv/Scripts/python.exe -c \"import mariadb; print\\('ok'\\)\")",
+      "Bash(.venv/Scripts/python.exe \"C:\\\\Users\\\\btbf\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--cardanoism\\\\fc202be4-fed0-430b-92c8-180306361427\\\\scratchpad\\\\repro_list.py\")",
+      "Bash(.venv/Scripts/python.exe \"C:\\\\Users\\\\btbf\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--cardanoism\\\\fc202be4-fed0-430b-92c8-180306361427\\\\scratchpad\\\\import_check.py\")",
+      "Bash(.venv/Scripts/python.exe \"C:\\\\Users\\\\btbf\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--cardanoism\\\\fc202be4-fed0-430b-92c8-180306361427\\\\scratchpad\\\\run_fetch.py\")"
     ]
   }
 }

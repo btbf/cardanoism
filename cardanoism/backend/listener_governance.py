@@ -69,12 +69,28 @@ def encode_proposal_id(tx_hash_hex: str, index: int) -> str | None:
     return _encode_bech32("gov_action", tx_bytes + bytes([index]))
 
 
+# CIP-129 の header byte = (key type << 4) | credential type
+#   key type  : CC Hot = 0b0000 / CC Cold = 0b0001 / DRep = 0b0010
+#   cred type : KeyHash = 0b0010 / ScriptHash = 0b0011
+# → DRep   key=0x22 script=0x23
+#   CC Hot key=0x02 script=0x03
+# pool id だけは CIP-129 ではなく生の 28byte ハッシュ (hrp="pool")。
+_CIP129_HEADERS = {
+    # role: (key hash header, script hash header)
+    "DRep":                    (0x22, 0x23),
+    "ConstitutionalCommittee": (0x02, 0x03),
+}
+
+
 def encode_voter_id(role: str, voter_hex: str, has_script: bool = False) -> str | None:
     """Ogmios voter id (hex) → Koios と同じ bech32 形式に変換する。
 
     DRep    : CIP-129 形式 (header byte + 28 byte hash) → drep1...
-    SPO     : pool1... (28 byte hash)
-    CC      : cc_hot1... (28 byte hash)
+    CC      : CIP-129 形式 (header byte + 28 byte hash) → cc_hot1...
+    SPO     : pool1... (CIP-129 ではなく生の 28 byte hash)
+
+    CC に header byte を付け忘れると Koios の voter_id と一致せず、
+    cc_members と突き合わない別人の投票として二重登録されるので注意。
     """
     try:
         raw = bytes.fromhex(voter_hex)
@@ -83,14 +99,14 @@ def encode_voter_id(role: str, voter_hex: str, has_script: bool = False) -> str 
     if len(raw) != 28:
         return None
 
-    if role == "DRep":
-        header = 0x23 if has_script else 0x22  # CIP-129
-        return _encode_bech32("drep", bytes([header]) + raw)
     if role == "SPO":
         return _encode_bech32("pool", raw)
-    if role == "ConstitutionalCommittee":
-        return _encode_bech32("cc_hot", raw)
-    return None
+    headers = _CIP129_HEADERS.get(role)
+    if headers is None:
+        return None
+    header = headers[1] if has_script else headers[0]
+    hrp = "drep" if role == "DRep" else "cc_hot"
+    return _encode_bech32(hrp, bytes([header]) + raw)
 
 
 def _now_dt() -> datetime:
