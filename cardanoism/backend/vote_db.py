@@ -79,18 +79,43 @@ def bulk_upsert_votes(proposal_id: str, votes: list[dict]) -> int:
 
 def get_votes_by_proposal(proposal_id: str) -> list[dict]:
     """指定 proposal の投票一覧を role 昇順, block_time 降順で返す。
-    voter_role='DRep' の場合は dreps テーブルから given_name を LEFT JOIN で取得する。
+
+    表示名 (display_name) の解決順:
+      DRep : dreps.given_name → proposal_votes.voter_name (CIP-100 authors)
+      SPO  : pools.ticker / pools.pool_name → voter_name
+      CC   : cc_members.display_name → voter_name
+
+    CC は hot key をローテーションするため cc_members と突き合わない過去の投票が出る。
+    その保険として proposal_votes.voter_name (投票メタデータ由来) を最後に見る。
     """
     with get_db() as (cursor, _):
         cursor.execute(
             """
             SELECT v.id, v.proposal_id, v.voter_role, v.voter_id, v.voter_hex, v.voter_has_script,
                    v.vote, v.block_time, v.meta_url, v.meta_hash, v.rationale, v.rationale_ja,
-                   CASE WHEN v.voter_role = 'DRep' THEN d.given_name ELSE NULL END AS drep_name
+                   COALESCE(
+                       NULLIF(TRIM(CASE WHEN v.voter_role = 'DRep' THEN d.given_name END), ''),
+                       NULLIF(TRIM(CASE WHEN v.voter_role = 'SPO'  THEN p.ticker    END), ''),
+                       NULLIF(TRIM(CASE WHEN v.voter_role = 'SPO'  THEN p.pool_name END), ''),
+                       NULLIF(TRIM(CASE WHEN v.voter_role = 'ConstitutionalCommittee'
+                                        THEN c.display_name END), ''),
+                       NULLIF(TRIM(v.voter_name), '')
+                   ) AS display_name
             FROM proposal_votes v
             LEFT JOIN dreps d ON d.drep_id = v.voter_id AND v.voter_role = 'DRep'
+            LEFT JOIN pools p ON p.pool_id_bech32 = v.voter_id AND v.voter_role = 'SPO'
+            LEFT JOIN cc_members c
+                   ON (c.cc_hot_id = v.voter_id OR c.cc_cold_id = v.voter_id)
+                  AND v.voter_role = 'ConstitutionalCommittee'
             WHERE v.proposal_id = ?
-            ORDER BY v.voter_role ASC, v.block_time DESC
+            -- 件数の少ない CC → SPO → DRep の順。DRep が数百件あると
+            -- アルファベット順では SPO が最下部に埋もれて「SPO の投票が無い」ように見える。
+            ORDER BY CASE v.voter_role
+                         WHEN 'ConstitutionalCommittee' THEN 0
+                         WHEN 'SPO'                     THEN 1
+                         ELSE 2
+                     END ASC,
+                     v.block_time DESC
             """,
             (proposal_id,),
         )
@@ -168,15 +193,27 @@ def count_votes_by_drep(drep_id: str) -> dict:
         return result
 
 
-def update_rationale(vote_id: int, rationale: str | None, rationale_ja: str | None = None) -> None:
-    """メタデータ取得後に rationale を更新する。Phase 4 で使用。"""
+def update_rationale(
+    vote_id: int,
+    rationale: str | None,
+    rationale_ja: str | None = None,
+    voter_name: str | None = None,
+) -> None:
+    """メタデータ取得後に rationale / voter_name を更新する。
+
+    voter_name は CIP-100 の authors[0].name。CC は hot key ローテーションで
+    cc_members と紐付かなくなるため、投票行そのものに名前を残しておく。
+    """
     with get_db() as (cursor, conn):
         cursor.execute(
             """
             UPDATE proposal_votes
-            SET rationale = ?, rationale_ja = COALESCE(?, rationale_ja), meta_fetched_at = NOW()
+            SET rationale = ?,
+                rationale_ja = COALESCE(?, rationale_ja),
+                voter_name = COALESCE(?, voter_name),
+                meta_fetched_at = NOW()
             WHERE id = ?
             """,
-            (rationale, rationale_ja, int(vote_id)),
+            (rationale, rationale_ja, voter_name, int(vote_id)),
         )
         conn.commit()

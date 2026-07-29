@@ -68,17 +68,39 @@ def extract_rationale(meta_json: dict | None) -> str:
     """
     CIP-100 投票メタデータから投票理由テキストを抽出する。
     CIP-100 では body.comment が正式な投票理由フィールド。
-    互換性のため CIP-136 や独自実装での rationale / reasoning も拾う。
+    CC / SPO が使う CIP-136 (Vote Rationale) は rationaleStatement / summary なので
+    それも拾う。拾わないと CC・SPO の投票理由が常に空になる。
     """
     if not isinstance(meta_json, dict):
         return ""
     body = meta_json.get("body") or {}
     if not isinstance(body, dict):
         return ""
-    for key in ("comment", "rationale", "reasoning"):
+    for key in ("comment", "rationale", "reasoning", "rationaleStatement", "summary"):
         val = _extract_str(body.get(key))
         if val:
             return val
+    return ""
+
+
+def extract_author_name(meta_json: dict | None) -> str:
+    """CIP-100 投票メタデータの authors[0].name を返す。
+
+    CC メンバー / SPO は Koios に名前を持つエンドポイントが無く、投票メタデータの
+    authors が唯一の実データ源。例: {"name": "Cardano Japan Council", "witness": {...}}
+    """
+    if not isinstance(meta_json, dict):
+        return ""
+    authors = meta_json.get("authors")
+    if not isinstance(authors, list):
+        return ""
+    for a in authors:
+        if isinstance(a, dict):
+            name = _extract_str(a.get("name"))
+        else:
+            name = _extract_str(a)
+        if name:
+            return name[:255]
     return ""
 
 

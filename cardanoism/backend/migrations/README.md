@@ -40,6 +40,28 @@ for f in cardanoism/backend/migrations/*.sql; do
 done
 ```
 
+## 既存 DB 向け ALTER（`_alter_*.sql`）
+
+番号付き統合スキーマは「最終形」なので、**既に稼働中の DB** には別途 ALTER を流す必要がある。
+`_alter_*.sql` は全て冪等（`ADD COLUMN IF NOT EXISTS`）。
+
+- `_alter_governance_votes_add_names_and_power.sql`
+  — `proposal_votes.voter_name` と `proposal_voting_summary.*_vote_power` を追加する。
+  **未適用だと GA 詳細の投票一覧と `vote_rationale_sync` がエラーになる。**
+
+```bash
+mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" \
+  < cardanoism/backend/migrations/_alter_governance_votes_add_names_and_power.sql
+```
+
+適用後に値を埋めるバッチ:
+
+```bash
+infisical run -- python notify_worker.py --event params_sync           # CC メンバーの現任セットを整理
+infisical run -- python notify_worker.py --event summary_sync          # *_vote_power を取得（初回は集計行が無い GA も backfill）
+infisical run -- python notify_worker.py --event vote_rationale_sync   # voter_name / CC display_name / CC・SPO の投票理由
+```
+
 ## デフォルトデータの扱い
 
 `notification_settings` / `stake_notification_settings` の初期イベント挿入は

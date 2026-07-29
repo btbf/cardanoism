@@ -738,11 +738,15 @@ def _donut_chart(role_label, yes_pct, yes_pct_donut, no_pct, abstain_pct, thresh
                 rx.text("No:", size="1", color="var(--gray-10)"),
                 rx.text(no_pct + "%", size="1", color="var(--orange-11)", weight="medium"),
                 spacing="1", align="baseline",
+                custom_attrs={"title": AuthState.t["gov_vote_yes_no_note"]},
             ),
+            # Yes / No は棄権を除いた分母なので必ず 100% になる。棄権は棄権込みの
+            # 全体比で出すため分母が違う。ツールチップで明示する。
             rx.hstack(
                 rx.text("Abstain:", size="1", color="var(--gray-10)"),
                 rx.text(abstain_pct + "%", size="1", color="var(--gray-11)"),
                 spacing="1", align="baseline",
+                custom_attrs={"title": AuthState.t["gov_vote_abstain_note"]},
             ),
             spacing="1", align="center",
         ),
@@ -1292,10 +1296,34 @@ def _vote_section(action: Dict[str, Any]) -> rx.Component:
         width="100%",
         style={"maxHeight": "820px", "overflowY": "auto"},
     )
+    # ロール別件数。DRep が数百件あると SPO / CC が埋もれて「反映されていない」
+    # ように見えるため、見出し行で内訳を明示する。
+    def _count_badge(role: str, label, color: str) -> rx.Component:
+        n = GovernanceState.modal_vote_counts[role]
+        return rx.badge(
+            rx.hstack(
+                rx.text(label, size="1", weight="bold"),
+                rx.text(n, size="1"),
+                spacing="1", align="baseline",
+            ),
+            color_scheme=color, variant="soft", size="1",
+        )
+
+    counts_row = rx.hstack(
+        _count_badge("ConstitutionalCommittee", "CC", "violet"),
+        _count_badge("SPO", "SPO", "amber"),
+        _count_badge("DRep", "DRep", "blue"),
+        spacing="2", align="center", wrap="wrap",
+    )
+
     return rx.cond(
         GovernanceState.modal_votes,
         rx.vstack(
-            _section_heading(AuthState.t["gov_section_votes"]),
+            rx.hstack(
+                rx.box(_section_heading(AuthState.t["gov_section_votes"]), flex="1"),
+                counts_row,
+                spacing="2", align="center", width="100%", wrap="wrap",
+            ),
             rx.box(
                 rx.mobile_only(mobile_cards),
                 rx.tablet_and_desktop(desktop_table),

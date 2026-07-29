@@ -1242,7 +1242,7 @@ def check_params_sync():
 
     # CC メンバーを cc_members テーブルに UPSERT
     if cc_info:
-        from cardanoism.backend.params_db import upsert_cc_member
+        from cardanoism.backend.params_db import upsert_cc_member, deactivate_missing_cc_members
         members = cc_info.get("members") or []
         for m in members:
             try:
@@ -1250,6 +1250,16 @@ def check_params_sync():
             except Exception as e:
                 logger.exception("upsert_cc_member failed: %s", e)
         logger.info("CC メンバー %d 件を同期", len(members))
+        # 現任セットに居ないメンバーを落とす。委員会入れ替えや別ネットワークの
+        # sync が混ざった履歴があると authorized のまま残り、CC カードに幽霊が並ぶ。
+        try:
+            dropped = deactivate_missing_cc_members(
+                [str(m.get("cc_cold_id") or "") for m in members]
+            )
+            if dropped:
+                logger.info("現任でない CC メンバー %d 件を unrecognized に変更", dropped)
+        except Exception as e:
+            logger.exception("deactivate_missing_cc_members failed: %s", e)
 
     logger.info("プロトコルパラメータ同期 完了 (epoch=%s)", epoch)
 
@@ -1267,21 +1277,23 @@ def check_vote_rationale_sync(fetch_limit: int = 500, translate_limit: int = 100
     translate_limit: 1 実行あたりの翻訳対象件数（OpenAI API コスト制御。0 で無制限）
     """
     from cardanoism.backend.vote_meta_fetch import (
-        fetch_vote_metadata_json, extract_rationale, is_japanese,
+        fetch_vote_metadata_json, extract_rationale, extract_author_name, is_japanese,
     )
     from cardanoism.backend.vote_db import update_rationale
+    from cardanoism.backend.params_db import upsert_cc_display_name
 
     fetch_label = "無制限" if fetch_limit <= 0 else str(fetch_limit)
     translate_label = "無制限" if translate_limit <= 0 else str(translate_limit)
     logger.info("投票理由同期 開始 (fetch_limit=%s, translate_limit=%s)", fetch_label, translate_label)
 
     # Step 1: meta_url が有り、rationale 未取得のレコードをフェッチ
+    # DRep だけでなく CC / SPO も対象にする。CC は authors[0].name が唯一の名前ソース
+    # なので、ここで拾わないと投票一覧・CC カードが bech32 ID のままになる。
     fetch_sql = (
-        "SELECT id, meta_url "
+        "SELECT id, voter_role, voter_id, meta_url "
         "FROM proposal_votes "
         "WHERE meta_url IS NOT NULL AND meta_url <> '' "
         "  AND meta_fetched_at IS NULL "
-        "  AND voter_role = 'DRep' "
         "ORDER BY block_time DESC"
     )
     fetch_params: list = []
@@ -1295,20 +1307,33 @@ def check_vote_rationale_sync(fetch_limit: int = 500, translate_limit: int = 100
 
     logger.info("メタデータ取得対象: %d 件", len(rows))
     fetched = 0
+    cc_named = 0
     for i, r in enumerate(rows, 1):
         vid = r["id"]
         url = r["meta_url"]
         meta = fetch_vote_metadata_json(url)
         rationale = extract_rationale(meta)
+        author = extract_author_name(meta)
         try:
             # rationale が空でも meta_fetched_at はセットする（再取得を避けるため）
-            update_rationale(vid, rationale if rationale else None)
+            update_rationale(
+                vid,
+                rationale if rationale else None,
+                voter_name=author or None,
+            )
             fetched += 1
         except Exception as e:
             logger.exception("update_rationale failed (id=%s): %s", vid, e)
+        # CC メンバーの表示名を cc_members にも反映（未設定のときだけ）
+        if author and r.get("voter_role") == "ConstitutionalCommittee":
+            try:
+                if upsert_cc_display_name(str(r.get("voter_id") or ""), author):
+                    cc_named += 1
+            except Exception as e:
+                logger.exception("upsert_cc_display_name failed (id=%s): %s", vid, e)
         if i % 50 == 0:
             logger.info("  フェッチ進捗: %d / %d", i, len(rows))
-    logger.info("メタデータ取得完了: %d 件処理", fetched)
+    logger.info("メタデータ取得完了: %d 件処理 (CC 表示名 %d 件更新)", fetched, cc_named)
 
     # Step 2: 翻訳対象（英語テキストで rationale_ja が空）を OpenAI で翻訳
     translate_sql = (
@@ -1437,31 +1462,41 @@ def check_summary_sync(max_workers: int = 6):
     /proposal_voting_summary は Koios 側で計算コストが高く 1 件数十秒かかる場合がある。
     ThreadPoolExecutor で並列化（既存のレートリミッタが自動的に 80req/10s で絞る）。
 
-    対象は **Active な GA のみ** (ratified / enacted / dropped / expired を除く)。
+    対象は **Active な GA** に加えて、**集計行がまだ 1 度も作られていない GA**。
     pre_ratify トリガー (drep_yes_pct ≥ 批准値 -10pt) のリアルタイム判定に
     必要な集計値をこの sync で常時最新化する。15 min cron で回す前提。
-    過去 GA は ratified 後に集計値が変動しないため定期再取得しない。
+    決着済み GA は集計値が変動しないため、行が既にあれば再取得しない。
+
+    決着済み GA も 1 度は取得するのは、Active のうちに sync されないまま
+    ratified/expired になった GA が「投票集計セクションごと非表示」になるのを防ぐため
+    (UI は proposal_voting_summary の行が無いとセクションを出さない)。
     """
     from cardanoism.backend.koios import get_proposal_voting_summary
     from cardanoism.backend.voting_summary_db import upsert_voting_summary
 
-    logger.info("投票集計同期 開始 (workers=%d, active GA のみ)", max_workers)
+    logger.info("投票集計同期 開始 (workers=%d, active GA + 集計行が無い GA)", max_workers)
 
     with get_db() as (cursor, _):
         cursor.execute(
             """
-            SELECT proposal_id, proposal_type
-            FROM governance_actions
-            WHERE proposal_id IS NOT NULL AND proposal_id <> ''
-              AND ratified_epoch IS NULL
-              AND enacted_epoch  IS NULL
-              AND dropped_epoch  IS NULL
-              AND expired_epoch  IS NULL
-            ORDER BY block_time DESC
+            SELECT ga.proposal_id, ga.proposal_type,
+                   (vs.proposal_id IS NULL) AS is_backfill
+            FROM governance_actions ga
+            LEFT JOIN proposal_voting_summary vs ON vs.proposal_id = ga.proposal_id
+            WHERE ga.proposal_id IS NOT NULL AND ga.proposal_id <> ''
+              AND (
+                    vs.proposal_id IS NULL
+                 OR (ga.ratified_epoch IS NULL
+                     AND ga.enacted_epoch  IS NULL
+                     AND ga.dropped_epoch  IS NULL
+                     AND ga.expired_epoch  IS NULL)
+              )
+            ORDER BY ga.block_time DESC
             """
         )
         proposals = [dict(r) for r in cursor.fetchall() if r.get("proposal_id")]
-    logger.info("集計対象: %d 件 (Active)", len(proposals))
+    backfill_n = sum(1 for p in proposals if p.get("is_backfill"))
+    logger.info("集計対象: %d 件 (うち初回 backfill %d 件)", len(proposals), backfill_n)
 
     def _one(p: dict) -> int:
         pid = p["proposal_id"]

@@ -75,6 +75,9 @@ CREATE TABLE IF NOT EXISTS proposal_votes (
     block_time      DATETIME     DEFAULT NULL,
     meta_url        TEXT         DEFAULT NULL,
     meta_hash       VARCHAR(64)  DEFAULT NULL,
+    -- 投票メタデータ (CIP-100) の authors[0].name。CC / SPO は名前解決手段が他に無く、
+    -- CC は hot key ローテーションで cc_members と紐付かなくなるため投票行に保持する。
+    voter_name      VARCHAR(255) DEFAULT NULL,
     rationale       MEDIUMTEXT   DEFAULT NULL,
     rationale_ja    MEDIUMTEXT   DEFAULT NULL,
     meta_fetched_at DATETIME     DEFAULT NULL,
@@ -88,6 +91,10 @@ CREATE TABLE IF NOT EXISTS proposal_votes (
 );
 
 -- 投票集計 (Koios /proposal_voting_summary のキャッシュ)
+--
+-- *_yes_pct / *_no_pct は Koios が返す「批准判定ベース」の割合で、必ず yes+no=100 になる
+-- (CIP-1694 では棄権票は分母から除外されるため)。棄権の割合を出すには分母に棄権を戻す
+-- 必要があり、そのために *_vote_power 系の実数値も保持する。
 CREATE TABLE IF NOT EXISTS proposal_voting_summary (
     proposal_id                  VARCHAR(128) PRIMARY KEY,
     proposal_type                VARCHAR(50)   DEFAULT NULL,
@@ -97,11 +104,19 @@ CREATE TABLE IF NOT EXISTS proposal_voting_summary (
     drep_abstain_votes_cast      INT           DEFAULT 0,
     drep_yes_pct                 DECIMAL(6,2)  DEFAULT 0,
     drep_no_pct                  DECIMAL(6,2)  DEFAULT 0,
+    drep_yes_vote_power          BIGINT        DEFAULT NULL,
+    drep_no_vote_power           BIGINT        DEFAULT NULL,
+    drep_active_abstain_vote_power BIGINT      DEFAULT NULL,
+    drep_always_abstain_vote_power BIGINT      DEFAULT NULL,
     pool_yes_votes_cast          INT           DEFAULT 0,
     pool_no_votes_cast           INT           DEFAULT 0,
     pool_abstain_votes_cast      INT           DEFAULT 0,
     pool_yes_pct                 DECIMAL(6,2)  DEFAULT 0,
     pool_no_pct                  DECIMAL(6,2)  DEFAULT 0,
+    pool_yes_vote_power          BIGINT        DEFAULT NULL,
+    pool_no_vote_power           BIGINT        DEFAULT NULL,
+    pool_active_abstain_vote_power BIGINT      DEFAULT NULL,
+    pool_passive_always_abstain_vote_power BIGINT DEFAULT NULL,
     committee_yes_votes_cast     INT           DEFAULT 0,
     committee_no_votes_cast      INT           DEFAULT 0,
     committee_abstain_votes_cast INT           DEFAULT 0,
