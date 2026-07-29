@@ -79,6 +79,35 @@ def upsert_cc_member(data: dict[str, Any]) -> None:
         conn.commit()
 
 
+def deactivate_missing_cc_members(current_cold_ids: list[str]) -> int:
+    """/committee_info に載っていない cc_members を 'unrecognized' に落とす。
+
+    upsert_cc_member は INSERT ... ON DUPLICATE KEY UPDATE なので、委員会の入れ替えや
+    別ネットワーク (preview) の sync を同じ DB に流した履歴があると、現任でない
+    メンバーが 'authorized' のまま残り続ける。CC カードに幽霊メンバーが並ぶので
+    毎回の params_sync で現任セット外を落とす。
+
+    戻り値: 落とした行数。current_cold_ids が空なら何もしない (取得失敗時の全消し防止)。
+    """
+    ids = [i for i in (current_cold_ids or []) if i]
+    if not ids:
+        return 0
+    placeholders = ", ".join(["?"] * len(ids))
+    with get_db() as (cursor, conn):
+        cursor.execute(
+            f"""
+            UPDATE cc_members
+            SET status = 'unrecognized'
+            WHERE status <> 'unrecognized'
+              AND cc_cold_id NOT IN ({placeholders})
+            """,
+            ids,
+        )
+        affected = cursor.rowcount
+        conn.commit()
+    return int(affected or 0)
+
+
 def get_active_cc_members() -> list[dict]:
     """authorized なアクティブ CC メンバー一覧。"""
     with get_db() as (cursor, _):
@@ -91,6 +120,29 @@ def get_active_cc_members() -> list[dict]:
             """
         )
         return [dict(r) for r in cursor.fetchall()]
+
+
+def upsert_cc_display_name(voter_id: str, display_name: str) -> bool:
+    """cc_hot_id / cc_cold_id のどちらかで一致するメンバーに表示名を保存する。
+
+    CC の名前は Koios /committee_info には無く、投票メタデータ (CIP-100) の
+    authors[0].name が唯一の実データ。vote_rationale_sync から呼ぶ。
+    """
+    if not voter_id or not display_name:
+        return False
+    with get_db() as (cursor, conn):
+        cursor.execute(
+            """
+            UPDATE cc_members
+            SET display_name = ?
+            WHERE (cc_hot_id = ? OR cc_cold_id = ?)
+              AND (display_name IS NULL OR display_name = '')
+            """,
+            (display_name[:255], voter_id, voter_id),
+        )
+        affected = cursor.rowcount
+        conn.commit()
+    return bool(affected)
 
 
 def get_protocol_params() -> dict | None:
@@ -106,6 +158,22 @@ def get_protocol_params() -> dict | None:
 # CIP-1694 に基づき、各 GA タイプで必要な DRep / SPO の投票閾値を返す。
 # 閾値が存在しないロール（例: SPO は TreasuryWithdrawals に投票しない）は None。
 # 値は 0.0〜1.0 の fraction。
+
+# Ogmios listener は Ogmios の型名 (updateCommittee) を PascalCase にした
+# "UpdateCommittee" を書き、Koios sync は "NewCommittee" を書く。同じ GA タイプなので
+# 閾値・投票対象の解決前に正規化する。
+_TYPE_ALIASES = {
+    "UpdateCommittee":   "NewCommittee",
+    "InfoAction":        "InfoAction",
+    "Information":       "InfoAction",
+    "MotionNoConfidence": "NoConfidence",
+}
+
+
+def normalize_proposal_type(proposal_type: str) -> str:
+    t = proposal_type or ""
+    return _TYPE_ALIASES.get(t, t)
+
 
 def voters_for_type(proposal_type: str) -> dict:
     """
@@ -130,7 +198,10 @@ def voters_for_type(proposal_type: str) -> dict:
         "TreasuryWithdrawals": {"drep": True,  "pool": False,         "committee": True},
         "InfoAction":          {"drep": True,  "pool": True,          "committee": True},
     }
-    return mapping.get(proposal_type or "", {"drep": True, "pool": True, "committee": True})
+    return mapping.get(
+        normalize_proposal_type(proposal_type),
+        {"drep": True, "pool": True, "committee": True},
+    )
 
 
 def thresholds_for_type(proposal_type: str, params: dict | None) -> dict:
@@ -204,6 +275,6 @@ def thresholds_for_type(proposal_type: str, params: dict | None) -> dict:
         },
     }
     return mapping.get(
-        proposal_type or "",
+        normalize_proposal_type(proposal_type),
         {"drep": None, "pool": None, "committee": committee_th},
     )

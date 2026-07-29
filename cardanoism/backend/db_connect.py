@@ -1288,6 +1288,50 @@ def _attach_voting_summary(row: Dict[str, Any], protocol_params: dict | None) ->
         except (TypeError, ValueError):
             return default
 
+    def _power(key) -> float | None:
+        v = row.get(key)
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    def _abstain_pct(power_keys: tuple[str, ...], yes_key: str, no_key: str,
+                     cast_keys: tuple[str, str, str]) -> float:
+        """棄権の割合。
+
+        Koios の *_yes_pct / *_no_pct は CIP-1694 の批准判定と同じ「棄権を分母から
+        除外した」割合なので必ず yes+no=100 になる。つまり 100-yes-no では棄権は
+        常に 0% になってしまう。棄権を分母に戻して計算し直す:
+
+            abstain / (yes + no + abstain)
+
+        投票力 (lovelace) が取れればそれを使い、取れない場合 (CC や古い行) は
+        投票「件数」でフォールバックする。
+        """
+        abstain_power = 0.0
+        have_power = False
+        for k in power_keys:
+            p = _power(k)
+            if p is not None:
+                abstain_power += p
+                have_power = True
+        yes_power = _power(yes_key)
+        no_power = _power(no_key)
+        if have_power and yes_power is not None and no_power is not None:
+            total = yes_power + no_power + abstain_power
+            return (abstain_power / total * 100.0) if total > 0 else 0.0
+
+        def _cnt(k):
+            try:
+                return float(row.get(k) or 0)
+            except (TypeError, ValueError):
+                return 0.0
+        y, n, a = (_cnt(k) for k in cast_keys)
+        total = y + n + a
+        return (a / total * 100.0) if total > 0 else 0.0
+
     ptype = row.get("proposal_type") or ""
     thresholds = thresholds_for_type(ptype, protocol_params or {})
     voters = voters_for_type(ptype)
@@ -1298,6 +1342,23 @@ def _attach_voting_summary(row: Dict[str, Any], protocol_params: dict | None) ->
     pool_no = _pct(row.get("pool_no_pct"))
     cc_yes = _pct(row.get("committee_yes_pct"))
     cc_no = _pct(row.get("committee_no_pct"))
+
+    # 棄権率は「棄権を分母に戻した」割合。yes/no とは分母が違うので合計 100 にはならない。
+    drep_abstain = _abstain_pct(
+        ("drep_active_abstain_vote_power", "drep_always_abstain_vote_power"),
+        "drep_yes_vote_power", "drep_no_vote_power",
+        ("drep_yes_votes_cast", "drep_no_votes_cast", "drep_abstain_votes_cast"),
+    )
+    pool_abstain = _abstain_pct(
+        ("pool_active_abstain_vote_power", "pool_passive_always_abstain_vote_power"),
+        "pool_yes_vote_power", "pool_no_vote_power",
+        ("pool_yes_votes_cast", "pool_no_votes_cast", "pool_abstain_votes_cast"),
+    )
+    # CC は投票力ではなく人数ベース
+    cc_abstain = _abstain_pct(
+        (), "", "",
+        ("committee_yes_votes_cast", "committee_no_votes_cast", "committee_abstain_votes_cast"),
+    )
 
     has_any = (row.get("drep_yes_pct") is not None
                or row.get("pool_yes_pct") is not None
@@ -1340,7 +1401,7 @@ def _attach_voting_summary(row: Dict[str, Any], protocol_params: dict | None) ->
         "drep_yes_pct":       f"{drep_yes:.1f}",
         "drep_yes_pct_donut": f"{drep_yes:.0f}",
         "drep_no_pct":        f"{drep_no:.1f}",
-        "drep_abstain_pct":   f"{max(0.0, 100.0 - drep_yes - drep_no):.1f}",
+        "drep_abstain_pct":   f"{drep_abstain:.1f}",
         "drep_threshold_pct": f"{drep_th:.1f}" if drep_th is not None else "",
         "drep_status":        _status(drep_yes, drep_th),
         "drep_donut_bg":      _donut(drep_yes, drep_no),
@@ -1348,7 +1409,7 @@ def _attach_voting_summary(row: Dict[str, Any], protocol_params: dict | None) ->
         "pool_yes_pct":       f"{pool_yes:.1f}",
         "pool_yes_pct_donut": f"{pool_yes:.0f}",
         "pool_no_pct":        f"{pool_no:.1f}",
-        "pool_abstain_pct":   f"{max(0.0, 100.0 - pool_yes - pool_no):.1f}",
+        "pool_abstain_pct":   f"{pool_abstain:.1f}",
         "pool_threshold_pct": f"{pool_th:.1f}" if pool_th is not None else "",
         "pool_status":        _status(pool_yes, pool_th),
         "pool_donut_bg":      _donut(pool_yes, pool_no),
@@ -1356,7 +1417,7 @@ def _attach_voting_summary(row: Dict[str, Any], protocol_params: dict | None) ->
         "cc_yes_pct":         f"{cc_yes:.1f}",
         "cc_yes_pct_donut":   f"{cc_yes:.0f}",
         "cc_no_pct":          f"{cc_no:.1f}",
-        "cc_abstain_pct":     f"{max(0.0, 100.0 - cc_yes - cc_no):.1f}",
+        "cc_abstain_pct":     f"{cc_abstain:.1f}",
         "cc_threshold_pct":   f"{cc_th:.1f}" if cc_th is not None else "",
         "cc_status":          _status(cc_yes, cc_th),
         "cc_donut_bg":        _donut(cc_yes, cc_no),
@@ -1507,6 +1568,10 @@ class GovernanceState(rx.State):
     modal_action_refs: List[Dict[str, Any]] = []
     modal_votes: List[Dict[str, Any]] = []
     modal_cc_votes: List[Dict[str, Any]] = []
+    # 投票一覧のロール別件数（UI が常に 3 キーを参照するのでデフォルトも 0 で埋める）
+    modal_vote_counts: Dict[str, str] = {
+        "DRep": "0", "ConstitutionalCommittee": "0", "SPO": "0",
+    }
     modal_loading: bool = False
     last_list_path: str = ""
 
@@ -1592,7 +1657,14 @@ class GovernanceState(rx.State):
             " ga.meta_url, ga.title, ga.`abstract`, ga.title_ja, ga.abstract_ja,"
             f" {_GA_STATUS_SQL_GA} AS ga_status,"
             " vs.drep_yes_pct, vs.drep_no_pct, vs.pool_yes_pct, vs.pool_no_pct,"
-            " vs.committee_yes_pct, vs.committee_no_pct"
+            " vs.committee_yes_pct, vs.committee_no_pct,"
+            " vs.drep_yes_vote_power, vs.drep_no_vote_power,"
+            " vs.drep_active_abstain_vote_power, vs.drep_always_abstain_vote_power,"
+            " vs.pool_yes_vote_power, vs.pool_no_vote_power,"
+            " vs.pool_active_abstain_vote_power, vs.pool_passive_always_abstain_vote_power,"
+            " vs.drep_yes_votes_cast, vs.drep_no_votes_cast, vs.drep_abstain_votes_cast,"
+            " vs.pool_yes_votes_cast, vs.pool_no_votes_cast, vs.pool_abstain_votes_cast,"
+            " vs.committee_yes_votes_cast, vs.committee_no_votes_cast, vs.committee_abstain_votes_cast"
             " FROM governance_actions ga"
             " LEFT JOIN proposal_voting_summary vs ON ga.proposal_id = vs.proposal_id"
             f" WHERE {where_sql}"
@@ -1702,9 +1774,18 @@ class GovernanceState(rx.State):
                     summary = get_voting_summary(proposal_id) or {}
                     protocol_params = get_protocol_params()
                     # 集計カラムを row に反映してから _attach_voting_summary に渡す
+                    # (棄権率の計算に *_vote_power / *_votes_cast も必要)
                     for k in ("drep_yes_pct", "drep_no_pct",
                               "pool_yes_pct", "pool_no_pct",
-                              "committee_yes_pct", "committee_no_pct"):
+                              "committee_yes_pct", "committee_no_pct",
+                              "drep_yes_vote_power", "drep_no_vote_power",
+                              "drep_active_abstain_vote_power", "drep_always_abstain_vote_power",
+                              "pool_yes_vote_power", "pool_no_vote_power",
+                              "pool_active_abstain_vote_power", "pool_passive_always_abstain_vote_power",
+                              "drep_yes_votes_cast", "drep_no_votes_cast", "drep_abstain_votes_cast",
+                              "pool_yes_votes_cast", "pool_no_votes_cast", "pool_abstain_votes_cast",
+                              "committee_yes_votes_cast", "committee_no_votes_cast",
+                              "committee_abstain_votes_cast"):
                         formatted[k] = summary.get(k)
                     _attach_voting_summary(formatted, protocol_params)
                     self.modal_action = formatted
@@ -1724,8 +1805,8 @@ class GovernanceState(rx.State):
                 bt = v.get("block_time")
                 bt_display = bt.strftime("%Y-%m-%d %H:%M") if bt else ""
                 role = str(v.get("voter_role") or "")
-                drep_name = str(v.get("drep_name") or "").strip()
-                voter_name = drep_name if (role == "DRep" and drep_name) else ""
+                # DRep / SPO / CC いずれも get_votes_by_proposal 側で名前を解決済み
+                voter_name = str(v.get("display_name") or "").strip()
                 votes_out.append({
                     "id":              str(v.get("id") or ""),
                     "voter_role":      role,
@@ -1738,8 +1819,19 @@ class GovernanceState(rx.State):
                     "rationale_ja":    str(v.get("rationale_ja") or ""),
                 })
             self.modal_votes = votes_out
-            # CC は固定メンバーなので、authorized な全員を表示する。
-            # 投票済みのメンバーには投票を結合、未投票には空文字の vote をセット。
+            # ロール別の件数。「SPO の投票が反映されていない」のか
+            # 「そもそも SPO が誰も投票していない」のかを一覧の見出しで判別できるようにする。
+            role_counts = {"DRep": 0, "ConstitutionalCommittee": 0, "SPO": 0}
+            for v in votes_out:
+                if v["voter_role"] in role_counts:
+                    role_counts[v["voter_role"]] += 1
+            self.modal_vote_counts = {k: str(v) for k, v in role_counts.items()}
+            # CC は固定メンバーなので、現任メンバー全員を「投票済み / 未投票」で並べる。
+            #
+            # 注意: CC は hot key をローテーションするため、過去の GA への投票は
+            # 現在の cc_members.cc_hot_id と一致しない。メンバー一覧に載らなかった
+            # 投票を取りこぼすと「投票したのに未投票と表示される」ので、
+            # 未マッチの投票は後ろに追加して必ず表示する。
             from cardanoism.backend.params_db import get_active_cc_members
             cc_members = get_active_cc_members()
             # cc_hot_id または cc_cold_id のどちらで Koios が voter_id を返すか不定のため両方でマッチ
@@ -1747,26 +1839,45 @@ class GovernanceState(rx.State):
             for v in votes_out:
                 if v["voter_role"] == "ConstitutionalCommittee":
                     cc_vote_map[v["voter_id"]] = v
+
+            def _short(s: str) -> str:
+                return f"{s[:12]}...{s[-8:]}" if len(s) > 24 else s
+
             cc_out: list[dict] = []
+            consumed: set[str] = set()
             for m in cc_members:
                 hot_id = str(m.get("cc_hot_id") or "")
                 cold_id = str(m.get("cc_cold_id") or "")
                 matched = cc_vote_map.get(hot_id) or cc_vote_map.get(cold_id)
+                if matched:
+                    consumed.add(matched["voter_id"])
                 display_name = str(m.get("display_name") or "").strip()
+                # メンバー表に名前が無くても、投票メタデータ由来の名前があれば使う
+                if not display_name and matched:
+                    display_name = matched.get("voter_name") or ""
                 # 表示用 ID は hot 優先、短縮
                 show_id = hot_id or cold_id
-                if len(show_id) > 24:
-                    show_id_short = f"{show_id[:12]}...{show_id[-8:]}"
-                else:
-                    show_id_short = show_id
                 cc_out.append({
                     "cc_cold_id":     cold_id,
                     "cc_hot_id":      hot_id,
                     "display_name":   display_name,
-                    "show_id_short":  show_id_short,
+                    "show_id_short":  _short(show_id),
                     "vote":           matched["vote"] if matched else "",
                     "block_time":     matched["block_time"] if matched else "",
                     "has_voted":      "1" if matched else "",
+                })
+            # 現任メンバーに紐付かなかった投票 (旧 hot key / 退任済みメンバー) を追加
+            for vid, v in cc_vote_map.items():
+                if vid in consumed:
+                    continue
+                cc_out.append({
+                    "cc_cold_id":     "",
+                    "cc_hot_id":      vid,
+                    "display_name":   v.get("voter_name") or "",
+                    "show_id_short":  _short(vid),
+                    "vote":           v["vote"],
+                    "block_time":     v["block_time"],
+                    "has_voted":      "1",
                 })
             self.modal_cc_votes = cc_out
 
