@@ -87,8 +87,12 @@ if KOIOS_API_KEY:
     logger.info("Koios ネットワーク: %s (%s) [API key 認証あり]", _network, KOIOS_BASE_URL)
 else:
     logger.info("Koios ネットワーク: %s (%s) [anonymous]", _network, KOIOS_BASE_URL)
-# Koios の公式 burst は 100/10s。anonymous / API key 共通の上限なので
-# 同じレートリミッタを使う。API key の主な恩恵は monitoring 識別 (50k/day カウント)。
+# Koios のティア (https://koios.rest/tiers.html):
+#   Public (anonymous)    :  5,000 req/日 / burst 100 per 10s
+#   Free   (API key)      : 50,000 req/日 / burst 100 per 10s
+#   Pro                   : 500,000 req/日 / burst 250 per 10s
+# burst は Public と Free で同じなのでレートリミッタは共通。API key の恩恵は
+# **日次上限が 10 倍** になること (と利用量のダッシュボード可視化)。
 _rate_limiter = _RateLimiter(max_calls=90, period=10.0)
 
 

@@ -64,8 +64,13 @@ LOG=/home/btism/cardanoism_log
 # 1 回 ~1840 reqs (うち /drep_delegators が 1700)。flock で前回未完了時の重複起動を防ぐ。
 14,29,44,59 * * * *  btism flock -n /tmp/cardanoism-drep_sync.lock -c "cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event drep_sync" >> $LOG/notify-drep_sync.log 2>&1
 
-# 投票集計
-4,19,34,49 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event vote_sync >> $LOG/notify-vote_sync.log 2>&1
+# 投票履歴 (vote_sync) は常時 cron から外した。
+#   投票のリアルタイム反映は Ogmios listener が担当している
+#   (_process_tx → record_vote_from_event が DRep / SPO / CC すべてを即時 UPSERT)。
+#   vote_sync は listener が落ちていたときのバックアップなので日次で十分。
+#   全 GA を 15 分ごとに 1 件ずつ取り直すと GA 1500 件 = 147,000 req/日 になり、
+#   Koios の日次上限 (Public 5,000 / Free 50,000) を焼き切って他の sync も 429 で落ちる。
+#   → 下の「フォールバック cron」の 06:00 に集約。
 
 # ── オフチェーン同期 (常時) ──────────────────────────────
 # 法定通貨レート (CoinGecko)
@@ -90,6 +95,9 @@ LOG=/home/btism/cardanoism_log
 30   4 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event drep_sync --full          >> $LOG/notify-drep_sync.log 2>&1
 0    5 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event pool_sync                 >> $LOG/notify-pool_sync.log 2>&1
 30   5 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event pool_block_history_sync   >> $LOG/notify-pool_block_history_sync.log 2>&1
+# vote_sync は --full 無しなので「投票中の GA のみ」(数十 req)。
+# 決着済み GA の投票は増えないので日次でも取り直さない。listener を長期停止した後など
+# 取りこぼしを埋めたいときだけ手動で `--event vote_sync --full` (全 GA = 1500 req 前後)。
 0    6 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event vote_sync                 >> $LOG/notify-vote_sync.log 2>&1
 
 # DRepマッチング診断: 全 active DRep を再分析 (集計のみ、AI 不要)
