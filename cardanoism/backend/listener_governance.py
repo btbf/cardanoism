@@ -83,7 +83,7 @@ _CIP129_HEADERS = {
 
 
 def encode_voter_id(role: str, voter_hex: str, has_script: bool = False) -> str | None:
-    """Ogmios voter id (hex) → Koios と同じ bech32 形式に変換する。
+    """Ogmios voter id → Koios と同じ bech32 形式に変換する。
 
     DRep    : CIP-129 形式 (header byte + 28 byte hash) → drep1...
     CC      : CIP-129 形式 (header byte + 28 byte hash) → cc_hot1...
@@ -91,7 +91,20 @@ def encode_voter_id(role: str, voter_hex: str, has_script: bool = False) -> str 
 
     CC に header byte を付け忘れると Koios の voter_id と一致せず、
     cc_members と突き合わない別人の投票として二重登録されるので注意。
+
+    **SPO だけ Ogmios が渡してくる id の形式が違う。** Ogmios のスキーマ
+    (cardano.json / GovernanceVoter) では:
+        Voter<ConstitutionalCommittee> / Voter<DelegateRepresentative>
+            id = Digest<Blake2b,224>  … base16 (hex)
+        Voter<StakePoolOperator>
+            id = StakePoolId          … bech32 "pool1..." (from フィールドも無い)
+    そのため hex 前提で bytes.fromhex() に通すと SPO だけ ValueError になり、
+    投票がまるごと捨てられる。bech32 で来たものはそのまま Koios の voter_id と
+    同形式なので変換不要。
     """
+    if role == "SPO" and voter_hex.startswith("pool1"):
+        return voter_hex
+
     try:
         raw = bytes.fromhex(voter_hex)
     except ValueError:
@@ -100,6 +113,7 @@ def encode_voter_id(role: str, voter_hex: str, has_script: bool = False) -> str 
         return None
 
     if role == "SPO":
+        # 念のため hex で渡された場合のフォールバック
         return _encode_bech32("pool", raw)
     headers = _CIP129_HEADERS.get(role)
     if headers is None:
