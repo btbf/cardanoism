@@ -1372,7 +1372,32 @@ def _attach_voting_summary(row: Dict[str, Any], protocol_params: dict | None) ->
     pool_th = _th_pct("pool")
     cc_th = _th_pct("committee")
 
+    # 決着済み GA で、集計が決着エポックより前のスナップショットのままかどうか。
+    # summary_sync が Active な GA しか更新していなかった時期の行がこれに当たる。
+    # 「可決」バッジ (ratified_epoch 由来 = 最新) と「未達」(凍結した集計由来) が
+    # 矛盾して表示されるので、その場合は閾値判定を出さない。
+    decided_epoch = None
+    for _k in ("ratified_epoch", "enacted_epoch", "dropped_epoch", "expired_epoch"):
+        _v = row.get(_k)
+        if _v is not None:
+            try:
+                decided_epoch = int(_v)
+            except (TypeError, ValueError):
+                decided_epoch = None
+            break
+    summary_epoch = row.get("summary_epoch_no")
+    try:
+        summary_epoch = int(summary_epoch) if summary_epoch is not None else None
+    except (TypeError, ValueError):
+        summary_epoch = None
+    summary_stale = bool(
+        has_any and decided_epoch is not None
+        and (summary_epoch is None or summary_epoch < decided_epoch)
+    )
+
     def _status(yes, th):
+        if summary_stale:
+            return "stale"
         if th is None:
             return "none"
         return "passed" if yes >= th else "failed"
@@ -1398,6 +1423,8 @@ def _attach_voting_summary(row: Dict[str, Any], protocol_params: dict | None) ->
 
     row.update({
         "has_voting_summary": "1" if has_any else "",
+        # 決着後に集計が再取得されていない = 表示中の % は暫定値
+        "summary_stale":      "1" if summary_stale else "",
         "drep_yes_pct":       f"{drep_yes:.1f}",
         "drep_yes_pct_donut": f"{drep_yes:.0f}",
         "drep_no_pct":        f"{drep_no:.1f}",
@@ -1656,6 +1683,7 @@ class GovernanceState(rx.State):
             " ga.expiration, ga.block_time, ga.deposit, ga.withdrawal_total_lovelace, ga.withdrawal_json,"
             " ga.meta_url, ga.title, ga.`abstract`, ga.title_ja, ga.abstract_ja,"
             f" {_GA_STATUS_SQL_GA} AS ga_status,"
+            " vs.epoch_no AS summary_epoch_no,"
             " vs.drep_yes_pct, vs.drep_no_pct, vs.pool_yes_pct, vs.pool_no_pct,"
             " vs.committee_yes_pct, vs.committee_no_pct,"
             " vs.drep_yes_vote_power, vs.drep_no_vote_power,"
@@ -1787,6 +1815,9 @@ class GovernanceState(rx.State):
                               "committee_yes_votes_cast", "committee_no_votes_cast",
                               "committee_abstain_votes_cast"):
                         formatted[k] = summary.get(k)
+                    # 集計が決着エポックより古いかの判定に使う（governance_actions 側の
+                    # 列名と衝突しないよう別名で持つ）
+                    formatted["summary_epoch_no"] = summary.get("epoch_no")
                     _attach_voting_summary(formatted, protocol_params)
                     self.modal_action = formatted
 
