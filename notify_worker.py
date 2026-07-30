@@ -1414,24 +1414,42 @@ def _dedupe_latest_votes(votes: list[dict]) -> list[dict]:
     return list(latest.values())
 
 
-def check_vote_sync():
+def check_vote_sync(full: bool = False):
     """
-    governance_actions テーブルの全 proposal を対象に、Koios /proposal_votes を取得して
-    proposal_votes テーブルにキャッシュする。投票は常に最新トランザクション
-    （block_time 最大）を採用。
+    Koios /proposal_votes を取得して proposal_votes テーブルにキャッシュする。
+    投票は常に最新トランザクション（block_time 最大）を採用。
     投票集計（/proposal_voting_summary）は重いので別バッチ（summary_sync）で行う。
+
+    **投票のリアルタイム反映は Ogmios listener が担当する。**
+    listener は tx の votes を DRep / SPO / CC の区別なく proposal_votes に即時 UPSERT
+    しているので (ogmios_listener._process_tx → record_vote_from_event)、この sync は
+    listener が落ちていたとき / rollback 後 / 過去分取り込みのためのバックアップ。
+
+    そのため既定では **投票中 (Active) の GA のみ** を対象にする。決着済み GA の投票は
+    もう増えないので取り直す意味が無く、全件を回すと GA 1500 件 × cron 回数で
+    Koios の日次上限 (Public 5,000 / Free 50,000 req/日) を焼き切る。
+
+    full=True で決着済みを含む全 GA を対象にする。listener を長期停止した後など、
+    決着済み GA の取りこぼしを埋めたいときに手動で使う:
+        python notify_worker.py --event vote_sync --full
     """
     from cardanoism.backend.koios import get_proposal_votes
     from cardanoism.backend.vote_db import bulk_upsert_votes
 
-    logger.info("投票同期 開始")
+    logger.info("投票同期 開始 (%s)", "全 GA" if full else "投票中の GA のみ")
 
+    where = "proposal_id IS NOT NULL AND proposal_id <> ''"
+    if not full:
+        where += (
+            " AND ratified_epoch IS NULL AND enacted_epoch IS NULL"
+            " AND dropped_epoch IS NULL AND expired_epoch IS NULL"
+        )
     with get_db() as (cursor, _):
         cursor.execute(
-            """
+            f"""
             SELECT proposal_id
             FROM governance_actions
-            WHERE proposal_id IS NOT NULL AND proposal_id <> ''
+            WHERE {where}
             ORDER BY block_time DESC
             """
         )
@@ -3213,9 +3231,9 @@ def main():
         "--full",
         action="store_true",
         help=(
-            "drep_sync: live amount 同期を「dirty な DRep のみ」から「全 active DRep」"
-            "に拡大する (日次 fallback で listener 取りこぼし対策)。"
-            "通常 cron では指定しない。"
+            "差分同期を全件に拡大する (listener 取りこぼしの回収用。通常 cron では指定しない)。"
+            " drep_sync: 「dirty な DRep のみ」→「全 active DRep」。"
+            " vote_sync: 「投票中の GA のみ」→「決着済みを含む全 GA」。"
         ),
     )
     parser.add_argument(
@@ -3264,7 +3282,7 @@ def main():
     if args.event in ("all", "relay_check"):
         check_pool_relay_alive()
     if args.event in ("all", "vote_sync"):
-        check_vote_sync()
+        check_vote_sync(full=bool(args.full))
     if args.event in ("all", "summary_sync"):
         check_summary_sync(catchup_limit=args.summary_catchup_limit)
     if args.event in ("all", "params_sync"):
