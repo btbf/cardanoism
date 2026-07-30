@@ -92,10 +92,27 @@ else:
 _rate_limiter = _RateLimiter(max_calls=90, period=10.0)
 
 
+def _retry_after_seconds(resp) -> float | None:
+    """Retry-After ヘッダを秒に変換する。無い / 解釈不能なら None。"""
+    val = resp.headers.get("Retry-After") if resp is not None else None
+    if not val:
+        return None
+    try:
+        return max(0.0, float(val))
+    except (TypeError, ValueError):
+        return None
+
+
 def _request_with_retry(method: str, endpoint: str, *, params=None, json_body=None, timeout: float):
     """Session 経由 + アプリ層の追加リトライ。urllib3 のリトライで拾えない接続切断
     (RemoteDisconnected / NameResolutionError) もここで 3 回まで再試行する。
-    POST でも params (?limit=N&offset=N 等) を許容する。"""
+    POST でも params (?limit=N&offset=N 等) を許容する。
+
+    429 は urllib3 側でも 4 回リトライ (1.5→3→6→12 秒) するが、それを使い切っても
+    返ってくることがある (/proposal_voting_summary のような重いエンドポイントを
+    並列で叩いたとき)。その場合はアプリ層でさらに長めに待って再試行する。
+    ここで諦めて None を返すとデータが欠けたまま次の sync まで放置されるため。
+    """
     last_err = None
     for attempt in range(3):
         _rate_limiter.acquire()
@@ -107,6 +124,17 @@ def _request_with_retry(method: str, endpoint: str, *, params=None, json_body=No
                     f"{KOIOS_BASE_URL}{endpoint}",
                     json=json_body, params=params, timeout=timeout,
                 )
+            if resp.status_code == 429:
+                last_err = "429 Too Many Requests"
+                if attempt == 2:
+                    break
+                sleep_for = _retry_after_seconds(resp) or (10.0 * (attempt + 1))
+                logger.warning(
+                    "Koios %s 429 (attempt %d/3, %.1fs 待機): %s",
+                    method, attempt + 1, sleep_for, endpoint,
+                )
+                time.sleep(sleep_for)
+                continue
             if resp.status_code != 200:
                 logger.warning("Koios %s error %s: %s", method, resp.status_code, endpoint)
                 return None
@@ -867,22 +895,30 @@ def get_epoch_params(epoch_no: int | None = None) -> dict | None:
     return data[0]
 
 
+# /proposal_voting_summary は Koios 側の計算コストが高く、並列で叩くと 429 を返す。
+# グローバルなレートリミッタとは別に、このエンドポイントだけ同時実行数を絞る。
+# ThreadPoolExecutor の worker 数を増やしても、ここが実質の上限になる。
+_SUMMARY_SEMAPHORE = threading.BoundedSemaphore(2)
+
+
 def get_proposal_voting_summary(proposal_id: str) -> dict | None:
     """指定 proposal の投票集計（Yes/No/Abstain の票数・パーセンテージ）を返す。
-    Koios 側で計算コストが高く数十秒かかることがあるため、長めのタイムアウト + 1 回リトライ。
+    Koios 側で計算コストが高く数十秒かかることがあるため、長めのタイムアウト + リトライ。
+    同時実行は _SUMMARY_SEMAPHORE で 2 に制限する（429 対策）。
     """
     if not proposal_id:
         return None
-    for attempt in range(2):
-        data = _get(
-            "/proposal_voting_summary",
-            {"_proposal_id": proposal_id},
-            timeout=60.0,
-        )
-        if data and isinstance(data, list) and data[0]:
-            return data[0]
-        if attempt == 0:
-            time.sleep(2)
+    with _SUMMARY_SEMAPHORE:
+        for attempt in range(3):
+            data = _get(
+                "/proposal_voting_summary",
+                {"_proposal_id": proposal_id},
+                timeout=60.0,
+            )
+            if data and isinstance(data, list) and data[0]:
+                return data[0]
+            if attempt < 2:
+                time.sleep(5.0 * (attempt + 1))
     return None
 
 
