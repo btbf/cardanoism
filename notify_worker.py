@@ -1457,10 +1457,11 @@ def check_vote_sync():
 # 投票集計同期（重い /proposal_voting_summary 専用）
 # ============================================================
 
-def check_summary_sync(max_workers: int = 6):
+def check_summary_sync(max_workers: int = 3, catchup_limit: int = 20):
     """
     /proposal_voting_summary は Koios 側で計算コストが高く 1 件数十秒かかる場合がある。
-    ThreadPoolExecutor で並列化（既存のレートリミッタが自動的に 80req/10s で絞る）。
+    並列で叩くと 429 を返してくるので、koios 側の _SUMMARY_SEMAPHORE で同時実行を
+    2 に絞っている（max_workers を増やしてもそこが実質の上限）。
 
     対象は次の 3 種類:
       1. Active な GA          … pre_ratify トリガー用に常時最新化 (15 min cron 前提)
@@ -1475,6 +1476,13 @@ def check_summary_sync(max_workers: int = 6):
 
     決着後は集計値が変動しないので、summary.epoch_no が決着エポック以上になれば
     以後この条件には引っかからない (= 1 回だけ再取得して収束する)。
+
+    catchup_limit:
+        2 / 3 の「決着済み GA の取り込み」は導入直後だけ数百〜千件たまる。
+        1 回で全部叩くと 429 で軒並み失敗するので、1 実行あたりの件数を絞って
+        cron の実行回数で消化する。**Active な GA は常に全件処理し、上限は
+        決着済みの取り込み分にのみ適用される**（pre_ratify 判定を落とさないため）。
+        0 以下で無制限。残件数は毎回ログに出す。
     """
     from cardanoism.backend.koios import get_proposal_voting_summary
     from cardanoism.backend.voting_summary_db import upsert_voting_summary
@@ -1489,6 +1497,7 @@ def check_summary_sync(max_workers: int = 6):
         cursor.execute(
             f"""
             SELECT ga.proposal_id, ga.proposal_type,
+                   ({_DECIDED_EPOCH} IS NULL) AS is_active,
                    (vs.proposal_id IS NULL) AS is_backfill,
                    (vs.proposal_id IS NOT NULL
                     AND {_DECIDED_EPOCH} IS NOT NULL
@@ -1509,10 +1518,25 @@ def check_summary_sync(max_workers: int = 6):
             """
         )
         proposals = [dict(r) for r in cursor.fetchall() if r.get("proposal_id")]
-    backfill_n = sum(1 for p in proposals if p.get("is_backfill"))
-    stale_n = sum(1 for p in proposals if p.get("is_stale"))
-    logger.info("集計対象: %d 件 (初回 backfill %d / 決着後の再取得 %d)",
-                len(proposals), backfill_n, stale_n)
+
+    # Active な GA は集計行の有無に関わらず全件処理する (pre_ratify 判定に必要)。
+    # 上限をかけるのは「決着済み GA の取り込み」だけ。
+    active = [p for p in proposals if p.get("is_active")]
+    catchup = [p for p in proposals if not p.get("is_active")]
+    deferred = 0
+    if catchup_limit and catchup_limit > 0 and len(catchup) > catchup_limit:
+        deferred = len(catchup) - catchup_limit
+        catchup = catchup[:catchup_limit]  # block_time DESC 順なので新しい GA から消化
+    proposals = active + catchup
+
+    backfill_n = sum(1 for p in catchup if p.get("is_backfill"))
+    stale_n = sum(1 for p in catchup if p.get("is_stale"))
+    logger.info("集計対象: %d 件 (active %d / 今回取り込み %d [未取得 %d + 決着後 %d])",
+                len(proposals), len(active), len(catchup), backfill_n, stale_n)
+    if deferred:
+        logger.info("  取り込み残り %d 件は次回以降の実行に持ち越し "
+                    "(catchup_limit=%d)。全部一気に流すには --summary-catchup-limit 0",
+                    deferred, catchup_limit)
 
     def _one(p: dict) -> int:
         pid = p["proposal_id"]
@@ -3194,6 +3218,17 @@ def main():
             "通常 cron では指定しない。"
         ),
     )
+    parser.add_argument(
+        "--summary-catchup-limit",
+        type=int,
+        default=20,
+        metavar="N",
+        help=(
+            "summary_sync: 1 実行で取り込む「決着済み GA の集計」の件数上限 (既定 20)。"
+            "Active な GA は上限に関係なく毎回全件処理する。"
+            "0 で無制限 (429 を食らいやすいので初回一括投入時のみ推奨)。"
+        ),
+    )
     args = parser.parse_args()
 
     if args.epoch_schedule:
@@ -3231,7 +3266,7 @@ def main():
     if args.event in ("all", "vote_sync"):
         check_vote_sync()
     if args.event in ("all", "summary_sync"):
-        check_summary_sync()
+        check_summary_sync(catchup_limit=args.summary_catchup_limit)
     if args.event in ("all", "params_sync"):
         check_params_sync()
     if args.event in ("all", "vote_rationale_sync"):
