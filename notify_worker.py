@@ -1462,41 +1462,57 @@ def check_summary_sync(max_workers: int = 6):
     /proposal_voting_summary は Koios 側で計算コストが高く 1 件数十秒かかる場合がある。
     ThreadPoolExecutor で並列化（既存のレートリミッタが自動的に 80req/10s で絞る）。
 
-    対象は **Active な GA** に加えて、**集計行がまだ 1 度も作られていない GA**。
-    pre_ratify トリガー (drep_yes_pct ≥ 批准値 -10pt) のリアルタイム判定に
-    必要な集計値をこの sync で常時最新化する。15 min cron で回す前提。
-    決着済み GA は集計値が変動しないため、行が既にあれば再取得しない。
+    対象は次の 3 種類:
+      1. Active な GA          … pre_ratify トリガー用に常時最新化 (15 min cron 前提)
+      2. 集計行が無い GA        … 1 度も sync されないまま決着した GA の救済
+      3. 集計が決着より古い GA  … 決着エポックの最終値を取り込む
 
-    決着済み GA も 1 度は取得するのは、Active のうちに sync されないまま
-    ratified/expired になった GA が「投票集計セクションごと非表示」になるのを防ぐため
-    (UI は proposal_voting_summary の行が無いとセクションを出さない)。
+    3 が必要な理由: 旧実装は Active な GA しか対象にしていなかったため、批准した
+    瞬間に対象から外れ、集計行が「批准直前のスナップショット」で凍結していた。
+    GA 詳細では「可決」バッジ (governance_actions.ratified_epoch 由来 = 最新) と
+    投票集計の「未達」(凍結した集計由来) が矛盾し、さらに CC メンバー一覧
+    (proposal_votes 直読み = 最新) と CC の Yes% も食い違う。
+
+    決着後は集計値が変動しないので、summary.epoch_no が決着エポック以上になれば
+    以後この条件には引っかからない (= 1 回だけ再取得して収束する)。
     """
     from cardanoism.backend.koios import get_proposal_voting_summary
     from cardanoism.backend.voting_summary_db import upsert_voting_summary
 
-    logger.info("投票集計同期 開始 (workers=%d, active GA + 集計行が無い GA)", max_workers)
+    logger.info("投票集計同期 開始 (workers=%d, active + 未取得 + 決着より古い集計)", max_workers)
 
+    # 決着エポック (最初に決着した時点)。ratified → enacted の順に効く。
+    _DECIDED_EPOCH = (
+        "COALESCE(ga.ratified_epoch, ga.enacted_epoch, ga.dropped_epoch, ga.expired_epoch)"
+    )
     with get_db() as (cursor, _):
         cursor.execute(
-            """
+            f"""
             SELECT ga.proposal_id, ga.proposal_type,
-                   (vs.proposal_id IS NULL) AS is_backfill
+                   (vs.proposal_id IS NULL) AS is_backfill,
+                   (vs.proposal_id IS NOT NULL
+                    AND {_DECIDED_EPOCH} IS NOT NULL
+                    AND (vs.epoch_no IS NULL OR vs.epoch_no < {_DECIDED_EPOCH})) AS is_stale
             FROM governance_actions ga
             LEFT JOIN proposal_voting_summary vs ON vs.proposal_id = ga.proposal_id
             WHERE ga.proposal_id IS NOT NULL AND ga.proposal_id <> ''
               AND (
+                    -- 1. 未取得
                     vs.proposal_id IS NULL
-                 OR (ga.ratified_epoch IS NULL
-                     AND ga.enacted_epoch  IS NULL
-                     AND ga.dropped_epoch  IS NULL
-                     AND ga.expired_epoch  IS NULL)
+                    -- 2. Active
+                 OR {_DECIDED_EPOCH} IS NULL
+                    -- 3. 決着済みだが集計がそれより古い
+                 OR vs.epoch_no IS NULL
+                 OR vs.epoch_no < {_DECIDED_EPOCH}
               )
             ORDER BY ga.block_time DESC
             """
         )
         proposals = [dict(r) for r in cursor.fetchall() if r.get("proposal_id")]
     backfill_n = sum(1 for p in proposals if p.get("is_backfill"))
-    logger.info("集計対象: %d 件 (うち初回 backfill %d 件)", len(proposals), backfill_n)
+    stale_n = sum(1 for p in proposals if p.get("is_stale"))
+    logger.info("集計対象: %d 件 (初回 backfill %d / 決着後の再取得 %d)",
+                len(proposals), backfill_n, stale_n)
 
     def _one(p: dict) -> int:
         pid = p["proposal_id"]

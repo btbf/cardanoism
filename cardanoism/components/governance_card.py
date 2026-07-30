@@ -677,6 +677,13 @@ def _donut_chart(role_label, yes_pct, yes_pct_donut, no_pct, abstain_pct, thresh
         status,
         ("passed", rx.badge(AuthState.t["gov_vote_passed"], color_scheme="green", variant="soft", size="1")),
         ("failed", rx.badge(AuthState.t["gov_vote_failed"], color_scheme="red",   variant="soft", size="1")),
+        # 決着済みなのに集計が決着前のまま = 閾値判定が「可決」バッジと矛盾しうる。
+        # 達成/未達を出さず、暫定値であることを示す。
+        ("stale", rx.badge(
+            AuthState.t["gov_vote_summary_stale"],
+            color_scheme="gray", variant="outline", size="1",
+            custom_attrs={"title": AuthState.t["gov_vote_summary_stale_note"]},
+        )),
         rx.fragment(),
     )
 
@@ -836,6 +843,13 @@ def _cc_vote_card(action: Dict[str, Any]) -> rx.Component:
         cc_status,
         ("passed", rx.badge(AuthState.t["gov_vote_passed"], color_scheme="green", variant="soft", size="1")),
         ("failed", rx.badge(AuthState.t["gov_vote_failed"], color_scheme="red",   variant="soft", size="1")),
+        # 決着済みなのに集計が決着前のまま = 閾値判定が「可決」バッジと矛盾しうる。
+        # 達成/未達を出さず、暫定値であることを示す。
+        ("stale", rx.badge(
+            AuthState.t["gov_vote_summary_stale"],
+            color_scheme="gray", variant="outline", size="1",
+            custom_attrs={"title": AuthState.t["gov_vote_summary_stale_note"]},
+        )),
         rx.fragment(),
     )
 
