@@ -42,7 +42,6 @@ from cardanoism.backend.koios import (
     get_pool_apy, batch_account_info,
     batch_account_update_history, batch_account_reward_history,
     batch_account_reward_history_by_type,
-    KOIOS_BATCH_SIZE, _chunks,
 )
 from cardanoism.backend.line_notify import send_line_push, send_line_flex
 from cardanoism.backend import line_flex
@@ -938,25 +937,29 @@ def _check_drep_status_change():
     if not addrs:
         return
 
-    # ユニーク drep_id を 1,000 件チャンクで一括取得
+    # ユニーク drep_id を一括取得。
     # 状態は drep_sync と同じ derivation で "active" / "inactive" / "deregistered"。
     # Koios /drep_info の生フィールドは drep_status="registered" 等で、active 判定は
     # 別途 active(bool) を見る必要がある。
+    #
+    # 以前は KOIOS_BATCH_SIZE (1000) で刻んで _post を直叩きしていたが、/drep_info は
+    # 他の POST よりペイロード制限が厳しく (実測 75 件超で 413)、委任先 DRep が
+    # 26 種類を超えた時点で丸ごと失敗し drep_status_change 通知が黙って止まる状態だった。
+    # get_drep_info_batch は DREP_BATCH_SIZE で刻み 413 時は自動分割するのでそちらを使う。
+    from cardanoism.backend.koios import get_drep_info_batch
+
     unique_drep_ids = list({a["delegated_drep_id"] for a in addrs})
     drep_status_map: dict[str, str] = {}
-    for chunk in _chunks(unique_drep_ids, KOIOS_BATCH_SIZE):
-        data = _post("/drep_info", {"_drep_ids": chunk})
-        if data and isinstance(data, list):
-            for item in data:
-                did = item.get("drep_id")
-                if not did:
-                    continue
-                if bool(item.get("active")):
-                    drep_status_map[did] = "active"
-                elif item.get("drep_status") == "registered":
-                    drep_status_map[did] = "inactive"
-                else:
-                    drep_status_map[did] = item.get("drep_status") or "deregistered"
+    for item in get_drep_info_batch(unique_drep_ids):
+        did = item.get("drep_id")
+        if not did:
+            continue
+        if bool(item.get("active")):
+            drep_status_map[did] = "active"
+        elif item.get("drep_status") == "registered":
+            drep_status_map[did] = "inactive"
+        else:
+            drep_status_map[did] = item.get("drep_status") or "deregistered"
     if not drep_status_map:
         return
 

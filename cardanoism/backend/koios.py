@@ -850,9 +850,17 @@ def get_drep_list() -> list[dict]:
     return all_out
 
 
-# Koios /drep_info と /drep_metadata は他の POST より厳しいペイロード制限があり、
-# 100 件で 413 Payload Too Large を返す。実測では 50 件までは OK。余裕を持って 25 件。
-DREP_BATCH_SIZE = 25
+# Koios /drep_info と /drep_metadata は他の POST より厳しいペイロード制限がある。
+# 実測 (2026-07, mainnet): 75 件 = OK / 90 件 = 413 Payload Too Large。
+#
+# drep_sync は registered 全件 (実測 9,875 件) を毎回このサイズで刻んで叩くため、
+# ここが Koios 日次上限に対する最大の消費源になる。15 分 cron での req/日:
+#     25 件 → 395 req/回 = 37,920 req/日
+#     50 件 → 198 req/回 = 19,008 req/日   ← 採用
+#     75 件 → 132 req/回 = 12,672 req/日   (上限に近く 413 のリスク)
+# 413 が返っても _post_split_on_413 が半分に割って再試行するのでデータは欠けないが、
+# その分リクエストが増える (1 失敗 + 2 分割 = 3 req)。上限ギリギリは避けて 50 とする。
+DREP_BATCH_SIZE = 50
 
 
 def _post_split_on_413(endpoint: str, key: str, ids: list[str], timeout: float = 10.0) -> list[dict]:
