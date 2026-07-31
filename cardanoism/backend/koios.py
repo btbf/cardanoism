@@ -23,12 +23,20 @@ logger = logging.getLogger(__name__)
 KOIOS_BATCH_SIZE = 1000  # Koios POST エンドポイントの上限件数
 
 # 接続再利用用の Session: 同一ホスト宛の TCP 接続を使い回し DNS 解決ストームを防ぐ。
-# urllib3 のリトライで一過性の 5xx / 429 / 接続切断を自動再試行する。
+# urllib3 のリトライで一過性の 5xx / 接続切断を自動再試行する。
+#
+# **429 はここでリトライしない。** Koios の burst 上限は 100 req/10s だが、こちらは
+# _rate_limiter で 90/10s に抑えているので、自分のトラフィックで burst 429 は出ない。
+# つまり 429 = 日次上限 (Public 5,000 / Free 50,000) の枯渇であり、待って再試行しても
+# 復帰しない。それどころか 429 レスポンスも 1 リクエストとして数えられるため、
+# リトライするほど枠を余計に削って悪化する。
+# (実際 status_forcelist に 429 を入れたまま _request_with_retry でもリトライしていた
+#  時期は、1 回の論理呼び出しが最大 5 × 3 = 15 リクエストを消費していた)
 _session = requests.Session()
 _retry = Retry(
     total=4,
-    backoff_factor=1.5,                          # 1.5 → 3 → 6 → 12 秒のバックオフ（429 復帰待ち）
-    status_forcelist=(500, 502, 503, 504, 429),
+    backoff_factor=1.5,
+    status_forcelist=(500, 502, 503, 504),
     allowed_methods=("GET", "POST"),
     raise_on_status=False,
     respect_retry_after_header=True,             # サーバー指定の Retry-After を尊重
@@ -107,16 +115,63 @@ def _retry_after_seconds(resp) -> float | None:
         return None
 
 
+# ── 429 サーキットブレーカー ──────────────────────────────────────────────
+# 429 を 1 度でも受けたら、一定時間このプロセスからの Koios 呼び出しを止める。
+# 429 レスポンス自体も日次上限にカウントされるため、枯渇状態で叩き続けると
+# 復帰が遠のく。全呼び出しが即 None を返すようにして枠を温存する
+# (cron は次回実行で、Web はキャッシュ or 空表示でしのぐ)。
+_COOLDOWN_UNTIL = 0.0
+_COOLDOWN_LOCK = threading.Lock()
+_COOLDOWN_DEFAULT = 300.0     # Retry-After が無いときの待機 (5 分)
+_last_429_logged = 0.0
+
+
+def _cooldown_remaining() -> float:
+    with _COOLDOWN_LOCK:
+        return max(0.0, _COOLDOWN_UNTIL - time.monotonic())
+
+
+def _enter_cooldown(seconds: float, endpoint: str, resp) -> None:
+    """429 を受けたのでクールダウンに入る。原因判別のため本文を 1 回だけ出す。"""
+    global _COOLDOWN_UNTIL, _last_429_logged
+    now = time.monotonic()
+    with _COOLDOWN_LOCK:
+        _COOLDOWN_UNTIL = max(_COOLDOWN_UNTIL, now + seconds)
+    # 同じ枯渇でログが溢れないよう 60 秒に 1 回だけ詳細を出す。
+    # Koios は本文に「どの制限に当たったか」を書いてくるので、
+    # burst なのか日次上限なのかはここで判別する。
+    if now - _last_429_logged > 60.0:
+        _last_429_logged = now
+        body = ""
+        try:
+            body = (resp.text or "")[:300].replace("\n", " ")
+        except Exception:  # noqa: BLE001
+            pass
+        interesting = {k: v for k, v in (resp.headers or {}).items()
+                       if "limit" in k.lower() or "retry" in k.lower() or "remain" in k.lower()}
+        logger.error(
+            "Koios 429: %s — %.0f 秒クールダウンに入ります / body=%s / headers=%s",
+            endpoint, seconds, body or "(空)", interesting or "(制限系ヘッダなし)",
+        )
+    else:
+        logger.warning("Koios 429: %s (クールダウン中、残り %.0f 秒)",
+                       endpoint, _cooldown_remaining())
+
+
 def _request_with_retry(method: str, endpoint: str, *, params=None, json_body=None, timeout: float):
     """Session 経由 + アプリ層の追加リトライ。urllib3 のリトライで拾えない接続切断
     (RemoteDisconnected / NameResolutionError) もここで 3 回まで再試行する。
     POST でも params (?limit=N&offset=N 等) を許容する。
 
-    429 は urllib3 側でも 4 回リトライ (1.5→3→6→12 秒) するが、それを使い切っても
-    返ってくることがある (/proposal_voting_summary のような重いエンドポイントを
-    並列で叩いたとき)。その場合はアプリ層でさらに長めに待って再試行する。
-    ここで諦めて None を返すとデータが欠けたまま次の sync まで放置されるため。
+    **429 はリトライしない。** こちらは _rate_limiter で burst 上限内に収めているので、
+    429 = 日次上限の枯渇。待っても復帰しないうえ 429 自身も枠を消費するため、
+    即座に諦めてクールダウンに入る。
     """
+    remaining = _cooldown_remaining()
+    if remaining > 0:
+        logger.debug("Koios クールダウン中 (残り %.0f 秒) のためスキップ: %s", remaining, endpoint)
+        return None
+
     last_err = None
     for attempt in range(3):
         _rate_limiter.acquire()
@@ -129,16 +184,8 @@ def _request_with_retry(method: str, endpoint: str, *, params=None, json_body=No
                     json=json_body, params=params, timeout=timeout,
                 )
             if resp.status_code == 429:
-                last_err = "429 Too Many Requests"
-                if attempt == 2:
-                    break
-                sleep_for = _retry_after_seconds(resp) or (10.0 * (attempt + 1))
-                logger.warning(
-                    "Koios %s 429 (attempt %d/3, %.1fs 待機): %s",
-                    method, attempt + 1, sleep_for, endpoint,
-                )
-                time.sleep(sleep_for)
-                continue
+                _enter_cooldown(_retry_after_seconds(resp) or _COOLDOWN_DEFAULT, endpoint, resp)
+                return None
             if resp.status_code != 200:
                 logger.warning("Koios %s error %s: %s", method, resp.status_code, endpoint)
                 return None
@@ -929,6 +976,9 @@ def get_proposal_voting_summary(proposal_id: str) -> dict | None:
             )
             if data and isinstance(data, list) and data[0]:
                 return data[0]
+            # 429 クールダウン中なら再試行しても即 None が返るだけ。無駄に眠らない。
+            if _cooldown_remaining() > 0:
+                return None
             if attempt < 2:
                 time.sleep(5.0 * (attempt + 1))
     return None
