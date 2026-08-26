@@ -211,6 +211,8 @@ python3 -m venv .venv
 | `MAIL_SMTP_HOST` / `MAIL_SMTP_PORT` / `MAIL_SMTP_USER` / `MAIL_SMTP_PASSWORD` / `MAIL_FROM_NAME` | ⚠️ | メール通知を使う場合 |
 | `TELEGRAM_BOT_TOKEN` | ⚠️ | Telegram 通知を使う場合 |
 | `KOIOS_API_KEY` | 任意 | Koios の認証キー（DRep 投票時のタイトル補完・プール実績取得に使用） |
+| `NOTIFICATION_REALTIME_MAX_LAG_SLOTS` | 任意 | 通常chainイベントの通知期限（既定: `1800` slots） |
+| `NOTIFICATION_EPOCH_MAX_LAG_SLOTS` | 任意 | epoch境界通知の期限（既定: `7200` slots） |
 
 VPS 側で Infisical CLI をインストールし、実行ユーザーで対話 login して認証する:
 
@@ -293,7 +295,27 @@ Ogmios `nextBlock` は `direction: "backward"` で網羅的にロールバック
 
 ---
 
-## 7. ネットワーク切替（preprod / preview）
+## 7. Catch-up 時の通知鮮度
+
+listener が停止中のブロックへ追いつく場合も、GA・vote・certificate のDB同期は
+最後まで行う。ただし古いイベント通知は送らない。
+
+`nextBlock.result.tip.slot - block.slot` で遅延を判定し、既定では以下のwindowを使う。
+
+| 対象 | 既定window | 環境変数 |
+|---|---:|---|
+| GA / DRep vote / SPO pending / pool retire / pool fee | 1,800 slots（30分） | `NOTIFICATION_REALTIME_MAX_LAG_SLOTS` |
+| epoch_start / pool epoch performance / epoch sync trigger | 7,200 slots（2時間） | `NOTIFICATION_EPOCH_MAX_LAG_SLOTS` |
+
+期限切れでも `governance_actions`、`proposal_votes`、pool等のデータ更新、GA metadata、
+投票理由の取得は継続する。抑止されるのはユーザーへの通知と、古いepoch境界からの
+重いsync triggerだけ。GA metadataや投票理由のバックグラウンド処理が長引いた場合も、
+配送直前に残りwindowを再確認する。
+
+たとえば現在epoch 651で、listenerがepoch 649のブロックから再開しても、649のGAは
+DBへ登録されるが「新規GA」としては通知されない。
+
+## 8. ネットワーク切替（preprod / preview）
 
 Infisical で `mainnet` / `preview` environment を分けているので、systemd unit の `--env=` フラグだけ書き換えれば network 別の secret に切り替わる。`ogmios_listener.py` 自体は Ogmios `/health` の `network` フィールドから自動検出するため、コード側に変更は不要。
 
@@ -301,7 +323,7 @@ cardano-node / Ogmios 側はネットワークごとに別の config 一式が�
 
 ---
 
-## 8. 運用コマンド
+## 9. 運用コマンド
 
 ### 状態確認
 
@@ -338,7 +360,7 @@ WHERE scope_type='global' AND key_name IN ('ogmios_last_slot', 'ogmios_last_id')
 
 ---
 
-## 9. トラブルシューティング
+## 10. トラブルシューティング
 
 | 症状 | 原因と対処 |
 |------|----------|
@@ -351,7 +373,7 @@ WHERE scope_type='global' AND key_name IN ('ogmios_last_slot', 'ogmios_last_id')
 
 ---
 
-## 10. notify_worker.py との関係
+## 11. notify_worker.py との関係
 
 リアルタイムバックエンドが担当するイベントは notify_worker.py の cron からは **完全に除外** されている（`notify_worker.py` のヘッダーコメント参照）。両方を稼働させても重複は起きないが、Ogmios 側を必ず単一プロセスで運用すること（複数立てると同じブロックを重複処理する）。
 
@@ -359,7 +381,7 @@ Koios 必須のイベント（saturation / pledge / reward / reminder / drep_sta
 
 ---
 
-## 11. 参考リンク
+## 12. 参考リンク
 
 - [Ogmios 公式ドキュメント](https://ogmios.dev/)
 - [Ogmios リリース](https://github.com/CardanoSolutions/ogmios/releases)

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from typing import Any
 
 from cardanoism.backend.db_connect import get_db
@@ -306,6 +307,56 @@ def get_pools_with_relays(only_active: bool = True) -> list[dict]:
     with get_db() as (cursor, _):
         cursor.execute(f"SELECT pool_id_bech32, relays FROM pools WHERE {where}")
         return [dict(r) for r in cursor.fetchall()]
+
+
+def latest_cached_pool_apy(history) -> float | None:
+    """``apy_history_7ep``（newest順）から最新の正常値を返す。"""
+    if not history:
+        return None
+    try:
+        values = json.loads(history) if isinstance(history, str) else history
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(values, (list, tuple)):
+        return None
+    for value in values:
+        if value is None or isinstance(value, bool):
+            continue
+        try:
+            apy = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(apy):
+            return apy
+    return None
+
+
+def get_cached_pool_apys(pool_ids: list[str]) -> dict[str, float | None]:
+    """複数プールの最新APYをDBだけで一括取得する。
+
+    キャッシュ欠損・不正値・未登録プールは ``None``。通知処理はこの場合に
+    APY表示だけを省略し、Koiosへフォールバックしない。
+    """
+    unique_ids = list(dict.fromkeys(str(pid) for pid in pool_ids if pid))
+    result: dict[str, float | None] = {pid: None for pid in unique_ids}
+    if not unique_ids:
+        return result
+
+    # MariaDB のプレースホルダー数を抑えつつ、通常の通知対象は1クエリで取得する。
+    for start in range(0, len(unique_ids), 1000):
+        chunk = unique_ids[start:start + 1000]
+        placeholders = ",".join(["?"] * len(chunk))
+        with get_db() as (cursor, _):
+            cursor.execute(
+                "SELECT pool_id_bech32, apy_history_7ep FROM pools "
+                f"WHERE pool_id_bech32 IN ({placeholders})",
+                chunk,
+            )
+            for row in cursor.fetchall():
+                pool_id = str(row.get("pool_id_bech32") or "")
+                if pool_id in result:
+                    result[pool_id] = latest_cached_pool_apy(row.get("apy_history_7ep"))
+    return result
 
 
 def bulk_update_relay_alive(updates: list[tuple]) -> int:

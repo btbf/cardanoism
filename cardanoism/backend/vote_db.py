@@ -42,6 +42,11 @@ def upsert_vote(data: dict[str, Any]) -> None:
                 voter_hex        = IF(VALUES(block_time) IS NOT NULL AND (block_time IS NULL OR VALUES(block_time) >= block_time), VALUES(voter_hex),        voter_hex),
                 voter_has_script = IF(VALUES(block_time) IS NOT NULL AND (block_time IS NULL OR VALUES(block_time) >= block_time), VALUES(voter_has_script), voter_has_script),
                 vote             = IF(VALUES(block_time) IS NOT NULL AND (block_time IS NULL OR VALUES(block_time) >= block_time), VALUES(vote),             vote),
+                -- 再投票で anchor が変わった場合、旧 metadata を表示・取得済み扱いしない。
+                rationale        = IF(VALUES(block_time) IS NOT NULL AND (block_time IS NULL OR VALUES(block_time) >= block_time) AND (NOT (meta_url <=> VALUES(meta_url)) OR NOT (meta_hash <=> VALUES(meta_hash))), NULL, rationale),
+                rationale_ja     = IF(VALUES(block_time) IS NOT NULL AND (block_time IS NULL OR VALUES(block_time) >= block_time) AND (NOT (meta_url <=> VALUES(meta_url)) OR NOT (meta_hash <=> VALUES(meta_hash))), NULL, rationale_ja),
+                voter_name       = IF(VALUES(block_time) IS NOT NULL AND (block_time IS NULL OR VALUES(block_time) >= block_time) AND (NOT (meta_url <=> VALUES(meta_url)) OR NOT (meta_hash <=> VALUES(meta_hash))), NULL, voter_name),
+                meta_fetched_at  = IF(VALUES(block_time) IS NOT NULL AND (block_time IS NULL OR VALUES(block_time) >= block_time) AND (NOT (meta_url <=> VALUES(meta_url)) OR NOT (meta_hash <=> VALUES(meta_hash))), NULL, meta_fetched_at),
                 meta_url         = IF(VALUES(block_time) IS NOT NULL AND (block_time IS NULL OR VALUES(block_time) >= block_time), VALUES(meta_url),         meta_url),
                 meta_hash        = IF(VALUES(block_time) IS NOT NULL AND (block_time IS NULL OR VALUES(block_time) >= block_time), VALUES(meta_hash),        meta_hash),
                 block_time       = IF(VALUES(block_time) IS NOT NULL AND (block_time IS NULL OR VALUES(block_time) >= block_time), VALUES(block_time),       block_time),

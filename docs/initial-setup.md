@@ -115,6 +115,8 @@ done
 
 詳細は `cardanoism/backend/migrations/README.md`。
 
+既存DBへ更新する場合は、`_alter_governance_add_meta_fetch_retry.sql` を適用してから新しいOgmios listener / cronを起動する。
+
 ---
 
 ## 5. 初回データ同期
@@ -271,6 +273,22 @@ systemctl status ogmios-listener ga-ai-worker
 journalctl -u ogmios-listener --since "10 min ago"
 journalctl -u ga-ai-worker     --since "10 min ago"
 ```
+
+### 8-5. 外部メタデータ取得の防御
+
+GA・投票・SPO・憲法のオンチェーン URL は
+`cardanoism/backend/safe_remote_fetch.py` を通して取得する。ここで以下を実施する。
+
+- HTTP/HTTPS と固定 IPFS gateway だけを許可
+- loopback / private / link-local / reserved IP を拒否
+- redirect 先も都度 DNS/IP を再検証
+- response size と redirect 回数を制限
+- hash がオンチェーンにある本文は、生 bytes の Blake2b-256 を照合してから解析・保存
+
+extended pool metadata や metadata 内の references のように、参照先そのものの
+hash がオンチェーンに無い二段目 URL は SSRF/size 制限だけが適用される。
+アプリケーション側検証と併せ、VPS の outbound firewall でも link-local と
+内部ネットワーク宛て通信を拒否すること。
 
 ---
 

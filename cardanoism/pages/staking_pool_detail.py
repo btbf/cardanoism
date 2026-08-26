@@ -51,7 +51,11 @@ def _fetch_pool_history_cached(pool_id: str) -> list[dict]:
         data = get_pool_history(pool_id, limit=1000, timeout=15.0)
     except Exception as e:  # noqa: BLE001
         logger.warning("pool history fetch failed %s: %s", pool_id, e)
-        data = []
+        data = None
+    if data is None:
+        # 通信失敗を正常な0件としてキャッシュしない。期限切れでもlast-goodがあれば返す。
+        logger.warning("pool history unavailable; keeping last-good cache: %s", pool_id)
+        return hit[1] if hit is not None else []
     _history_cache[pool_id] = (now, data)
     return data
 

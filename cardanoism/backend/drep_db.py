@@ -1,6 +1,7 @@
 """
 drep_db.py
-dreps テーブルの CRUD。同期は notify_worker.py --event drep_sync で行う。
+dreps テーブルの CRUD。全件同期は notify_worker.py --event drep_sync、
+dirty 委任量の差分同期は --event drep_dirty_sync で行う。
 ページ側はこのモジュール経由で DB を読むだけ。
 """
 from __future__ import annotations
@@ -27,9 +28,15 @@ def upsert_drep(data: dict[str, Any]) -> None:
       - amount は ON DUPLICATE KEY UPDATE で更新しない。
         live amount は別経路 (update_drep_amount via /drep_delegators) で管理する。
         新規 INSERT 時のみ data["amount"] (= 0 想定) が入る。
-      - meta_fetched_hash は data["meta_hash"] を自動で同期する。
-        この関数を呼ぶ = 実際に CIP-119 を取り込んだ という意味。
+      - meta_fetched_hash は通常 data["meta_hash"] を自動で同期する。
+        metadata が取得できない新規行では data["meta_fetched_hash"] = None を
+        明示し、次回同期で再取得できる状態を保つ。
     """
+    meta_fetched_hash = (
+        data["meta_fetched_hash"]
+        if "meta_fetched_hash" in data
+        else data.get("meta_hash")
+    )
     with get_db() as (cursor, conn):
         cursor.execute(
             """
@@ -88,7 +95,7 @@ def upsert_drep(data: dict[str, Any]) -> None:
                 (data.get("meta_url") or None),
                 (data.get("meta_hash") or None),
                 int(bool(data["meta_is_valid"])) if data.get("meta_is_valid") is not None else None,
-                (data.get("meta_hash") or None),
+                (meta_fetched_hash or None),
             ),
         )
         conn.commit()
@@ -167,7 +174,7 @@ def mark_drep_dirty(drep_id: str | None) -> None:
 
 def get_recent_dirty_dreps(hours: int = 1) -> list[str]:
     """直近 N 時間以内に marked_at が更新された drep_id を返す。
-    drep_sync の差分モードで live amount 再集計対象として使う。"""
+    drep_dirty_sync の live amount 再集計対象として使う。"""
     with get_db() as (cursor, _conn):
         cursor.execute(
             "SELECT drep_id FROM drep_dirty_marker "
