@@ -49,6 +49,15 @@ from cardanoism.backend.telegram_notify import send_telegram
 from cardanoism.backend.stake_rewards_db import bulk_upsert_stake_rewards
 from cardanoism.backend.sync_lock import SyncLockError, sync_job_lock
 from cardanoism.backend.safe_remote_fetch import RemoteFetchError, fetch_remote_json
+from cardanoism.backend.notification_freshness import (
+    REWARD_WINDOW_SECONDS,
+    STATE_RECOVERY_GAP_SECONDS,
+    TREASURY_WINDOW_SECONDS,
+    is_current_epoch_event_fresh,
+    is_epoch_window_open,
+    should_rebaseline_state,
+    utc_now_iso,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -91,25 +100,48 @@ def _get_tip_epoch_info() -> dict | None:
     """
     from cardanoism.backend.koios import _get
     data = _get("/tip")
-    if not data or not isinstance(data, list) or not data[0]:
+    if (
+        not data
+        or not isinstance(data, list)
+        or not isinstance(data[0], dict)
+        or not data[0]
+    ):
         return None
     tip = data[0]
-    bt = tip.get("block_time", "")
-    # Koios は "2024-04-14T21:44:51" 形式（UTC・タイムゾーン表記なし）で返す場合がある
-    if bt:
-        if bt.endswith("Z"):
-            bt = bt[:-1] + "+00:00"
-        elif "+" not in bt and len(bt) == 19:
-            bt += "+00:00"
+    bt = tip.get("block_time")
+    # Koios /tip の block_time はUnix秒だが、互換APIやfixtureではISO文字列の
+    # 場合もあるため両方を受け付ける。通知window自体はepoch_slotで判定する。
+    block_time = None
+    if isinstance(bt, (int, float)) and not isinstance(bt, bool):
         try:
-            block_time = datetime.fromisoformat(bt)
-        except ValueError:
+            block_time = datetime.fromtimestamp(float(bt), tz=timezone.utc)
+        except (OverflowError, OSError, ValueError):
             block_time = None
-    else:
-        block_time = None
+    elif isinstance(bt, str) and bt.strip():
+        raw_bt = bt.strip()
+        try:
+            if raw_bt.replace(".", "", 1).isdigit():
+                block_time = datetime.fromtimestamp(float(raw_bt), tz=timezone.utc)
+            else:
+                if raw_bt.endswith("Z"):
+                    raw_bt = raw_bt[:-1] + "+00:00"
+                elif "+" not in raw_bt and len(raw_bt) == 19:
+                    raw_bt += "+00:00"
+                block_time = datetime.fromisoformat(raw_bt)
+        except (OverflowError, OSError, ValueError):
+            block_time = None
+    try:
+        epoch_no = int(tip["epoch_no"])
+        epoch_slot = int(tip["epoch_slot"])
+    except (KeyError, TypeError, ValueError):
+        # epoch_slot が不明なまま 0 秒扱いにすると、API の不完全応答時に
+        # 古い報酬・施行通知を誤って fresh と判定するため fail closed にする。
+        return None
+    if epoch_no < 0 or epoch_slot < 0:
+        return None
     return {
-        "epoch_no":   tip.get("epoch_no"),
-        "epoch_slot": int(tip.get("epoch_slot") or 0),
+        "epoch_no":   epoch_no,
+        "epoch_slot": epoch_slot,
         "block_time": block_time,
     }
 
@@ -570,12 +602,25 @@ def check_pool_events():
             all_addrs[sid]["telegram_chat_id"] = addr["telegram_chat_id"]
             enabled_events.setdefault(sid, set()).add(event_type)
 
-    # /tip を1回だけ呼んでエポックをキャッシュ
-    current_epoch = get_current_epoch()
+    # /tip を1回だけ呼び、epoch番号とepoch開始からの経過秒を共有する。
+    tip_info = _get_tip_epoch_info()
+    current_epoch = tip_info.get("epoch_no") if tip_info else None
+    current_epoch_slot = tip_info.get("epoch_slot") if tip_info else None
 
     # 全プールの pool_info を1リクエストで一括取得
     pool_ids = list({a["delegated_pool_id"] for a in all_addrs.values() if a.get("delegated_pool_id")})
     pool_infos = _fetch_pool_infos_batch(pool_ids)
+    if pool_ids and not pool_infos:
+        # API停止中は最終成功時刻を更新しない。復旧時にbaseline-onlyへ切り替える。
+        logger.warning("pool_info を取得できないためプール通知判定を中断")
+        return
+
+    baseline_only = should_rebaseline_state(
+        get_state("global", None, "pool_events_last_success_at"),
+        max_gap_seconds=STATE_RECOVERY_GAP_SECONDS,
+    )
+    if baseline_only and pool_ids:
+        logger.info("pool state通知: 初回または長時間停止後のためbaselineのみ更新")
 
     # APY はエポック単位の値なので、日次/epoch sync 済みのDBキャッシュを使う。
     # 欠損時もKoiosへフォールバックせず、通知上のAPY表示だけ省略する。
@@ -592,10 +637,25 @@ def check_pool_events():
         for event_type in enabled_events[stake_id]:
             if event_type == "pool_reward_received":
                 continue
-            _check_pool_event(event_type, addr, pool_info, apy, current_epoch=current_epoch)
+            _check_pool_event(
+                event_type,
+                addr,
+                pool_info,
+                apy,
+                current_epoch=current_epoch,
+                baseline_only=baseline_only,
+            )
 
     # pool_reward_received を /account_reward_history 一括呼び出しで処理
-    _check_pool_reward_received_batch(all_addrs, enabled_events, current_epoch, pool_apys)
+    _check_pool_reward_received_batch(
+        all_addrs,
+        enabled_events,
+        current_epoch,
+        pool_apys,
+        current_epoch_slot=current_epoch_slot,
+    )
+    if pool_ids:
+        set_state("global", None, "pool_events_last_success_at", utc_now_iso())
 
 
 def _apy_line(apy: float | None) -> str:
@@ -605,7 +665,14 @@ def _apy_line(apy: float | None) -> str:
     return f"\nAPY: {apy:.2f}%"
 
 
-def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float | None = None, current_epoch: int | None = None):
+def _check_pool_event(
+    event_type: str,
+    addr: dict,
+    pool_info: dict,
+    apy: float | None = None,
+    current_epoch: int | None = None,
+    baseline_only: bool = False,
+):
     stake_id = addr["stake_id"]
     user_id = addr["user_id"]
     line_id = addr["line_notify_id"]
@@ -626,6 +693,9 @@ def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float |
         sat_pct = float(saturation)
         is_saturated = sat_pct > 100
         was_saturated = get_state("stake_address", stake_id, "pool_saturated")
+        if was_saturated not in ("0", "1") or baseline_only:
+            set_state("stake_address", stake_id, "pool_saturated", "1" if is_saturated else "0")
+            return
         if is_saturated and was_saturated != "1":
             set_state("stake_address", stake_id, "pool_saturated", "1")
             dedup_key = f"pool_saturation_{stake_id}_{int(sat_pct)}"
@@ -642,6 +712,9 @@ def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float |
         pledge = int(pool_info.get("pledge") or 0)
         is_short = live_pledge < pledge
         was_short = get_state("stake_address", stake_id, "pool_pledge_short")
+        if was_short not in ("0", "1") or baseline_only:
+            set_state("stake_address", stake_id, "pool_pledge_short", "1" if is_short else "0")
+            return
         if is_short and was_short != "1":
             set_state("stake_address", stake_id, "pool_pledge_short", "1")
             dedup_key = f"pool_pledge_short_{stake_id}"
@@ -664,6 +737,8 @@ def _check_pool_reward_received_batch(
     enabled_events: dict,
     current_epoch: int | None,
     pool_apys: dict,
+    *,
+    current_epoch_slot: int | None = None,
 ):
     """
     報酬入金通知を全対象アドレスに対して /account_reward_history 1回で一括処理する。
@@ -674,6 +749,17 @@ def _check_pool_reward_received_batch(
     通常委任者の場合: member 報酬を従来どおり通知。
     """
     if current_epoch is None:
+        return
+    if not is_epoch_window_open(
+        current_epoch_slot,
+        window_seconds=REWARD_WINDOW_SECONDS,
+    ):
+        logger.info(
+            "報酬通知window外のため送信・reward API取得を抑止: epoch=%s epoch_slot=%s window=%ss",
+            current_epoch,
+            current_epoch_slot,
+            REWARD_WINDOW_SECONDS,
+        )
         return
     reward_epoch = current_epoch - 2
 
@@ -699,13 +785,32 @@ def _check_pool_reward_received_batch(
             return True
         return reward_epoch >= addr_epoch - 1
 
+    def _all_reward_channels_sent(addr: dict, dedup_base: str) -> bool:
+        """deliver() が付けるchannel suffixと同じkeyで全送信済みか確認する。"""
+        channel_suffixes = []
+        if addr.get("line_notify_id"):
+            channel_suffixes.append("_line")
+        if addr.get("email_addr"):
+            channel_suffixes.append("_email")
+        if addr.get("telegram_chat_id"):
+            channel_suffixes.append("_telegram")
+        return bool(channel_suffixes) and all(
+            already_sent(
+                addr["user_id"],
+                "pool_reward_received",
+                dedup_base + suffix,
+            )
+            for suffix in channel_suffixes
+        )
+
     # dedup 済みでない報酬通知対象アドレスを収集
     reward_addrs = [
         addr for stake_id, addr in all_addrs.items()
         if "pool_reward_received" in enabled_events.get(stake_id, set())
         and _eligible_for_reward(addr)
-        and not already_sent(
-            addr["user_id"], "pool_reward_received", f"reward_{addr['stake_id']}_{reward_epoch}"
+        and not _all_reward_channels_sent(
+            addr,
+            f"reward_{addr['stake_id']}_{reward_epoch}",
         )
     ]
     if not reward_addrs:
@@ -936,6 +1041,13 @@ def _check_drep_status_change():
     if not addrs:
         return
 
+    baseline_only = should_rebaseline_state(
+        get_state("global", None, "drep_status_last_success_at"),
+        max_gap_seconds=STATE_RECOVERY_GAP_SECONDS,
+    )
+    if baseline_only:
+        logger.info("DRep status通知: 初回または長時間停止後のためbaselineのみ更新")
+
     # ユニーク drep_id を一括取得。
     # 状態は drep_sync と同じ derivation で "active" / "inactive" / "deregistered"。
     # Koios /drep_info の生フィールドは drep_status="registered" 等で、active 判定は
@@ -975,7 +1087,7 @@ def _check_drep_status_change():
         drep_name = addr.get("delegated_drep_name") or drep_id[:12]
 
         last_status = get_state("stake_address", stake_id, "drep_status")
-        if last_status is None:
+        if last_status is None or baseline_only:
             set_state("stake_address", stake_id, "drep_status", status)
             continue
         if not last_status:
@@ -1000,6 +1112,8 @@ def _check_drep_status_change():
             nickname=addr["nickname"], base_url=CARDANOISM_URL,
         )
         deliver(addr, "drep_status_change", ctx, dedup_base=dedup_key)
+
+    set_state("global", None, "drep_status_last_success_at", utc_now_iso())
 
 
 # ============================================================
@@ -2886,12 +3000,35 @@ def _datetime_to_mainnet_epoch(dt: datetime) -> int | None:
 def check_treasury_events():
     """TreasuryWithdrawals ガバナンスアクションが enacted（施行）されたのを検知して全ユーザーへ通知。"""
     logger.info("トレジャリーイベント チェック開始")
+    tip_info = _get_tip_epoch_info()
+    if not tip_info or not is_epoch_window_open(
+        tip_info.get("epoch_slot"),
+        window_seconds=TREASURY_WINDOW_SECONDS,
+    ):
+        logger.info(
+            "Treasury施行通知window外のためAPI取得・送信を抑止: epoch=%s epoch_slot=%s window=%ss",
+            tip_info.get("epoch_no") if tip_info else None,
+            tip_info.get("epoch_slot") if tip_info else None,
+            TREASURY_WINDOW_SECONDS,
+        )
+        return
+
+    current_epoch = int(tip_info["epoch_no"])
+    current_epoch_slot = int(tip_info["epoch_slot"])
     from cardanoism.backend.koios import get_treasury_proposals
 
     proposals = get_treasury_proposals()
-    enacted = [p for p in proposals if p.get("enacted_epoch") is not None]
+    enacted = [
+        p for p in proposals
+        if is_current_epoch_event_fresh(
+            p.get("enacted_epoch"),
+            current_epoch,
+            current_epoch_slot,
+            window_seconds=TREASURY_WINDOW_SECONDS,
+        )
+    ]
     if not enacted:
-        logger.info("施行済みのトレジャリー引き出しはありません")
+        logger.info("現在epochに施行されたトレジャリー引き出しはありません")
         return
 
     from cardanoism.backend.notify_templates import deliver, merge_user_channels
@@ -2971,9 +3108,10 @@ def check_treasury_events():
             )
 
         for addr in addrs:
-            # 登録より前のエポックはスキップ
+            # Treasury施行はepoch境界で起きるため、同じepoch中に登録したユーザーにも
+            # 過去イベントとして送らない。
             signup_epoch = user_signup_epoch.get(addr.get("user_id"))
-            if signup_epoch is not None and enacted_epoch < signup_epoch:
+            if signup_epoch is not None and enacted_epoch <= signup_epoch:
                 continue
             deliver(addr, EVENT_TYPE, ctx, dedup_base=dedup_base)
 

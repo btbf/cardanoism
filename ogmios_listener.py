@@ -67,6 +67,13 @@ from cardanoism.backend.listener_stake import (
     record_combined_registration_and_delegation,
 )
 from cardanoism.backend.listener_epoch_sync import trigger_epoch_syncs
+from cardanoism.backend.notification_freshness import (
+    EPOCH_MAX_LAG_SLOTS,
+    REALTIME_MAX_LAG_SLOTS,
+    chain_notification_deadline,
+    is_chain_event_fresh,
+    is_delivery_deadline_open,
+)
 
 logger = logging.getLogger("ogmios_listener")
 
@@ -565,7 +572,12 @@ def _fetch_and_save_proposal_meta(
     return fetch_and_save_proposal_metadata(proposal_id, meta_url, meta_hash).row
 
 
-async def _process_proposal_post(tx_id: str, proposals: list[dict]) -> None:
+async def _process_proposal_post(
+    tx_id: str,
+    proposals: list[dict],
+    notifications_enabled: bool = True,
+    notification_deadline: float | None = None,
+) -> None:
     """新規 GA 提案検知後の bg タスク。
 
     proposals: [{"proposal_id": str, "proposal_index": int, "action_type": str,
@@ -633,18 +645,24 @@ async def _process_proposal_post(tx_id: str, proposals: list[dict]) -> None:
     except Exception as e:  # noqa: BLE001
         logger.warning("listener: AI enqueue 失敗 (継続): %s", e)
 
-    # 通知発火: 全員向け
-    try:
-        _notify_governance_action(tx_id, proposals)
-    except Exception as e:  # noqa: BLE001
-        logger.exception("listener: drep_new_governance_action 通知失敗 tx=%s: %s", tx_id, e)
-
-    spo_proposals = [p for p in proposals if p.get("is_spo")]
-    if spo_proposals:
+    # catch-up中の古いblockはDB/metadataだけ同期し、通知しない。
+    if is_delivery_deadline_open(
+        notifications_enabled,
+        notification_deadline,
+    ):
         try:
-            _notify_spo_pending_vote(tx_id, spo_proposals)
+            _notify_governance_action(tx_id, proposals)
         except Exception as e:  # noqa: BLE001
-            logger.exception("listener: spo_pending_vote 通知失敗 tx=%s: %s", tx_id, e)
+            logger.exception("listener: drep_new_governance_action 通知失敗 tx=%s: %s", tx_id, e)
+
+        spo_proposals = [p for p in proposals if p.get("is_spo")]
+        if spo_proposals:
+            try:
+                _notify_spo_pending_vote(tx_id, spo_proposals)
+            except Exception as e:  # noqa: BLE001
+                logger.exception("listener: spo_pending_vote 通知失敗 tx=%s: %s", tx_id, e)
+    else:
+        logger.info("catch-up: 古いGA通知を抑止 tx=%s proposals=%d", tx_id, len(proposals))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -706,7 +724,13 @@ def _notify_drep_vote(drep_id: str, votes_list: list[dict], tx_id: str) -> None:
                     dedup_base=f"drep_vote_batch_{addr['stake_id']}_{tx_id}")
 
 
-async def _process_drep_vote_post(drep_id: str, votes_list: list[dict], tx_id: str) -> None:
+async def _process_drep_vote_post(
+    drep_id: str,
+    votes_list: list[dict],
+    tx_id: str,
+    notifications_enabled: bool = True,
+    notification_deadline: float | None = None,
+) -> None:
     """DRep 投票検知後のバックグラウンド処理。
 
     1. IPFS から meta_url を辿って投票理由本文を取得
@@ -730,18 +754,28 @@ async def _process_drep_vote_post(drep_id: str, votes_list: list[dict], tx_id: s
             )
     except Exception as e:  # noqa: BLE001
         logger.exception("rationale 取得失敗 (続行): drep=%s tx=%s: %s", drep_id, tx_id, e)
-    # rationale 取得の成否に関わらず通知発火 (UX 優先)
-    try:
-        _notify_drep_vote(drep_id, votes_list, tx_id)
-    except Exception as e:  # noqa: BLE001
-        logger.exception("drep_vote 通知失敗: drep=%s tx=%s: %s", drep_id, tx_id, e)
+    # rationale は履歴表示のため古いvoteでも同期する。通知だけ鮮度で抑止する。
+    if is_delivery_deadline_open(
+        notifications_enabled,
+        notification_deadline,
+    ):
+        try:
+            _notify_drep_vote(drep_id, votes_list, tx_id)
+        except Exception as e:  # noqa: BLE001
+            logger.exception("drep_vote 通知失敗: drep=%s tx=%s: %s", drep_id, tx_id, e)
+    else:
+        logger.info("catch-up: 古いDRep投票通知を抑止 drep=%s tx=%s", drep_id, tx_id)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # ブロック処理
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _process_cert(cert: dict, slot: int) -> None:
+def _process_cert(
+    cert: dict,
+    slot: int,
+    notifications_enabled: bool = True,
+) -> None:
     cert_type = cert.get("type")
 
     # ── 診断 (LISTENER_DEBUG_CERT_DUMP=1 のときのみ) ──
@@ -763,7 +797,10 @@ def _process_cert(cert: dict, slot: int) -> None:
             record_pool_retirement(cert, slot)
         except Exception as e:
             logger.exception("listener: pool 引退 DB 書込み失敗: %s", e)
-        _notify_pool_retire(pool_id, retiring_epoch)
+        if notifications_enabled:
+            _notify_pool_retire(pool_id, retiring_epoch)
+        else:
+            logger.info("catch-up: 古いpool retire通知を抑止 pool=%s slot=%s", pool_id, slot)
 
     elif cert_type == "stakePoolRegistration":
         pool = cert.get("stakePool", {})
@@ -786,9 +823,12 @@ def _process_cert(cert: dict, slot: int) -> None:
             record_pool_registration(cert, slot, current_epoch=_epoch_from_slot(slot))
         except Exception as e:
             logger.exception("listener: pool 登録 DB 書込み失敗: %s", e)
-        _notify_pool_fee_change(
-            pool_id, margin, cost_lovelace, pledge_lovelace, prev=prev_fees,
-        )
+        if notifications_enabled:
+            _notify_pool_fee_change(
+                pool_id, margin, cost_lovelace, pledge_lovelace, prev=prev_fees,
+            )
+        else:
+            logger.info("catch-up: 古いpool fee通知を抑止 pool=%s slot=%s", pool_id, slot)
 
     # ── Phase 2: DRep cert ─────────────────────────────────────────────────
     elif cert_type == "delegateRepresentativeRegistration":
@@ -839,7 +879,13 @@ def _process_cert(cert: dict, slot: int) -> None:
             logger.exception("listener: stake 登録 + 委任合体 cert DB 書込み失敗: %s", e)
 
 
-def _process_tx(tx: dict, slot: int, current_epoch: int) -> None:
+def _process_tx(
+    tx: dict,
+    slot: int,
+    current_epoch: int,
+    notifications_enabled: bool = True,
+    notification_deadline: float | None = None,
+) -> None:
     tx_id = tx.get("id", "")
 
     # ── 診断 (LISTENER_DEBUG_TX_DUMP=1 のときのみ) ──
@@ -866,7 +912,7 @@ def _process_tx(tx: dict, slot: int, current_epoch: int) -> None:
 
     for cert in tx.get("certificates", []):
         try:
-            _process_cert(cert, slot)
+            _process_cert(cert, slot, notifications_enabled)
         except Exception as e:
             logger.exception("cert 処理エラー tx=%s: %s", tx_id, e)
 
@@ -913,7 +959,14 @@ def _process_tx(tx: dict, slot: int, current_epoch: int) -> None:
 
     if tx_proposals:
         loop = asyncio.get_event_loop()
-        loop.create_task(_process_proposal_post(tx_id, tx_proposals))
+        loop.create_task(
+            _process_proposal_post(
+                tx_id,
+                tx_proposals,
+                notifications_enabled=notifications_enabled,
+                notification_deadline=notification_deadline,
+            )
+        )
 
     # DRep 投票を drep_id 単位に集約して、Tx 終わりに 1 回だけ通知発火する。
     # (1 Tx で複数 GA に投票するケースを集約通知に切り替えるため)
@@ -959,38 +1012,81 @@ def _process_tx(tx: dict, slot: int, current_epoch: int) -> None:
     if drep_votes_by_id:
         loop = asyncio.get_event_loop()
         for drep_id, votes_list in drep_votes_by_id.items():
-            loop.create_task(_process_drep_vote_post(drep_id, votes_list, tx_id))
+            loop.create_task(
+                _process_drep_vote_post(
+                    drep_id,
+                    votes_list,
+                    tx_id,
+                    notifications_enabled=notifications_enabled,
+                    notification_deadline=notification_deadline,
+                )
+            )
 
 
-def _process_block(block: dict, prev_epoch: int) -> int:
+def _process_block(
+    block: dict,
+    prev_epoch: int,
+    *,
+    tip_slot: int | None = None,
+) -> int:
     slot = block.get("slot", 0)
     block_id = block.get("id", "")
     current_epoch = _epoch_from_slot(slot)
+    # 直接呼び出しとの互換用に tip 未指定時は live block とみなす。本番sessionは
+    # Ogmios nextBlock.result.tip を必ず渡す。
+    effective_tip_slot = int(slot) if tip_slot is None else int(tip_slot)
+    realtime_notifications_enabled = is_chain_event_fresh(
+        slot,
+        effective_tip_slot,
+        max_lag_slots=REALTIME_MAX_LAG_SLOTS,
+    )
+    realtime_notification_deadline = chain_notification_deadline(
+        slot,
+        effective_tip_slot,
+        max_lag_slots=REALTIME_MAX_LAG_SLOTS,
+    )
+    epoch_notifications_enabled = is_chain_event_fresh(
+        slot,
+        effective_tip_slot,
+        max_lag_slots=EPOCH_MAX_LAG_SLOTS,
+    )
 
     if prev_epoch >= 0 and current_epoch != prev_epoch:
         logger.info("epoch_start 検知: epoch=%d (slot=%d)", current_epoch, slot)
         last_notified = get_state("global", None, "current_epoch")
         if last_notified != str(current_epoch):
             set_state("global", None, "current_epoch", str(current_epoch))
-            # epoch_start 通知は listener 初回起動時の境界 (last_notified is None) でも
-            # 必ず送る。dedup_base=f"epoch_{epoch}" で重複送信は防がれるため、
-            # catch-up replay で複数回呼ばれても二重送信にはならない。
-            _notify_epoch_start(current_epoch)
-            # pool_epoch_performance / *_sync は初回起動時はスキップ。
-            # (前エポックのデータが揃っていない / 起動直後に重い sync を走らせない)
-            if last_notified is not None:
-                try:
-                    _notify_pool_epoch_performance(prev_epoch)
-                except Exception as e:
-                    logger.exception("pool_epoch_performance 通知エラー: %s", e)
-                # Phase 5: エポック境界に依存する各種 *_sync を非同期で発火
-                try:
-                    trigger_epoch_syncs(current_epoch)
-                except Exception as e:
-                    logger.exception("epoch_start sync 起動エラー: %s", e)
+            if epoch_notifications_enabled:
+                _notify_epoch_start(current_epoch)
+                # pool_epoch_performance / *_sync は初回起動時はスキップ。
+                # (前エポックのデータが揃っていない / 起動直後に重い sync を走らせない)
+                if last_notified is not None:
+                    try:
+                        _notify_pool_epoch_performance(prev_epoch)
+                    except Exception as e:
+                        logger.exception("pool_epoch_performance 通知エラー: %s", e)
+                    # Phase 5: エポック境界に依存する各種 *_sync を非同期で発火
+                    try:
+                        trigger_epoch_syncs(current_epoch)
+                    except Exception as e:
+                        logger.exception("epoch_start sync 起動エラー: %s", e)
+            else:
+                logger.info(
+                    "catch-up: 古いepoch境界通知・syncを抑止 epoch=%d slot=%d tip=%d lag=%d",
+                    current_epoch,
+                    int(slot),
+                    effective_tip_slot,
+                    max(0, effective_tip_slot - int(slot)),
+                )
 
     for tx in block.get("transactions", []):
-        _process_tx(tx, slot, current_epoch)
+        _process_tx(
+            tx,
+            slot,
+            current_epoch,
+            realtime_notifications_enabled,
+            realtime_notification_deadline,
+        )
 
     # ライブブロック一覧用に記録（ダッシュボード /staking で表示）
     _record_recent_block(block, current_epoch)
@@ -1137,12 +1233,13 @@ async def _run_session(ogmios_url: str, from_tip: bool = False) -> None:
     """1 回ぶんの chainsync セッション。例外は呼び出し元 (_run) が拾って再接続。"""
     if from_tip:
         slot, block_id = _fetch_tip(ogmios_url)
+        known_tip_slot = int(slot)
         _save_cursor(slot, block_id)
         logger.info("tip カーソルを設定: slot=%d", slot)
         points = [{"slot": slot, "id": block_id}, "origin"]
         prev_epoch = _epoch_from_slot(slot)
     else:
-        _fetch_tip(ogmios_url)  # ネットワーク自動検出のみ（カーソルは上書きしない）
+        known_tip_slot, _ = _fetch_tip(ogmios_url)  # ネットワーク検出 + catch-up鮮度判定
         slot_str = get_state("global", None, "ogmios_last_slot")
         block_id = get_state("global", None, "ogmios_last_id")
         if slot_str and block_id:
@@ -1167,6 +1264,7 @@ async def _run_session(ogmios_url: str, from_tip: bool = False) -> None:
                 str(points[0].get("slot")) if isinstance(points[0], dict) else "?",
             )
             tip_slot, tip_id = _fetch_tip(ogmios_url)
+            known_tip_slot = int(tip_slot)
             _save_cursor(tip_slot, tip_id)
             points = [{"slot": tip_slot, "id": tip_id}, "origin"]
             prev_epoch = _epoch_from_slot(tip_slot)
@@ -1177,14 +1275,34 @@ async def _run_session(ogmios_url: str, from_tip: bool = False) -> None:
             data = json.loads(await ws.recv())
             result = data.get("result", {})
             direction = result.get("direction")
+            result_tip = result.get("tip") or {}
+            if isinstance(result_tip, dict):
+                try:
+                    known_tip_slot = max(
+                        int(known_tip_slot),
+                        int(result_tip.get("slot") or 0),
+                    )
+                except (TypeError, ValueError):
+                    pass
             if direction == "forward":
                 block = result.get("block", {})
+                try:
+                    known_tip_slot = max(
+                        int(known_tip_slot),
+                        int(block.get("slot") or 0),
+                    )
+                except (TypeError, ValueError):
+                    pass
                 logger.info(
                     "ブロック受信 height=%s slot=%s",
                     block.get("height", "?"), block.get("slot", "?"),
                 )
                 try:
-                    prev_epoch = _process_block(block, prev_epoch)
+                    prev_epoch = _process_block(
+                        block,
+                        prev_epoch,
+                        tip_slot=known_tip_slot,
+                    )
                 except Exception as e:
                     logger.exception(
                         "ブロック処理エラー (height=%s slot=%s): %s",

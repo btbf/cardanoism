@@ -158,6 +158,9 @@ done
 | `TELEGRAM_BOT_TOKEN` | ⚠️ | Telegram 通知 |
 | `GPT_API_KEY` | 任意 | OpenAI API キー（GA AI 分析 / 投票理由翻訳 / GA 翻訳で使用） |
 | `OPENAI_MODEL` | 任意 | OpenAI モデル名（既定: `gpt-4o-mini`） |
+| `NOTIFICATION_REWARD_WINDOW_SECONDS` | 任意 | 報酬通知を許可するepoch開始後の秒数（既定: `43200`） |
+| `NOTIFICATION_TREASURY_WINDOW_SECONDS` | 任意 | Treasury施行通知を許可するepoch開始後の秒数（既定: `43200`） |
+| `NOTIFICATION_STATE_RECOVERY_GAP_SECONDS` | 任意 | 状態通知を復旧baseline扱いにする停止時間（既定: `1800`） |
 | `ADMIN_USER_ID` | 任意 | `notify_test` イベントの送信先ユーザー ID。この user の `notification_channels` に登録済みのチャンネル全て (LINE / メール / Telegram) に管理者用テスト通知が飛ぶ |
 | `FEEDBACK_FORM_URL` / `FEEDBACK_FORM_USER_ID_ENTRY` / `FEEDBACK_FORM_USERNAME_ENTRY` | 任意 | ベータ版フィードバックフォーム連携 (UI 側) |
 
@@ -224,6 +227,23 @@ listener が長時間停止していてもデータが完全停止しないよ�
 > cron・epoch listener・手動実行は同じ MariaDB advisory lock を使用する。同じイベントが既に実行中なら後発は処理せず終了する。
 > 平時の DRep 更新は dirty 対象だけなので、全DRepを15分ごとに取得する旧構成よりKoiosコール量を大幅に抑えられる。
 > `governance.py` の全件同期は途中ページが失敗・不正応答になった場合、取得済みの部分結果も破棄してDB更新を中止する。
+
+#### API 復旧時の古い通知抑止
+
+チェーン履歴や定期syncのcatch-upと通知配送は分離する。Koiosが復旧しても、
+以下のwindowを過ぎた通知は送らない。
+
+| 対象 | 既定window | 環境変数 |
+|---|---:|---|
+| 報酬入金 | 入金epoch開始から12時間 | `NOTIFICATION_REWARD_WINDOW_SECONDS` |
+| Treasury施行 | 施行epoch開始から12時間 | `NOTIFICATION_TREASURY_WINDOW_SECONDS` |
+| saturation / pledge不足 / DRep状態 | 最終成功から30分超なら復旧直後はbaseline更新のみ | `NOTIFICATION_STATE_RECOVERY_GAP_SECONDS` |
+
+Cardanoの報酬epoch Nはepoch N+2開始時に入金される。そのため現在epoch 651では
+reward epoch 649が「今回の入金」だが、651開始から12時間を過ぎてAPIが復旧した場合は
+通知専用のreward API取得も抑止する。これにより古い通知だけでなく、Free枠で意味のない
+再取得が繰り返されることも防ぐ。GA・vote等のチェーン履歴と各 `*_sync` は通常どおり
+catch-upを継続する。
 
 ### 4-3. listener の状態監視
 
