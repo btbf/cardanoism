@@ -393,6 +393,7 @@ def _proposal_translation_row(cursor, proposal_id: str) -> dict | None:
 def fetch_and_save_proposal_metadata(
     proposal_id: str,
     meta_url: str | None,
+    meta_hash: str | bytes | None = None,
 ) -> ProposalMetadataFetchResult:
     """CIP-100/108 メタデータを取得し、本文と再試行状態を保存する。
 
@@ -413,7 +414,7 @@ def fetch_and_save_proposal_metadata(
     meta: dict | None = None
     fetch_error: str | None = None
     try:
-        candidate = fetch_vote_metadata_json(meta_url)
+        candidate = fetch_vote_metadata_json(meta_url, expected_hash=meta_hash)
         if isinstance(candidate, dict) and isinstance(candidate.get("body"), dict):
             meta = candidate
         else:
@@ -520,7 +521,7 @@ def fetch_metadata_retry_targets(limit: int = 50) -> list[dict]:
     with get_db() as (cursor, _):
         cursor.execute(
             """
-            SELECT proposal_id, meta_url
+            SELECT proposal_id, meta_url, meta_hash
               FROM governance_actions
              WHERE meta_url IS NOT NULL
                AND title IS NULL
@@ -546,6 +547,7 @@ def retry_missing_proposal_metadata(limit: int = 50) -> list[dict]:
             result = fetch_and_save_proposal_metadata(
                 proposal_id,
                 target.get("meta_url"),
+                target.get("meta_hash"),
             )
         except Exception as exc:  # noqa: BLE001
             logger.exception(

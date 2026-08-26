@@ -22,7 +22,7 @@ import time
 
 from cardanoism.backend import ai_client, governance_ai_db
 from cardanoism.backend.constitution_fetcher import (
-    fetch_constitution_text, get_latest_constitution_meta_url,
+    fetch_constitution_text, get_latest_constitution_anchor,
 )
 from cardanoism.backend.db_connect import get_db
 
@@ -63,13 +63,13 @@ def _get_constitution_cached() -> tuple[str | None, str | None, str | None]:
         logger.warning("constitution_cache 参照失敗 (continue with IPFS): %s", e)
 
     # フォールバック: IPFS 直フェッチ（日本語訳は無し）
-    latest_url = get_latest_constitution_meta_url()
+    latest_url, latest_hash = get_latest_constitution_anchor()
     if not latest_url:
         return None, None, None
     cached = _constitution_cache.get(latest_url)
     if cached:
         return cached[0], cached[1], latest_url
-    text, used_url = fetch_constitution_text(latest_url)
+    text, used_url = fetch_constitution_text(latest_url, expected_hash=latest_hash)
     if text and used_url:
         _constitution_cache.clear()
         _constitution_cache[used_url] = (text, "")

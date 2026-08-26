@@ -359,9 +359,16 @@ def get_pool_name(pool_id: str) -> str:
     meta_url = _extract_str(info.get("meta_url"))
     if meta_url:
         try:
-            resp = requests.get(meta_url, timeout=5)
-            resp.raise_for_status()
-            remote = resp.json()
+            from cardanoism.backend.safe_remote_fetch import fetch_remote_json
+
+            remote, _ = fetch_remote_json(
+                meta_url,
+                expected_hash=info.get("meta_hash"),
+                timeout=5,
+                max_bytes=64 * 1024,
+            )
+            if not isinstance(remote, dict):
+                return ""
             name = _extract_str(remote.get("ticker") or remote.get("name"))
             if name:
                 return name

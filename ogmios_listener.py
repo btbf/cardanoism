@@ -554,18 +554,23 @@ def _notify_spo_pending_vote(tx_id: str, proposals: list[dict]) -> None:
 # 新規 GA 提案検知後のバックグラウンドタスク (IPFS フェッチ + 翻訳 + 通知)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _fetch_and_save_proposal_meta(proposal_id: str, meta_url: str | None) -> dict | None:
+def _fetch_and_save_proposal_meta(
+    proposal_id: str,
+    meta_url: str | None,
+    meta_hash: str | bytes | None = None,
+) -> dict | None:
     """共有実装でCIP-100/108本文と再試行状態を保存する。"""
     from cardanoism.backend.governance import fetch_and_save_proposal_metadata
 
-    return fetch_and_save_proposal_metadata(proposal_id, meta_url).row
+    return fetch_and_save_proposal_metadata(proposal_id, meta_url, meta_hash).row
 
 
 async def _process_proposal_post(tx_id: str, proposals: list[dict]) -> None:
     """新規 GA 提案検知後の bg タスク。
 
     proposals: [{"proposal_id": str, "proposal_index": int, "action_type": str,
-                 "meta_url": str | None, "is_spo": bool}, ...]
+                 "meta_url": str | None, "meta_hash": str | None,
+                 "is_spo": bool}, ...]
 
     1. 各 proposal について IPFS から CIP-100/108 body を取得して DB を埋める
     2. OpenAI で title/abstract/motivation/rationale を翻訳して *_ja に保存
@@ -593,9 +598,10 @@ async def _process_proposal_post(tx_id: str, proposals: list[dict]) -> None:
         for p in proposals:
             pid = p["proposal_id"]
             meta_url = p.get("meta_url")
+            meta_hash = p.get("meta_hash")
             try:
                 row = await loop.run_in_executor(
-                    None, _fetch_and_save_proposal_meta, pid, meta_url,
+                    None, _fetch_and_save_proposal_meta, pid, meta_url, meta_hash,
                 )
             except Exception as e:  # noqa: BLE001
                 logger.exception("listener: proposal メタ取得失敗 proposal_id=%s: %s", pid, e)
@@ -893,11 +899,13 @@ def _process_tx(tx: dict, slot: int, current_epoch: int) -> None:
             # IPFS メタ URL (Ogmios v6.10+ は "metadata"、旧は "anchor")
             anchor = proposal.get("metadata") or proposal.get("anchor") or {}
             meta_url = anchor.get("url") if isinstance(anchor, dict) else None
+            meta_hash = anchor.get("hash") if isinstance(anchor, dict) else None
             tx_proposals.append({
                 "proposal_id":    proposal_id,
                 "proposal_index": proposal_idx,
                 "action_type":    action_type,
                 "meta_url":       meta_url,
+                "meta_hash":      meta_hash,
                 "is_spo":         is_spo,
             })
         except Exception as e:

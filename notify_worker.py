@@ -25,7 +25,6 @@ import argparse
 import json
 import logging
 import socket
-import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 
@@ -49,6 +48,7 @@ from cardanoism.backend.mail_notify import send_email, build_html, build_text
 from cardanoism.backend.telegram_notify import send_telegram
 from cardanoism.backend.stake_rewards_db import bulk_upsert_stake_rewards
 from cardanoism.backend.sync_lock import SyncLockError, sync_job_lock
+from cardanoism.backend.safe_remote_fetch import RemoteFetchError, fetch_remote_json
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1292,7 +1292,7 @@ def check_vote_rationale_sync(fetch_limit: int = 500, translate_limit: int = 100
     # DRep だけでなく CC / SPO も対象にする。CC は authors[0].name が唯一の名前ソース
     # なので、ここで拾わないと投票一覧・CC カードが bech32 ID のままになる。
     fetch_sql = (
-        "SELECT id, voter_role, voter_id, meta_url "
+        "SELECT id, voter_role, voter_id, meta_url, meta_hash "
         "FROM proposal_votes "
         "WHERE meta_url IS NOT NULL AND meta_url <> '' "
         "  AND meta_fetched_at IS NULL "
@@ -1313,7 +1313,11 @@ def check_vote_rationale_sync(fetch_limit: int = 500, translate_limit: int = 100
     for i, r in enumerate(rows, 1):
         vid = r["id"]
         url = r["meta_url"]
-        meta = fetch_vote_metadata_json(url)
+        meta = fetch_vote_metadata_json(url, expected_hash=r.get("meta_hash"))
+        if meta is None:
+            # 通信失敗・SSRF拒否・hash不一致は取得済みにせず、次回再試行する。
+            logger.warning("投票メタデータ未取得: vote_id=%s", vid)
+            continue
         rationale = extract_rationale(meta)
         author = extract_author_name(meta)
         try:
@@ -1688,16 +1692,14 @@ def _fetch_pool_extended(extended_url: str | None) -> dict | None:
       github_handle   : info.social.github_handle
     取得失敗 / 1 つも値が無い場合は None。
     """
-    if not extended_url or not isinstance(extended_url, str):
-        return None
-    if not extended_url.startswith(("http://", "https://")):
-        return None
     try:
-        resp = requests.get(extended_url, timeout=5)
-        if resp.status_code != 200:
-            return None
-        body = resp.json()
-    except Exception:
+        body, _ = fetch_remote_json(
+            extended_url or "",
+            timeout=5,
+            max_bytes=2 * 1024 * 1024,
+        )
+    except RemoteFetchError as exc:
+        logger.warning("extended pool metadata fetch rejected/failed: %s", exc)
         return None
     if not isinstance(body, dict):
         return None
@@ -1726,21 +1728,23 @@ def _fetch_pool_extended(extended_url: str | None) -> dict | None:
     return out
 
 
-def _fetch_pool_extended_via_meta_url(meta_url: str | None) -> dict | None:
+def _fetch_pool_extended_via_meta_url(
+    meta_url: str | None,
+    expected_hash: str | bytes | None = None,
+) -> dict | None:
     """meta_url を直接フェッチし、basic metadata に extended URL があればそれも辿って
     アイコン/ロゴ/about/social を抽出した dict を返す。
     extended が無い、もしくは取得失敗時は None。
     """
-    if not meta_url or not isinstance(meta_url, str):
-        return None
-    if not meta_url.startswith(("http://", "https://")):
-        return None
     try:
-        resp = requests.get(meta_url, timeout=5)
-        if resp.status_code != 200:
-            return None
-        body = resp.json()
-    except Exception:
+        body, _ = fetch_remote_json(
+            meta_url or "",
+            expected_hash=expected_hash,
+            timeout=5,
+            max_bytes=64 * 1024,
+        )
+    except RemoteFetchError as exc:
+        logger.warning("pool metadata fetch rejected/failed: %s", exc)
         return None
     if not isinstance(body, dict):
         return None
@@ -1750,13 +1754,17 @@ def _fetch_pool_extended_via_meta_url(meta_url: str | None) -> dict | None:
     if not isinstance(ext, str):
         return None
     ext = ext.strip()
-    if not ext.startswith(("http://", "https://")):
-        return None
     return _fetch_pool_extended(ext[:1024])
 
 
-def _fetch_extended_data_parallel(meta_urls: dict[str, str], workers: int = 16) -> dict[str, dict]:
-    """{pool_id: meta_url} を並列でフェッチ。各タスクは meta_url → extended URL → 抽出 を連続実行する。
+def _fetch_extended_data_parallel(
+    meta_urls: dict[str, tuple[str, str | bytes | None]],
+    workers: int = 16,
+) -> dict[str, dict]:
+    """{pool_id: (meta_url, meta_hash)} を並列でフェッチする。
+
+    各タスクは on-chain hash を照合した meta_url → SSRF 検証済み extended URL
+    → 抽出を連続実行する。
     返り値: {pool_id: extracted_dict}（icon_url / logo_url / about / *_handle）。
     """
     if not meta_urls:
@@ -1764,7 +1772,10 @@ def _fetch_extended_data_parallel(meta_urls: dict[str, str], workers: int = 16) 
     out: dict[str, dict] = {}
     logger.info("extended metadata フェッチ開始: %d 件 (workers=%d) — meta_url 直叩き", len(meta_urls), workers)
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = {ex.submit(_fetch_pool_extended_via_meta_url, url): pid for pid, url in meta_urls.items()}
+        futs = {
+            ex.submit(_fetch_pool_extended_via_meta_url, url, meta_hash): pid
+            for pid, (url, meta_hash) in meta_urls.items()
+        }
         done = 0
         for fut in as_completed(futs):
             pid = futs[fut]
@@ -2225,7 +2236,7 @@ def check_pool_sync():
     # 各プールの基本フィールド (ticker / name / homepage 等) を抽出。
     # extended は Koios meta_json には乗らないので、meta_url を直叩きするための URL も集める。
     pool_meta_cache: dict[str, dict] = {}
-    meta_url_targets: dict[str, str] = {}
+    meta_url_targets: dict[str, tuple[str, str | bytes | None]] = {}
     for p in pools:
         pid = p.get("pool_id_bech32")
         if not pid:
@@ -2234,7 +2245,10 @@ def check_pool_sync():
         pool_meta_cache[pid] = _extract_pool_meta(info)
         url = info.get("meta_url") or p.get("meta_url")
         if url:
-            meta_url_targets[pid] = url
+            meta_url_targets[pid] = (
+                str(url),
+                info.get("meta_hash") or p.get("meta_hash"),
+            )
     logger.info("meta_url 対象: %d 件 (extended は meta_url を直接フェッチして抽出)", len(meta_url_targets))
 
     # meta_url → (extended があれば) extended URL → icon/logo/about/social を1タスクで連続取得

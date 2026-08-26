@@ -159,9 +159,17 @@ class GovernanceMetadataRetryTests(unittest.TestCase):
         }
         with (
             patch.object(self.governance, "get_db", new=_fake_get_db(store)),
-            patch.object(vote_meta_fetch, "fetch_vote_metadata_json", return_value=metadata),
+            patch.object(
+                vote_meta_fetch,
+                "fetch_vote_metadata_json",
+                return_value=metadata,
+            ) as fetch_mock,
         ):
-            result = self.governance.fetch_and_save_proposal_metadata("ga-1", "ipfs://cid")
+            result = self.governance.fetch_and_save_proposal_metadata(
+                "ga-1",
+                "ipfs://cid",
+                "ab" * 32,
+            )
 
         self.assertTrue(result.fetched)
         self.assertEqual(result.row["title"], "A proposal")
@@ -170,6 +178,7 @@ class GovernanceMetadataRetryTests(unittest.TestCase):
         self.assertIsNone(store["meta_fetch_next_at"])
         self.assertIsNone(store["meta_fetch_error"])
         self.assertIn("Alice", store["authors_json"])
+        fetch_mock.assert_called_once_with("ipfs://cid", expected_hash="ab" * 32)
 
 
 if __name__ == "__main__":

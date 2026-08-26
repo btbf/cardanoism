@@ -28,10 +28,11 @@ import logging
 import os
 from typing import Any
 
-import requests
-
 from cardanoism.backend.db_connect import get_db
-from cardanoism.backend.vote_meta_fetch import _normalize_url_candidates
+from cardanoism.backend.safe_remote_fetch import (
+    RemoteFetchError,
+    fetch_remote_document,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,18 +58,12 @@ _VISION_PROMPT = (
 )
 
 
-def get_latest_constitution_meta_url() -> str | None:
-    """最新 enacted NewConstitution の本文 URL を返す。
-
-    優先順:
-      1. action_anchor_url（実際の憲法本文ドキュメント）
-      2. meta_url（提案メタデータ JSON、フォールバック）
-    どちらもなければ None。
-    """
+def get_latest_constitution_anchor() -> tuple[str | None, str | bytes | None]:
+    """最新 enacted NewConstitution の文書 URL と対応する on-chain hash を返す。"""
     with get_db() as (cursor, _):
         cursor.execute(
             """
-            SELECT action_anchor_url, meta_url
+            SELECT action_anchor_url, action_anchor_hash, meta_url, meta_hash
             FROM governance_actions
             WHERE proposal_type = 'NewConstitution'
               AND enacted_epoch IS NOT NULL
@@ -78,9 +73,26 @@ def get_latest_constitution_meta_url() -> str | None:
         )
         row = cursor.fetchone()
     if not row:
-        return None
-    url = (row.get("action_anchor_url") or row.get("meta_url") or "").strip()
-    return url or None
+        return None, None
+    action_url = str(row.get("action_anchor_url") or "").strip()
+    if action_url:
+        return action_url, row.get("action_anchor_hash")
+    meta_url = str(row.get("meta_url") or "").strip()
+    if meta_url:
+        return meta_url, row.get("meta_hash")
+    return None, None
+
+
+def get_latest_constitution_meta_url() -> str | None:
+    """最新 enacted NewConstitution の本文 URL を返す。
+
+    優先順:
+      1. action_anchor_url（実際の憲法本文ドキュメント）
+      2. meta_url（提案メタデータ JSON、フォールバック）
+    どちらもなければ None。
+    """
+    url, _ = get_latest_constitution_anchor()
+    return url
 
 
 # ─── Content-Type / フォーマット検出 ─────────────────────────────────────────
@@ -262,22 +274,25 @@ def _find_constitution_url_in_meta(meta_json: dict | None) -> str | None:
 
 # ─── ダウンロード本体 ────────────────────────────────────────────────────────
 
-def _download(url: str, timeout: float) -> tuple[bytes | None, str]:
+def _download(
+    url: str,
+    timeout: float,
+    expected_hash: str | bytes | None = None,
+) -> tuple[bytes | None, str]:
     """IPFS gateway フォールバック付きダウンロード。
     Returns: (bytes, content_type) または (None, "")。
     """
-    candidates = _normalize_url_candidates(url) or [url]
-    for u in candidates:
-        try:
-            resp = requests.get(u, timeout=timeout)
-            if resp.status_code != 200:
-                logger.debug("constitution download %s: status=%s", u, resp.status_code)
-                continue
-            return resp.content, (resp.headers.get("Content-Type") or "")
-        except Exception as e:
-            logger.debug("constitution download %s: %s", u, e)
-            continue
-    return None, ""
+    try:
+        document = fetch_remote_document(
+            url,
+            expected_hash=expected_hash,
+            timeout=timeout,
+            max_bytes=20 * 1024 * 1024,
+        )
+    except RemoteFetchError as exc:
+        logger.warning("constitution download rejected/failed: %s", exc)
+        return None, ""
+    return document.content, document.content_type
 
 
 def _extract_text(content: bytes, content_type: str) -> str:
@@ -315,6 +330,7 @@ def _extract_text(content: bytes, content_type: str) -> str:
 def fetch_constitution_text(
     meta_url: str | None = None,
     *,
+    expected_hash: str | bytes | None = None,
     timeout: float = 30.0,
 ) -> tuple[str | None, str | None]:
     """憲法本文を取得する。
@@ -329,12 +345,12 @@ def fetch_constitution_text(
         (本文テキスト, 採用した URL) のタプル。失敗時 (None, None)。
     """
     if not meta_url:
-        meta_url = get_latest_constitution_meta_url()
+        meta_url, expected_hash = get_latest_constitution_anchor()
     if not meta_url:
         logger.warning("No enacted NewConstitution found in governance_actions")
         return None, None
 
-    content, content_type = _download(meta_url, timeout)
+    content, content_type = _download(meta_url, timeout, expected_hash)
     if content is None:
         logger.warning("constitution: 全 gateway で取得失敗 url=%s", meta_url)
         return None, meta_url
