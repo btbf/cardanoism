@@ -8,18 +8,18 @@ from __future__ import annotations
 
 import logging
 import re
-import requests
+
+from cardanoism.backend.safe_remote_fetch import (
+    IPFS_GATEWAYS as _SAFE_IPFS_GATEWAYS,
+    RemoteFetchError,
+    fetch_remote_json,
+    remote_url_candidates,
+)
 
 logger = logging.getLogger(__name__)
 
-
-# 複数ゲートウェイを順に試す。最初に成功したものを使う。
-IPFS_GATEWAYS = [
-    "https://ipfs.io/ipfs/",
-    "https://dweb.link/ipfs/",
-    "https://gateway.pinata.cloud/ipfs/",
-    "https://cloudflare-ipfs.com/ipfs/",
-]
+# 既存 import との互換用。実際の候補生成は safe_remote_fetch に集約する。
+IPFS_GATEWAYS = list(_SAFE_IPFS_GATEWAYS)
 
 
 def _extract_str(value) -> str:
@@ -33,35 +33,29 @@ def _extract_str(value) -> str:
 
 def _normalize_url_candidates(meta_url: str) -> list[str]:
     """ipfs://CID や https?://... を取得候補 URL のリストに変換する。"""
-    if not meta_url:
-        return []
-    meta_url = meta_url.strip()
-    if meta_url.startswith("ipfs://"):
-        cid_path = meta_url[len("ipfs://"):]
-        return [gw + cid_path for gw in IPFS_GATEWAYS]
-    if meta_url.startswith(("http://", "https://")):
-        return [meta_url]
-    return []
+    return remote_url_candidates(meta_url)
 
 
-def fetch_vote_metadata_json(meta_url: str, timeout: float = 15.0) -> dict | None:
+def fetch_vote_metadata_json(
+    meta_url: str,
+    timeout: float = 15.0,
+    *,
+    expected_hash: str | bytes | None = None,
+) -> dict | None:
     """meta_url から JSON を取得して dict を返す。失敗時 None。"""
-    for url in _normalize_url_candidates(meta_url):
-        try:
-            resp = requests.get(url, timeout=timeout, headers={"Accept": "application/json"})
-            if resp.status_code != 200:
-                logger.debug("meta_url %s: status=%s", url, resp.status_code)
-                continue
-            try:
-                return resp.json()
-            except ValueError:
-                # JSON パース失敗 → 次のゲートウェイへ
-                logger.debug("meta_url %s: invalid JSON", url)
-                continue
-        except Exception as e:
-            logger.debug("meta_url %s: %s", url, e)
-            continue
-    return None
+    try:
+        parsed, _ = fetch_remote_json(
+            meta_url,
+            expected_hash=expected_hash,
+            timeout=timeout,
+        )
+    except RemoteFetchError as exc:
+        logger.warning("metadata fetch rejected/failed: %s", exc)
+        return None
+    if not isinstance(parsed, dict):
+        logger.warning("metadata fetch returned non-object JSON")
+        return None
+    return parsed
 
 
 def extract_rationale(meta_json: dict | None) -> str:

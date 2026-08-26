@@ -13,6 +13,7 @@ Koios /proposal_list を全件取得 → governance_actions テーブルに upse
   python governance.py --workers 3          # 翻訳並列数
   python governance.py --sleep 0.5          # リクエスト間スリープ（秒）
   python governance.py --id TX_HASH         # 特定レコードのみ翻訳
+  python governance.py --retry-metadata     # Ogmios後のメタデータ取得失敗分だけ再試行
 
 環境変数:
   KOIOS_NETWORK   : mainnet (デフォルト) / preprod / preview
@@ -26,7 +27,8 @@ import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
 
@@ -39,7 +41,8 @@ from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / "cardanoism" / ".env", override=False)
 
 from cardanoism.backend.db_connect import get_db
-from cardanoism.backend.koios import _get
+from cardanoism.backend.koios import get_proposal_list
+from cardanoism.backend.sync_lock import SyncLockError, sync_job_lock
 from cardanoism.translate import TranslateConfig, Translator
 
 logger = logging.getLogger(__name__)
@@ -94,21 +97,9 @@ def build_translator() -> Translator:
 # Koios フェッチ
 # ============================================================
 
-def fetch_all_proposals() -> list[dict]:
-    """Koios /proposal_list を全件取得する（ページネーション対応）。"""
-    all_records: list[dict] = []
-    offset = 0
-    limit = 1000
-    while True:
-        data = _get("/proposal_list", params={"offset": offset, "limit": limit})
-        if not data or not isinstance(data, list):
-            break
-        all_records.extend(data)
-        logger.info("フェッチ中: offset=%d 取得=%d 累計=%d", offset, len(data), len(all_records))
-        if len(data) < limit:
-            break
-        offset += limit
-    return all_records
+def fetch_all_proposals() -> list[dict] | None:
+    """Koios /proposal_list を全件取得する。失敗時は部分結果を返さない。"""
+    return get_proposal_list()
 
 
 # ============================================================
@@ -362,6 +353,242 @@ def upsert_proposal(fields: dict) -> bool:
     return not existed
 
 
+# ============================================================
+# Ogmios 提案メタデータの取得・再試行
+# ============================================================
+
+_META_RETRY_LIMIT = 8
+_META_RETRY_BASE_MINUTES = 15
+_META_RETRY_MAX_MINUTES = 24 * 60
+
+
+@dataclass(frozen=True)
+class ProposalMetadataFetchResult:
+    """提案メタデータ1件の取得結果。``row`` は翻訳ターゲット形式。"""
+
+    row: dict | None
+    fetched: bool
+
+
+def _metadata_retry_delay_minutes(attempt: int) -> int:
+    """失敗回数に応じた指数バックオフ（15分〜24時間）を返す。"""
+    exponent = max(0, int(attempt) - 1)
+    return min(
+        _META_RETRY_BASE_MINUTES * (2 ** exponent),
+        _META_RETRY_MAX_MINUTES,
+    )
+
+
+def _proposal_translation_row(cursor, proposal_id: str) -> dict | None:
+    cursor.execute(
+        "SELECT id, proposal_id, proposal_tx_hash, title, `abstract`, motivation, rationale, "
+        "title_ja, abstract_ja, motivation_ja, rationale_ja "
+        "FROM governance_actions WHERE proposal_id = ? LIMIT 1",
+        (proposal_id,),
+    )
+    row = cursor.fetchone()
+    return dict(row) if row else None
+
+
+def fetch_and_save_proposal_metadata(
+    proposal_id: str,
+    meta_url: str | None,
+    meta_hash: str | bytes | None = None,
+) -> ProposalMetadataFetchResult:
+    """CIP-100/108 メタデータを取得し、本文と再試行状態を保存する。
+
+    Ogmios listener から新規提案時に即時実行し、失敗した場合は
+    ``meta_fetch_next_at`` を指数バックオフで設定する。HTTP/IPFS から JSON
+    オブジェクトを取得できた時点を成功とし、任意フィールドが欠けた文書を
+    無期限に再取得し続けない。
+    """
+    if not meta_url:
+        with get_db() as (cursor, _):
+            return ProposalMetadataFetchResult(
+                row=_proposal_translation_row(cursor, proposal_id),
+                fetched=False,
+            )
+
+    from cardanoism.backend.vote_meta_fetch import fetch_vote_metadata_json, _extract_str
+
+    meta: dict | None = None
+    fetch_error: str | None = None
+    try:
+        candidate = fetch_vote_metadata_json(meta_url, expected_hash=meta_hash)
+        if isinstance(candidate, dict) and isinstance(candidate.get("body"), dict):
+            meta = candidate
+        else:
+            fetch_error = "metadata fetch returned no valid JSON body"
+    except Exception as exc:  # noqa: BLE001
+        fetch_error = f"{type(exc).__name__}: {exc}"
+
+    title = abstract = motivation = rationale = None
+    references_json = authors_json = None
+    if meta is not None:
+        body = meta.get("body") or {}
+        if isinstance(body, dict):
+            title = _extract_str(body.get("title")) or None
+            abstract = _extract_str(body.get("abstract")) or None
+            motivation = _extract_str(body.get("motivation")) or None
+            rationale = _extract_str(body.get("rationale")) or None
+            references = body.get("references")
+            if isinstance(references, list) and references:
+                references_json = json.dumps(references, ensure_ascii=False)
+
+        authors = meta.get("authors")
+        if isinstance(authors, list):
+            names = [
+                _extract_str(author.get("name"))
+                for author in authors
+                if isinstance(author, dict)
+            ]
+            names = [name for name in names if name]
+            if names:
+                authors_json = json.dumps(names, ensure_ascii=False)
+
+    with get_db() as (cursor, conn):
+        cursor.execute(
+            "SELECT meta_fetch_attempts FROM governance_actions "
+            "WHERE proposal_id = ? LIMIT 1 FOR UPDATE",
+            (proposal_id,),
+        )
+        state = cursor.fetchone()
+        if not state:
+            conn.commit()
+            return ProposalMetadataFetchResult(row=None, fetched=meta is not None)
+
+        attempts = int(state.get("meta_fetch_attempts") or 0) + 1
+        if meta is not None:
+            cursor.execute(
+                """
+                UPDATE governance_actions
+                   SET title             = COALESCE(?, title),
+                       `abstract`        = COALESCE(?, `abstract`),
+                       motivation        = COALESCE(?, motivation),
+                       rationale         = COALESCE(?, rationale),
+                       references_json   = COALESCE(?, references_json),
+                       authors_json      = COALESCE(?, authors_json),
+                       meta_fetch_attempts = ?,
+                       meta_fetch_next_at  = NULL,
+                       meta_fetched_at     = NOW(),
+                       meta_fetch_error    = NULL,
+                       updated_at          = NOW()
+                 WHERE proposal_id = ?
+                """,
+                (
+                    title,
+                    abstract,
+                    motivation,
+                    rationale,
+                    references_json,
+                    authors_json,
+                    attempts,
+                    proposal_id,
+                ),
+            )
+        else:
+            next_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(
+                minutes=_metadata_retry_delay_minutes(attempts)
+            )
+            cursor.execute(
+                """
+                UPDATE governance_actions
+                   SET meta_fetch_attempts = ?,
+                       meta_fetch_next_at  = ?,
+                       meta_fetch_error    = ?,
+                       updated_at          = NOW()
+                 WHERE proposal_id = ?
+                """,
+                (attempts, next_at, (fetch_error or "unknown error")[:500], proposal_id),
+            )
+        row = _proposal_translation_row(cursor, proposal_id)
+        conn.commit()
+
+    if meta is None:
+        logger.warning(
+            "proposal metadata fetch failed: proposal_id=%s attempt=%d next_at=%s error=%s",
+            proposal_id,
+            attempts,
+            next_at.isoformat(timespec="seconds"),
+            fetch_error,
+        )
+    return ProposalMetadataFetchResult(row=row, fetched=meta is not None)
+
+
+def fetch_metadata_retry_targets(limit: int = 50) -> list[dict]:
+    """再試行期限に達した未取得メタデータだけをDBから取得する。"""
+    safe_limit = max(1, min(int(limit), 500))
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT proposal_id, meta_url, meta_hash
+              FROM governance_actions
+             WHERE meta_url IS NOT NULL
+               AND title IS NULL
+               AND meta_fetched_at IS NULL
+               AND meta_fetch_attempts < ?
+               AND (meta_fetch_next_at IS NULL OR meta_fetch_next_at <= NOW())
+             ORDER BY proposed_epoch DESC, id DESC
+             LIMIT ?
+            """,
+            (_META_RETRY_LIMIT, safe_limit),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def retry_missing_proposal_metadata(limit: int = 50) -> list[dict]:
+    """未取得分だけを再試行し、取得できた翻訳ターゲット行を返す。"""
+    targets = fetch_metadata_retry_targets(limit)
+    logger.info("proposal metadata retry targets: %d", len(targets))
+    recovered: list[dict] = []
+    for target in targets:
+        proposal_id = str(target.get("proposal_id") or "")
+        try:
+            result = fetch_and_save_proposal_metadata(
+                proposal_id,
+                target.get("meta_url"),
+                target.get("meta_hash"),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "proposal metadata retry failed unexpectedly: proposal_id=%s: %s",
+                proposal_id,
+                exc,
+            )
+            continue
+        if result.fetched and result.row:
+            recovered.append(result.row)
+    logger.info("proposal metadata retry recovered: %d/%d", len(recovered), len(targets))
+    return recovered
+
+
+def get_proposal_info_from_db(
+    proposal_tx_hash: str,
+    proposal_index: int = 0,
+) -> dict | None:
+    """投票通知用の提案情報をローカルDBから返す。"""
+    if not proposal_tx_hash:
+        return None
+    with get_db() as (cursor, _):
+        cursor.execute(
+            """
+            SELECT proposal_id, proposal_type, title, title_ja
+              FROM governance_actions
+             WHERE proposal_tx_hash = ? AND proposal_index = ?
+             LIMIT 1
+            """,
+            (proposal_tx_hash, int(proposal_index)),
+        )
+        row = cursor.fetchone()
+    if not row:
+        return None
+    return {
+        "title": row.get("title_ja") or row.get("title") or None,
+        "proposal_id": row.get("proposal_id") or None,
+        "proposal_type": row.get("proposal_type") or None,
+    }
+
+
 def fetch_translation_targets(
     limit: int,
     tx_hash: str | None = None,
@@ -484,7 +711,7 @@ def run_translation(
 # エントリポイント
 # ============================================================
 
-def main():
+def main(argv: list[str] | None = None):
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -502,11 +729,52 @@ def main():
                         help="翻訳リクエスト間のスリープ秒数")
     parser.add_argument("--id", metavar="TX_HASH",
                         help="指定した proposal_tx_hash のみ翻訳対象にする")
-    args = parser.parse_args()
+    parser.add_argument(
+        "--retry-metadata",
+        action="store_true",
+        help="Koios全件取得を行わず、期限に達した提案メタデータだけ再試行する",
+    )
+    args = parser.parse_args(argv)
+
+    if args.retry_metadata:
+        logger.info("=== 提案メタデータ再試行開始 ===")
+        recovered_rows = retry_missing_proposal_metadata(args.limit)
+        proposal_ids = [
+            str(row.get("proposal_id"))
+            for row in recovered_rows
+            if row.get("proposal_id") and row.get("title")
+        ]
+        if proposal_ids:
+            try:
+                from cardanoism.backend.governance_ai_db import bulk_enqueue
+                queued = bulk_enqueue(proposal_ids)
+                logger.info("AI 分析キューに enqueue: %d 件", queued)
+            except Exception as exc:
+                logger.warning("AI enqueue 失敗 (継続): %s", exc)
+
+        if args.no_translate or not recovered_rows:
+            if args.no_translate:
+                logger.info("--no-translate 指定のため翻訳スキップ")
+            logger.info("=== 提案メタデータ再試行完了 ===")
+            return
+
+        translator = build_translator()
+        run_translation(
+            translator,
+            recovered_rows,
+            args.workers,
+            args.force,
+            args.sleep,
+        )
+        logger.info("=== 提案メタデータ再試行完了 ===")
+        return
 
     # ── フェッチ ──────────────────────────────────────────
     logger.info("=== フェッチ開始 ===")
     proposals = fetch_all_proposals()
+    if proposals is None:
+        logger.error("Koios /proposal_list の完全取得に失敗したためDB更新を中止します")
+        raise SystemExit(2)
     logger.info("フェッチ完了: %d 件", len(proposals))
 
     upserted = 0
@@ -549,5 +817,20 @@ def main():
     logger.info("=== 完了 ===")
 
 
+def run_cli(argv: list[str] | None = None) -> None:
+    """Run the governance refresh under the same lock for cron and listener."""
+    try:
+        with sync_job_lock("governance", timeout=0) as acquired:
+            if not acquired:
+                logger.info(
+                    "governance refresh skipped because another process is running"
+                )
+                return
+            main(argv)
+    except SyncLockError as exc:
+        logger.error("governance refresh aborted because its lock is unavailable: %s", exc)
+        raise SystemExit(2) from exc
+
+
 if __name__ == "__main__":
-    main()
+    run_cli()

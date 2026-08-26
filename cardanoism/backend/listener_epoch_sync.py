@@ -27,6 +27,8 @@ import sys
 import threading
 from pathlib import Path
 
+from cardanoism.backend.sync_lock import SyncLockError, sync_job_lock
+
 logger = logging.getLogger(__name__)
 
 
@@ -108,13 +110,30 @@ def _run_one_sync(event: str) -> int:
 
 def _run_epoch_sync_chain(epoch_no: int) -> None:
     """エポック境界の sync 群を逐次実行する (別スレッドから呼ばれる)。"""
-    logger.info("=== epoch_start sync チェーン開始 (epoch=%d) ===", epoch_no)
-    for event in _EPOCH_SYNC_SEQUENCE:
-        try:
-            _run_one_sync(event)
-        except Exception as e:  # noqa: BLE001
-            logger.exception("epoch_start sync chain: %s で例外 (継続): %s", event, e)
-    logger.info("=== epoch_start sync チェーン完了 (epoch=%d) ===", epoch_no)
+    try:
+        with sync_job_lock("epoch_sync_chain", timeout=0) as acquired:
+            if not acquired:
+                logger.info(
+                    "epoch_start sync chain skipped: another process is running "
+                    "(epoch=%d)",
+                    epoch_no,
+                )
+                return
+
+            logger.info("=== epoch_start sync チェーン開始 (epoch=%d) ===", epoch_no)
+            for event in _EPOCH_SYNC_SEQUENCE:
+                try:
+                    _run_one_sync(event)
+                except Exception as e:  # noqa: BLE001
+                    logger.exception("epoch_start sync chain: %s で例外 (継続): %s", event, e)
+            logger.info("=== epoch_start sync チェーン完了 (epoch=%d) ===", epoch_no)
+    except SyncLockError as exc:
+        logger.exception(
+            "epoch_start sync chain aborted because its lock is unavailable "
+            "(epoch=%d): %s",
+            epoch_no,
+            exc,
+        )
 
 
 def trigger_epoch_syncs(epoch_no: int) -> None:

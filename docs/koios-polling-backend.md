@@ -47,15 +47,17 @@
 |---------|------------|------|
 | `treasury_sync` | `treasury_snapshot` / `treasury_withdrawal` / `ncl_active` | トレジャリー残高・履歴・NCL |
 | `fiat_sync` | `fiat_rate` | ADA/JPY、ADA/USD レート（CoinGecko） |
-| `drep_sync` | `dreps` | DRep 一覧 + メタデータ |
+| `drep_dirty_sync` | `dreps.amount` | listener が dirty mark した active DRep の委任量だけ差分更新 |
+| `drep_sync` | `dreps` | DRep 一覧 + 状態 + メタデータ。epoch / 日次 fallback 用 |
 | `vote_sync` | `proposal_votes` | 投票履歴 |
 | `summary_sync` | `proposal_voting_summary` | 投票集計 |
 | `params_sync` | `protocol_params` / `cc_members` | プロトコルパラメータ・憲法委員会 |
 | `vote_rationale_sync` | `proposal_votes.rationale` / `rationale_ja` | **backup**: listener bg task が主で 4h cron は fallback (§ 1-3 参照) |
-| `pool_sync` | `pools` (active + pending) | SPO 一覧 + 拡張メタ。`/pool_updates.active_epoch_no` で「現在 active な値」と「未来エポック反映予定の pending 値」を分離書込み (§ 1-4 参照) |
-| `pool_block_history_sync` | `pools.block_history_5ep` / `apy_history_7ep` | プール別エポック作成ブロック数の履歴 |
+| `pool_sync` | `pools` (active + pending) | SPO 一覧 + 拡張メタ。`/pool_updates.active_epoch_no` で「現在 active な値」と「未来エポック反映予定の pending 値」を分離書込み (§ 1-5 参照) |
+| `pool_block_history_sync` | `pools.block_history_5ep` / `apy_history_7ep` | プール別エポック作成ブロック数とAPYの履歴。通知もこのAPYキャッシュを参照する |
 | `relay_check` | `pools.relay_alive` | リレー疎通チェック |
 | `constitution_sync` | `constitution_cache` | Cardano 憲法本文の取得 + 翻訳 |
+| `governance.py --retry-metadata` | `governance_actions` | Ogmios 登録後にIPFSメタデータ取得へ失敗したGAだけを指数バックオフで再試行（Koios不使用） |
 | `ga_ai_initial_sync` | `governance_ai_analysis` (pending) | 既存 GA を AI 分析キューに一括投入 (空 DB の再投入用、通常は governance.py が自動 enqueue) |
 | `ga_ai_reanalyze` | `governance_ai_analysis` | 単一 GA の再分析。`--proposal-id <id>` か `--all` (Active かつ analyzed) を併用 |
 | `spo_role_initial_sync` | `stake_addresses.spo_pool_id` | 全 stake_address の SPO 判定を一括再計算 (新規 VPS の初回投入向け) |
@@ -75,7 +77,17 @@ DRep 投票検知時の rationale 取得 + 翻訳は **`ogmios_listener.py` 内�
 
 cron の `vote_rationale_sync` (4h) は **listener が落ちている間に Koios sync 経由で proposal_votes に書かれた古い行** をフォローするバックアップ。
 
-### 1-4. pool_sync の active / pending 分離
+### 1-4. Governance Action 本文の取得と再試行
+
+新規 GA は Ogmios listener が `governance_actions` に即時登録し、同じバックグラウンドタスクで anchor のIPFS/HTTPSメタデータを取得する。失敗時は `meta_fetch_attempts` と `meta_fetch_next_at` を保存し、15分cronの `governance.py --retry-metadata` が期限到来分だけを再試行する。
+
+- 再試行間隔: 15分 → 30分 → 1時間 → 2時間 → 4時間 → 8時間 → 16時間 → 24時間
+- 最大8回。JSONを取得できたが任意フィールドが欠ける文書は成功扱いにし、無期限再試行を防ぐ
+- 復旧した行だけ翻訳・AI分析キュー投入を行う
+- Koios `/proposal_list` の全件取得はepoch開始時と日次fallbackに限定する
+- DRep投票通知の提案名・種別も `governance_actions` を参照し、通知ごとのKoios全件取得は行わない
+
+### 1-5. pool_sync の active / pending 分離
 
 `/pool_info` は最新 cert の pledge/margin/fixed_cost をそのまま返してしまうため、ledger 上で未来エポック反映予定の値も「現在の値」として書き込まれてしまう問題があった。
 
@@ -85,6 +97,7 @@ cron の `vote_rationale_sync` (4h) は **listener が落ちている間に Koio
   - `active_epoch_no <= current_epoch` の最新 → `pools.pledge / margin / fixed_cost` (現在 active な値)
   - `active_epoch_no >  current_epoch` の最新 → `pools.pending_pledge / pending_margin / pending_fixed_cost / pending_effective_epoch` (次エポック反映予定)
 - 直近で更新が無いプールは `/pool_info` の値を active 値として採用 (= 長らく変化が無い静かなプール)
+- APYは`pool_block_history_sync`が`apy_history_7ep`へ保存し、10分ごとのプール通知と15分ごとの委任リマインダーはDBから最新値を一括取得する。キャッシュ欠損時は表示を省略し、Koiosへフォールバックしない
 
 これに連動して UI には「次エポックで変更」バッジを表示 (`pending_effective_epoch IS NOT NULL` で判定)。listener 側 (`record_pool_registration`) も新規プール以外は pending_* 列に書く設計に変更済み。
 
@@ -145,6 +158,9 @@ done
 | `TELEGRAM_BOT_TOKEN` | ⚠️ | Telegram 通知 |
 | `GPT_API_KEY` | 任意 | OpenAI API キー（GA AI 分析 / 投票理由翻訳 / GA 翻訳で使用） |
 | `OPENAI_MODEL` | 任意 | OpenAI モデル名（既定: `gpt-4o-mini`） |
+| `NOTIFICATION_REWARD_WINDOW_SECONDS` | 任意 | 報酬通知を許可するepoch開始後の秒数（既定: `43200`） |
+| `NOTIFICATION_TREASURY_WINDOW_SECONDS` | 任意 | Treasury施行通知を許可するepoch開始後の秒数（既定: `43200`） |
+| `NOTIFICATION_STATE_RECOVERY_GAP_SECONDS` | 任意 | 状態通知を復旧baseline扱いにする停止時間（既定: `1800`） |
 | `ADMIN_USER_ID` | 任意 | `notify_test` イベントの送信先ユーザー ID。この user の `notification_channels` に登録済みのチャンネル全て (LINE / メール / Telegram) に管理者用テスト通知が飛ぶ |
 | `FEEDBACK_FORM_URL` / `FEEDBACK_FORM_USER_ID_ENTRY` / `FEEDBACK_FORM_USERNAME_ENTRY` | 任意 | ベータ版フィードバックフォーム連携 (UI 側) |
 
@@ -181,6 +197,8 @@ cron 定義は [`deploy/cron.d-cardanoism-notify`](../deploy/cron.d-cardanoism-n
 | `drep` | 5 分 | drep_unvoted_ga (DB only) を高頻度で。drep_status_change の `/drep_info` も bulk 1 回で軽量 |
 | `fiat_sync` | 5 分 | UI で常時表示されるため短め (CoinGecko 無料枠 30 req/min 内) |
 | `pool` | 10 分 | saturation / pledge / reward 検知。エポック計算値なので cron 不可避 |
+| `drep_dirty_sync` | 15 分 | listener が直近1時間に dirty mark した active DRep のみ `/drep_delegators` で再集計。全件一覧・infoは取得しない |
+| `governance.py --retry-metadata --limit 20` | 15 分 | Ogmios後のメタデータ取得失敗分のみ。DBの次回時刻・最大試行回数で対象を限定し、Koiosは呼ばない |
 | `summary_sync` | **15 分** | **Active GA 限定**で投票集計を最新化。`pre_ratify` トリガー (drep_yes_pct ≥ 批准値 -10pt) のリアルタイム判定の前提 |
 | `reminder` | 15 分 | 委任長期リマインダー + `refresh_stake_delegations` |
 | `treasury` | 15 分 | enacted 検知。listener も拾えるが軽量な safety net |
@@ -200,14 +218,32 @@ listener が長時間停止していてもデータが完全停止しないよ�
 | `governance.py --no-translate` | 03:00 | listener 経由で逐次反映 + epoch_start でステータス確定 |
 | `params_sync` | 03:30 | listener: epoch_start |
 | `treasury_sync` | 04:00 | listener: epoch_start |
-| `drep_sync` | 04:30 | listener: epoch_start + DRep cert 検知 |
+| `drep_sync --full` | 04:30 | listener: epoch_start。常時の委任量差分は `drep_dirty_sync` |
 | `pool_sync` | 05:00 | listener: epoch_start + Pool cert 検知 |
 | `pool_block_history_sync` | 05:30 | listener: epoch_start |
 | `vote_sync` | 06:00 | listener: 投票即時反映 |
 | `constitution_sync` | 07:00 | listener: epoch_start |
 
-> **listener が動いている限り**、これらの cron 実行はほぼ「no-op (= 既に最新)」になる。
-> Koios コール量は通常時とフォールバック時で大きく差がついて、平時は 1/10 程度に抑えられる。
+> cron・epoch listener・手動実行は同じ MariaDB advisory lock を使用する。同じイベントが既に実行中なら後発は処理せず終了する。
+> 平時の DRep 更新は dirty 対象だけなので、全DRepを15分ごとに取得する旧構成よりKoiosコール量を大幅に抑えられる。
+> `governance.py` の全件同期は途中ページが失敗・不正応答になった場合、取得済みの部分結果も破棄してDB更新を中止する。
+
+#### API 復旧時の古い通知抑止
+
+チェーン履歴や定期syncのcatch-upと通知配送は分離する。Koiosが復旧しても、
+以下のwindowを過ぎた通知は送らない。
+
+| 対象 | 既定window | 環境変数 |
+|---|---:|---|
+| 報酬入金 | 入金epoch開始から12時間 | `NOTIFICATION_REWARD_WINDOW_SECONDS` |
+| Treasury施行 | 施行epoch開始から12時間 | `NOTIFICATION_TREASURY_WINDOW_SECONDS` |
+| saturation / pledge不足 / DRep状態 | 最終成功から30分超なら復旧直後はbaseline更新のみ | `NOTIFICATION_STATE_RECOVERY_GAP_SECONDS` |
+
+Cardanoの報酬epoch Nはepoch N+2開始時に入金される。そのため現在epoch 651では
+reward epoch 649が「今回の入金」だが、651開始から12時間を過ぎてAPIが復旧した場合は
+通知専用のreward API取得も抑止する。これにより古い通知だけでなく、Free枠で意味のない
+再取得が繰り返されることも防ぐ。GA・vote等のチェーン履歴と各 `*_sync` は通常どおり
+catch-upを継続する。
 
 ### 4-3. listener の状態監視
 
@@ -268,6 +304,7 @@ infisical run --env=preview -- python notify_worker.py --event reminder
 infisical run --env=preview -- python notify_worker.py --event treasury
 
 # 同期だけ
+infisical run --env=preview -- python notify_worker.py --event drep_dirty_sync  # dirty DRep の委任量だけ
 infisical run --env=preview -- python notify_worker.py --event drep_sync
 infisical run --env=preview -- python notify_worker.py --event vote_sync
 infisical run --env=preview -- python notify_worker.py --event summary_sync
@@ -301,6 +338,9 @@ INF="infisical run --env=preview --"
 #     Koios /proposal_list を全件フェッチ → upsert → 新規 GA は AI 分析キューに自動 enqueue
 $INF python cardanoism/backend/governance.py --no-translate
 # 翻訳まで一気にやる場合は --no-translate を外す
+
+# Ogmios後の metadata 失敗分だけを手動再試行する場合（通常は15分cron）
+$INF python cardanoism/backend/governance.py --retry-metadata --limit 20
 
 # (2) プロトコルパラメータ + CC メンバー（NCL 計算の前提）
 $INF python notify_worker.py --event params_sync
@@ -475,6 +515,7 @@ ORDER BY checked_at DESC LIMIT 50;
 | pool_reward_received | — | ✅ |
 | pool / drep_delegation_reminder | — | ✅ |
 | drep_status_change | — | ✅ |
+| DRep live 委任量 | dirty mark ✅ | dirty 対象だけ再集計 (`drep_dirty_sync`) |
 | treasury_withdrawal_enacted | (listener も拾うが軽量な safety net 用) | ✅ |
 | vote_rationale_sync | ✅ (listener bg = primary) | ✅ (4h cron = backup) |
 | 全 *_sync（キャッシュ） | (一部 listener が epoch_start で chain 起動) | ✅ |

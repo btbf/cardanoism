@@ -48,10 +48,16 @@ done
 - `_alter_governance_votes_add_names_and_power.sql`
   — `proposal_votes.voter_name` と `proposal_voting_summary.*_vote_power` を追加する。
   **未適用だと GA 詳細の投票一覧と `vote_rationale_sync` がエラーになる。**
+- `_alter_governance_add_meta_fetch_retry.sql`
+  — Ogmios で検知した GA のメタデータ取得試行回数・次回時刻・成功時刻・エラーを追加する。
+  **未適用だと `governance.py --retry-metadata` と Ogmios listener の新規 GA 後処理がエラーになる。**
 
 ```bash
 mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" \
   < cardanoism/backend/migrations/_alter_governance_votes_add_names_and_power.sql
+
+mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" \
+  < cardanoism/backend/migrations/_alter_governance_add_meta_fetch_retry.sql
 ```
 
 適用後に値を埋めるバッチ:

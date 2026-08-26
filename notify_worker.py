@@ -6,12 +6,12 @@ notify_worker.py
   ogmios_listener.py（チェーン同期デーモン）が担当するため、このワーカーでは処理しない。
 
 推奨 cron 設定:
-  # pool/drep は30分ごと
-  */30 * * * *  python /path/to/notify_worker.py --event pool
-  */30 * * * *  python /path/to/notify_worker.py --event drep
+  # pool は10分、drep は5分ごと
+  */10 * * * *  python /path/to/notify_worker.py --event pool
+  */5  * * * *  python /path/to/notify_worker.py --event drep
 
-  # リマインダーは1時間ごとで十分
-  0 * * * *     python /path/to/notify_worker.py --event reminder
+  # リマインダーは15分ごと
+  */15 * * * *  python /path/to/notify_worker.py --event reminder
 
   # エポック切り替わり時刻確認
   python notify_worker.py --epoch-schedule
@@ -25,7 +25,6 @@ import argparse
 import json
 import logging
 import socket
-import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 
@@ -39,7 +38,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cardanoism
 from cardanoism.backend.db_connect import get_db
 from cardanoism.backend.koios import (
     _post, _get, get_current_epoch,
-    get_pool_apy, batch_account_info,
+    batch_account_info,
     batch_account_update_history, batch_account_reward_history,
     batch_account_reward_history_by_type,
 )
@@ -48,6 +47,17 @@ from cardanoism.backend import line_flex
 from cardanoism.backend.mail_notify import send_email, build_html, build_text
 from cardanoism.backend.telegram_notify import send_telegram
 from cardanoism.backend.stake_rewards_db import bulk_upsert_stake_rewards
+from cardanoism.backend.sync_lock import SyncLockError, sync_job_lock
+from cardanoism.backend.safe_remote_fetch import RemoteFetchError, fetch_remote_json
+from cardanoism.backend.notification_freshness import (
+    REWARD_WINDOW_SECONDS,
+    STATE_RECOVERY_GAP_SECONDS,
+    TREASURY_WINDOW_SECONDS,
+    is_current_epoch_event_fresh,
+    is_epoch_window_open,
+    should_rebaseline_state,
+    utc_now_iso,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -90,25 +100,48 @@ def _get_tip_epoch_info() -> dict | None:
     """
     from cardanoism.backend.koios import _get
     data = _get("/tip")
-    if not data or not isinstance(data, list) or not data[0]:
+    if (
+        not data
+        or not isinstance(data, list)
+        or not isinstance(data[0], dict)
+        or not data[0]
+    ):
         return None
     tip = data[0]
-    bt = tip.get("block_time", "")
-    # Koios は "2024-04-14T21:44:51" 形式（UTC・タイムゾーン表記なし）で返す場合がある
-    if bt:
-        if bt.endswith("Z"):
-            bt = bt[:-1] + "+00:00"
-        elif "+" not in bt and len(bt) == 19:
-            bt += "+00:00"
+    bt = tip.get("block_time")
+    # Koios /tip の block_time はUnix秒だが、互換APIやfixtureではISO文字列の
+    # 場合もあるため両方を受け付ける。通知window自体はepoch_slotで判定する。
+    block_time = None
+    if isinstance(bt, (int, float)) and not isinstance(bt, bool):
         try:
-            block_time = datetime.fromisoformat(bt)
-        except ValueError:
+            block_time = datetime.fromtimestamp(float(bt), tz=timezone.utc)
+        except (OverflowError, OSError, ValueError):
             block_time = None
-    else:
-        block_time = None
+    elif isinstance(bt, str) and bt.strip():
+        raw_bt = bt.strip()
+        try:
+            if raw_bt.replace(".", "", 1).isdigit():
+                block_time = datetime.fromtimestamp(float(raw_bt), tz=timezone.utc)
+            else:
+                if raw_bt.endswith("Z"):
+                    raw_bt = raw_bt[:-1] + "+00:00"
+                elif "+" not in raw_bt and len(raw_bt) == 19:
+                    raw_bt += "+00:00"
+                block_time = datetime.fromisoformat(raw_bt)
+        except (OverflowError, OSError, ValueError):
+            block_time = None
+    try:
+        epoch_no = int(tip["epoch_no"])
+        epoch_slot = int(tip["epoch_slot"])
+    except (KeyError, TypeError, ValueError):
+        # epoch_slot が不明なまま 0 秒扱いにすると、API の不完全応答時に
+        # 古い報酬・施行通知を誤って fresh と判定するため fail closed にする。
+        return None
+    if epoch_no < 0 or epoch_slot < 0:
+        return None
     return {
-        "epoch_no":   tip.get("epoch_no"),
-        "epoch_slot": int(tip.get("epoch_slot") or 0),
+        "epoch_no":   epoch_no,
+        "epoch_slot": epoch_slot,
         "block_time": block_time,
     }
 
@@ -569,21 +602,30 @@ def check_pool_events():
             all_addrs[sid]["telegram_chat_id"] = addr["telegram_chat_id"]
             enabled_events.setdefault(sid, set()).add(event_type)
 
-    # /tip を1回だけ呼んでエポックをキャッシュ
-    current_epoch = get_current_epoch()
+    # /tip を1回だけ呼び、epoch番号とepoch開始からの経過秒を共有する。
+    tip_info = _get_tip_epoch_info()
+    current_epoch = tip_info.get("epoch_no") if tip_info else None
+    current_epoch_slot = tip_info.get("epoch_slot") if tip_info else None
 
     # 全プールの pool_info を1リクエストで一括取得
     pool_ids = list({a["delegated_pool_id"] for a in all_addrs.values() if a.get("delegated_pool_id")})
     pool_infos = _fetch_pool_infos_batch(pool_ids)
+    if pool_ids and not pool_infos:
+        # API停止中は最終成功時刻を更新しない。復旧時にbaseline-onlyへ切り替える。
+        logger.warning("pool_info を取得できないためプール通知判定を中断")
+        return
 
-    # APY を並列取得（プールごとに独立した API コールのため ThreadPoolExecutor で高速化）
-    pool_apys: dict[str, float | None] = {}
-    if current_epoch is not None:
-        apy_epoch = current_epoch - 2
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            futures = {executor.submit(get_pool_apy, pid, apy_epoch): pid for pid in pool_ids}
-            for f in as_completed(futures):
-                pool_apys[futures[f]] = f.result()
+    baseline_only = should_rebaseline_state(
+        get_state("global", None, "pool_events_last_success_at"),
+        max_gap_seconds=STATE_RECOVERY_GAP_SECONDS,
+    )
+    if baseline_only and pool_ids:
+        logger.info("pool state通知: 初回または長時間停止後のためbaselineのみ更新")
+
+    # APY はエポック単位の値なので、日次/epoch sync 済みのDBキャッシュを使う。
+    # 欠損時もKoiosへフォールバックせず、通知上のAPY表示だけ省略する。
+    from cardanoism.backend.pool_db import get_cached_pool_apys
+    pool_apys = get_cached_pool_apys(pool_ids)
 
     # 各アドレスのイベントをチェック（pool_reward_received は後で一括処理）
     for stake_id, addr in all_addrs.items():
@@ -595,10 +637,25 @@ def check_pool_events():
         for event_type in enabled_events[stake_id]:
             if event_type == "pool_reward_received":
                 continue
-            _check_pool_event(event_type, addr, pool_info, apy, current_epoch=current_epoch)
+            _check_pool_event(
+                event_type,
+                addr,
+                pool_info,
+                apy,
+                current_epoch=current_epoch,
+                baseline_only=baseline_only,
+            )
 
     # pool_reward_received を /account_reward_history 一括呼び出しで処理
-    _check_pool_reward_received_batch(all_addrs, enabled_events, current_epoch, pool_apys)
+    _check_pool_reward_received_batch(
+        all_addrs,
+        enabled_events,
+        current_epoch,
+        pool_apys,
+        current_epoch_slot=current_epoch_slot,
+    )
+    if pool_ids:
+        set_state("global", None, "pool_events_last_success_at", utc_now_iso())
 
 
 def _apy_line(apy: float | None) -> str:
@@ -608,7 +665,14 @@ def _apy_line(apy: float | None) -> str:
     return f"\nAPY: {apy:.2f}%"
 
 
-def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float | None = None, current_epoch: int | None = None):
+def _check_pool_event(
+    event_type: str,
+    addr: dict,
+    pool_info: dict,
+    apy: float | None = None,
+    current_epoch: int | None = None,
+    baseline_only: bool = False,
+):
     stake_id = addr["stake_id"]
     user_id = addr["user_id"]
     line_id = addr["line_notify_id"]
@@ -629,6 +693,9 @@ def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float |
         sat_pct = float(saturation)
         is_saturated = sat_pct > 100
         was_saturated = get_state("stake_address", stake_id, "pool_saturated")
+        if was_saturated not in ("0", "1") or baseline_only:
+            set_state("stake_address", stake_id, "pool_saturated", "1" if is_saturated else "0")
+            return
         if is_saturated and was_saturated != "1":
             set_state("stake_address", stake_id, "pool_saturated", "1")
             dedup_key = f"pool_saturation_{stake_id}_{int(sat_pct)}"
@@ -645,6 +712,9 @@ def _check_pool_event(event_type: str, addr: dict, pool_info: dict, apy: float |
         pledge = int(pool_info.get("pledge") or 0)
         is_short = live_pledge < pledge
         was_short = get_state("stake_address", stake_id, "pool_pledge_short")
+        if was_short not in ("0", "1") or baseline_only:
+            set_state("stake_address", stake_id, "pool_pledge_short", "1" if is_short else "0")
+            return
         if is_short and was_short != "1":
             set_state("stake_address", stake_id, "pool_pledge_short", "1")
             dedup_key = f"pool_pledge_short_{stake_id}"
@@ -667,6 +737,8 @@ def _check_pool_reward_received_batch(
     enabled_events: dict,
     current_epoch: int | None,
     pool_apys: dict,
+    *,
+    current_epoch_slot: int | None = None,
 ):
     """
     報酬入金通知を全対象アドレスに対して /account_reward_history 1回で一括処理する。
@@ -677,6 +749,17 @@ def _check_pool_reward_received_batch(
     通常委任者の場合: member 報酬を従来どおり通知。
     """
     if current_epoch is None:
+        return
+    if not is_epoch_window_open(
+        current_epoch_slot,
+        window_seconds=REWARD_WINDOW_SECONDS,
+    ):
+        logger.info(
+            "報酬通知window外のため送信・reward API取得を抑止: epoch=%s epoch_slot=%s window=%ss",
+            current_epoch,
+            current_epoch_slot,
+            REWARD_WINDOW_SECONDS,
+        )
         return
     reward_epoch = current_epoch - 2
 
@@ -702,13 +785,32 @@ def _check_pool_reward_received_batch(
             return True
         return reward_epoch >= addr_epoch - 1
 
+    def _all_reward_channels_sent(addr: dict, dedup_base: str) -> bool:
+        """deliver() が付けるchannel suffixと同じkeyで全送信済みか確認する。"""
+        channel_suffixes = []
+        if addr.get("line_notify_id"):
+            channel_suffixes.append("_line")
+        if addr.get("email_addr"):
+            channel_suffixes.append("_email")
+        if addr.get("telegram_chat_id"):
+            channel_suffixes.append("_telegram")
+        return bool(channel_suffixes) and all(
+            already_sent(
+                addr["user_id"],
+                "pool_reward_received",
+                dedup_base + suffix,
+            )
+            for suffix in channel_suffixes
+        )
+
     # dedup 済みでない報酬通知対象アドレスを収集
     reward_addrs = [
         addr for stake_id, addr in all_addrs.items()
         if "pool_reward_received" in enabled_events.get(stake_id, set())
         and _eligible_for_reward(addr)
-        and not already_sent(
-            addr["user_id"], "pool_reward_received", f"reward_{addr['stake_id']}_{reward_epoch}"
+        and not _all_reward_channels_sent(
+            addr,
+            f"reward_{addr['stake_id']}_{reward_epoch}",
         )
     ]
     if not reward_addrs:
@@ -828,9 +930,11 @@ def _check_pool_delegation_reminder():
                     dt = datetime.fromtimestamp(int(bt), tz=timezone.utc)
                     set_state("stake_address", addr["stake_id"], "pool_delegation_date", dt.isoformat())
 
-    # ユニークプールIDの APY を一括取得
+    # APY は既存の pools.apy_history_7ep をDBから一括取得する。
+    # エポック単位の値なので15分ごとのKoios再取得は不要。
+    from cardanoism.backend.pool_db import get_cached_pool_apys
     unique_pool_ids = list({a["delegated_pool_id"] for a in addrs})
-    pool_apys: dict[str, float | None] = {pid: get_pool_apy(pid) for pid in unique_pool_ids}
+    pool_apys = get_cached_pool_apys(unique_pool_ids)
 
     for addr in addrs:
         cached = get_state("stake_address", addr["stake_id"], "pool_delegation_date")
@@ -937,6 +1041,13 @@ def _check_drep_status_change():
     if not addrs:
         return
 
+    baseline_only = should_rebaseline_state(
+        get_state("global", None, "drep_status_last_success_at"),
+        max_gap_seconds=STATE_RECOVERY_GAP_SECONDS,
+    )
+    if baseline_only:
+        logger.info("DRep status通知: 初回または長時間停止後のためbaselineのみ更新")
+
     # ユニーク drep_id を一括取得。
     # 状態は drep_sync と同じ derivation で "active" / "inactive" / "deregistered"。
     # Koios /drep_info の生フィールドは drep_status="registered" 等で、active 判定は
@@ -976,7 +1087,7 @@ def _check_drep_status_change():
         drep_name = addr.get("delegated_drep_name") or drep_id[:12]
 
         last_status = get_state("stake_address", stake_id, "drep_status")
-        if last_status is None:
+        if last_status is None or baseline_only:
             set_state("stake_address", stake_id, "drep_status", status)
             continue
         if not last_status:
@@ -1001,6 +1112,8 @@ def _check_drep_status_change():
             nickname=addr["nickname"], base_url=CARDANOISM_URL,
         )
         deliver(addr, "drep_status_change", ctx, dedup_base=dedup_key)
+
+    set_state("global", None, "drep_status_last_success_at", utc_now_iso())
 
 
 # ============================================================
@@ -1293,7 +1406,7 @@ def check_vote_rationale_sync(fetch_limit: int = 500, translate_limit: int = 100
     # DRep だけでなく CC / SPO も対象にする。CC は authors[0].name が唯一の名前ソース
     # なので、ここで拾わないと投票一覧・CC カードが bech32 ID のままになる。
     fetch_sql = (
-        "SELECT id, voter_role, voter_id, meta_url "
+        "SELECT id, voter_role, voter_id, meta_url, meta_hash "
         "FROM proposal_votes "
         "WHERE meta_url IS NOT NULL AND meta_url <> '' "
         "  AND meta_fetched_at IS NULL "
@@ -1314,7 +1427,11 @@ def check_vote_rationale_sync(fetch_limit: int = 500, translate_limit: int = 100
     for i, r in enumerate(rows, 1):
         vid = r["id"]
         url = r["meta_url"]
-        meta = fetch_vote_metadata_json(url)
+        meta = fetch_vote_metadata_json(url, expected_hash=r.get("meta_hash"))
+        if meta is None:
+            # 通信失敗・SSRF拒否・hash不一致は取得済みにせず、次回再試行する。
+            logger.warning("投票メタデータ未取得: vote_id=%s", vid)
+            continue
         rationale = extract_rationale(meta)
         author = extract_author_name(meta)
         try:
@@ -1689,16 +1806,14 @@ def _fetch_pool_extended(extended_url: str | None) -> dict | None:
       github_handle   : info.social.github_handle
     取得失敗 / 1 つも値が無い場合は None。
     """
-    if not extended_url or not isinstance(extended_url, str):
-        return None
-    if not extended_url.startswith(("http://", "https://")):
-        return None
     try:
-        resp = requests.get(extended_url, timeout=5)
-        if resp.status_code != 200:
-            return None
-        body = resp.json()
-    except Exception:
+        body, _ = fetch_remote_json(
+            extended_url or "",
+            timeout=5,
+            max_bytes=2 * 1024 * 1024,
+        )
+    except RemoteFetchError as exc:
+        logger.warning("extended pool metadata fetch rejected/failed: %s", exc)
         return None
     if not isinstance(body, dict):
         return None
@@ -1727,21 +1842,23 @@ def _fetch_pool_extended(extended_url: str | None) -> dict | None:
     return out
 
 
-def _fetch_pool_extended_via_meta_url(meta_url: str | None) -> dict | None:
+def _fetch_pool_extended_via_meta_url(
+    meta_url: str | None,
+    expected_hash: str | bytes | None = None,
+) -> dict | None:
     """meta_url を直接フェッチし、basic metadata に extended URL があればそれも辿って
     アイコン/ロゴ/about/social を抽出した dict を返す。
     extended が無い、もしくは取得失敗時は None。
     """
-    if not meta_url or not isinstance(meta_url, str):
-        return None
-    if not meta_url.startswith(("http://", "https://")):
-        return None
     try:
-        resp = requests.get(meta_url, timeout=5)
-        if resp.status_code != 200:
-            return None
-        body = resp.json()
-    except Exception:
+        body, _ = fetch_remote_json(
+            meta_url or "",
+            expected_hash=expected_hash,
+            timeout=5,
+            max_bytes=64 * 1024,
+        )
+    except RemoteFetchError as exc:
+        logger.warning("pool metadata fetch rejected/failed: %s", exc)
         return None
     if not isinstance(body, dict):
         return None
@@ -1751,13 +1868,17 @@ def _fetch_pool_extended_via_meta_url(meta_url: str | None) -> dict | None:
     if not isinstance(ext, str):
         return None
     ext = ext.strip()
-    if not ext.startswith(("http://", "https://")):
-        return None
     return _fetch_pool_extended(ext[:1024])
 
 
-def _fetch_extended_data_parallel(meta_urls: dict[str, str], workers: int = 16) -> dict[str, dict]:
-    """{pool_id: meta_url} を並列でフェッチ。各タスクは meta_url → extended URL → 抽出 を連続実行する。
+def _fetch_extended_data_parallel(
+    meta_urls: dict[str, tuple[str, str | bytes | None]],
+    workers: int = 16,
+) -> dict[str, dict]:
+    """{pool_id: (meta_url, meta_hash)} を並列でフェッチする。
+
+    各タスクは on-chain hash を照合した meta_url → SSRF 検証済み extended URL
+    → 抽出を連続実行する。
     返り値: {pool_id: extracted_dict}（icon_url / logo_url / about / *_handle）。
     """
     if not meta_urls:
@@ -1765,7 +1886,10 @@ def _fetch_extended_data_parallel(meta_urls: dict[str, str], workers: int = 16) 
     out: dict[str, dict] = {}
     logger.info("extended metadata フェッチ開始: %d 件 (workers=%d) — meta_url 直叩き", len(meta_urls), workers)
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = {ex.submit(_fetch_pool_extended_via_meta_url, url): pid for pid, url in meta_urls.items()}
+        futs = {
+            ex.submit(_fetch_pool_extended_via_meta_url, url, meta_hash): pid
+            for pid, (url, meta_hash) in meta_urls.items()
+        }
         done = 0
         for fut in as_completed(futs):
             pid = futs[fut]
@@ -1886,7 +2010,7 @@ def check_pool_relay_alive(workers: int = 32, timeout: float = 3.0):
 def check_pool_block_history(epochs: int = 5):
     """全 active プールの直近 N エポックのブロック生成数 + 直近 7 エポックの APY 平均を取得。
     /pool_history は 1 コールで block_cnt も epoch_ros も返すため、limit=7 で叩き、
-    epoch_ros の値が入っている行の平均を pools.apy に保存する（API コール数ゼロ追加）。
+    epoch_ros の値が入っている行を pools.apy_history_7ep に保存する（API コール数ゼロ追加）。
     block_history_5ep には先頭 epochs 件（デフォルト 5）を従来通り保存。
     """
     from cardanoism.backend.koios import get_pool_history
@@ -1904,13 +2028,19 @@ def check_pool_block_history(epochs: int = 5):
 
     updates: list[tuple] = []
     fetched = 0
+    fetch_failed = 0
     apy_captured = 0
     for pid in pool_ids:
         try:
             history = get_pool_history(pid, limit=fetch_limit)
         except Exception as e:
-            logger.debug("get_pool_history 失敗 pool=%s: %s", pid, e)
-            history = []
+            logger.warning("get_pool_history 失敗、既存値を保持 pool=%s: %s", pid, e)
+            fetch_failed += 1
+            continue
+        if history is None:
+            logger.warning("get_pool_history 取得不能、既存値を保持 pool=%s", pid)
+            fetch_failed += 1
+            continue
         # block_cnt を newest 順で抽出（足りない分は 0 でパディング）
         counts: list[int] = []
         for row in history[:epochs]:
@@ -1944,8 +2074,15 @@ def check_pool_block_history(epochs: int = 5):
             logger.info("プールブロック履歴: %d / %d フェッチ済み (APY 取得=%d)", fetched, len(pool_ids), apy_captured)
 
     inserted = bulk_update_block_history(updates)
-    logger.info("プールブロック履歴 同期 完了: %d / %d 件 update (APY 取得=%d, window=%d)",
-                inserted, len(pool_ids), apy_captured, APY_WINDOW)
+    logger.info(
+        "プールブロック履歴 同期 完了: %d / %d 件 update "
+        "(取得失敗・既存値保持=%d, APY 取得=%d, window=%d)",
+        inserted,
+        len(pool_ids),
+        fetch_failed,
+        apy_captured,
+        APY_WINDOW,
+    )
 
 
 # ============================================================
@@ -2173,19 +2310,47 @@ def check_pool_sync():
     ]
     logger.info("/pool_info 対象: %d 件", len(target_ids))
 
-    info_map = {i["pool_id_bech32"]: i for i in get_pool_info_batch(target_ids)}
+    try:
+        pool_info_rows = get_pool_info_batch(target_ids)
+    except Exception as e:  # noqa: BLE001
+        logger.error("/pool_info の完全取得に失敗したため、DB更新を中断します: %s", e)
+        return
+
+    info_map = {
+        i["pool_id_bech32"]: i
+        for i in pool_info_rows
+        if isinstance(i, dict) and i.get("pool_id_bech32")
+    }
+    missing_info_ids = set(target_ids) - set(info_map)
+    if missing_info_ids:
+        sample = sorted(missing_info_ids)[:5]
+        logger.error(
+            "/pool_info が不完全なためDB更新を中断します: expected=%d actual=%d "
+            "missing=%d sample=%s",
+            len(target_ids),
+            len(info_map),
+            len(missing_info_ids),
+            sample,
+        )
+        return
 
     # /pool_updates を直近 2 エポック分だけ全プール横断で 1 リクエスト取得。
     # それより古い変更しかないプール ("ここ最近静か") は /pool_info の値を
     # そのまま active として採用すれば足りる。
-    current_epoch = get_current_epoch() or 0
+    current_epoch = get_current_epoch()
+    if current_epoch is None:
+        logger.error("current epoch を取得できないため、プールDB更新を中断します")
+        return
     updates_map = get_recent_pool_updates(max(0, current_epoch - 1))
+    if updates_map is None:
+        logger.error("/pool_updates の完全取得に失敗したため、プールDB更新を中断します")
+        return
     logger.info("/pool_updates 直近変更: %d プール", len(updates_map))
 
     # 各プールの基本フィールド (ticker / name / homepage 等) を抽出。
     # extended は Koios meta_json には乗らないので、meta_url を直叩きするための URL も集める。
     pool_meta_cache: dict[str, dict] = {}
-    meta_url_targets: dict[str, str] = {}
+    meta_url_targets: dict[str, tuple[str, str | bytes | None]] = {}
     for p in pools:
         pid = p.get("pool_id_bech32")
         if not pid:
@@ -2194,7 +2359,10 @@ def check_pool_sync():
         pool_meta_cache[pid] = _extract_pool_meta(info)
         url = info.get("meta_url") or p.get("meta_url")
         if url:
-            meta_url_targets[pid] = url
+            meta_url_targets[pid] = (
+                str(url),
+                info.get("meta_hash") or p.get("meta_hash"),
+            )
     logger.info("meta_url 対象: %d 件 (extended は meta_url を直接フェッチして抽出)", len(meta_url_targets))
 
     # meta_url → (extended があれば) extended URL → icon/logo/about/social を1タスクで連続取得
@@ -2282,9 +2450,17 @@ def check_spo_role_initial_sync():
         logger.exception("SPO 判定 初期投入 失敗: %s", e)
 
 
+def check_drep_dirty_sync():
+    """Refresh only DReps marked dirty by the Ogmios delegation listener."""
+    from cardanoism.backend.drep_dirty_sync import sync_dirty_drep_amounts
+
+    sync_dirty_drep_amounts()
+
+
 def check_drep_sync(full: bool = False):
     """
-    Koios から全 DRep の情報を取得して DB にキャッシュする。15 分 cron 想定。
+    Koios から全 DRep の情報を取得して DB にキャッシュする。
+    epoch-start と日次 fallback 用。15分cronは drep_dirty_sync を使用する。
 
     フェーズ:
       1. /drep_list で全 DRep の最小情報 (registered フラグ等)
@@ -2305,10 +2481,9 @@ def check_drep_sync(full: bool = False):
     full=True (--full フラグ) の場合は 4b を「全 active DRep」に拡大し、
     旧来通り 1 起動 ~1840 reqs で完全同期する (日 1 回の fallback で使用)。
 
-    /drep_delegators は 1 DRep = 1 リクエストなので、
-      - 通常モード: ~68 + dirty_count reqs/回 (典型 70〜200)
-      - --full モード: ~1840 reqs/回
-    15 分 cron + flock で重複起動を防ぐ。
+    /drep_delegators は 1 DRep = 1 リクエスト。15分ごとの委任量更新は
+    drep_dirty_sync に分離し、この全件同期は epoch-start と日次 fallback に限定する。
+    cron / listener / 手動実行の重複は MariaDB advisory lock で防ぐ。
     """
     import time
 
@@ -2336,7 +2511,24 @@ def check_drep_sync(full: bool = False):
     logger.info("registered DRep: %d 件", len(registered_ids))
 
     # --- フェーズ 2: registered 全件に /drep_info ---
-    info_map = {i["drep_id"]: i for i in get_drep_info_batch(registered_ids)}
+    info_rows = get_drep_info_batch(registered_ids)
+    info_map = {
+        i["drep_id"]: i
+        for i in info_rows
+        if isinstance(i, dict) and i.get("drep_id")
+    }
+    missing_info_ids = set(registered_ids) - set(info_map)
+    if missing_info_ids:
+        sample = sorted(missing_info_ids)[:5]
+        logger.error(
+            "/drep_info が不完全なためDB更新を中断します: expected=%d actual=%d "
+            "missing=%d sample=%s",
+            len(registered_ids),
+            len(info_map),
+            len(missing_info_ids),
+            sample,
+        )
+        return
 
     # --- フェーズ 3: meta_fetched_hash 差分判定 ---
     fetched_hash_map = get_drep_meta_fetched_hashes()  # 既存全 DRep の hash
@@ -2354,7 +2546,20 @@ def check_drep_sync(full: bool = False):
 
     meta_map: dict[str, dict] = {}
     if needs_metadata:
-        meta_map = {m["drep_id"]: m for m in get_drep_metadata_batch(needs_metadata)}
+        meta_rows = get_drep_metadata_batch(needs_metadata)
+        meta_map = {
+            m["drep_id"]: m
+            for m in meta_rows
+            if isinstance(m, dict) and m.get("drep_id")
+        }
+        missing_metadata_ids = set(needs_metadata) - set(meta_map)
+        if missing_metadata_ids:
+            logger.warning(
+                "/drep_metadata に含まれないDRepは既存metadataを保持します: "
+                "missing=%d sample=%s",
+                len(missing_metadata_ids),
+                sorted(missing_metadata_ids)[:5],
+            )
 
     # --- DB 書き込み: 新規 / metadata 更新あり → upsert_drep, それ以外 → update_drep_info ---
     upsert_count = 0
@@ -2406,7 +2611,24 @@ def check_drep_sync(full: bool = False):
             "meta_hash":        info.get("meta_hash"),
         }
 
-        if did in needs_metadata or did not in fetched_hash_map:
+        is_new = did not in fetched_hash_map
+        metadata_needed = did in needs_metadata
+
+        if metadata_needed and did not in meta_map:
+            # Koios が200を返しても、個別metadataがレスポンスから欠ける場合がある。
+            # 既存行のCIP-119本文を空で上書きせず、meta_fetched_hashも進めない。
+            try:
+                if is_new:
+                    upsert_drep({**record_base, "meta_fetched_hash": None})
+                    upsert_count += 1
+                else:
+                    update_drep_info(record_base)
+                    info_only_count += 1
+            except Exception as e:  # noqa: BLE001
+                logger.exception("DRep metadata保持更新 failed (drep_id=%s): %s", did, e)
+            continue
+
+        if metadata_needed or is_new:
             # 新規 or metadata 差分あり → metadata 含めてフル upsert
             meta_row = meta_map.get(did, {})
             meta = _extract_drep_meta(meta_row)
@@ -2470,8 +2692,15 @@ def check_drep_sync(full: bool = False):
     for idx, did in enumerate(target_ids, start=1):
         try:
             live_sum = get_drep_delegators_total(did)
-            update_drep_amount(did, live_sum)
-            amount_ok += 1
+            if live_sum is None:
+                logger.warning(
+                    "/drep_delegators の完全取得に失敗、既存amountを保持 (drep_id=%s)",
+                    did,
+                )
+                amount_fail += 1
+            else:
+                update_drep_amount(did, live_sum)
+                amount_ok += 1
         except Exception as e:  # noqa: BLE001
             logger.warning("/drep_delegators failed (drep_id=%s): %s", did, e)
             amount_fail += 1
@@ -2771,12 +3000,35 @@ def _datetime_to_mainnet_epoch(dt: datetime) -> int | None:
 def check_treasury_events():
     """TreasuryWithdrawals ガバナンスアクションが enacted（施行）されたのを検知して全ユーザーへ通知。"""
     logger.info("トレジャリーイベント チェック開始")
+    tip_info = _get_tip_epoch_info()
+    if not tip_info or not is_epoch_window_open(
+        tip_info.get("epoch_slot"),
+        window_seconds=TREASURY_WINDOW_SECONDS,
+    ):
+        logger.info(
+            "Treasury施行通知window外のためAPI取得・送信を抑止: epoch=%s epoch_slot=%s window=%ss",
+            tip_info.get("epoch_no") if tip_info else None,
+            tip_info.get("epoch_slot") if tip_info else None,
+            TREASURY_WINDOW_SECONDS,
+        )
+        return
+
+    current_epoch = int(tip_info["epoch_no"])
+    current_epoch_slot = int(tip_info["epoch_slot"])
     from cardanoism.backend.koios import get_treasury_proposals
 
     proposals = get_treasury_proposals()
-    enacted = [p for p in proposals if p.get("enacted_epoch") is not None]
+    enacted = [
+        p for p in proposals
+        if is_current_epoch_event_fresh(
+            p.get("enacted_epoch"),
+            current_epoch,
+            current_epoch_slot,
+            window_seconds=TREASURY_WINDOW_SECONDS,
+        )
+    ]
     if not enacted:
-        logger.info("施行済みのトレジャリー引き出しはありません")
+        logger.info("現在epochに施行されたトレジャリー引き出しはありません")
         return
 
     from cardanoism.backend.notify_templates import deliver, merge_user_channels
@@ -2856,9 +3108,10 @@ def check_treasury_events():
             )
 
         for addr in addrs:
-            # 登録より前のエポックはスキップ
+            # Treasury施行はepoch境界で起きるため、同じepoch中に登録したユーザーにも
+            # 過去イベントとして送らない。
             signup_epoch = user_signup_epoch.get(addr.get("user_id"))
-            if signup_epoch is not None and enacted_epoch < signup_epoch:
+            if signup_epoch is not None and enacted_epoch <= signup_epoch:
                 continue
             deliver(addr, EVENT_TYPE, ctx, dedup_base=dedup_base)
 
@@ -3182,12 +3435,12 @@ def check_notify_test():
     logger.info("通知疎通テスト 完了")
 
 
-def main():
+def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description="Cardanoism 通知バッチワーカー")
     parser.add_argument(
         "--event",
         default="all",
-        choices=["all", "pool", "drep", "drep_unvoted", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync", "spo_role_initial_sync", "compass_profile_all", "compass_status", "notify_test"],
+        choices=["all", "pool", "drep", "drep_unvoted", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_dirty_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync", "spo_role_initial_sync", "compass_profile_all", "compass_status", "notify_test"],
         help="実行するイベントグループ",
     )
     parser.add_argument(
@@ -3250,7 +3503,7 @@ def main():
             "0 で無制限 (429 を食らいやすいので初回一括投入時のみ推奨)。"
         ),
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.epoch_schedule:
         print_epoch_schedule()
@@ -3276,6 +3529,8 @@ def main():
         check_treasury_sync()
     if args.event in ("all", "fiat_sync"):
         check_fiat_sync()
+    if args.event == "drep_dirty_sync":
+        check_drep_dirty_sync()
     if args.event in ("all", "drep_sync"):
         check_drep_sync(full=bool(args.full))
     if args.event in ("all", "pool_sync"):
@@ -3330,5 +3585,42 @@ def main():
     logger.info("完了")
 
 
+def _requested_event(argv: list[str]) -> str | None:
+    """Extract the event early so the CLI can lock before executing it."""
+    if "--epoch-schedule" in argv:
+        return None
+    for index, value in enumerate(argv):
+        if value == "--event" and index + 1 < len(argv):
+            return argv[index + 1]
+        if value.startswith("--event="):
+            return value.split("=", 1)[1]
+    return "all"
+
+
+def run_cli(argv: list[str] | None = None) -> None:
+    """Run one cron/listener event under a server-wide singleton lock."""
+    cli_args = list(sys.argv[1:] if argv is None else argv)
+    event = _requested_event(cli_args)
+
+    # ``all`` is an operator convenience command composed of many independent
+    # jobs. Production cron and the epoch listener always request one event.
+    if event in (None, "all", "compass_status", "notify_test"):
+        main(cli_args)
+        return
+
+    try:
+        with sync_job_lock(event, timeout=0) as acquired:
+            if not acquired:
+                logger.info(
+                    "event skipped because another process is already running: %s",
+                    event,
+                )
+                return
+            main(cli_args)
+    except SyncLockError as exc:
+        logger.error("event aborted because its sync lock is unavailable: %s", exc)
+        raise SystemExit(2) from exc
+
+
 if __name__ == "__main__":
-    main()
+    run_cli()
