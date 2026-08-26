@@ -6,12 +6,12 @@ notify_worker.py
   ogmios_listener.py（チェーン同期デーモン）が担当するため、このワーカーでは処理しない。
 
 推奨 cron 設定:
-  # pool/drep は30分ごと
-  */30 * * * *  python /path/to/notify_worker.py --event pool
-  */30 * * * *  python /path/to/notify_worker.py --event drep
+  # pool は10分、drep は5分ごと
+  */10 * * * *  python /path/to/notify_worker.py --event pool
+  */5  * * * *  python /path/to/notify_worker.py --event drep
 
-  # リマインダーは1時間ごとで十分
-  0 * * * *     python /path/to/notify_worker.py --event reminder
+  # リマインダーは15分ごと
+  */15 * * * *  python /path/to/notify_worker.py --event reminder
 
   # エポック切り替わり時刻確認
   python notify_worker.py --epoch-schedule
@@ -39,7 +39,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cardanoism
 from cardanoism.backend.db_connect import get_db
 from cardanoism.backend.koios import (
     _post, _get, get_current_epoch,
-    get_pool_apy, batch_account_info,
+    batch_account_info,
     batch_account_update_history, batch_account_reward_history,
     batch_account_reward_history_by_type,
 )
@@ -577,14 +577,10 @@ def check_pool_events():
     pool_ids = list({a["delegated_pool_id"] for a in all_addrs.values() if a.get("delegated_pool_id")})
     pool_infos = _fetch_pool_infos_batch(pool_ids)
 
-    # APY を並列取得（プールごとに独立した API コールのため ThreadPoolExecutor で高速化）
-    pool_apys: dict[str, float | None] = {}
-    if current_epoch is not None:
-        apy_epoch = current_epoch - 2
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            futures = {executor.submit(get_pool_apy, pid, apy_epoch): pid for pid in pool_ids}
-            for f in as_completed(futures):
-                pool_apys[futures[f]] = f.result()
+    # APY はエポック単位の値なので、日次/epoch sync 済みのDBキャッシュを使う。
+    # 欠損時もKoiosへフォールバックせず、通知上のAPY表示だけ省略する。
+    from cardanoism.backend.pool_db import get_cached_pool_apys
+    pool_apys = get_cached_pool_apys(pool_ids)
 
     # 各アドレスのイベントをチェック（pool_reward_received は後で一括処理）
     for stake_id, addr in all_addrs.items():
@@ -829,9 +825,11 @@ def _check_pool_delegation_reminder():
                     dt = datetime.fromtimestamp(int(bt), tz=timezone.utc)
                     set_state("stake_address", addr["stake_id"], "pool_delegation_date", dt.isoformat())
 
-    # ユニークプールIDの APY を一括取得
+    # APY は既存の pools.apy_history_7ep をDBから一括取得する。
+    # エポック単位の値なので15分ごとのKoios再取得は不要。
+    from cardanoism.backend.pool_db import get_cached_pool_apys
     unique_pool_ids = list({a["delegated_pool_id"] for a in addrs})
-    pool_apys: dict[str, float | None] = {pid: get_pool_apy(pid) for pid in unique_pool_ids}
+    pool_apys = get_cached_pool_apys(unique_pool_ids)
 
     for addr in addrs:
         cached = get_state("stake_address", addr["stake_id"], "pool_delegation_date")
@@ -1887,7 +1885,7 @@ def check_pool_relay_alive(workers: int = 32, timeout: float = 3.0):
 def check_pool_block_history(epochs: int = 5):
     """全 active プールの直近 N エポックのブロック生成数 + 直近 7 エポックの APY 平均を取得。
     /pool_history は 1 コールで block_cnt も epoch_ros も返すため、limit=7 で叩き、
-    epoch_ros の値が入っている行の平均を pools.apy に保存する（API コール数ゼロ追加）。
+    epoch_ros の値が入っている行を pools.apy_history_7ep に保存する（API コール数ゼロ追加）。
     block_history_5ep には先頭 epochs 件（デフォルト 5）を従来通り保存。
     """
     from cardanoism.backend.koios import get_pool_history

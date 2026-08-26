@@ -76,5 +76,32 @@ class EmptyVsFailureTests(unittest.TestCase):
             self.assertIsNone(koios.get_drep_list())
 
 
+class ProposalListTests(unittest.TestCase):
+    def test_empty_proposal_list_is_valid(self):
+        with patch.object(koios, "_get", return_value=[]):
+            self.assertEqual(koios.get_proposal_list(), [])
+
+    def test_proposal_list_reads_every_page(self):
+        responses = [
+            [{"proposal_id": "ga-1"}, {"proposal_id": "ga-2"}],
+            [{"proposal_id": "ga-3"}],
+        ]
+        with patch.object(koios, "_get", side_effect=responses) as mocked_get:
+            rows = koios.get_proposal_list(page_size=2)
+
+        self.assertEqual([row["proposal_id"] for row in rows or []], ["ga-1", "ga-2", "ga-3"])
+        self.assertEqual(mocked_get.call_count, 2)
+
+    def test_later_proposal_page_failure_discards_partial_rows(self):
+        first_page = [{"proposal_id": "ga-1"}, {"proposal_id": "ga-2"}]
+        with patch.object(koios, "_get", side_effect=[first_page, None]):
+            self.assertIsNone(koios.get_proposal_list(page_size=2))
+
+    def test_malformed_proposal_page_discards_partial_rows(self):
+        first_page = [{"proposal_id": "ga-1"}, {"proposal_id": "ga-2"}]
+        with patch.object(koios, "_get", side_effect=[first_page, {"error": "bad"}]):
+            self.assertIsNone(koios.get_proposal_list(page_size=2))
+
+
 if __name__ == "__main__":
     unittest.main()

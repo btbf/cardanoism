@@ -35,6 +35,10 @@ CREATE TABLE IF NOT EXISTS governance_actions (
     meta_url                  TEXT          DEFAULT NULL,
     meta_hash                 VARCHAR(64)   DEFAULT NULL,
     meta_is_valid             TINYINT(1)    DEFAULT NULL,
+    meta_fetch_attempts       INT           NOT NULL DEFAULT 0,
+    meta_fetch_next_at        DATETIME      DEFAULT NULL,
+    meta_fetched_at           DATETIME      DEFAULT NULL,
+    meta_fetch_error          VARCHAR(500)  DEFAULT NULL,
     title                     TEXT          DEFAULT NULL,
     `abstract`                MEDIUMTEXT    DEFAULT NULL,
     motivation                MEDIUMTEXT    DEFAULT NULL,
@@ -58,7 +62,8 @@ CREATE TABLE IF NOT EXISTS governance_actions (
     KEY idx_block_time    (block_time),
     KEY idx_expiration    (expiration),
     KEY idx_ga_spo_target (spo_target),
-    KEY idx_ga_event_slot (last_event_slot)
+    KEY idx_ga_event_slot (last_event_slot),
+    KEY idx_ga_meta_retry (meta_fetched_at, meta_fetch_next_at, meta_fetch_attempts)
 );
 
 -- 投票 (DRep / SPO / CC)

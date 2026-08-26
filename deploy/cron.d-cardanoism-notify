@@ -37,10 +37,10 @@ LOG=/home/btism/cardanoism_log
 # を 1〜14 分内で分散 (jitter)。同時起動は最大 2 個に抑える。
 # 頻度 (5/10/15 分間隔) はそのまま維持。
 
-# ガバナンス再取得 (Koios /proposal_list 全件 upsert)。
-# listener が骨組み行を作るが title/abstract/type 等は Koios 由来。Koios が
-# index した直後に値が backfill されるよう高頻度で回す。--no-translate なので *_ja は触らない。
-7,22,37,52 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY cardanoism/backend/governance.py --no-translate >> $LOG/notify-governance.log 2>&1
+# Ogmios が検知した GA のうち、IPFS metadata 取得失敗分だけ再試行する。
+# Koios /proposal_list の全件同期は日次 fallback と epoch_start に限定する。
+# 最大20件、15分から指数バックオフ、8回で停止。復旧分だけ翻訳・AI enqueue する。
+7,22,37,52 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY cardanoism/backend/governance.py --retry-metadata --limit 20 >> $LOG/notify-governance-meta.log 2>&1
 
 # プール系 (saturation / pledge / reward) — エポック計算値なので cron 必須
 3-59/10 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event pool      >> $LOG/notify-pool.log 2>&1

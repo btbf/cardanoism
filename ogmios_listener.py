@@ -42,7 +42,7 @@ from notify_worker import (
 )
 from cardanoism.backend import line_flex
 from cardanoism.backend.mail_notify import build_html, build_text
-from cardanoism.backend.koios import get_proposal_title, get_proposal_info, get_pool_name, get_pool_epoch_stats, get_pool_apy
+from cardanoism.backend.koios import get_pool_name, get_pool_epoch_stats, get_pool_apy
 from cardanoism.backend.recent_blocks_db import insert_block, trim_old_blocks, delete_blocks_after_slot
 from cardanoism.backend.mempool_db import upsert_mempool_state
 from cardanoism.backend.listener_db import rollback_listener_state
@@ -555,61 +555,10 @@ def _notify_spo_pending_vote(tx_id: str, proposals: list[dict]) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _fetch_and_save_proposal_meta(proposal_id: str, meta_url: str | None) -> dict | None:
-    """IPFS / HTTPS から CIP-100/108 body を取得して governance_actions を UPDATE する。
-    取得後の行 (翻訳ターゲット形式) を返す。失敗時は None。
-    """
-    from cardanoism.backend.db_connect import get_db
-    from cardanoism.backend.vote_meta_fetch import fetch_vote_metadata_json, _extract_str
+    """共有実装でCIP-100/108本文と再試行状態を保存する。"""
+    from cardanoism.backend.governance import fetch_and_save_proposal_metadata
 
-    title = abstract = motivation = rationale = None
-    authors_json = None
-    if meta_url:
-        try:
-            meta = fetch_vote_metadata_json(meta_url)
-            if isinstance(meta, dict):
-                body = meta.get("body") or {}
-                if isinstance(body, dict):
-                    title = _extract_str(body.get("title")) or None
-                    abstract = _extract_str(body.get("abstract")) or None
-                    motivation = _extract_str(body.get("motivation")) or None
-                    rationale = _extract_str(body.get("rationale")) or None
-                authors = meta.get("authors")
-                if isinstance(authors, list):
-                    names = [
-                        str(a.get("name")).strip()
-                        for a in authors
-                        if isinstance(a, dict) and a.get("name")
-                    ]
-                    if names:
-                        authors_json = json.dumps(names, ensure_ascii=False)
-        except Exception as e:  # noqa: BLE001
-            logger.warning("listener: IPFS メタ取得失敗 proposal_id=%s url=%s: %s",
-                           proposal_id, meta_url, e)
-
-    with get_db() as (cursor, conn):
-        # 取得できたフィールドだけ COALESCE で上書き (既存値を消さない)
-        cursor.execute(
-            """
-            UPDATE governance_actions
-               SET title       = COALESCE(?, title),
-                   `abstract`  = COALESCE(?, `abstract`),
-                   motivation  = COALESCE(?, motivation),
-                   rationale   = COALESCE(?, rationale),
-                   authors_json= COALESCE(?, authors_json),
-                   updated_at  = NOW()
-             WHERE proposal_id = ?
-            """,
-            (title, abstract, motivation, rationale, authors_json, proposal_id),
-        )
-        conn.commit()
-        cursor.execute(
-            "SELECT id, proposal_tx_hash, title, `abstract`, motivation, rationale, "
-            "title_ja, abstract_ja, motivation_ja, rationale_ja "
-            "FROM governance_actions WHERE proposal_id = ? LIMIT 1",
-            (proposal_id,),
-        )
-        row = cursor.fetchone()
-        return dict(row) if row else None
+    return fetch_and_save_proposal_metadata(proposal_id, meta_url).row
 
 
 async def _process_proposal_post(tx_id: str, proposals: list[dict]) -> None:
@@ -721,7 +670,9 @@ def _notify_drep_vote(drep_id: str, votes_list: list[dict], tx_id: str) -> None:
         v = votes_list[0]
         gov_tx_hash = v["gov_tx_hash"]
         gov_index = v["gov_index"]
-        info = get_proposal_info(gov_tx_hash, gov_index) if gov_tx_hash else None
+        from cardanoism.backend.governance import get_proposal_info_from_db
+
+        info = get_proposal_info_from_db(gov_tx_hash, gov_index) if gov_tx_hash else None
         proposal_title = (info or {}).get("title") or None
         action_type    = (info or {}).get("proposal_type") or None
         proposal_id    = (info or {}).get("proposal_id") or None

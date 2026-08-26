@@ -759,6 +759,53 @@ def get_treasury_proposals() -> list[dict]:
     return [p for p in data if p.get("proposal_type") == "TreasuryWithdrawals"]
 
 
+def get_proposal_list(page_size: int = 1000) -> list[dict] | None:
+    """Return the complete paginated proposal list.
+
+    An empty list is a valid response.  A failed or malformed page returns
+    ``None`` and discards any rows already fetched, so callers never persist a
+    partial governance snapshot as if it were complete.
+    """
+    if page_size <= 0:
+        raise ValueError("page_size must be greater than zero")
+
+    proposals: list[dict] = []
+    offset = 0
+    while True:
+        data = _get(
+            "/proposal_list",
+            {"offset": offset, "limit": page_size},
+        )
+        if data is None:
+            logger.warning("Koios /proposal_list failed at offset=%d", offset)
+            return None
+        if not isinstance(data, list):
+            logger.warning(
+                "Koios /proposal_list returned invalid type at offset=%d: %s",
+                offset,
+                type(data).__name__,
+            )
+            return None
+        if not data:
+            break
+        if not all(isinstance(row, dict) for row in data):
+            logger.warning("Koios /proposal_list returned a non-object row at offset=%d", offset)
+            return None
+
+        proposals.extend(data)
+        logger.info(
+            "/proposal_list fetched: offset=%d rows=%d total=%d",
+            offset,
+            len(data),
+            len(proposals),
+        )
+        if len(data) < page_size:
+            break
+        offset += page_size
+
+    return proposals
+
+
 def _parse_ncl_from_body(body: dict) -> tuple[int | None, int | None, int | None]:
     """
     NCL提案の body から上限ADA・開始エポック・終了エポックを抽出する。

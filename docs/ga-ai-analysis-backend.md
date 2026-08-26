@@ -10,9 +10,9 @@ TreasuryWithdrawals の場合は機械計算による NCL 上限内チェック�
 > AI 判定のブレが大きく信頼性が低いため A 方針（ファクト整理）に転換した。
 
 ```
-        cron / 自動 trigger
+        Ogmios listener / fallback cron
              ↓
-    governance.py (Koios sync)
+    governance_actions 登録 + IPFS metadata取得
              │
              ├─ governance_actions に新規 INSERT
              └─ governance_ai_db.bulk_enqueue で pending 投入
@@ -134,13 +134,15 @@ sudo journalctl -u ga-ai-worker -f
 
 ## 4. 通常運用
 
-新規 GA は cron で動く `governance.py` （Koios sync）が検知して自動的に enqueue → ga_ai_worker が処理 → GA 詳細ページに `analyzed` 状態で表示。
+新規 GA は Ogmios listener が検知し、IPFSメタデータ取得後に自動的に enqueue → ga_ai_worker が処理 → GA 詳細ページに `analyzed` 状態で表示する。初回取得に失敗した提案だけ、cronの `governance.py --retry-metadata` が指数バックオフ付きで再試行する。
 
-`governance.py` を実行する cron 例（既存の通知 cron に相乗り想定）：
+メタデータ再試行cronの例（Koios `/proposal_list` は呼ばない）：
 
 ```
-*/5 * * * *  python /path/to/cardanoism/cardanoism/backend/governance.py --no-translate
+7,22,37,52 * * * *  python /path/to/cardanoism/cardanoism/backend/governance.py --retry-metadata --limit 20
 ```
+
+Koiosの全件同期はステータス整合性確認としてepoch開始時と日次fallbackに限定する。
 
 ---
 

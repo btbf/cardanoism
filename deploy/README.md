@@ -231,7 +231,9 @@
 |------|-------|------|
 | 5 分 | `drep` | status_change + **drep_unvoted_ga** (DRep 本人の未投票 GA リマインダー)。drep_unvoted_ga は DB only |
 | 5 分 | `fiat_sync` | CoinGecko レート |
-| 10 分 | `pool` | saturation / pledge / reward |
+| 10 分 | `pool` | saturation / pledge / reward。APYは`pools.apy_history_7ep`を参照し、Koiosへ再取得しない |
+| 15 分 | `governance.py --retry-metadata --limit 20` | Ogmios後のIPFSメタデータ取得失敗分だけ再試行（Koios不使用） |
+| 15 分 | `drep_dirty_sync` | listenerがdirty markしたactive DRepの委任量だけ差分更新 |
 | 15 分 | `summary_sync` | **Active GA 限定**で投票集計 (drep_yes_pct 等) を最新化。`pre_ratify` トリガーの前提 |
 | 15 分 | `reminder` | 委任長期リマインダー + stake_addresses 委任先リフレッシュ |
 | 15 分 | `treasury` | 引き出し提案の enacted 検知 |

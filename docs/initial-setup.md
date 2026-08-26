@@ -115,6 +115,8 @@ done
 
 詳細は `cardanoism/backend/migrations/README.md`。
 
+既存DBへ更新する場合は、`_alter_governance_add_meta_fetch_retry.sql` を適用してから新しいOgmios listener / cronを起動する。
+
 ---
 
 ## 5. 初回データ同期
