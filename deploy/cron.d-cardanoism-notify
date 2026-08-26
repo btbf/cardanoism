@@ -57,12 +57,12 @@ LOG=/home/btism/cardanoism_log
 # Active GA の投票集計を最新化 (pre_ratify トリガーの前提)
 11,26,41,56 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event summary_sync >> $LOG/notify-summary_sync.log 2>&1
 
-# DRep アクティブ委任量計算取得
-#   - /drep_list で新規 DRep 検出
-#   - /drep_info で動的列 + meta_hash 取得 → meta_fetched_hash と差分のある DRep のみ /drep_metadata
-#   - 全 active DRep に /drep_delegators を投げて live amount を反映
-# 1 回 ~1840 reqs (うち /drep_delegators が 1700)。flock で前回未完了時の重複起動を防ぐ。
-14,29,44,59 * * * *  btism flock -n /tmp/cardanoism-drep_sync.lock -c "cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event drep_sync" >> $LOG/notify-drep_sync.log 2>&1
+# DRep 委任量の差分更新
+#   - Ogmios listener が直近1時間に dirty mark した active DRep のみ対象
+#   - /drep_list・/drep_info・/drep_metadata の全件取得は行わない
+#   - 全DRep同期は epoch_start と下の日次 fallback に限定
+# MariaDB advisory lock により cron / listener / 手動実行間の重複を防ぐ。
+14,29,44,59 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event drep_dirty_sync >> $LOG/notify-drep_dirty_sync.log 2>&1
 
 # 投票履歴 (vote_sync) は常時 cron から外した。
 #   投票のリアルタイム反映は Ogmios listener が担当している

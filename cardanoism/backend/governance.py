@@ -40,6 +40,7 @@ load_dotenv(PROJECT_ROOT / "cardanoism" / ".env", override=False)
 
 from cardanoism.backend.db_connect import get_db
 from cardanoism.backend.koios import _get
+from cardanoism.backend.sync_lock import SyncLockError, sync_job_lock
 from cardanoism.translate import TranslateConfig, Translator
 
 logger = logging.getLogger(__name__)
@@ -484,7 +485,7 @@ def run_translation(
 # エントリポイント
 # ============================================================
 
-def main():
+def main(argv: list[str] | None = None):
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -502,7 +503,7 @@ def main():
                         help="翻訳リクエスト間のスリープ秒数")
     parser.add_argument("--id", metavar="TX_HASH",
                         help="指定した proposal_tx_hash のみ翻訳対象にする")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     # ── フェッチ ──────────────────────────────────────────
     logger.info("=== フェッチ開始 ===")
@@ -549,5 +550,20 @@ def main():
     logger.info("=== 完了 ===")
 
 
+def run_cli(argv: list[str] | None = None) -> None:
+    """Run the governance refresh under the same lock for cron and listener."""
+    try:
+        with sync_job_lock("governance", timeout=0) as acquired:
+            if not acquired:
+                logger.info(
+                    "governance refresh skipped because another process is running"
+                )
+                return
+            main(argv)
+    except SyncLockError as exc:
+        logger.error("governance refresh aborted because its lock is unavailable: %s", exc)
+        raise SystemExit(2) from exc
+
+
 if __name__ == "__main__":
-    main()
+    run_cli()

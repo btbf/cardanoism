@@ -48,6 +48,7 @@ from cardanoism.backend import line_flex
 from cardanoism.backend.mail_notify import send_email, build_html, build_text
 from cardanoism.backend.telegram_notify import send_telegram
 from cardanoism.backend.stake_rewards_db import bulk_upsert_stake_rewards
+from cardanoism.backend.sync_lock import SyncLockError, sync_job_lock
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1904,13 +1905,19 @@ def check_pool_block_history(epochs: int = 5):
 
     updates: list[tuple] = []
     fetched = 0
+    fetch_failed = 0
     apy_captured = 0
     for pid in pool_ids:
         try:
             history = get_pool_history(pid, limit=fetch_limit)
         except Exception as e:
-            logger.debug("get_pool_history 失敗 pool=%s: %s", pid, e)
-            history = []
+            logger.warning("get_pool_history 失敗、既存値を保持 pool=%s: %s", pid, e)
+            fetch_failed += 1
+            continue
+        if history is None:
+            logger.warning("get_pool_history 取得不能、既存値を保持 pool=%s", pid)
+            fetch_failed += 1
+            continue
         # block_cnt を newest 順で抽出（足りない分は 0 でパディング）
         counts: list[int] = []
         for row in history[:epochs]:
@@ -1944,8 +1951,15 @@ def check_pool_block_history(epochs: int = 5):
             logger.info("プールブロック履歴: %d / %d フェッチ済み (APY 取得=%d)", fetched, len(pool_ids), apy_captured)
 
     inserted = bulk_update_block_history(updates)
-    logger.info("プールブロック履歴 同期 完了: %d / %d 件 update (APY 取得=%d, window=%d)",
-                inserted, len(pool_ids), apy_captured, APY_WINDOW)
+    logger.info(
+        "プールブロック履歴 同期 完了: %d / %d 件 update "
+        "(取得失敗・既存値保持=%d, APY 取得=%d, window=%d)",
+        inserted,
+        len(pool_ids),
+        fetch_failed,
+        apy_captured,
+        APY_WINDOW,
+    )
 
 
 # ============================================================
@@ -2173,13 +2187,41 @@ def check_pool_sync():
     ]
     logger.info("/pool_info 対象: %d 件", len(target_ids))
 
-    info_map = {i["pool_id_bech32"]: i for i in get_pool_info_batch(target_ids)}
+    try:
+        pool_info_rows = get_pool_info_batch(target_ids)
+    except Exception as e:  # noqa: BLE001
+        logger.error("/pool_info の完全取得に失敗したため、DB更新を中断します: %s", e)
+        return
+
+    info_map = {
+        i["pool_id_bech32"]: i
+        for i in pool_info_rows
+        if isinstance(i, dict) and i.get("pool_id_bech32")
+    }
+    missing_info_ids = set(target_ids) - set(info_map)
+    if missing_info_ids:
+        sample = sorted(missing_info_ids)[:5]
+        logger.error(
+            "/pool_info が不完全なためDB更新を中断します: expected=%d actual=%d "
+            "missing=%d sample=%s",
+            len(target_ids),
+            len(info_map),
+            len(missing_info_ids),
+            sample,
+        )
+        return
 
     # /pool_updates を直近 2 エポック分だけ全プール横断で 1 リクエスト取得。
     # それより古い変更しかないプール ("ここ最近静か") は /pool_info の値を
     # そのまま active として採用すれば足りる。
-    current_epoch = get_current_epoch() or 0
+    current_epoch = get_current_epoch()
+    if current_epoch is None:
+        logger.error("current epoch を取得できないため、プールDB更新を中断します")
+        return
     updates_map = get_recent_pool_updates(max(0, current_epoch - 1))
+    if updates_map is None:
+        logger.error("/pool_updates の完全取得に失敗したため、プールDB更新を中断します")
+        return
     logger.info("/pool_updates 直近変更: %d プール", len(updates_map))
 
     # 各プールの基本フィールド (ticker / name / homepage 等) を抽出。
@@ -2282,9 +2324,17 @@ def check_spo_role_initial_sync():
         logger.exception("SPO 判定 初期投入 失敗: %s", e)
 
 
+def check_drep_dirty_sync():
+    """Refresh only DReps marked dirty by the Ogmios delegation listener."""
+    from cardanoism.backend.drep_dirty_sync import sync_dirty_drep_amounts
+
+    sync_dirty_drep_amounts()
+
+
 def check_drep_sync(full: bool = False):
     """
-    Koios から全 DRep の情報を取得して DB にキャッシュする。15 分 cron 想定。
+    Koios から全 DRep の情報を取得して DB にキャッシュする。
+    epoch-start と日次 fallback 用。15分cronは drep_dirty_sync を使用する。
 
     フェーズ:
       1. /drep_list で全 DRep の最小情報 (registered フラグ等)
@@ -2305,10 +2355,9 @@ def check_drep_sync(full: bool = False):
     full=True (--full フラグ) の場合は 4b を「全 active DRep」に拡大し、
     旧来通り 1 起動 ~1840 reqs で完全同期する (日 1 回の fallback で使用)。
 
-    /drep_delegators は 1 DRep = 1 リクエストなので、
-      - 通常モード: ~68 + dirty_count reqs/回 (典型 70〜200)
-      - --full モード: ~1840 reqs/回
-    15 分 cron + flock で重複起動を防ぐ。
+    /drep_delegators は 1 DRep = 1 リクエスト。15分ごとの委任量更新は
+    drep_dirty_sync に分離し、この全件同期は epoch-start と日次 fallback に限定する。
+    cron / listener / 手動実行の重複は MariaDB advisory lock で防ぐ。
     """
     import time
 
@@ -2336,7 +2385,24 @@ def check_drep_sync(full: bool = False):
     logger.info("registered DRep: %d 件", len(registered_ids))
 
     # --- フェーズ 2: registered 全件に /drep_info ---
-    info_map = {i["drep_id"]: i for i in get_drep_info_batch(registered_ids)}
+    info_rows = get_drep_info_batch(registered_ids)
+    info_map = {
+        i["drep_id"]: i
+        for i in info_rows
+        if isinstance(i, dict) and i.get("drep_id")
+    }
+    missing_info_ids = set(registered_ids) - set(info_map)
+    if missing_info_ids:
+        sample = sorted(missing_info_ids)[:5]
+        logger.error(
+            "/drep_info が不完全なためDB更新を中断します: expected=%d actual=%d "
+            "missing=%d sample=%s",
+            len(registered_ids),
+            len(info_map),
+            len(missing_info_ids),
+            sample,
+        )
+        return
 
     # --- フェーズ 3: meta_fetched_hash 差分判定 ---
     fetched_hash_map = get_drep_meta_fetched_hashes()  # 既存全 DRep の hash
@@ -2354,7 +2420,20 @@ def check_drep_sync(full: bool = False):
 
     meta_map: dict[str, dict] = {}
     if needs_metadata:
-        meta_map = {m["drep_id"]: m for m in get_drep_metadata_batch(needs_metadata)}
+        meta_rows = get_drep_metadata_batch(needs_metadata)
+        meta_map = {
+            m["drep_id"]: m
+            for m in meta_rows
+            if isinstance(m, dict) and m.get("drep_id")
+        }
+        missing_metadata_ids = set(needs_metadata) - set(meta_map)
+        if missing_metadata_ids:
+            logger.warning(
+                "/drep_metadata に含まれないDRepは既存metadataを保持します: "
+                "missing=%d sample=%s",
+                len(missing_metadata_ids),
+                sorted(missing_metadata_ids)[:5],
+            )
 
     # --- DB 書き込み: 新規 / metadata 更新あり → upsert_drep, それ以外 → update_drep_info ---
     upsert_count = 0
@@ -2406,7 +2485,24 @@ def check_drep_sync(full: bool = False):
             "meta_hash":        info.get("meta_hash"),
         }
 
-        if did in needs_metadata or did not in fetched_hash_map:
+        is_new = did not in fetched_hash_map
+        metadata_needed = did in needs_metadata
+
+        if metadata_needed and did not in meta_map:
+            # Koios が200を返しても、個別metadataがレスポンスから欠ける場合がある。
+            # 既存行のCIP-119本文を空で上書きせず、meta_fetched_hashも進めない。
+            try:
+                if is_new:
+                    upsert_drep({**record_base, "meta_fetched_hash": None})
+                    upsert_count += 1
+                else:
+                    update_drep_info(record_base)
+                    info_only_count += 1
+            except Exception as e:  # noqa: BLE001
+                logger.exception("DRep metadata保持更新 failed (drep_id=%s): %s", did, e)
+            continue
+
+        if metadata_needed or is_new:
             # 新規 or metadata 差分あり → metadata 含めてフル upsert
             meta_row = meta_map.get(did, {})
             meta = _extract_drep_meta(meta_row)
@@ -2470,8 +2566,15 @@ def check_drep_sync(full: bool = False):
     for idx, did in enumerate(target_ids, start=1):
         try:
             live_sum = get_drep_delegators_total(did)
-            update_drep_amount(did, live_sum)
-            amount_ok += 1
+            if live_sum is None:
+                logger.warning(
+                    "/drep_delegators の完全取得に失敗、既存amountを保持 (drep_id=%s)",
+                    did,
+                )
+                amount_fail += 1
+            else:
+                update_drep_amount(did, live_sum)
+                amount_ok += 1
         except Exception as e:  # noqa: BLE001
             logger.warning("/drep_delegators failed (drep_id=%s): %s", did, e)
             amount_fail += 1
@@ -3182,12 +3285,12 @@ def check_notify_test():
     logger.info("通知疎通テスト 完了")
 
 
-def main():
+def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description="Cardanoism 通知バッチワーカー")
     parser.add_argument(
         "--event",
         default="all",
-        choices=["all", "pool", "drep", "drep_unvoted", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync", "spo_role_initial_sync", "compass_profile_all", "compass_status", "notify_test"],
+        choices=["all", "pool", "drep", "drep_unvoted", "reminder", "treasury", "treasury_sync", "fiat_sync", "drep_dirty_sync", "drep_sync", "pool_sync", "pool_block_history_sync", "relay_check", "vote_sync", "summary_sync", "params_sync", "vote_rationale_sync", "ga_ai_initial_sync", "ga_ai_reanalyze", "constitution_sync", "spo_role_initial_sync", "compass_profile_all", "compass_status", "notify_test"],
         help="実行するイベントグループ",
     )
     parser.add_argument(
@@ -3250,7 +3353,7 @@ def main():
             "0 で無制限 (429 を食らいやすいので初回一括投入時のみ推奨)。"
         ),
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.epoch_schedule:
         print_epoch_schedule()
@@ -3276,6 +3379,8 @@ def main():
         check_treasury_sync()
     if args.event in ("all", "fiat_sync"):
         check_fiat_sync()
+    if args.event == "drep_dirty_sync":
+        check_drep_dirty_sync()
     if args.event in ("all", "drep_sync"):
         check_drep_sync(full=bool(args.full))
     if args.event in ("all", "pool_sync"):
@@ -3330,5 +3435,42 @@ def main():
     logger.info("完了")
 
 
+def _requested_event(argv: list[str]) -> str | None:
+    """Extract the event early so the CLI can lock before executing it."""
+    if "--epoch-schedule" in argv:
+        return None
+    for index, value in enumerate(argv):
+        if value == "--event" and index + 1 < len(argv):
+            return argv[index + 1]
+        if value.startswith("--event="):
+            return value.split("=", 1)[1]
+    return "all"
+
+
+def run_cli(argv: list[str] | None = None) -> None:
+    """Run one cron/listener event under a server-wide singleton lock."""
+    cli_args = list(sys.argv[1:] if argv is None else argv)
+    event = _requested_event(cli_args)
+
+    # ``all`` is an operator convenience command composed of many independent
+    # jobs. Production cron and the epoch listener always request one event.
+    if event in (None, "all", "compass_status", "notify_test"):
+        main(cli_args)
+        return
+
+    try:
+        with sync_job_lock(event, timeout=0) as acquired:
+            if not acquired:
+                logger.info(
+                    "event skipped because another process is already running: %s",
+                    event,
+                )
+                return
+            main(cli_args)
+    except SyncLockError as exc:
+        logger.error("event aborted because its sync lock is unavailable: %s", exc)
+        raise SystemExit(2) from exc
+
+
 if __name__ == "__main__":
-    main()
+    run_cli()

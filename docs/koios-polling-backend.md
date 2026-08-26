@@ -47,7 +47,8 @@
 |---------|------------|------|
 | `treasury_sync` | `treasury_snapshot` / `treasury_withdrawal` / `ncl_active` | トレジャリー残高・履歴・NCL |
 | `fiat_sync` | `fiat_rate` | ADA/JPY、ADA/USD レート（CoinGecko） |
-| `drep_sync` | `dreps` | DRep 一覧 + メタデータ |
+| `drep_dirty_sync` | `dreps.amount` | listener が dirty mark した active DRep の委任量だけ差分更新 |
+| `drep_sync` | `dreps` | DRep 一覧 + 状態 + メタデータ。epoch / 日次 fallback 用 |
 | `vote_sync` | `proposal_votes` | 投票履歴 |
 | `summary_sync` | `proposal_voting_summary` | 投票集計 |
 | `params_sync` | `protocol_params` / `cc_members` | プロトコルパラメータ・憲法委員会 |
@@ -181,6 +182,7 @@ cron 定義は [`deploy/cron.d-cardanoism-notify`](../deploy/cron.d-cardanoism-n
 | `drep` | 5 分 | drep_unvoted_ga (DB only) を高頻度で。drep_status_change の `/drep_info` も bulk 1 回で軽量 |
 | `fiat_sync` | 5 分 | UI で常時表示されるため短め (CoinGecko 無料枠 30 req/min 内) |
 | `pool` | 10 分 | saturation / pledge / reward 検知。エポック計算値なので cron 不可避 |
+| `drep_dirty_sync` | 15 分 | listener が直近1時間に dirty mark した active DRep のみ `/drep_delegators` で再集計。全件一覧・infoは取得しない |
 | `summary_sync` | **15 分** | **Active GA 限定**で投票集計を最新化。`pre_ratify` トリガー (drep_yes_pct ≥ 批准値 -10pt) のリアルタイム判定の前提 |
 | `reminder` | 15 分 | 委任長期リマインダー + `refresh_stake_delegations` |
 | `treasury` | 15 分 | enacted 検知。listener も拾えるが軽量な safety net |
@@ -200,14 +202,14 @@ listener が長時間停止していてもデータが完全停止しないよ�
 | `governance.py --no-translate` | 03:00 | listener 経由で逐次反映 + epoch_start でステータス確定 |
 | `params_sync` | 03:30 | listener: epoch_start |
 | `treasury_sync` | 04:00 | listener: epoch_start |
-| `drep_sync` | 04:30 | listener: epoch_start + DRep cert 検知 |
+| `drep_sync --full` | 04:30 | listener: epoch_start。常時の委任量差分は `drep_dirty_sync` |
 | `pool_sync` | 05:00 | listener: epoch_start + Pool cert 検知 |
 | `pool_block_history_sync` | 05:30 | listener: epoch_start |
 | `vote_sync` | 06:00 | listener: 投票即時反映 |
 | `constitution_sync` | 07:00 | listener: epoch_start |
 
-> **listener が動いている限り**、これらの cron 実行はほぼ「no-op (= 既に最新)」になる。
-> Koios コール量は通常時とフォールバック時で大きく差がついて、平時は 1/10 程度に抑えられる。
+> cron・epoch listener・手動実行は同じ MariaDB advisory lock を使用する。同じイベントが既に実行中なら後発は処理せず終了する。
+> 平時の DRep 更新は dirty 対象だけなので、全DRepを15分ごとに取得する旧構成よりKoiosコール量を大幅に抑えられる。
 
 ### 4-3. listener の状態監視
 
@@ -268,6 +270,7 @@ infisical run --env=preview -- python notify_worker.py --event reminder
 infisical run --env=preview -- python notify_worker.py --event treasury
 
 # 同期だけ
+infisical run --env=preview -- python notify_worker.py --event drep_dirty_sync  # dirty DRep の委任量だけ
 infisical run --env=preview -- python notify_worker.py --event drep_sync
 infisical run --env=preview -- python notify_worker.py --event vote_sync
 infisical run --env=preview -- python notify_worker.py --event summary_sync
@@ -475,6 +478,7 @@ ORDER BY checked_at DESC LIMIT 50;
 | pool_reward_received | — | ✅ |
 | pool / drep_delegation_reminder | — | ✅ |
 | drep_status_change | — | ✅ |
+| DRep live 委任量 | dirty mark ✅ | dirty 対象だけ再集計 (`drep_dirty_sync`) |
 | treasury_withdrawal_enacted | (listener も拾うが軽量な safety net 用) | ✅ |
 | vote_rationale_sync | ✅ (listener bg = primary) | ✅ (4h cron = backup) |
 | 全 *_sync（キャッシュ） | (一部 listener が epoch_start で chain 起動) | ✅ |

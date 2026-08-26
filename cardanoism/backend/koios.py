@@ -22,6 +22,14 @@ logger = logging.getLogger(__name__)
 
 KOIOS_BATCH_SIZE = 1000  # Koios POST エンドポイントの上限件数
 
+
+class KoiosPayloadTooLargeError(RuntimeError):
+    """Koios が HTTP 413 を返し、リクエスト分割が必要なことを示す。"""
+
+
+class KoiosIncompleteResponseError(RuntimeError):
+    """バッチ取得が失敗または不完全で、安全にDBへ反映できないことを示す。"""
+
 # 接続再利用用の Session: 同一ホスト宛の TCP 接続を使い回し DNS 解決ストームを防ぐ。
 # urllib3 のリトライで一過性の 5xx / 接続切断を自動再試行する。
 #
@@ -186,10 +194,15 @@ def _request_with_retry(method: str, endpoint: str, *, params=None, json_body=No
             if resp.status_code == 429:
                 _enter_cooldown(_retry_after_seconds(resp) or _COOLDOWN_DEFAULT, endpoint, resp)
                 return None
+            if resp.status_code == 413:
+                logger.warning("Koios %s payload too large: %s", method, endpoint)
+                raise KoiosPayloadTooLargeError(endpoint)
             if resp.status_code != 200:
                 logger.warning("Koios %s error %s: %s", method, resp.status_code, endpoint)
                 return None
             return resp.json()
+        except KoiosPayloadTooLargeError:
+            raise
         except (requests.ConnectionError, requests.Timeout) as e:
             last_err = e
             sleep_for = 1.0 * (attempt + 1)
@@ -207,11 +220,21 @@ def _post(endpoint: str, payload: dict, timeout: float = 10.0, params: dict | No
     return _request_with_retry("POST", endpoint, json_body=payload, params=params, timeout=timeout)
 
 
-def get_drep_delegators_total(drep_id: str, page_size: int = 1000, timeout: float = 15.0) -> int:
+def get_drep_delegators_total(
+    drep_id: str,
+    page_size: int = 1000,
+    timeout: float = 15.0,
+) -> int | None:
     """指定 DRep の現在の委任者 amount を全件合計して返す。
     /drep_delegators は POST + ?limit=&offset= のページネーション。
     Koios の上限 (1000 行/page) を超える委任者がいる DRep でも正確に合計できる。
+
+    正常な0件は 0、通信失敗・不正レスポンス・途中ページ欠落は None を返す。
+    部分合計を正常値としてDBへ保存しないため、失敗時は必ず None とする。
     """
+    if not drep_id:
+        return None
+
     total = 0
     offset = 0
     while True:
@@ -221,13 +244,36 @@ def get_drep_delegators_total(drep_id: str, page_size: int = 1000, timeout: floa
             timeout=timeout,
             params={"limit": page_size, "offset": offset},
         )
-        if not data or not isinstance(data, list):
+        if data is None:
+            logger.warning("Koios /drep_delegators 取得失敗: drep_id=%s offset=%d", drep_id, offset)
+            return None
+        if not isinstance(data, list):
+            logger.warning(
+                "Koios /drep_delegators 不正レスポンス: drep_id=%s offset=%d type=%s",
+                drep_id,
+                offset,
+                type(data).__name__,
+            )
+            return None
+        if not data:
             break
         for row in data:
+            if not isinstance(row, dict) or row.get("amount") is None:
+                logger.warning(
+                    "Koios /drep_delegators 行データ不正: drep_id=%s offset=%d",
+                    drep_id,
+                    offset,
+                )
+                return None
             try:
-                total += int(row.get("amount") or 0)
+                total += int(row["amount"])
             except (TypeError, ValueError):
-                continue
+                logger.warning(
+                    "Koios /drep_delegators amount不正: drep_id=%s offset=%d",
+                    drep_id,
+                    offset,
+                )
+                return None
         if len(data) < page_size:
             break
         offset += page_size
@@ -879,16 +925,28 @@ def fetch_active_ncl(use_cache: bool = True) -> dict | None:
 # DRep 関連
 # ============================================================
 
-def get_drep_list() -> list[dict]:
+def get_drep_list() -> list[dict] | None:
     """全 DRep の最小情報（drep_id, hex, has_script, registered）を返す。
     Koios GET はデフォルト 1000 件上限なので offset で全件取得するまでループ。
+
+    全ページ取得できなければ、部分一覧ではなく None を返す。
     """
     all_out: list[dict] = []
     limit = 1000
     offset = 0
     while True:
         data = _get("/drep_list", {"limit": limit, "offset": offset})
-        if not data or not isinstance(data, list):
+        if data is None:
+            logger.warning("Koios /drep_list 取得失敗: offset=%d", offset)
+            return None
+        if not isinstance(data, list):
+            logger.warning(
+                "Koios /drep_list 不正レスポンス: offset=%d type=%s",
+                offset,
+                type(data).__name__,
+            )
+            return None
+        if not data:
             break
         all_out.extend(data)
         if len(data) < limit:
@@ -911,18 +969,35 @@ DREP_BATCH_SIZE = 50
 
 
 def _post_split_on_413(endpoint: str, key: str, ids: list[str], timeout: float = 10.0) -> list[dict]:
-    """POST して 413 などで None が返った場合、ペイロードを半分に分割して再帰リトライ。"""
+    """POSTし、HTTP 413の場合だけペイロードを半分に分割して再試行する。
+
+    429・タイムアウト・5xxなどの失敗では分割しない。分割しても完全取得できない場合は
+    KoiosIncompleteResponseError を送出し、呼び出し側のDB更新を中断させる。
+    """
     if not ids:
         return []
-    data = _post(endpoint, {key: ids}, timeout=timeout)
-    if isinstance(data, list):
-        return data
-    # 取得失敗（413 等）: 1 件まで縮めても失敗する場合は諦める
-    if len(ids) <= 1:
-        logger.warning("Koios %s: id=%s の取得を断念", endpoint, ids[0] if ids else "?")
-        return []
-    mid = len(ids) // 2
-    return _post_split_on_413(endpoint, key, ids[:mid], timeout=timeout) + _post_split_on_413(endpoint, key, ids[mid:], timeout=timeout)
+    try:
+        data = _post(endpoint, {key: ids}, timeout=timeout)
+    except KoiosPayloadTooLargeError as exc:
+        if len(ids) <= 1:
+            raise KoiosIncompleteResponseError(
+                f"Koios {endpoint}: 1件でもHTTP 413 (id={ids[0]})"
+            ) from exc
+        mid = len(ids) // 2
+        return (
+            _post_split_on_413(endpoint, key, ids[:mid], timeout=timeout)
+            + _post_split_on_413(endpoint, key, ids[mid:], timeout=timeout)
+        )
+
+    if data is None:
+        raise KoiosIncompleteResponseError(
+            f"Koios {endpoint}: 取得失敗 ({len(ids)}件)"
+        )
+    if not isinstance(data, list):
+        raise KoiosIncompleteResponseError(
+            f"Koios {endpoint}: 不正レスポンス type={type(data).__name__}"
+        )
+    return data
 
 
 def get_drep_info_batch(drep_ids: list[str]) -> list[dict]:
@@ -1025,16 +1100,28 @@ def get_drep_metadata_batch(drep_ids: list[str]) -> list[dict]:
 POOL_BATCH_SIZE = 10
 
 
-def get_pool_list() -> list[dict]:
+def get_pool_list() -> list[dict] | None:
     """全プールの最小情報（pool_id_bech32, pool_id_hex, ticker, pool_status, retiring_epoch 等）を返す。
     Koios GET はデフォルト 1000 件上限なので offset で全件取得するまでループ。
+
+    全ページ取得できなければ、部分一覧ではなく None を返す。
     """
     all_out: list[dict] = []
     limit = 1000
     offset = 0
     while True:
         data = _get("/pool_list", {"limit": limit, "offset": offset}, timeout=20.0)
-        if not data or not isinstance(data, list):
+        if data is None:
+            logger.warning("Koios /pool_list 取得失敗: offset=%d", offset)
+            return None
+        if not isinstance(data, list):
+            logger.warning(
+                "Koios /pool_list 不正レスポンス: offset=%d type=%s",
+                offset,
+                type(data).__name__,
+            )
+            return None
+        if not data:
             break
         all_out.extend(data)
         if len(data) < limit:
@@ -1137,9 +1224,15 @@ def get_current_epoch_block_stats(current_epoch: int | None = None) -> dict:
     return stats
 
 
-def get_pool_history(pool_id_bech32: str, limit: int = 5, timeout: float = 10.0) -> list[dict]:
+def get_pool_history(
+    pool_id_bech32: str,
+    limit: int = 5,
+    timeout: float = 10.0,
+) -> list[dict] | None:
     """指定プールの履歴をエポック降順で取得（最新 limit 件）。
     各要素は epoch_no / block_cnt / active_stake / saturation_pct 等を含む。
+
+    正常な0件は []、通信失敗または不正レスポンスは None を返す。
     """
     if not pool_id_bech32:
         return []
@@ -1149,8 +1242,15 @@ def get_pool_history(pool_id_bech32: str, limit: int = 5, timeout: float = 10.0)
         "limit": limit,
     }
     data = _get("/pool_history", params, timeout=timeout)
-    if not data or not isinstance(data, list):
-        return []
+    if data is None:
+        return None
+    if not isinstance(data, list):
+        logger.warning(
+            "Koios /pool_history 不正レスポンス: pool=%s type=%s",
+            pool_id_bech32,
+            type(data).__name__,
+        )
+        return None
     return data
 
 
@@ -1175,7 +1275,10 @@ def get_pool_info_batch(pool_ids: list[str], timeout: float = 60.0) -> list[dict
     return out
 
 
-def get_recent_pool_updates(min_active_epoch: int, timeout: float = 30.0) -> dict[str, list[dict]]:
+def get_recent_pool_updates(
+    min_active_epoch: int,
+    timeout: float = 30.0,
+) -> dict[str, list[dict]] | None:
     """active_epoch_no >= min_active_epoch の cert 更新を全プール分一括取得する。
 
     Koios `/pool_updates` は GET エンドポイントで `_pool_bech32` (単数) しか
@@ -1189,7 +1292,8 @@ def get_recent_pool_updates(min_active_epoch: int, timeout: float = 30.0) -> dic
     の両方をカバーできる。それより古い更新しか無いプールは「ここ最近変化無し」
     として扱い、active 値は呼び出し側で /pool_info の値を使えばよい。
 
-    Returns: {pool_id_bech32: [update_dict, ...]} (active_epoch_no DESC)
+    Returns: {pool_id_bech32: [update_dict, ...]} (active_epoch_no DESC)。
+    全ページ取得できなければ、部分結果ではなく None を返す。
     """
     out: dict[str, list[dict]] = {}
     limit = 1000
@@ -1205,7 +1309,17 @@ def get_recent_pool_updates(min_active_epoch: int, timeout: float = 30.0) -> dic
             },
             timeout=timeout,
         )
-        if not data or not isinstance(data, list):
+        if data is None:
+            logger.warning("Koios /pool_updates 取得失敗: offset=%d", offset)
+            return None
+        if not isinstance(data, list):
+            logger.warning(
+                "Koios /pool_updates 不正レスポンス: offset=%d type=%s",
+                offset,
+                type(data).__name__,
+            )
+            return None
+        if not data:
             break
         for r in data:
             pid = r.get("pool_id_bech32")
