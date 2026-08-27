@@ -166,7 +166,7 @@ done
 
 ⚠️ は通知チャンネルを使う場合のみ必須。最低 1 つは設定。
 
-Infisical 認証は cron 実行ユーザー (`cardanoism`) で `infisical login` を一度実行しておく前提 (`~/.infisical/` に credentials が保存され、以降の `infisical run` がそれを読む)。cron 行に token を渡す必要はない。
+Infisical AgentがUniversal Authの短期tokenを `/run/cardanoism/infisical-token` へ自動更新し、共通ラッパー `/usr/local/bin/cardanoism-infisical` がそのtokenを使用する。project ID / environmentは `/etc/cardanoism/infisical.env` から読む。cron定義自体には認証情報を置かない。配置手順は [`deploy/README.md`](../deploy/README.md) を参照。
 
 ---
 
@@ -176,13 +176,13 @@ cron 定義は [`deploy/cron.d-cardanoism-notify`](../deploy/cron.d-cardanoism-n
 
 ### 4-1. cron file の構造
 
-ファイル冒頭で 3 つの変数 (`ENV` / `WORKDIR` / `PY`) をデプロイ時に書き換え、各 cron 行は以下の素直な形:
+ファイル冒頭で 3 つの変数 (`INFISICAL_RUN` / `WORKDIR` / `PY`) をデプロイ時に書き換え、各 cron 行は以下の形:
 
 ```cron
-*/30 * * * *  cardanoism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event pool >> $LOG/notify-pool.log 2>&1
+*/30 * * * *  cardanoism cd $WORKDIR && $INFISICAL_RUN $PY notify_worker.py --event pool >> $LOG/notify-pool.log 2>&1
 ```
 
-- 認証は `cardanoism` user の `~/.infisical/` 経由で自動解決 (cron file には token を含めない)
+- 認証と接続先は共通ラッパーが解決する (cron file には token / project ID を含めない)
 - ログはイベント別ファイル `notify-<event>.log` に分離 (logrotate と障害切り分けが楽)
 - ファイル権限は通常の `0644 root:root` でよい (機密情報を含まないため)
 

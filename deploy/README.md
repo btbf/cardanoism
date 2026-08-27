@@ -6,6 +6,10 @@
 | ファイル | 配置先 |
 |---------|-------|
 | `cron.d-cardanoism-notify` | `/etc/cron.d/cardanoism-notify` (権限 `0644 root:root`) |
+| `cardanoism-infisical` | `/usr/local/bin/cardanoism-infisical` (権限 `0755 root:root`) |
+| `infisical-agent.yaml` | `/etc/cardanoism/infisical-agent.yaml` (権限 `0644 root:root`) |
+| `infisical-agent.service` | `/etc/systemd/system/infisical-agent.service` (権限 `0644 root:root`) |
+| `infisical.env.example` | `/etc/cardanoism/infisical.env` のひな形 |
 
 > 詳細仕様は [`docs/realtime-notification-backend.md`](../docs/realtime-notification-backend.md) (Ogmios listener) と [`docs/ga-ai-analysis-backend.md`](../docs/ga-ai-analysis-backend.md) (GA AI worker) を参照。
 
@@ -13,42 +17,86 @@
 
 ## 初回セットアップ手順
 
-1. **専用システムユーザを作成** (cron / systemd の実行ユーザ)
+1. **実行ユーザーを確認** (cron / systemd / tmux 共通)
 
     ```bash
-    sudo useradd -r -m -s /bin/bash cardanoism
-    sudo passwd -l cardanoism                  # ログイン無効化 (任意、推奨)
+    id btism
     ```
 
-2. **リポジトリ配置 + venv**
+    本テンプレートは既存の `btism` ユーザーで実行する。別ユーザーを使う場合はcronのユーザー欄、
+    systemdの `User=`、各ファイルのgroupをすべて同じユーザーへ変更する。
+
+2. **リポジトリ配置 + Python依存関係**
 
     ```bash
-    sudo git clone https://github.com/btbf/cardanoism.git /opt/cardanoism
-    sudo chown -R cardanoism:cardanoism /opt/cardanoism
-    sudo -u cardanoism python3 -m venv /opt/cardanoism/.venv
-    sudo -u cardanoism /opt/cardanoism/.venv/bin/pip install -r /opt/cardanoism/requirements.txt
+    sudo git clone https://github.com/btbf/cardanoism.git /home/btism/cardanoism_tmp
+    sudo chown -R btism:btism /home/btism/cardanoism_tmp
+    sudo -u btism /home/btism/.pyenv/shims/python -m pip install \
+        -r /home/btism/cardanoism_tmp/requirements.txt
     ```
 
-3. **Infisical 認証** (cron 実行ユーザーで 1 回だけ)
+3. **Infisical Agent** (cron / systemd / tmux 共通)
+
+    Infisical で Universal Auth の Machine Identity を作成し、対象projectへの読み取り権限を付与する。
+    Client ID と Client Secret はそれぞれ別ファイルへ保存し、root以外には読ませない:
 
     ```bash
-    sudo -u cardanoism infisical login
-    # ブラウザ or デバイス認証フローを完了 → ~/.infisical/ に credentials が保存される
-    sudo -u cardanoism infisical run --env=mainnet -- env | grep DB_HOST   # 動作確認
+    sudo install -d -m 0750 -o root -g btism /etc/cardanoism
+    sudo touch /etc/cardanoism/infisical-client-id
+    sudo touch /etc/cardanoism/infisical-client-secret
+    sudo chown root:root /etc/cardanoism/infisical-client-id /etc/cardanoism/infisical-client-secret
+    sudo chmod 0600 /etc/cardanoism/infisical-client-id /etc/cardanoism/infisical-client-secret
+    sudo $EDITOR /etc/cardanoism/infisical-client-id
+    sudo $EDITOR /etc/cardanoism/infisical-client-secret
     ```
+
+    各ファイルにはClient IDまたはClient Secretの値だけを1行で記入する。tokenそのものは保存しない。
+
+    ラッパーが読む非機密設定を配置する:
+
+    ```bash
+    sudo install -m 0640 -o root -g btism \
+        /home/btism/cardanoism_tmp/deploy/infisical.env.example \
+        /etc/cardanoism/infisical.env
+    sudo $EDITOR /etc/cardanoism/infisical.env
+    ```
+
+    Agent設定・unit・共通ラッパーを配置して起動する:
+
+    ```bash
+    sudo install -m 0644 -o root -g root \
+        /home/btism/cardanoism_tmp/deploy/infisical-agent.yaml \
+        /etc/cardanoism/infisical-agent.yaml
+    sudo install -m 0644 -o root -g root \
+        /home/btism/cardanoism_tmp/deploy/infisical-agent.service \
+        /etc/systemd/system/infisical-agent.service
+    sudo install -m 0755 -o root -g root \
+        /home/btism/cardanoism_tmp/deploy/cardanoism-infisical \
+        /usr/local/bin/cardanoism-infisical
+
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now infisical-agent
+    sudo systemctl status infisical-agent --no-pager -l
+    sudo -u btism /usr/local/bin/cardanoism-infisical env | grep DB_HOST
+    ```
+
+    Agentは短期アクセストークンを `/run/cardanoism/infisical-token` に書き出し、
+    期限前に自動更新する。`btism`は短期tokenだけを読み、Client Secretにはアクセスできない。
+    Universal AuthのClient Secret自体には設定したTTL・使用回数制限が残るため、
+    Machine Identity側の設定が常駐運用に適していることを確認する。
 
 4. **ログディレクトリ**
 
     ```bash
-    sudo mkdir -p /var/log/cardanoism
-    sudo chown cardanoism:cardanoism /var/log/cardanoism
+    sudo mkdir -p /home/btism/cardanoism_log
+    sudo chown btism:btism /home/btism/cardanoism_log
     ```
 
 5. **cron 定義をコピーして編集**
 
     ```bash
     sudo install -m 0644 -o root -g root \
-        /opt/cardanoism/deploy/cron.d-cardanoism-notify \
+        /home/btism/cardanoism_tmp/deploy/cron.d-cardanoism-notify \
         /etc/cron.d/cardanoism-notify
     sudo $EDITOR /etc/cron.d/cardanoism-notify
     ```
@@ -57,9 +105,9 @@
 
     | 変数 | 内容 |
     |------|------|
-    | `ENV` | `mainnet` / `preview` |
-    | `WORKDIR` | リポジトリの配置先 (デフォルト `/opt/cardanoism`) |
-    | `PY` | venv の Python フルパス |
+    | `INFISICAL_RUN` | 共通ラッパーのフルパス |
+    | `WORKDIR` | リポジトリの配置先 (デフォルト `/home/btism/cardanoism_tmp`) |
+    | `PY` | 使用する Python のフルパス |
 
 6. **cron daemon に反映**
 
@@ -72,9 +120,9 @@
 
     ```bash
     # 1 イベントだけ手動で叩く (cron を待たない)
-    sudo -u cardanoism bash -c 'cd /opt/cardanoism && \
-        infisical run --env=ainnet -- \
-        /opt/cardanoism/.venv/bin/python notify_worker.py --event fiat_sync'
+    sudo -u btism bash -c 'cd /home/btism/cardanoism_tmp && \
+        /usr/local/bin/cardanoism-infisical \
+        /home/btism/.pyenv/shims/python notify_worker.py --event fiat_sync'
     ```
 
 8. **初回データ投入** (cron が回るまで待たず DB を満たす)
@@ -82,11 +130,11 @@
     新規 VPS では DB が空なので、cron 開始前に各 sync を 1 回ずつ手動で流す。順序に依存があるので **以下の順** で実行する。Koios コール量が多い ((6) 投票履歴は数分〜十数分) ので、画面が固まらないよう `tmux` / `screen` を使うのを推奨。
 
     ```bash
-    sudo -u cardanoism bash <<'EOF'
+    sudo -u btism bash <<'EOF'
     set -euo pipefail
-    cd /opt/cardanoism
-    INF="infisical run --env=mainnet --"
-    PY=/home/btism/cardanoism_tmp/.venv/bin/python
+    cd /home/btism/cardanoism_tmp
+    INF=/usr/local/bin/cardanoism-infisical
+    PY=/home/btism/.pyenv/shims/python
 
     # (1) プロトコルパラメータ + CC メンバー (他の sync の前提)
     $INF $PY notify_worker.py --event params_sync
@@ -145,21 +193,22 @@
 
     cron だけでは不十分。**Ogmios listener** がリアルタイム通知を、**GA AI worker** が `ga_ai_initial_sync` で enqueue した GA を順次処理する。両方とも systemd で常駐させる。
 
-    手順 3 の `sudo -u cardanoism infisical login` で `~/.infisical/` に credentials を保存済みである前提（詳細は `docs/realtime-notification-backend.md § 5-2`）。
+    手順 3 で共通ラッパーと Infisical の認証・接続設定を配置済みである前提。
 
     **Ogmios listener** `/etc/systemd/system/ogmios-listener.service`:
 
     ```ini
     [Unit]
     Description=Cardanoism Ogmios Chain Listener
-    After=network.target ogmios.service
+    After=network.target ogmios.service infisical-agent.service
+    Wants=infisical-agent.service
     Requires=ogmios.service
 
     [Service]
     Type=simple
-    User=cardanoism
-    WorkingDirectory=/opt/cardanoism
-    ExecStart=/usr/local/bin/infisical run --env=mainnet -- /opt/cardanoism/.venv/bin/python ogmios_listener.py
+    User=btism
+    WorkingDirectory=/home/btism/cardanoism_tmp
+    ExecStart=/usr/local/bin/cardanoism-infisical /home/btism/.pyenv/shims/python ogmios_listener.py
     Restart=always
     RestartSec=10
     StandardOutput=journal
@@ -174,13 +223,14 @@
     ```ini
     [Unit]
     Description=Cardanoism GA AI Worker
-    After=network.target mysql.service
+    After=network.target mysql.service infisical-agent.service
+    Wants=infisical-agent.service
 
     [Service]
     Type=simple
-    User=cardanoism
-    WorkingDirectory=/opt/cardanoism
-    ExecStart=/usr/local/bin/infisical run --env=mainnet -- /opt/cardanoism/.venv/bin/python ga_ai_worker.py
+    User=btism
+    WorkingDirectory=/home/btism/cardanoism_tmp
+    ExecStart=/usr/local/bin/cardanoism-infisical /home/btism/.pyenv/shims/python ga_ai_worker.py
     Restart=always
     RestartSec=10
     StandardOutput=journal
@@ -197,14 +247,26 @@
     sudo systemctl enable --now ogmios-listener ga-ai-worker
 
     # 状態確認
-    sudo systemctl status ogmios-listener ga-ai-worker
+    sudo systemctl status infisical-agent ogmios-listener ga-ai-worker
 
     # リアルタイムログ
     sudo journalctl -u ga-ai-worker -f
     sudo journalctl -u ogmios-listener -f
+    sudo journalctl -u infisical-agent -f
     ```
 
-    > preview ネットワーク用に別途立てる場合は `--env=preview` に書き換え、別 unit (`ogmios-listener-preview.service` / `ga-ai-worker-preview.service`) として登録する。
+    **Reflex (tmux)**:
+
+    ```bash
+    sudo -u btism tmux new-session -d -s cardanoism \
+        'cd /home/btism/cardanoism_tmp && exec /usr/local/bin/cardanoism-infisical reflex run'
+    ```
+
+    tmux内でも直接 `infisical run` は呼ばず、cron / systemd と同じラッパーを使う。
+
+    > preview ネットワーク用には `INFISICAL_ENV=preview` を設定した別の環境ファイルを用意し、
+    > unit に `Environment=CARDANOISM_INFISICAL_ENV_FILE=/etc/cardanoism/infisical-preview.env` を追加して、
+    > 別 unit (`ogmios-listener-preview.service` / `ga-ai-worker-preview.service`) として登録する。
 
 10. **動作確認 — AI 分析キューが流れているか**
 
@@ -297,12 +359,16 @@ sudo systemctl start ga-ai-worker ogmios-listener
 sudo systemctl restart ga-ai-worker ogmios-listener
 ```
 
-### Infisical 再認証
+### Infisical Agent の認証更新
 
-`~/.infisical/` の credentials が期限切れになったら:
+短期アクセストークンはAgentが自動更新するため、手作業は不要。
+Universal AuthのClient Secret自体をローテーションするときだけ、root専用ファイルを更新してAgentを再起動する:
 
 ```bash
-sudo -u cardanoism infisical login
+sudo $EDITOR /etc/cardanoism/infisical-client-secret
+sudo systemctl restart infisical-agent
+sudo systemctl status infisical-agent --no-pager -l
 ```
 
-cron file の編集は不要 (token をファイルに置いていないため)。
+Infisical上のアプリケーションsecretを変更した場合、cronは次回実行から反映される。
+systemdワーカーとtmuxのReflexは起動時にsecretを注入するため、それぞれ再起動して反映する。

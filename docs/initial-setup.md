@@ -6,7 +6,7 @@
 
 ```
 ┌─────────────────────────────────────────┐
-│  Reflex (Web UI)                        │  ← infisical run -- reflex run
+│  Reflex (Web UI)                        │  ← cardanoism-infisical reflex run
 ├─────────────────────────────────────────┤
 │  ogmios_listener.py    (常駐 systemd)   │  ← リアルタイム通知
 │  notify_worker.py      (cron / 定期)    │  ← Koios ポーリング
@@ -70,16 +70,12 @@ sudo apt install -y infisical
 infisical --version
 ```
 
-### 3-2. 認証 (対話 login)
+### 3-2. 認証 (Machine Identity + Infisical Agent)
 
-VPS の実行ユーザーで一度だけ対話 login する。credentials は `~/.infisical/` に保存され、以降の `infisical run` で自動参照される。
-
-```bash
-sudo -u <user> infisical login
-# ブラウザ or デバイス認証フローを完了
-```
-
-> credentials が期限切れになった場合は同じコマンドで再認証する。
+VPSではInfisical Agentをsystemd常駐させ、Universal Authの短期アクセストークンを
+`/run/cardanoism/infisical-token`へ継続的に更新する。cron / systemd / tmuxは
+共通ラッパー `/usr/local/bin/cardanoism-infisical` からこのtokenを利用する。
+Client ID / Client Secretの配置と権限設定は [`deploy/README.md`](../deploy/README.md) を参照。
 
 ### 3-3. environment スコープ
 
@@ -92,7 +88,7 @@ sudo -u <user> infisical login
 注入確認:
 
 ```bash
-infisical run --env=mainnet -- \
+/usr/local/bin/cardanoism-infisical \
   bash -c 'echo "DB=$DB_HOST/$DB_NAME, KOIOS=$KOIOS_NETWORK"'
 ```
 
@@ -105,7 +101,7 @@ infisical run --env=mainnet -- \
 `cardanoism/backend/migrations/` 配下の SQL を番号順に流す。すべて `CREATE TABLE IF NOT EXISTS` で冪等。
 
 ```bash
-infisical run --env=mainnet -- bash -c '
+/usr/local/bin/cardanoism-infisical bash -c '
 for f in cardanoism/backend/migrations/*.sql; do
   echo "--- applying $f"
   mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$f"
@@ -124,7 +120,7 @@ done
 順序が重要。GA 本体が無いと AI 分析の enqueue 対象が無く、NCL 計算も `protocol_params` が前提。
 
 ```bash
-INF="infisical run --env=mainnet --"
+INF=/usr/local/bin/cardanoism-infisical
 PY="/opt/cardanoism/.venv/bin/python"
 
 # (1) GA 本体を governance_actions に取り込む (新規ぶんは AI 分析キューへ自動 enqueue)
@@ -169,16 +165,16 @@ DB を再リセットする運用が発生したら同じ順序で叩き直す�
 ## 6. 定期 polling 設定 (cron)
 
 `notify_worker.py` を cron で定期実行する。テンプレートは [`deploy/cron.d-cardanoism-notify`](../deploy/cron.d-cardanoism-notify) 1 ファイルで完結する形式。
-セットアップ手順 (Infisical login / install / 疎通確認) は [`deploy/README.md`](../deploy/README.md) を参照。スケジュール設計の詳細は [`docs/koios-polling-backend.md`](koios-polling-backend.md) § 4。
+セットアップ手順 (Infisical Agent / wrapper / 疎通確認) は [`deploy/README.md`](../deploy/README.md) を参照。スケジュール設計の詳細は [`docs/koios-polling-backend.md`](koios-polling-backend.md) § 4。
 
 ```bash
-# 最短手順 (詳細は deploy/README.md):
-sudo -u cardanoism infisical login                            # cron 実行ユーザーで一度だけ
+# 最短手順 (共通ラッパーの配置後。詳細は deploy/README.md):
+sudo -u cardanoism /usr/local/bin/cardanoism-infisical env | grep DB_HOST
 sudo mkdir -p /var/log/cardanoism && sudo chown cardanoism:cardanoism /var/log/cardanoism
 sudo install -m 0644 -o root -g root \
     /opt/cardanoism/deploy/cron.d-cardanoism-notify \
     /etc/cron.d/cardanoism-notify
-sudo $EDITOR /etc/cron.d/cardanoism-notify     # 冒頭の ENV / WORKDIR / PY の 3 行を編集
+sudo $EDITOR /etc/cron.d/cardanoism-notify     # 冒頭の INFISICAL_RUN / WORKDIR / PY を編集
 sudo systemctl reload cron
 ```
 
@@ -192,7 +188,7 @@ cardano-node + Ogmios が `syncProgress: 100.00` まで同期完了してから�
 
 ```bash
 # 初回 (フォアグラウンドで動作確認)
-infisical run --env=mainnet -- \
+/usr/local/bin/cardanoism-infisical \
   /opt/cardanoism/.venv/bin/python ogmios_listener.py --from-tip
 ```
 
@@ -210,7 +206,7 @@ journalctl -u ogmios-listener -f
 
 ```bash
 # 初回 (フォアグラウンドで動作確認)
-infisical run --env=mainnet -- \
+/usr/local/bin/cardanoism-infisical \
   /opt/cardanoism/.venv/bin/python ga_ai_worker.py
 ```
 
@@ -227,7 +223,7 @@ journalctl -u ga-ai-worker -f
 開発モード:
 
 ```bash
-infisical run --env=mainnet -- reflex run
+/usr/local/bin/cardanoism-infisical reflex run
 ```
 
 本番は `reflex export` + nginx + プロセスマネージャ (例: pm2 / systemd) で `.web/_static` を配信。詳細は Reflex 公式参照。

@@ -1,0 +1,55 @@
+#!/bin/sh
+
+set -eu
+
+env_file="${CARDANOISM_INFISICAL_ENV_FILE:-/etc/cardanoism/infisical.env}"
+infisical_bin="${CARDANOISM_INFISICAL_BIN:-/usr/bin/infisical}"
+
+if [ ! -r "$env_file" ]; then
+    echo "cardanoism-infisical: cannot read $env_file" >&2
+    exit 1
+fi
+
+set -a
+# The file is installed root-owned and is trusted shell syntax.
+# shellcheck disable=SC1090
+. "$env_file"
+set +a
+
+if [ -z "${INFISICAL_PROJECT_ID:-}" ]; then
+    echo "cardanoism-infisical: INFISICAL_PROJECT_ID is not set in $env_file" >&2
+    exit 1
+fi
+
+if [ -z "${INFISICAL_ENV:-}" ]; then
+    echo "cardanoism-infisical: INFISICAL_ENV is not set in $env_file" >&2
+    exit 1
+fi
+
+token_file="${CARDANOISM_INFISICAL_TOKEN_FILE:-/run/cardanoism/infisical-token}"
+wait_count=15
+
+while [ ! -s "$token_file" ] && [ "$wait_count" -gt 0 ]; do
+    /usr/bin/sleep 1
+    wait_count=$((wait_count - 1))
+done
+
+if [ ! -r "$token_file" ] || [ ! -s "$token_file" ]; then
+    echo "cardanoism-infisical: cannot read a token from $token_file" >&2
+    exit 1
+fi
+
+unset INFISICAL_TOKEN
+INFISICAL_TOKEN="$(/usr/bin/cat "$token_file")"
+
+if [ -z "$INFISICAL_TOKEN" ]; then
+    echo "cardanoism-infisical: token file is empty: $token_file" >&2
+    exit 1
+fi
+
+export INFISICAL_TOKEN
+
+exec "$infisical_bin" run \
+    --env="$INFISICAL_ENV" \
+    --projectId="$INFISICAL_PROJECT_ID" \
+    -- "$@"

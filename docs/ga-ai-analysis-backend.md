@@ -105,15 +105,15 @@ python ga_ai_worker.py --poll-interval 20 --concurrency 3
 ```ini
 [Unit]
 Description=Cardanoism GA AI Worker
-After=network-online.target
-Wants=network-online.target
+After=network-online.target infisical-agent.service
+Wants=network-online.target infisical-agent.service
 
 [Service]
 Type=simple
 User=btism
 WorkingDirectory=/home/btism/cardanoism_tmp
-# 実行ユーザー (cardanoism) の ~/.infisical/ にある対話 login の credentials を使う
-ExecStart=/usr/bin/infisical run --env=mainnet -- /home/btism/cardanoism_tmp/.venv/bin/python ga_ai_worker.py
+# 共通ラッパーがInfisical Agentのtoken sinkを読み込む
+ExecStart=/usr/local/bin/cardanoism-infisical /home/btism/cardanoism_tmp/.venv/bin/python ga_ai_worker.py
 Restart=always
 RestartSec=10
 StandardOutput=journal

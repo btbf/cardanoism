@@ -5,8 +5,9 @@
 # 配置: /etc/cron.d/cardanoism-notify
 # 権限: root:root 0644
 #
-# Infisical 認証は cron 実行ユーザー (cardanoism) で予め `infisical login` を
-# 完了させておく前提 (~/.infisical/ に保存される)。cron 行では token を渡さない。
+# Infisical Agent が /run/cardanoism/infisical-token を自動更新し、
+# /usr/local/bin/cardanoism-infisical が token / project ID / environment を読み込む。
+# token は root:root 0644 のこのファイルに書かない。
 #
 # 設計:
 #   常時 cron       ... Ogmios listener の状態に関係なく走らせる必要があるもの
@@ -20,8 +21,8 @@ SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # === デプロイ時に書き換える 3 行 =============================
-# Infisical environment スコープ (mainnet / preview)
-ENV=mainnet
+# Infisical の認証・接続先を読み込む共通ラッパー
+INFISICAL_RUN=/usr/local/bin/cardanoism-infisical
 
 # Cardanoism リポジトリのチェックアウト先
 WORKDIR=/home/btism/cardanoism_tmp
@@ -40,29 +41,29 @@ LOG=/home/btism/cardanoism_log
 # Ogmios が検知した GA のうち、IPFS metadata 取得失敗分だけ再試行する。
 # Koios /proposal_list の全件同期は日次 fallback と epoch_start に限定する。
 # 最大20件、15分から指数バックオフ、8回で停止。復旧分だけ翻訳・AI enqueue する。
-7,22,37,52 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY cardanoism/backend/governance.py --retry-metadata --limit 20 >> $LOG/notify-governance-meta.log 2>&1
+7,22,37,52 * * * *  btism cd $WORKDIR && $INFISICAL_RUN $PY cardanoism/backend/governance.py --retry-metadata --limit 20 >> $LOG/notify-governance-meta.log 2>&1
 
 # プール系 (saturation / pledge / reward) — エポック計算値なので cron 必須
-3-59/10 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event pool      >> $LOG/notify-pool.log 2>&1
+3-59/10 * * * *  btism cd $WORKDIR && $INFISICAL_RUN $PY notify_worker.py --event pool      >> $LOG/notify-pool.log 2>&1
 
 # DRep 系 (status_change + drep_unvoted_ga) — drep_unvoted_ga は DB only なので高頻度可能
-2-59/5  * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event drep      >> $LOG/notify-drep.log 2>&1
+2-59/5  * * * *  btism cd $WORKDIR && $INFISICAL_RUN $PY notify_worker.py --event drep      >> $LOG/notify-drep.log 2>&1
 
 # 委任リマインダー + stake_addresses 委任先のリフレッシュ
-5,20,35,50 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event reminder  >> $LOG/notify-reminder.log 2>&1
+5,20,35,50 * * * *  btism cd $WORKDIR && $INFISICAL_RUN $PY notify_worker.py --event reminder  >> $LOG/notify-reminder.log 2>&1
 
 # トレジャリー引き出し提案の enacted 検知 (listener も拾うが安全網)
-8,23,38,53 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event treasury  >> $LOG/notify-treasury.log 2>&1
+8,23,38,53 * * * *  btism cd $WORKDIR && $INFISICAL_RUN $PY notify_worker.py --event treasury  >> $LOG/notify-treasury.log 2>&1
 
 # Active GA の投票集計を最新化 (pre_ratify トリガーの前提)
-11,26,41,56 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event summary_sync >> $LOG/notify-summary_sync.log 2>&1
+11,26,41,56 * * * *  btism cd $WORKDIR && $INFISICAL_RUN $PY notify_worker.py --event summary_sync >> $LOG/notify-summary_sync.log 2>&1
 
 # DRep 委任量の差分更新
 #   - Ogmios listener が直近1時間に dirty mark した active DRep のみ対象
 #   - /drep_list・/drep_info・/drep_metadata の全件取得は行わない
 #   - 全DRep同期は epoch_start と下の日次 fallback に限定
 # MariaDB advisory lock により cron / listener / 手動実行間の重複を防ぐ。
-14,29,44,59 * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event drep_dirty_sync >> $LOG/notify-drep_dirty_sync.log 2>&1
+14,29,44,59 * * * *  btism cd $WORKDIR && $INFISICAL_RUN $PY notify_worker.py --event drep_dirty_sync >> $LOG/notify-drep_dirty_sync.log 2>&1
 
 # 投票履歴 (vote_sync) は常時 cron から外した。
 #   投票のリアルタイム反映は Ogmios listener が担当している
@@ -74,32 +75,32 @@ LOG=/home/btism/cardanoism_log
 
 # ── オフチェーン同期 (常時) ──────────────────────────────
 # 法定通貨レート (CoinGecko)
-1-59/5  * * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event fiat_sync           >> $LOG/notify-fiat_sync.log 2>&1
+1-59/5  * * * *  btism cd $WORKDIR && $INFISICAL_RUN $PY notify_worker.py --event fiat_sync           >> $LOG/notify-fiat_sync.log 2>&1
 
 # プールリレー TCP 疎通確認
-0    */6 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event relay_check        >> $LOG/notify-relay_check.log 2>&1
+0    */6 * * *  btism cd $WORKDIR && $INFISICAL_RUN $PY notify_worker.py --event relay_check        >> $LOG/notify-relay_check.log 2>&1
 
 # 投票理由の翻訳 (OpenAI、コスト抑制のため低頻度)
-0    */4 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event vote_rationale_sync >> $LOG/notify-vote_rationale_sync.log 2>&1
+0    */4 * * *  btism cd $WORKDIR && $INFISICAL_RUN $PY notify_worker.py --event vote_rationale_sync >> $LOG/notify-vote_rationale_sync.log 2>&1
 
 # カタリスト提案フェッチ (Catalyst Explorer API、1 日 1 回 / fund 12-14)
-0    2 * * *  btism cd $WORKDIR && for FUND in 12 13 14; do infisical run --env=$ENV -- $PY cardanoism/backend/proposals_update_new.py --fund $FUND; done >> $LOG/catalyst-proposals.log 2>&1
+0    2 * * *  btism cd $WORKDIR && for FUND in 12 13 14; do $INFISICAL_RUN $PY cardanoism/backend/proposals_update_new.py --fund $FUND; done >> $LOG/catalyst-proposals.log 2>&1
 
 # ── フォールバック (listener 停止対策、24 時間に 1 回深夜) ─────
 # 通常は Ogmios listener が epoch_start を検知してこれらを発火するが、
 # listener が落ちている間でもデータが完全停止しないよう 1 日 1 回バックアップ実行。
 # (summary_sync は常時 15min 実行済みなので fallback には含めない)
-0    3 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY cardanoism/backend/governance.py --no-translate    >> $LOG/notify-governance.log 2>&1
-30   3 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event params_sync               >> $LOG/notify-params_sync.log 2>&1
-0    4 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event treasury_sync             >> $LOG/notify-treasury_sync.log 2>&1
-30   4 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event drep_sync --full          >> $LOG/notify-drep_sync.log 2>&1
-0    5 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event pool_sync                 >> $LOG/notify-pool_sync.log 2>&1
-30   5 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event pool_block_history_sync   >> $LOG/notify-pool_block_history_sync.log 2>&1
+0    3 * * *  btism cd $WORKDIR && $INFISICAL_RUN $PY cardanoism/backend/governance.py --no-translate    >> $LOG/notify-governance.log 2>&1
+30   3 * * *  btism cd $WORKDIR && $INFISICAL_RUN $PY notify_worker.py --event params_sync               >> $LOG/notify-params_sync.log 2>&1
+0    4 * * *  btism cd $WORKDIR && $INFISICAL_RUN $PY notify_worker.py --event treasury_sync             >> $LOG/notify-treasury_sync.log 2>&1
+30   4 * * *  btism cd $WORKDIR && $INFISICAL_RUN $PY notify_worker.py --event drep_sync --full          >> $LOG/notify-drep_sync.log 2>&1
+0    5 * * *  btism cd $WORKDIR && $INFISICAL_RUN $PY notify_worker.py --event pool_sync                 >> $LOG/notify-pool_sync.log 2>&1
+30   5 * * *  btism cd $WORKDIR && $INFISICAL_RUN $PY notify_worker.py --event pool_block_history_sync   >> $LOG/notify-pool_block_history_sync.log 2>&1
 # vote_sync は --full 無しなので「投票中の GA のみ」(数十 req)。
 # 決着済み GA の投票は増えないので日次でも取り直さない。listener を長期停止した後など
 # 取りこぼしを埋めたいときだけ手動で `--event vote_sync --full` (全 GA = 1500 req 前後)。
-0    6 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event vote_sync                 >> $LOG/notify-vote_sync.log 2>&1
+0    6 * * *  btism cd $WORKDIR && $INFISICAL_RUN $PY notify_worker.py --event vote_sync                 >> $LOG/notify-vote_sync.log 2>&1
 
 # DRepマッチング診断: 全 active DRep を再分析 (集計のみ、AI 不要)
-45   6 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event compass_profile_all       >> $LOG/notify-compass_profile_all.log 2>&1
-0    7 * * *  btism cd $WORKDIR && infisical run --env=$ENV -- $PY notify_worker.py --event constitution_sync         >> $LOG/notify-constitution_sync.log 2>&1
+45   6 * * *  btism cd $WORKDIR && $INFISICAL_RUN $PY notify_worker.py --event compass_profile_all       >> $LOG/notify-compass_profile_all.log 2>&1
+0    7 * * *  btism cd $WORKDIR && $INFISICAL_RUN $PY notify_worker.py --event constitution_sync         >> $LOG/notify-constitution_sync.log 2>&1

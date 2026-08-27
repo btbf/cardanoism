@@ -214,28 +214,28 @@ python3 -m venv .venv
 | `NOTIFICATION_REALTIME_MAX_LAG_SLOTS` | 任意 | 通常chainイベントの通知期限（既定: `1800` slots） |
 | `NOTIFICATION_EPOCH_MAX_LAG_SLOTS` | 任意 | epoch境界通知の期限（既定: `7200` slots） |
 
-VPS 側で Infisical CLI をインストールし、実行ユーザーで対話 login して認証する:
+VPS 側で Infisical CLIをインストールし、Infisical Agentとcron / systemd / tmux共通ラッパーを配置する:
 
 ```bash
 # CLI インストール
 curl -1sLf https://artifacts-cli.infisical.com/setup.deb.sh | sudo -E bash
 sudo apt install -y infisical
 
-# 実行ユーザーで一度だけ対話 login (credentials は ~/.infisical/ に保存される)
-sudo -u cardanoism infisical login
+# Agent / Universal Auth / project ID / environment の配置は deploy/README.md を参照
+sudo -u btism /usr/local/bin/cardanoism-infisical env | grep DB_HOST
 ```
 
-> credentials が期限切れになった場合は同じコマンドで再認証する。
+> 詳細な配置手順と権限設定は [`deploy/README.md`](../deploy/README.md) を参照。
 
 ### 5-3. 起動方法
 
 ```bash
 cd /home/btism/cardanoism_tmp
-infisical run --env=mainnet -- \
+/usr/local/bin/cardanoism-infisical \
     .venv/bin/python ogmios_listener.py
 
 # 初回起動時のみ tip から再開
-infisical run --env=mainnet -- \
+/usr/local/bin/cardanoism-infisical \
     .venv/bin/python ogmios_listener.py --from-tip
 ```
 
@@ -248,15 +248,15 @@ infisical run --env=mainnet -- \
 ```ini
 [Unit]
 Description=Cardanoism Ogmios Chain Listener
-After=network-online.target
-Wants=network-online.target
+After=network-online.target infisical-agent.service
+Wants=network-online.target infisical-agent.service
 
 [Service]
 Type=simple
-User=cardanoism
+User=btism
 WorkingDirectory=/home/btism/cardanoism_tmp
-# 実行ユーザー (cardanoism) の ~/.infisical/ にある対話 login の credentials を使う
-ExecStart=/usr/bin/infisical run --env=mainnet -- /home/btism/cardanoism_tmp/.venv/bin/python ogmios_listener.py　
+# 共通ラッパーがInfisical Agentのtoken sinkを読み込む
+ExecStart=/usr/local/bin/cardanoism-infisical /home/btism/cardanoism_tmp/.venv/bin/python ogmios_listener.py
 Restart=always
 RestartSec=10
 StandardOutput=journal

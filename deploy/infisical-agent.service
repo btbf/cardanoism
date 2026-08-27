@@ -1,0 +1,31 @@
+[Unit]
+Description=Infisical Agent for Cardanoism
+Documentation=https://infisical.com/docs/integrations/platforms/infisical-agent
+Wants=network-online.target
+After=network-online.target
+Before=ogmios-listener.service ga-ai-worker.service
+
+[Service]
+Type=simple
+User=root
+Group=btism
+UMask=0027
+RuntimeDirectory=cardanoism
+RuntimeDirectoryMode=0750
+WorkingDirectory=/run/cardanoism
+UnsetEnvironment=INFISICAL_TOKEN
+Environment=INFISICAL_DISABLE_UPDATE_CHECK=true
+ExecStartPre=/usr/bin/touch /run/cardanoism/infisical-token
+ExecStartPre=/usr/bin/chown root:btism /run/cardanoism/infisical-token
+ExecStartPre=/usr/bin/chmod 0640 /run/cardanoism/infisical-token
+ExecStart=/usr/bin/infisical agent --config /etc/cardanoism/infisical-agent.yaml
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/run/cardanoism
+
+[Install]
+WantedBy=multi-user.target

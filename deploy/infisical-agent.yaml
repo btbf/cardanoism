@@ -1,0 +1,14 @@
+infisical:
+  address: "https://app.infisical.com"
+
+auth:
+  type: "universal-auth"
+  config:
+    client-id: "/etc/cardanoism/infisical-client-id"
+    client-secret: "/etc/cardanoism/infisical-client-secret"
+    remove_client_secret_on_read: false
+
+sinks:
+  - type: "file"
+    config:
+      path: "/run/cardanoism/infisical-token"
